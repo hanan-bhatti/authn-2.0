@@ -7,9 +7,13 @@
 
 ---
 
-## 1. Overview & Objectives
+## 1. Overview & Verified Toolchain Versions
 
-The **Authn Mobile Ecosystem** consists of native mobile applications (`apps/mobile-android` and `apps/mobile-ios`) and client SDKs providing two core capabilities:
+The **Authn Mobile Ecosystem** consists of native mobile applications (`apps/mobile-android` and `apps/mobile-ios`) built using the latest toolchains:
+* **Android**: Kotlin `2.1.0+` (K2 compiler), Gradle `8.12+`, Android Gradle Plugin (AGP) `8.8+`, JDK `17+`.
+* **iOS**: Swift `6.0+` (Swift 6 strict concurrency safety), Xcode `16.0+`, iOS SDK `18.0+`.
+
+### Core Capabilities
 1. **Authenticator & Real-Time Push 2FA**: Push notification 2FA prompts with number-matching verification to prevent Push Fatigue attacks.
 2. **On-Device System Single Sign-On (SSO)**: Native Android `AccountManager` integration and iOS Shared Keychain Groups for instant token sharing between installed companion apps.
 
@@ -66,12 +70,12 @@ To prevent automated mobile malware or bypassed prompts from auto-selecting the 
 
 ---
 
-## 3. Android System `AccountManager` & Package Signature Security
+## 3. Android System `AccountManager` & Package Signature Security (`Kotlin 2.1+ / Gradle 8.12+`)
 
 ### 3.1 Caller Verification Policy (`apps/mobile-android`)
 - **Authenticator Service**: Extends `android.accounts.AbstractAccountAuthenticator`.
 - **Package Signature Checking**: `getAuthToken()` verifies the calling package name using `PackageManager.getPackageInfo(callingPackage, GET_SIGNATURES)`. Token issuance is granted ONLY if the caller's signing certificate matches the registered first-party application certificate, preventing malicious apps on the device from silently extracting tokens.
-- **Token Fetch Sample**:
+- **Token Fetch Sample (Kotlin 2.1+)**:
   ```kotlin
   val accountManager = AccountManager.get(context)
   val accounts = accountManager.getAccountsByType("com.authn.account")
@@ -82,7 +86,7 @@ To prevent automated mobile malware or bypassed prompts from auto-selecting the 
 
 ---
 
-## 4. iOS `ASWebAuthenticationSession` & Secure Enclave Binding
+## 4. iOS `ASWebAuthenticationSession` & Secure Enclave Binding (`Swift 6.0+`)
 
 ### 4.1 Architecture (`apps/mobile-ios`)
 - **Web Auth Session**: Uses `ASWebAuthenticationSession` for PKCE browser login flows.
