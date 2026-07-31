@@ -1,0 +1,29 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  gofmt:
+    simplify: true
+  errcheck:
+    check-type-assertions: true
+  revive:
+    severity: warning
+
+linters:
+  enable:
+    - gofmt
+    - govet
+    - errcheck
+    - staticcheck
+    - revive
+    - unused
+    - bodyclose
+    - misspell
+
+issues:
+  exclude-use-default: false
+  exclude-dirs:
+    - apps/auth-engine/ent
