@@ -2,9 +2,11 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.4+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15+-000000?style=flat&logo=next.js)](https://nextjs.org/)
-[![Turborepo](https://img.shields.io/badge/Turborepo-2.0+-EF4444?style=flat&logo=turborepo)](https://turbo.build/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.2+-000000?style=flat&logo=next.js)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19.2+-61DAFB?style=flat&logo=react)](https://react.dev/)
+[![pnpm](https://img.shields.io/badge/pnpm-11.18+-F69220?style=flat&logo=pnpm)](https://pnpm.io/)
+[![Turborepo](https://img.shields.io/badge/Turborepo-2.10+-EF4444?style=flat&logo=turborepo)](https://turbo.build/)
 
 > **Authn** is an enterprise-grade, high-performance, open-source authentication and identity management platform. Designed as a modern, self-hostable alternative to Auth0, Firebase Auth, and Keycloak with native Android/iOS account integration and push-fatigue 2FA defense.
 
@@ -32,16 +34,16 @@
 authn-2.0/
 ├── apps/
 │   ├── auth-engine/          # Go 1.22+ Backend Service (Ent ORM, Fiber HTTP/gRPC, OIDC Server)
-│   ├── web-console/          # Next.js 15 Developer & Tenant Portal (console.authn.com)
-│   ├── web-landing/          # Next.js 15 Platform Landing Page (authn.com)
-│   ├── web-docs/             # Next.js / Fumadocs Documentation Hub (docs.authn.com)
-│   ├── web-demo/             # Next.js 15 Interactive "Sign in with Authn" Demo (demo.authn.com)
+│   ├── web-console/          # Next.js 16 Developer & Tenant Portal (console.authn.com)
+│   ├── web-landing/          # Next.js 16 Platform Landing Page (authn.com)
+│   ├── web-docs/             # Next.js 16 / Fumadocs Documentation Hub (docs.authn.com)
+│   ├── web-demo/             # Next.js 16 Interactive "Sign in with Authn" Demo (demo.authn.com)
 │   ├── mobile-android/       # Native Android Kotlin Client (AccountManager SSO & Push 2FA)
 │   └── mobile-ios/           # Native iOS Swift Client (ASWebAuthenticationSession SSO & Push 2FA)
 ├── packages/
-│   ├── ui/                   # Shared React UI Component Library (TailwindCSS + shadcn/ui)
+│   ├── ui/                   # Shared React 19 UI Component Library (TailwindCSS v4 + shadcn/ui)
 │   ├── sdk-js/               # Core Framework-Agnostic JavaScript/TypeScript Client SDK (@authn/js)
-│   ├── sdk-react/            # React Auth Hooks & UI Components (@authn/react)
+│   ├── sdk-react/            # React 19 Auth Hooks & UI Components (@authn/react)
 │   ├── config-eslint/        # Shared ESLint Flat Configuration
 │   └── config-typescript/    # Shared TypeScript Base TSConfig Bases
 ├── docs/                     # Full 8-Document Technical Specification Suite
@@ -71,7 +73,7 @@ Explore our comprehensive technical specifications:
 
 ### Prerequisites
 * **Node.js**: v20.0.0+
-* **pnpm**: v9.0.0+
+* **pnpm**: v11.0.0+
 * **Go**: v1.22+
 * **Docker Engine**: Optional for local Redis/PostgreSQL containers
 
