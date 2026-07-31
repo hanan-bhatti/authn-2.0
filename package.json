@@ -1,13 +1,48 @@
 {
-  "name": "authn",
+  "name": "authn-platform",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Authn — The Enterprise Open-Source Authentication & Identity Platform (Go Engine, Ent ORM, Next.js Console, Native Android & iOS SSO, Number-Matching Push 2FA)",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "Hanan Bhatti (https://github.com/hanan-bhatti)",
+  "homepage": "https://github.com/hanan-bhatti/authn-2.0#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hanan-bhatti/authn-2.0.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@11.18.0"
+  "bugs": {
+    "url": "https://github.com/hanan-bhatti/authn-2.0/issues"
+  },
+  "keywords": [
+    "authentication",
+    "auth",
+    "identity-provider",
+    "oidc",
+    "oauth2",
+    "passkeys",
+    "webauthn",
+    "push-2fa",
+    "sso",
+    "golang",
+    "nextjs",
+    "turborepo",
+    "pnpm",
+    "open-source"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "@authn/config-eslint": "workspace:*",
+    "@authn/config-typescript": "workspace:*",
+    "prettier": "^3.2.5",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.5"
+  },
+  "packageManager": "pnpm@9.0.0"
 }
