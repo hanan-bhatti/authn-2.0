@@ -1,0 +1,68 @@
+# Dependencies & Packages
+node_modules/
+.pnpm-store/
+vendor/
+
+# Build Outputs & Bundles
+.next/
+dist/
+build/
+out/
+.turbo/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment Variables & Local Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+rsa_private.pem
+jwt_secret.txt
+
+# Log Files & Coverage
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+.nyc_output/
+*.out
+*.prof
+
+# Android Studio & Gradle
+.gradle/
+apps/mobile-android/build/
+apps/mobile-android/app/build/
+apps/mobile-android/.idea/
+*.apk
+*.aab
+*.aar
+local.properties
+
+# iOS Xcode & Swift
+.build/
+DerivedData/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+.swiftpm/
+*.ipa
+*.dSYM
+
+# IDEs & System Files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
