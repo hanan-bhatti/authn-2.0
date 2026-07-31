@@ -24,39 +24,52 @@
 
 ---
 
-## 2. Pre-flight Environment Validation & Zero Hardcoded Config
+## 2. File Naming Conventions (`*.controller.ts`, `*_handler.go`)
 
-* **Strict Rule**: Zero hardcoded ports, URLs, timeouts, secret keys, or feature toggles anywhere in code.
-* **Boot Validation Manager (`config/env.go`)**: Server startup executes a mandatory pre-flight validation routine. All environment variables must match explicit schema types, minimum string lengths, and valid URL formats.
-* **Fail-Fast Behavior**: Missing or invalid required environment variables (e.g. `AUTHN_ENCRYPTION_KEY`, `DATABASE_URL`) cause immediate startup termination with explicit diagnostic logs.
-* **Dynamic Feature Flags**: Managed strictly via environment variables (`FEATURE_PUSH_2FA_ENABLED=true`, `FEATURE_MAGIC_LINK_ENABLED=true`, `FEATURE_WEBHOOKS_ENABLED=true`, `FEATURE_RBAC_ENABLED=true`, `FEATURE_IMPERSONATION_ENABLED=true`).
+To maintain clean separation of concerns and predictable folder structures across the monorepo:
 
----
+### 2.1 TypeScript & React Naming Conventions (`apps/web-*`, `packages/*`)
+* Controllers / Endpoints: `[feature].controller.ts` or `[feature].handler.ts` (e.g. `auth.controller.ts`)
+* Domain Services: `[feature].service.ts` (e.g. `auth.service.ts`)
+* Database Repositories: `[feature].repository.ts` (e.g. `user.repository.ts`)
+* Data Transfer Objects / Schemas: `[feature].dto.ts` (e.g. `auth.dto.ts`)
+* Test Specs: `[feature].test.ts` or `[feature].spec.ts`
+* UI Components: `[component-name].tsx`
 
-## 3. Clean Layered Architecture (Separation of Concerns)
-
-Every single file in the project must belong to one explicit architectural tier:
-
-```
-HttpRequest ──► [ Handler / Controller ]   (Parses JSON, validates inputs, formats HTTP responses)
-                        │
-                        ▼
-                 [ Service Layer ]         (Pure business logic, security checks, feature flags)
-                        │
-                        ▼
-               [ Repository Layer ]        (Ent ORM queries, database transactions, Redis cache)
-```
-
-1. **Handlers / Controllers (`http/handlers/`)**: Pure HTTP parsing layer. Validates DTOs, extracts headers/cookies, calls services, formats JSON responses. Zero database logic allowed.
-2. **Services (`services/`)**: Pure domain logic. Enforces business rules, security policies, Argon2id hashing, feature flag checks, and transaction orchestration.
-3. **Repositories (`repository/`)**: Pure persistence layer. Executes Ent ORM queries and Redis Lua scripts.
+### 2.2 Go Naming Conventions (`apps/auth-engine/internal/*`)
+* Handlers / Controllers: `internal/http/handlers/[feature]_handler.go` (e.g. `auth_handler.go`)
+* Domain Services: `internal/services/[feature]_service.go` (e.g. `auth_service.go`)
+* Database Repositories: `internal/repository/[feature]_repository.go` (e.g. `user_repository.go`)
+* Data Transfer Objects: `internal/dto/[feature]_dto.go` (e.g. `auth_dto.go`)
+* Unit Tests: `[feature]_test.go` (e.g. `auth_service_test.go`)
 
 ---
 
-## 4. Mandatory File Headers & Complete Function Docstrings
+## 3. OpenAPI / Swag Annotation Standard for HTTP Controllers
+
+All HTTP Handlers / Controllers must be annotated with Swag OpenAPI comments directly above the function definition:
+
+```go
+// @Summary      Sign in with email and password
+// @Description  Authenticates user credentials against tenant DB and returns session or 2FA step-up challenge token.
+// @Tags         Authentication
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.LoginRequestDTO true "User credentials payload"
+// @Success      200 {object} dto.LoginResponseDTO "Successful authentication"
+// @Failure      400 {object} dto.ErrorResponseDTO "Invalid JSON payload"
+// @Failure      401 {object} dto.ErrorResponseDTO "Invalid email or password"
+// @Failure      429 {object} dto.RateLimitErrorDTO "Rate limit exceeded"
+// @Router       /v1/client/auth/login [post]
+func (h *AuthHandler) Login(c *fiber.Ctx) error
+```
+
+---
+
+## 4. File Header Banner & GoDoc / JSDoc Standards
 
 ### 4.1 File Header Banner (Top of Every File)
-Every single file must begin with a multi-line comment header:
+Every file must start with a multi-line comment header:
 
 ```go
 /*
@@ -75,8 +88,8 @@ Every single file must begin with a multi-line comment header:
  */
 ```
 
-### 4.2 Complete Function Docstrings (GoDoc / JSDoc)
-Every exported function must include explicit parameters, return types, and failure states:
+### 4.2 Complete Function Docstrings
+Every exported function must specify parameters, return types, and failure states:
 
 ```go
 // ValidatePasswordCredentials authenticates a user using email and password.
@@ -95,35 +108,17 @@ func (s *AuthService) ValidatePasswordCredentials(ctx context.Context, email str
 
 ---
 
-## 5. Code Quality & Linting Standards
+## 5. Pre-flight Environment Validation & Zero Hardcoded Config
 
-### 5.1 Go Code Quality Standards (`apps/auth-engine`)
-* **Linter**: `golangci-lint` configured via `.golangci.yml`.
-* **Enabled Linters**: `gofmt`, `govet` (shadowing check), `errcheck` (unhandled error check), `staticcheck`, `revive`, `bodyclose` (closing HTTP response bodies).
-* **Forbidden**: Zero `any` or `interface{}` casts in domain logic.
-
-### 5.2 TypeScript & React Code Quality Standards (`packages/*`, `apps/web-*`)
-* **Linter**: ESLint configured via `@authn/config-eslint`.
-* **Formatter**: Prettier configured via `.prettierrc`.
-* **Strict TypeScript**: `strict: true`, `noImplicitAny: true`, `noUnusedLocals: true`, `noUnusedParameters: true`.
-* **Forbidden**: `any` type annotations are strictly prohibited.
+* **Strict Rule**: Zero hardcoded ports, URLs, timeouts, secret keys, or feature toggles anywhere in code.
+* **Boot Validation Manager (`config/env.go`)**: Server startup executes a mandatory pre-flight validation routine. Missing or invalid required environment variables cause immediate startup termination.
+* **Dynamic Feature Flags**: Managed via env (`FEATURE_PUSH_2FA_ENABLED=true`, `FEATURE_MAGIC_LINK_ENABLED=true`, `FEATURE_WEBHOOKS_ENABLED=true`, `FEATURE_RBAC_ENABLED=true`).
 
 ---
 
-## 6. Testing Architecture & Coverage Requirements
+## 6. Code Quality & Testing Architecture
 
-### 6.1 Go Backend Testing Strategy
-* **Unit Testing**: Standard Go `testing` package with `stretchr/testify`.
-* **Integration Testing**: `testcontainers-go` for running isolated PostgreSQL and Redis instances in CI/CD.
-* **Coverage Target**: Minimum **80% code coverage** for authentication, token generation, 2FA, and security modules.
-
-### 6.2 TypeScript & React Testing Strategy
-* **Unit & Component Testing**: `Vitest` + `@testing-library/react`.
-* **End-to-End (E2E) Testing**: `Playwright` for automated browser authentication testing.
-
----
-
-## 7. Git Commit & Pre-Commit Policy
-
-* **Conventional Commits**: Commit messages must follow Conventional Commit syntax (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`).
-* **Pre-commit Automated Checks**: Every PR must pass `pnpm lint`, `pnpm build`, and `golangci-lint run` prior to merge.
+* **Go Linters**: `golangci-lint` (`gofmt`, `govet`, `errcheck`, `staticcheck`, `revive`, `bodyclose`).
+* **TypeScript Linters**: ESLint + Prettier. Strict TypeScript (`strict: true`, no `any`).
+* **Go Tests**: `testing` + `testcontainers-go` (Min 80% coverage).
+* **TypeScript Tests**: `Vitest` + `Playwright`.
