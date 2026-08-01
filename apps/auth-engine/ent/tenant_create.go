@@ -86,6 +86,12 @@ func (tc *TenantCreate) SetBrandingConfig(m map[string]interface{}) *TenantCreat
 	return tc
 }
 
+// SetPasswordPolicy sets the "password_policy" field.
+func (tc *TenantCreate) SetPasswordPolicy(m map[string]interface{}) *TenantCreate {
+	tc.mutation.SetPasswordPolicy(m)
+	return tc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (tc *TenantCreate) SetCreatedAt(t time.Time) *TenantCreate {
 	tc.mutation.SetCreatedAt(t)
@@ -344,6 +350,10 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.BrandingConfig(); ok {
 		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)
 		_node.BrandingConfig = value
+	}
+	if value, ok := tc.mutation.PasswordPolicy(); ok {
+		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
+		_node.PasswordPolicy = value
 	}
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(tenant.FieldCreatedAt, field.TypeTime, value)

@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 )
 
 // SignUpRequest defines the HTTP payload for user registration.
@@ -37,9 +38,16 @@ type LoginRequest struct {
 
 // AuthResponse defines the successful authentication response payload.
 type AuthResponse struct {
-	User         UserDTO `json:"user"`
-	AccessToken  string  `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	RefreshToken string  `json:"refresh_token,omitempty" example:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"`
+	User          UserDTO           `json:"user"`
+	AccessToken   string            `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	RefreshToken  string            `json:"refresh_token,omitempty" example:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"`
+	PolicyWarning *PolicyWarningDTO `json:"policy_warning,omitempty"`
+}
+
+// PolicyWarningDTO contains password compliance notices returned during login/signup.
+type PolicyWarningDTO struct {
+	RequiresPasswordUpgrade bool     `json:"requires_password_upgrade,omitempty"`
+	MissingCriteria         []string `json:"missing_criteria,omitempty"`
 }
 
 // UserDTO defines the public profile payload returned to clients.
@@ -53,12 +61,16 @@ type UserDTO struct {
 
 // Handler handles HTTP requests for authentication flows.
 type Handler struct {
-	service *Service
+	service    *Service
+	policyRepo *policy.Repository
 }
 
 // NewHandler constructs a new Auth Handler instance.
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, policyRepo *policy.Repository) *Handler {
+	return &Handler{
+		service:    service,
+		policyRepo: policyRepo,
+	}
 }
 
 // RegisterRoutes attaches authentication endpoints to the Fiber app.
@@ -106,6 +118,24 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Validate tenant password policy
+	var policyWarning *PolicyWarningDTO
+	pol, err := h.policyRepo.GetPasswordPolicy(c.Context(), req.TenantID)
+	if err == nil {
+		missingCriteria := policy.ValidatePassword(pol, req.Password)
+		if len(missingCriteria) > 0 {
+			if pol.EnforcementMode == "require" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error":            "password does not meet policy requirements",
+					"missing_criteria": missingCriteria,
+				})
+			}
+			policyWarning = &PolicyWarningDTO{
+				MissingCriteria: missingCriteria,
+			}
+		}
+	}
+
 	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, userAgent, ipAddress)
 	if err != nil {
 		if errorsIs(err, ErrUserAlreadyExists) {
@@ -142,8 +172,9 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 			Status:    string(u.Status),
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		},
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenBody,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenBody,
+		PolicyWarning: policyWarning,
 	})
 }
 
@@ -191,6 +222,19 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Check password policy compliance & force upgrade flags on login
+	var policyWarning *PolicyWarningDTO
+	pol, err := h.policyRepo.GetPasswordPolicy(c.Context(), req.TenantID)
+	if err == nil {
+		missingCriteria := policy.ValidatePassword(pol, req.Password)
+		if len(missingCriteria) > 0 && pol.ForceUpgradeOnSignin {
+			policyWarning = &PolicyWarningDTO{
+				RequiresPasswordUpgrade: true,
+				MissingCriteria:         missingCriteria,
+			}
+		}
+	}
+
 	var namePtr *string
 	if u.Name != "" {
 		namePtr = &u.Name
@@ -219,8 +263,9 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 			Status:    string(u.Status),
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		},
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenBody,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenBody,
+		PolicyWarning: policyWarning,
 	})
 }
 

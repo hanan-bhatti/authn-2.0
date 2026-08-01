@@ -433,6 +433,7 @@ var (
 		{Name: "domain_verified", Type: field.TypeBool, Default: false},
 		{Name: "domain_verification_token", Type: field.TypeString, Nullable: true},
 		{Name: "branding_config", Type: field.TypeJSON, Nullable: true},
+		{Name: "password_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}

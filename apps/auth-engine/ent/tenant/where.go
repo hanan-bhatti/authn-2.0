@@ -400,6 +400,16 @@ func BrandingConfigNotNil() predicate.Tenant {
 	return predicate.Tenant(sql.FieldNotNull(FieldBrandingConfig))
 }
 
+// PasswordPolicyIsNil applies the IsNil predicate on the "password_policy" field.
+func PasswordPolicyIsNil() predicate.Tenant {
+	return predicate.Tenant(sql.FieldIsNull(FieldPasswordPolicy))
+}
+
+// PasswordPolicyNotNil applies the NotNil predicate on the "password_policy" field.
+func PasswordPolicyNotNil() predicate.Tenant {
+	return predicate.Tenant(sql.FieldNotNull(FieldPasswordPolicy))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Tenant {
 	return predicate.Tenant(sql.FieldEQ(FieldCreatedAt, v))

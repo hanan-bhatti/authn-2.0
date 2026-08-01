@@ -128,6 +128,18 @@ func (tu *TenantUpdate) ClearBrandingConfig() *TenantUpdate {
 	return tu
 }
 
+// SetPasswordPolicy sets the "password_policy" field.
+func (tu *TenantUpdate) SetPasswordPolicy(m map[string]interface{}) *TenantUpdate {
+	tu.mutation.SetPasswordPolicy(m)
+	return tu
+}
+
+// ClearPasswordPolicy clears the value of the "password_policy" field.
+func (tu *TenantUpdate) ClearPasswordPolicy() *TenantUpdate {
+	tu.mutation.ClearPasswordPolicy()
+	return tu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tu *TenantUpdate) SetUpdatedAt(t time.Time) *TenantUpdate {
 	tu.mutation.SetUpdatedAt(t)
@@ -444,6 +456,12 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if tu.mutation.BrandingConfigCleared() {
 		_spec.ClearField(tenant.FieldBrandingConfig, field.TypeJSON)
+	}
+	if value, ok := tu.mutation.PasswordPolicy(); ok {
+		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
+	}
+	if tu.mutation.PasswordPolicyCleared() {
+		_spec.ClearField(tenant.FieldPasswordPolicy, field.TypeJSON)
 	}
 	if value, ok := tu.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -832,6 +850,18 @@ func (tuo *TenantUpdateOne) ClearBrandingConfig() *TenantUpdateOne {
 	return tuo
 }
 
+// SetPasswordPolicy sets the "password_policy" field.
+func (tuo *TenantUpdateOne) SetPasswordPolicy(m map[string]interface{}) *TenantUpdateOne {
+	tuo.mutation.SetPasswordPolicy(m)
+	return tuo
+}
+
+// ClearPasswordPolicy clears the value of the "password_policy" field.
+func (tuo *TenantUpdateOne) ClearPasswordPolicy() *TenantUpdateOne {
+	tuo.mutation.ClearPasswordPolicy()
+	return tuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tuo *TenantUpdateOne) SetUpdatedAt(t time.Time) *TenantUpdateOne {
 	tuo.mutation.SetUpdatedAt(t)
@@ -1178,6 +1208,12 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if tuo.mutation.BrandingConfigCleared() {
 		_spec.ClearField(tenant.FieldBrandingConfig, field.TypeJSON)
+	}
+	if value, ok := tuo.mutation.PasswordPolicy(); ok {
+		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
+	}
+	if tuo.mutation.PasswordPolicyCleared() {
+		_spec.ClearField(tenant.FieldPasswordPolicy, field.TypeJSON)
 	}
 	if value, ok := tuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)

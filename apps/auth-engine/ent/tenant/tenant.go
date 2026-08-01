@@ -26,6 +26,8 @@ const (
 	FieldDomainVerificationToken = "domain_verification_token"
 	// FieldBrandingConfig holds the string denoting the branding_config field in the database.
 	FieldBrandingConfig = "branding_config"
+	// FieldPasswordPolicy holds the string denoting the password_policy field in the database.
+	FieldPasswordPolicy = "password_policy"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -97,6 +99,7 @@ var Columns = []string{
 	FieldDomainVerified,
 	FieldDomainVerificationToken,
 	FieldBrandingConfig,
+	FieldPasswordPolicy,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }

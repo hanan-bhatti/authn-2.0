@@ -436,6 +436,103 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "Password Policy Settings & Enforcement",
+			"item": [
+				{
+					"name": "01. Get Tenant Password Policy",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/password-policy?tenant_id={{tenantId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"tenant",
+								"password-policy"
+							],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenantId}}"
+								}
+							]
+						},
+						"description": "Fetches current password policy configuration for a tenant."
+					},
+					"response": []
+				},
+				{
+					"name": "02. Update Tenant Password Policy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"enforcement_mode\": \"require\",\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_numeric\": true,\n  \"require_special\": true,\n  \"force_upgrade_on_signin\": true,\n  \"min_length\": 8,\n  \"max_length\": 64\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/password-policy?tenant_id={{tenantId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"tenant",
+								"password-policy"
+							],
+							"query": [
+								{
+									"key": "tenant_id",
+									"value": "{{tenantId}}"
+								}
+							]
+						},
+						"description": "Updates password complexity, length boundaries, and enforcement mode for a tenant."
+					},
+					"response": []
+				},
+				{
+					"name": "03. Policy Violation Signup (400 Bad Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"weakuser@example.com\",\n  \"password\": \"weak\",\n  \"name\": \"Weak User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Attempts signup with a password that violates the tenant's password policy. Expects 400 Bad Request with missing_criteria list."
+					},
+					"response": []
+				}
+			]
 		}
 	]
 }

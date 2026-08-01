@@ -57,6 +57,9 @@ func (Tenant) Fields() []ent.Field {
 		field.JSON("branding_config", map[string]interface{}{}).
 			Optional().
 			Comment("JSON blob containing brand colors, logo URL, custom CSS, and email templates"),
+		field.JSON("password_policy", map[string]interface{}{}).
+			Optional().
+			Comment("JSON blob containing password complexity policy rules"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

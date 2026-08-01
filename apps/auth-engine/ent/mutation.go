@@ -10383,6 +10383,7 @@ type TenantMutation struct {
 	domain_verified           *bool
 	domain_verification_token *string
 	branding_config           *map[string]interface{}
+	password_policy           *map[string]interface{}
 	created_at                *time.Time
 	updated_at                *time.Time
 	clearedFields             map[string]struct{}
@@ -10766,6 +10767,55 @@ func (m *TenantMutation) BrandingConfigCleared() bool {
 func (m *TenantMutation) ResetBrandingConfig() {
 	m.branding_config = nil
 	delete(m.clearedFields, tenant.FieldBrandingConfig)
+}
+
+// SetPasswordPolicy sets the "password_policy" field.
+func (m *TenantMutation) SetPasswordPolicy(value map[string]interface{}) {
+	m.password_policy = &value
+}
+
+// PasswordPolicy returns the value of the "password_policy" field in the mutation.
+func (m *TenantMutation) PasswordPolicy() (r map[string]interface{}, exists bool) {
+	v := m.password_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPasswordPolicy returns the old "password_policy" field's value of the Tenant entity.
+// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantMutation) OldPasswordPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPasswordPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPasswordPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPasswordPolicy: %w", err)
+	}
+	return oldValue.PasswordPolicy, nil
+}
+
+// ClearPasswordPolicy clears the value of the "password_policy" field.
+func (m *TenantMutation) ClearPasswordPolicy() {
+	m.password_policy = nil
+	m.clearedFields[tenant.FieldPasswordPolicy] = struct{}{}
+}
+
+// PasswordPolicyCleared returns if the "password_policy" field was cleared in this mutation.
+func (m *TenantMutation) PasswordPolicyCleared() bool {
+	_, ok := m.clearedFields[tenant.FieldPasswordPolicy]
+	return ok
+}
+
+// ResetPasswordPolicy resets all changes to the "password_policy" field.
+func (m *TenantMutation) ResetPasswordPolicy() {
+	m.password_policy = nil
+	delete(m.clearedFields, tenant.FieldPasswordPolicy)
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -11198,7 +11248,7 @@ func (m *TenantMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TenantMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.name != nil {
 		fields = append(fields, tenant.FieldName)
 	}
@@ -11216,6 +11266,9 @@ func (m *TenantMutation) Fields() []string {
 	}
 	if m.branding_config != nil {
 		fields = append(fields, tenant.FieldBrandingConfig)
+	}
+	if m.password_policy != nil {
+		fields = append(fields, tenant.FieldPasswordPolicy)
 	}
 	if m.created_at != nil {
 		fields = append(fields, tenant.FieldCreatedAt)
@@ -11243,6 +11296,8 @@ func (m *TenantMutation) Field(name string) (ent.Value, bool) {
 		return m.DomainVerificationToken()
 	case tenant.FieldBrandingConfig:
 		return m.BrandingConfig()
+	case tenant.FieldPasswordPolicy:
+		return m.PasswordPolicy()
 	case tenant.FieldCreatedAt:
 		return m.CreatedAt()
 	case tenant.FieldUpdatedAt:
@@ -11268,6 +11323,8 @@ func (m *TenantMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDomainVerificationToken(ctx)
 	case tenant.FieldBrandingConfig:
 		return m.OldBrandingConfig(ctx)
+	case tenant.FieldPasswordPolicy:
+		return m.OldPasswordPolicy(ctx)
 	case tenant.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case tenant.FieldUpdatedAt:
@@ -11323,6 +11380,13 @@ func (m *TenantMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBrandingConfig(v)
 		return nil
+	case tenant.FieldPasswordPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPasswordPolicy(v)
+		return nil
 	case tenant.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -11376,6 +11440,9 @@ func (m *TenantMutation) ClearedFields() []string {
 	if m.FieldCleared(tenant.FieldBrandingConfig) {
 		fields = append(fields, tenant.FieldBrandingConfig)
 	}
+	if m.FieldCleared(tenant.FieldPasswordPolicy) {
+		fields = append(fields, tenant.FieldPasswordPolicy)
+	}
 	return fields
 }
 
@@ -11398,6 +11465,9 @@ func (m *TenantMutation) ClearField(name string) error {
 		return nil
 	case tenant.FieldBrandingConfig:
 		m.ClearBrandingConfig()
+		return nil
+	case tenant.FieldPasswordPolicy:
+		m.ClearPasswordPolicy()
 		return nil
 	}
 	return fmt.Errorf("unknown Tenant nullable field %s", name)
@@ -11424,6 +11494,9 @@ func (m *TenantMutation) ResetField(name string) error {
 		return nil
 	case tenant.FieldBrandingConfig:
 		m.ResetBrandingConfig()
+		return nil
+	case tenant.FieldPasswordPolicy:
+		m.ResetPasswordPolicy()
 		return nil
 	case tenant.FieldCreatedAt:
 		m.ResetCreatedAt()

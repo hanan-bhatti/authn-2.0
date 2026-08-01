@@ -31,6 +31,8 @@ type Tenant struct {
 	DomainVerificationToken string `json:"domain_verification_token,omitempty"`
 	// JSON blob containing brand colors, logo URL, custom CSS, and email templates
 	BrandingConfig map[string]interface{} `json:"branding_config,omitempty"`
+	// JSON blob containing password complexity policy rules
+	PasswordPolicy map[string]interface{} `json:"password_policy,omitempty"`
 	// Timestamp when the tenant was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when the tenant was last updated
@@ -119,7 +121,7 @@ func (*Tenant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tenant.FieldBrandingConfig:
+		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy:
 			values[i] = new([]byte)
 		case tenant.FieldDomainVerified:
 			values[i] = new(sql.NullBool)
@@ -185,6 +187,14 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &t.BrandingConfig); err != nil {
 					return fmt.Errorf("unmarshal field branding_config: %w", err)
+				}
+			}
+		case tenant.FieldPasswordPolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field password_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &t.PasswordPolicy); err != nil {
+					return fmt.Errorf("unmarshal field password_policy: %w", err)
 				}
 			}
 		case tenant.FieldCreatedAt:
@@ -284,6 +294,9 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("branding_config=")
 	builder.WriteString(fmt.Sprintf("%v", t.BrandingConfig))
+	builder.WriteString(", ")
+	builder.WriteString("password_policy=")
+	builder.WriteString(fmt.Sprintf("%v", t.PasswordPolicy))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(t.CreatedAt.Format(time.ANSIC))
