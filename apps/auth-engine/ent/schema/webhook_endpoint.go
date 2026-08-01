@@ -42,6 +42,9 @@ func (WebhookEndpoint) Fields() []ent.Field {
 		field.String("url").
 			NotEmpty().
 			Comment("Target HTTP webhook listener URL"),
+		field.String("description").
+			Optional().
+			Comment("Optional friendly description for webhook endpoint"),
 		field.String("secret_key_encrypted").
 			Sensitive().
 			NotEmpty().
@@ -51,6 +54,13 @@ func (WebhookEndpoint) Fields() []ent.Field {
 		field.Bool("is_active").
 			Default(true).
 			Comment("Flag indicating if the webhook endpoint is active"),
+		field.Int("failure_count").
+			Default(0).
+			Comment("Consecutive failure count used for auto-disabling broken endpoints"),
+		field.Time("last_triggered_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when event was last dispatched to this endpoint"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

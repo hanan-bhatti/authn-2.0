@@ -39,10 +39,22 @@ func (UserRole) Fields() []ent.Field {
 		field.String("role_id").
 			NotEmpty().
 			Comment("Assigned Role ID"),
+		field.String("assigned_by_user_id").
+			Optional().
+			Nillable().
+			Comment("User ID of admin who assigned this role initially"),
+		field.String("updated_by_user_id").
+			Optional().
+			Nillable().
+			Comment("User ID of admin who last modified this role assignment"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
 			Comment("Creation timestamp"),
+		field.Time("updated_at").
+			Default(time.Now).
+			UpdateDefault(time.Now).
+			Comment("Last updated timestamp"),
 	}
 }
 

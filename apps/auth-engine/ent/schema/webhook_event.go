@@ -44,6 +44,12 @@ func (WebhookEvent) Fields() []ent.Field {
 		field.Int("status_code").
 			Optional().
 			Comment("HTTP status code received from target server (e.g. 200, 500)"),
+		field.String("response_body").
+			Optional().
+			Comment("Snippet of HTTP response body returned by target server for developer debugging"),
+		field.String("error_message").
+			Optional().
+			Comment("Network connection or execution error traceback message"),
 		field.Enum("status").
 			Values("success", "failed").
 			Comment("Dispatch status: success or failed"),

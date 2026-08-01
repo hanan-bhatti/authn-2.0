@@ -47,12 +47,23 @@ func (AuditLog) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Associated User ID (Nullable on GDPR account deletion)"),
+		field.String("api_key_id").
+			Optional().
+			Nillable().
+			Comment("Associated API Key ID used to authenticate the request"),
+		field.Enum("actor_type").
+			Values("user", "admin", "system").
+			Default("user").
+			Comment("Actor type who initiated the event: user, admin, or system"),
 		field.String("event_type").
 			NotEmpty().
 			Comment("Event type string (e.g. user.login.success, 2fa.verified, user.impersonated)"),
 		field.String("ip_address").
 			Optional().
 			Comment("Client IP address"),
+		field.String("request_origin").
+			Optional().
+			Comment("HTTP Origin or Referer header showing where request originated"),
 		field.String("user_agent").
 			Optional().
 			Comment("Client HTTP User-Agent header string"),

@@ -42,6 +42,9 @@ func (TwoFactorMethod) Fields() []ent.Field {
 		field.Enum("type").
 			Values("push", "passkey", "totp", "sms", "backup_code").
 			Comment("2FA method type"),
+		field.String("name").
+			Optional().
+			Comment("Friendly label for 2FA method (e.g. Work YubiKey 5C)"),
 		field.String("secret_encrypted").
 			Optional().
 			Sensitive().
@@ -55,6 +58,10 @@ func (TwoFactorMethod) Fields() []ent.Field {
 		field.Bool("is_enabled").
 			Default(true).
 			Comment("Flag indicating if this 2FA method is active"),
+		field.Time("last_used_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when 2FA method was last used for verification"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

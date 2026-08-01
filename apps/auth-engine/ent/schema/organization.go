@@ -43,6 +43,12 @@ func (Organization) Fields() []ent.Field {
 			Unique().
 			NotEmpty().
 			Comment("URL-friendly organization slug"),
+		field.String("logo_url").
+			Optional().
+			Comment("Workspace logo/avatar image URL"),
+		field.JSON("metadata", map[string]interface{}{}).
+			Optional().
+			Comment("Custom metadata attributes (billing_email, stripe_customer_id, plan_tier)"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

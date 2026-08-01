@@ -39,6 +39,9 @@ func (Permission) Fields() []ent.Field {
 		field.String("action").
 			NotEmpty().
 			Comment("Permission action string (e.g. posts:create, users:delete)"),
+		field.String("description").
+			Optional().
+			Comment("Optional description explaining what the permission enables"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

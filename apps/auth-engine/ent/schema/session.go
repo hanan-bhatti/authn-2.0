@@ -61,6 +61,21 @@ func (Session) Fields() []ent.Field {
 		field.String("user_agent").
 			Optional().
 			Comment("Client HTTP User-Agent header string"),
+		field.String("location").
+			Optional().
+			Comment("Derived location string (e.g. London, UK)"),
+		field.Float("latitude").
+			Optional().
+			Nillable().
+			Comment("Device GPS / HTML5 Geolocation latitude coordinate"),
+		field.Float("longitude").
+			Optional().
+			Nillable().
+			Comment("Device GPS / HTML5 Geolocation longitude coordinate"),
+		field.Time("last_active_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when session was last active or refreshed"),
 		field.Time("expires_at").
 			Comment("Session absolute expiration timestamp"),
 		field.Time("grace_expires_at").

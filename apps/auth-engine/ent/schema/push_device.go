@@ -42,6 +42,12 @@ func (PushDevice) Fields() []ent.Field {
 		field.Enum("platform").
 			Values("android", "ios").
 			Comment("Mobile platform: android (FCM) or ios (APNs)"),
+		field.String("device_name").
+			Optional().
+			Comment("Device hardware name (e.g. Google Pixel 8 Pro, iPhone 15 Pro Max)"),
+		field.String("os_version").
+			Optional().
+			Comment("Operating system version string (e.g. Android 15, iOS 18.2)"),
 		field.String("device_token").
 			Unique().
 			NotEmpty().
@@ -49,6 +55,24 @@ func (PushDevice) Fields() []ent.Field {
 		field.String("public_key_pem").
 			NotEmpty().
 			Comment("PEM-encoded public key generated in mobile KeyStore/Secure Enclave"),
+		field.String("location").
+			Optional().
+			Comment("Derived device location string (e.g. London, UK)"),
+		field.Float("latitude").
+			Optional().
+			Nillable().
+			Comment("Device GPS latitude coordinate"),
+		field.Float("longitude").
+			Optional().
+			Nillable().
+			Comment("Device GPS longitude coordinate"),
+		field.JSON("device_metadata", map[string]interface{}{}).
+			Optional().
+			Comment("JSON metadata payload for hardware security telemetry (is_rooted, biometric_type, app_version)"),
+		field.Time("last_used_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when push notification was last sent or approved"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

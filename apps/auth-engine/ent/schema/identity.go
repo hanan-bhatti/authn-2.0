@@ -45,6 +45,15 @@ func (Identity) Fields() []ent.Field {
 		field.String("provider_user_id").
 			NotEmpty().
 			Comment("Unique subject/user ID issued by the external provider"),
+		field.String("email").
+			Optional().
+			Comment("Email address returned by external social provider"),
+		field.String("avatar_url").
+			Optional().
+			Comment("Avatar profile image URL returned by social provider"),
+		field.JSON("profile_data", map[string]interface{}{}).
+			Optional().
+			Comment("Raw JSON profile claims returned by external provider"),
 		field.String("access_token_encrypted").
 			Optional().
 			Sensitive().

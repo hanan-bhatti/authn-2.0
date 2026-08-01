@@ -54,10 +54,21 @@ func (ApiKey) Fields() []ent.Field {
 			Values("test", "live").
 			Default("test").
 			Comment("Key environment scope"),
+		field.String("name").
+			Optional().
+			Comment("Friendly label for key (e.g. Production Web SDK Key)"),
 		field.Time("expires_at").
 			Optional().
 			Nillable().
 			Comment("Optional key expiration timestamp"),
+		field.Time("last_used_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when key was last presented in an API request"),
+		field.Time("revoked_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when key was soft-revoked"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

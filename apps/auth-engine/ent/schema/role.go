@@ -42,6 +42,9 @@ func (Role) Fields() []ent.Field {
 		field.String("description").
 			Optional().
 			Comment("Optional role description"),
+		field.Bool("is_system_role").
+			Default(false).
+			Comment("Flag indicating if this is a built-in system role that cannot be deleted"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

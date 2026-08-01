@@ -45,6 +45,10 @@ func (OrgInvitation) Fields() []ent.Field {
 		field.String("role_id").
 			NotEmpty().
 			Comment("Assigned Role ID upon invitation acceptance"),
+		field.String("invited_by_user_id").
+			Optional().
+			Nillable().
+			Comment("User ID of the admin or team member who sent the invitation"),
 		field.String("invitation_token").
 			Unique().
 			NotEmpty().

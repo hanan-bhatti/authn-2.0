@@ -54,16 +54,32 @@ func (User) Fields() []ent.Field {
 		field.Bool("email_verified").
 			Default(false).
 			Comment("Flag indicating if email address has been verified"),
+		field.String("phone_number").
+			Optional().
+			Comment("User registered phone number (E.164 format)"),
+		field.Bool("phone_verified").
+			Default(false).
+			Comment("Flag indicating if phone number has been verified"),
 		field.String("name").
 			Optional().
 			Comment("User full name"),
 		field.String("avatar_url").
 			Optional().
 			Comment("User profile avatar image URL"),
+		field.String("locale").
+			Optional().
+			Comment("Preferred locale string (e.g. en-US, es-ES, ur-PK)"),
 		field.Enum("status").
 			Values("active", "banned", "recovery_hold").
 			Default("active").
 			Comment("Account status: active, banned, or recovery_hold (48h security freeze)"),
+		field.Time("last_sign_in_at").
+			Optional().
+			Nillable().
+			Comment("Timestamp when user last successfully logged in"),
+		field.JSON("metadata", map[string]interface{}{}).
+			Optional().
+			Comment("Custom key-value metadata attributes for user profile"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
