@@ -5,6 +5,23 @@
 		"description": "Complete Postman test collection for Authn Engine. Includes happy paths, validation failures, email format checks, and client-type header edge cases.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "tenantId",
+			"value": "tnt_demo",
+			"type": "string"
+		},
+		{
+			"key": "environment",
+			"value": "test",
+			"type": "string"
+		}
+	],
 	"item": [
 		{
 			"name": "System & Health",
