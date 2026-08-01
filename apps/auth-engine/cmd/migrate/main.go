@@ -27,12 +27,14 @@ func main() {
 	log.Println("⚡ Authn Platform — Ent Schema Migration CLI")
 
 	cfg, err := config.LoadAndValidateConfig()
-	if err != nil && os.Getenv("DATABASE_URL") == "" {
-		log.Fatalf("❌ Configuration error: %v", err)
+	driver := "postgres"
+	dbURL := ""
+	if err == nil && cfg != nil && cfg.DatabaseURL != "" {
+		dbURL = cfg.DatabaseURL
+	} else {
+		dbURL = os.Getenv("DATABASE_URL")
 	}
 
-	driver := "postgres"
-	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		driver = "sqlite3"
 		dbURL = "file:authn.db?cache=shared&_fk=1"

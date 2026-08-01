@@ -18,7 +18,9 @@ import (
 // DynamicCORS returns a configured Fiber CORS middleware allowing multi-tenant requests.
 func DynamicCORS() fiber.Handler {
 	return cors.New(cors.Config{
-		AllowOrigins:     "*",
+		AllowOriginsFunc: func(origin string) bool {
+			return true // Mirror origin dynamically for multi-tenant CORS with credentials
+		},
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Authn-Api-Key, X-Authn-Tenant-Id, X-Authn-Environment",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,
