@@ -107,6 +107,10 @@ func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKe
 //   - string: Raw 64-byte opaque refresh token string.
 //   - error: ErrUserAlreadyExists or creation error.
 func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env string, email string, password string, name string) (*ent.User, string, error) {
+	if err := s.repo.EnsureTenantExists(ctx, tenantID); err != nil {
+		return nil, "", err
+	}
+
 	existing, err := s.repo.FindUserByEmail(ctx, tenantID, env, email)
 	if err != nil {
 		return nil, "", err
@@ -124,6 +128,48 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	u, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, passwordHash, name)
 	if err != nil {
 		return nil, "", err
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, "", fmt.Errorf("failed generating refresh token: %w", err)
+	}
+	rawRefreshToken := hex.EncodeToString(tokenBytes)
+
+	h := sha256.Sum256([]byte(rawRefreshToken))
+	tokenHash := hex.EncodeToString(h[:])
+
+	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, "", "", expiresAt)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return u, rawRefreshToken, nil
+}
+
+// ValidatePasswordCredentials checks password credentials and issues a login session.
+//
+// Parameters:
+//   - ctx: Request context.
+//   - tenantID: Tenant ID scope.
+//   - env: Environment mode ("test" or "live").
+//   - email: Registered user email.
+//   - password: Plain text password string.
+//
+// Returns:
+//   - *ent.User: Authenticated user entity.
+//   - string: Raw 64-byte opaque refresh token.
+//   - error: ErrInvalidCredentials if email/password mismatch.
+func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID string, env string, email string, password string) (*ent.User, string, error) {
+	u, err := s.repo.FindUserByEmail(ctx, tenantID, env, email)
+	if err != nil || u == nil {
+		return nil, "", ErrInvalidCredentials
+	}
+
+	if u.PasswordHash == "" || !crypto.VerifyPasswordArgon2id(password, u.PasswordHash) {
+		return nil, "", ErrInvalidCredentials
 	}
 
 	tokenBytes := make([]byte, 32)

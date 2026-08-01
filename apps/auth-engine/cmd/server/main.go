@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -102,8 +103,14 @@ func main() {
 	app.Use(middleware.DynamicCORS())
 	app.Use(middleware.DegradedModeHeader(false))
 
-	// 5. System Routes
+	// 5. Initialize Feature Services & Handlers
+	authRepo := auth.NewRepository(factory)
+	authService := auth.NewService(authRepo, cfg)
+	authHandler := auth.NewHandler(authService)
+
+	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
+	authHandler.RegisterRoutes(app)
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

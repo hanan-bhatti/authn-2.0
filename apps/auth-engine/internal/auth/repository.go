@@ -19,6 +19,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -28,15 +29,29 @@ type Repository struct {
 	factory *clientfactory.ClientFactory
 }
 
-// NewRepository creates a new instance of Repository.
-//
-// Parameters:
-//   - factory: Ent ClientFactory instance.
-//
-// Returns:
-//   - *Repository: Initialized repository instance.
+// NewRepository constructs a new Auth Repository instance.
 func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
+}
+
+// EnsureTenantExists checks if a tenant exists and creates a default record if missing.
+func (r *Repository) EnsureTenantExists(ctx context.Context, tenantID string) error {
+	client := r.factory.GetClient(ctx, tenantID, "test")
+	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(ctx)
+	if err != nil {
+		return fmt.Errorf("failed checking tenant existence: %w", err)
+	}
+	if !exists {
+		_, err := client.Tenant.Create().
+			SetID(tenantID).
+			SetName("Default Workspace").
+			SetSlug(tenantID).
+			Save(ctx)
+		if err != nil && !ent.IsConstraintError(err) {
+			return fmt.Errorf("failed auto-creating tenant %s: %w", tenantID, err)
+		}
+	}
+	return nil
 }
 
 // FindUserByEmail retrieves a user by email within a specific tenant and environment scope.
