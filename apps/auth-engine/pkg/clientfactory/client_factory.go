@@ -1,19 +1,16 @@
 /*
  * Authn Platform — Enterprise Identity Engine
- * File: apps/auth-engine/internal/repository/client_factory.go
- * Tier: Database Persistence Layer / Ent Client Factory
+ * File: apps/auth-engine/pkg/clientfactory/client_factory.go
+ * Tier: Shared Package / Ent Connection Pooling
  *
  * Description: ClientFactory abstraction for Ent ORM connection pool management.
  *              Provides logical environment multi-tenancy by default and supports
  *              physical DB connection pool routing for Enterprise self-hosters.
  *
- * Security Notice:
- *   - Ent privacy interceptors fail closed if tenant or environment context is missing.
- *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
 
-package repository
+package clientfactory
 
 import (
 	"context"
@@ -27,9 +24,9 @@ import (
 
 // ClientFactory manages Ent ORM database connection pools for tenants and environments.
 type ClientFactory struct {
-	mu           sync.RWMutex
+	mu            sync.RWMutex
 	defaultClient *ent.Client
-	pools        map[string]*ent.Client
+	pools         map[string]*ent.Client
 }
 
 // NewClientFactory initializes a new ClientFactory with a default database connection.
@@ -78,7 +75,6 @@ func (f *ClientFactory) GetClient(ctx context.Context, tenantID string, environm
 	}
 	f.mu.RUnlock()
 
-	// Default to shared client with logical Ent privacy interceptor isolation
 	return f.defaultClient
 }
 

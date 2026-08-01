@@ -1,19 +1,15 @@
 /*
  * Authn Platform — Enterprise Identity Engine
- * File: apps/auth-engine/internal/repository/auth_repository.go
- * Tier: Database Persistence Layer / Auth Repository
+ * File: apps/auth-engine/internal/auth/repository.go
+ * Tier: Internal Feature Package / Auth Repository
  *
  * Description: Data access layer for authentication entities (Users, ApiKeys,
  *              Sessions, AuditLogs). Interacts directly with Ent ORM clients.
  *
- * Security Notice:
- *   - Refresh tokens are queried strictly by SHA-256 hash.
- *   - Secret API key verification queries peppered HMAC-SHA256 hashes.
- *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
 
-package repository
+package auth
 
 import (
 	"context"
@@ -24,22 +20,23 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
-// AuthRepository handles database operations for core authentication entities.
-type AuthRepository struct {
-	factory *ClientFactory
+// Repository handles database operations for authentication features.
+type Repository struct {
+	factory *clientfactory.ClientFactory
 }
 
-// NewAuthRepository creates a new instance of AuthRepository.
+// NewRepository creates a new instance of Repository.
 //
 // Parameters:
 //   - factory: Ent ClientFactory instance.
 //
 // Returns:
-//   - *AuthRepository: Initialized repository instance.
-func NewAuthRepository(factory *ClientFactory) *AuthRepository {
-	return &AuthRepository{factory: factory}
+//   - *Repository: Initialized repository instance.
+func NewRepository(factory *clientfactory.ClientFactory) *Repository {
+	return &Repository{factory: factory}
 }
 
 // FindUserByEmail retrieves a user by email within a specific tenant and environment scope.
@@ -53,7 +50,7 @@ func NewAuthRepository(factory *ClientFactory) *AuthRepository {
 // Returns:
 //   - *ent.User: Found user record or nil.
 //   - error: Non-nil if query fails.
-func (r *AuthRepository) FindUserByEmail(ctx context.Context, tenantID string, env string, email string) (*ent.User, error) {
+func (r *Repository) FindUserByEmail(ctx context.Context, tenantID string, env string, email string) (*ent.User, error) {
 	client := r.factory.GetClient(ctx, tenantID, env)
 	u, err := client.User.Query().
 		Where(
@@ -76,6 +73,7 @@ func (r *AuthRepository) FindUserByEmail(ctx context.Context, tenantID string, e
 //
 // Parameters:
 //   - ctx: Request context.
+//   - id: Unique User ID (`usr_...`).
 //   - tenantID: Owning Tenant ID.
 //   - env: Environment mode ("test" or "live").
 //   - email: Registered email address.
@@ -85,7 +83,7 @@ func (r *AuthRepository) FindUserByEmail(ctx context.Context, tenantID string, e
 // Returns:
 //   - *ent.User: Created user record.
 //   - error: Non-nil if creation fails.
-func (r *AuthRepository) CreateUser(ctx context.Context, id string, tenantID string, env string, email string, passwordHash string, name string) (*ent.User, error) {
+func (r *Repository) CreateUser(ctx context.Context, id string, tenantID string, env string, email string, passwordHash string, name string) (*ent.User, error) {
 	client := r.factory.GetClient(ctx, tenantID, env)
 	u, err := client.User.Create().
 		SetID(id).
@@ -111,7 +109,7 @@ func (r *AuthRepository) CreateUser(ctx context.Context, id string, tenantID str
 // Returns:
 //   - *ent.ApiKey: Found API key record or nil.
 //   - error: Non-nil if query fails.
-func (r *AuthRepository) FindApiKeyByHash(ctx context.Context, keyHash string) (*ent.ApiKey, error) {
+func (r *Repository) FindApiKeyByHash(ctx context.Context, keyHash string) (*ent.ApiKey, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	k, err := client.ApiKey.Query().
 		Where(apikey.KeyHash(keyHash)).
@@ -140,7 +138,7 @@ func (r *AuthRepository) FindApiKeyByHash(ctx context.Context, keyHash string) (
 // Returns:
 //   - *ent.Session: Created session record.
 //   - error: Non-nil if creation fails.
-func (r *AuthRepository) CreateSession(ctx context.Context, id string, userID string, tokenHash string, userAgent string, ipAddress string, expiresAt time.Time) (*ent.Session, error) {
+func (r *Repository) CreateSession(ctx context.Context, id string, userID string, tokenHash string, userAgent string, ipAddress string, expiresAt time.Time) (*ent.Session, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	s, err := client.Session.Create().
 		SetID(id).
@@ -158,31 +156,7 @@ func (r *AuthRepository) CreateSession(ctx context.Context, id string, userID st
 	return s, nil
 }
 
-// FindSessionByHash retrieves a session by its refresh token hash.
-//
-// Parameters:
-//   - ctx: Request context.
-//   - tokenHash: SHA-256 hash of refresh token.
-//
-// Returns:
-//   - *ent.Session: Found session record or nil.
-//   - error: Non-nil if query fails.
-func (r *AuthRepository) FindSessionByHash(ctx context.Context, tokenHash string) (*ent.Session, error) {
-	client := r.factory.GetClient(ctx, "", "")
-	s, err := client.Session.Query().
-		Where(session.RefreshTokenHash(tokenHash)).
-		Only(ctx)
-
-	if ent.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed querying session by hash: %w", err)
-	}
-	return s, nil
-}
-
-// RevokeAllSessionsForUser invalidates all active sessions for a user (security revocation).
+// RevokeAllSessionsForUser invalidates all active sessions for a user.
 //
 // Parameters:
 //   - ctx: Request context.
@@ -190,7 +164,7 @@ func (r *AuthRepository) FindSessionByHash(ctx context.Context, tokenHash string
 //
 // Returns:
 //   - error: Non-nil if update fails.
-func (r *AuthRepository) RevokeAllSessionsForUser(ctx context.Context, userID string) error {
+func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID string) error {
 	client := r.factory.GetClient(ctx, "", "")
 	_, err := client.Session.Update().
 		Where(
