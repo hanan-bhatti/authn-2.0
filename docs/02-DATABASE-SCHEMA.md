@@ -64,6 +64,8 @@ erDiagram
         string tenant_id FK
         string name
         string slug UK
+        string logo_url
+        json metadata
         timestamp created_at
     }
 
@@ -72,7 +74,10 @@ erDiagram
         string organization_id FK
         string user_id FK
         string role_id FK
+        string assigned_by_user_id FK
+        string updated_by_user_id FK
         timestamp created_at
+        timestamp updated_at
     }
 
     OrgInvitation {
@@ -80,6 +85,7 @@ erDiagram
         string organization_id FK
         string email
         string role_id FK
+        string invited_by_user_id FK
         string invitation_token UK
         enum status "pending | accepted | expired"
         timestamp expires_at
@@ -91,6 +97,7 @@ erDiagram
         string tenant_id FK
         string name
         string description
+        boolean is_system_role
         timestamp created_at
     }
 
@@ -98,6 +105,7 @@ erDiagram
         string id PK
         string role_id FK
         string action
+        string description
         timestamp created_at
     }
 
@@ -105,7 +113,10 @@ erDiagram
         string id PK
         string user_id FK
         string role_id FK
+        string assigned_by_user_id FK
+        string updated_by_user_id FK
         timestamp created_at
+        timestamp updated_at
     }
 
     Application {
@@ -125,8 +136,11 @@ erDiagram
         enum type "publishable | secret"
         string key_prefix "pk_test_ | pk_live_ | sk_test_ | sk_live_"
         string key_hash UK "HMAC-SHA256 with server pepper"
+        string name
         enum environment "test | live"
         timestamp expires_at
+        timestamp last_used_at
+        timestamp revoked_at
         timestamp created_at
     }
 
@@ -137,9 +151,14 @@ erDiagram
         string email UK
         string password_hash
         boolean email_verified
+        string phone_number
+        boolean phone_verified
         string name
         string avatar_url
+        string locale
         enum status "active | banned | recovery_hold"
+        timestamp last_sign_in_at
+        json metadata
         timestamp created_at
         timestamp updated_at
     }
@@ -149,6 +168,9 @@ erDiagram
         string user_id FK
         string provider "google | apple | github | x | facebook | discord"
         string provider_user_id
+        string email
+        string avatar_url
+        json profile_data
         string access_token_encrypted
         string refresh_token_encrypted
         timestamp created_at
@@ -164,6 +186,10 @@ erDiagram
         string device_fingerprint_hmac
         string ip_address
         string user_agent
+        string location
+        float latitude
+        float longitude
+        timestamp last_active_at
         timestamp expires_at
         timestamp grace_expires_at
         timestamp created_at
@@ -173,10 +199,28 @@ erDiagram
         string id PK
         string user_id FK
         enum type "push | passkey | totp | sms | backup_code"
+        string name
         string secret_encrypted
         string credential_id
         bytes public_key
         boolean is_enabled
+        timestamp last_used_at
+        timestamp created_at
+    }
+
+    PushDevice {
+        string id PK
+        string user_id FK
+        enum platform "android | ios"
+        string device_name
+        string os_version
+        string device_token UK
+        string public_key_pem
+        string location
+        float latitude
+        float longitude
+        json device_metadata
+        timestamp last_used_at
         timestamp created_at
     }
 
@@ -184,9 +228,12 @@ erDiagram
         string id PK
         string tenant_id FK
         string url
+        string description
         string secret_key_encrypted
         string_array subscribed_events
         boolean is_active
+        integer failure_count
+        timestamp last_triggered_at
         timestamp created_at
     }
 
@@ -196,6 +243,8 @@ erDiagram
         string event_type
         json payload
         integer status_code
+        string response_body
+        string error_message
         enum status "success | failed"
         timestamp created_at
     }
@@ -205,8 +254,11 @@ erDiagram
         string tenant_id FK
         string application_id FK
         string user_id FK "nullable on GDPR deletion"
+        string api_key_id FK
+        enum actor_type "user | admin | system"
         string event_type
         string ip_address
+        string request_origin
         string user_agent
         json metadata
         timestamp created_at
@@ -215,9 +267,24 @@ erDiagram
 
 ---
 
-## 3. Entity Field Specifications for New Modules
+## 3. Entity Field Specifications
 
-### 3.1 `Organization` Schema (`apps/auth-engine/ent/schema/organization.go`)
+### 3.1 `Tenant` Schema (`apps/auth-engine/ent/schema/tenant.go`)
+Represents top-level customer accounts in multi-tenant environments.
+
+| Field | Type | Attributes | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `string` | PK, Unique | Tenant ID (`tnt_...`) |
+| `name` | `string` | Required | Company/Organization name |
+| `slug` | `string` | Unique, Required | URL-friendly slug |
+| `custom_domain` | `string` | Unique, Optional | Custom auth domain (e.g. `auth.acme.com`) |
+| `domain_verified` | `bool` | Default: `false` | DNS ownership verified status |
+| `domain_verification_token` | `string` | Optional | DNS TXT verification token |
+| `branding_config` | `json` | Optional | Branding colors, logo URL, custom CSS, email templates |
+| `created_at` | `time` | Default: `Now()` | Creation timestamp |
+| `updated_at` | `time` | Default: `Now()` | Last update timestamp |
+
+### 3.2 `Organization` Schema (`apps/auth-engine/ent/schema/organization.go`)
 Represents a B2B workspace/team within a tenant.
 
 | Field | Type | Attributes | Description |
@@ -226,9 +293,11 @@ Represents a B2B workspace/team within a tenant.
 | `tenant_id` | `string` | Index, FK -> Tenant.id | Owning tenant ID |
 | `name` | `string` | Required | Organization name |
 | `slug` | `string` | Unique, Required | URL slug |
+| `logo_url` | `string` | Optional | Workspace logo URL |
+| `metadata` | `json` | Optional | Custom workspace metadata attributes |
 | `created_at` | `time` | Default: `Now()` | Creation timestamp |
 
-### 3.2 `Role` Schema (`apps/auth-engine/ent/schema/role.go`)
+### 3.3 `Role` Schema (`apps/auth-engine/ent/schema/role.go`)
 Represents an RBAC role definition.
 
 | Field | Type | Attributes | Description |
@@ -237,9 +306,10 @@ Represents an RBAC role definition.
 | `tenant_id` | `string` | Index, FK -> Tenant.id | Owning tenant ID |
 | `name` | `string` | Required | Role name (e.g. `admin`, `editor`, `viewer`) |
 | `description` | `string` | Optional | Role description |
+| `is_system_role` | `bool` | Default: `false` | Built-in system role flag |
 | `created_at` | `time` | Default: `Now()` | Creation timestamp |
 
-### 3.3 `WebhookEndpoint` Schema (`apps/auth-engine/ent/schema/webhookendpoint.go`)
+### 3.4 `WebhookEndpoint` Schema (`apps/auth-engine/ent/schema/webhookendpoint.go`)
 Stores developer-configured HTTP webhook listeners.
 
 | Field | Type | Attributes | Description |
@@ -247,7 +317,10 @@ Stores developer-configured HTTP webhook listeners.
 | `id` | `string` | PK, Unique | Webhook ID (`whe_...`) |
 | `tenant_id` | `string` | Index, FK -> Tenant.id | Owning tenant ID |
 | `url` | `string` | Required | Target HTTP webhook URL |
+| `description` | `string` | Optional | Friendly webhook label |
 | `secret_key_encrypted` | `string` | Required | AES-256-GCM encrypted HMAC signing secret |
-| `subscribed_events` | `[]string` | Required | Subscribed event array (e.g. `["user.created", "session.revoked"]`) |
+| `subscribed_events` | `[]string` | Required | Subscribed event array |
 | `is_active` | `bool` | Default: `true` | Enabled flag |
+| `failure_count` | `int` | Default: `0` | Consecutive error count |
+| `last_triggered_at` | `time` | Optional | Last event dispatch timestamp |
 | `created_at` | `time` | Default: `Now()` | Creation timestamp |
