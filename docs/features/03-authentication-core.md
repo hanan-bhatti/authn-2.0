@@ -14,13 +14,13 @@ The **Core Authentication Engine** processes user registration, RFC 9106 Argon2i
 
 ## 2. Client-Type XSS Token Security Architecture
 
-To prevent **Cross-Site Scripting (XSS)** token theft vulnerabilities in web applications while maintaining full support for native mobile apps and CLI SDKs:
+To prevent **Cross-Site Scripting (XSS)** token theft vulnerabilities in web applications while maintaining full support for native mobile apps:
 
 ### A. Web Browsers (Default / `X-Authn-Client-Type: web`)
 * **HttpOnly Cookie**: The 64-byte `refresh_token` is sent **EXCLUSIVELY** via a secure `Set-Cookie: authn_refresh_token=...; Path=/v1/client; HttpOnly; SameSite=Lax`.
 * **JSON Body Hardening**: `refresh_token` is **100% OMITTED** from the JSON response body. Even if an XSS vulnerability exists on a web application, malicious scripts cannot read the refresh token from `response.json()`.
 
-### B. Native Mobile & CLI SDKs (`X-Authn-Client-Type: native` or `mobile`)
+### B. Native Mobile Apps (`X-Authn-Client-Type: native` or `mobile`)
 * **JSON Body Delivery**: Mobile OS webviews (Android KeyStore / iOS Keychain) cannot consume `Set-Cookie` headers across app boundaries. Native clients receive `refresh_token` in the JSON response body.
 
 ---

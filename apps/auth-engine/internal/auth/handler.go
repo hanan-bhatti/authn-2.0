@@ -116,7 +116,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 	}
 
 	refreshTokenBody := ""
-	if clientType == "native" || clientType == "mobile" || clientType == "cli" {
+	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
@@ -186,7 +186,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	}
 
 	refreshTokenBody := ""
-	if clientType == "native" || clientType == "mobile" || clientType == "cli" {
+	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
@@ -222,10 +222,10 @@ func parseAndValidateClientType(c *fiber.Ctx) (string, error) {
 	}
 
 	switch clientType {
-	case "web", "native", "mobile", "cli":
+	case "web", "native", "mobile":
 		return clientType, nil
 	default:
-		return "", fmt.Errorf("unrecognized X-Authn-Client-Type header '%s': expected 'web', 'native', 'mobile', or 'cli'", raw)
+		return "", fmt.Errorf("unrecognized X-Authn-Client-Type header '%s': expected 'web', 'native', or 'mobile'", raw)
 	}
 }
 
