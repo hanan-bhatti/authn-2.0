@@ -47,6 +47,10 @@ func (User) Fields() []ent.Field {
 		field.String("email").
 			NotEmpty().
 			Comment("User registered email address"),
+		field.String("username").
+			Optional().
+			Nillable().
+			Comment("Optional unique username (e.g. @alexsmith)"),
 		field.String("password_hash").
 			Optional().
 			Sensitive().
@@ -112,5 +116,6 @@ func (User) Edges() []ent.Edge {
 func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("tenant_id", "environment", "email").Unique(),
+		index.Fields("tenant_id", "environment", "username"),
 	}
 }

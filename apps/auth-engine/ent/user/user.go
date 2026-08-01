@@ -21,6 +21,8 @@ const (
 	FieldEnvironment = "environment"
 	// FieldEmail holds the string denoting the email field in the database.
 	FieldEmail = "email"
+	// FieldUsername holds the string denoting the username field in the database.
+	FieldUsername = "username"
 	// FieldPasswordHash holds the string denoting the password_hash field in the database.
 	FieldPasswordHash = "password_hash"
 	// FieldEmailVerified holds the string denoting the email_verified field in the database.
@@ -118,6 +120,7 @@ var Columns = []string{
 	FieldTenantID,
 	FieldEnvironment,
 	FieldEmail,
+	FieldUsername,
 	FieldPasswordHash,
 	FieldEmailVerified,
 	FieldPhoneNumber,
@@ -233,6 +236,11 @@ func ByEnvironment(opts ...sql.OrderTermOption) OrderOption {
 // ByEmail orders the results by the email field.
 func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEmail, opts...).ToFunc()
+}
+
+// ByUsername orders the results by the username field.
+func ByUsername(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsername, opts...).ToFunc()
 }
 
 // ByPasswordHash orders the results by the password_hash field.
