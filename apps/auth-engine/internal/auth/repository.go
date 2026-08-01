@@ -18,6 +18,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
@@ -191,6 +192,40 @@ func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID string
 
 	if err != nil {
 		return fmt.Errorf("failed revoking user sessions: %w", err)
+	}
+	return nil
+}
+
+// CreateAuditLog records an audit log entry for security and compliance tracking.
+func (r *Repository) CreateAuditLog(ctx context.Context, id string, tenantID string, userID string, eventType string, ipAddress string, userAgent string, origin string) error {
+	client := r.factory.GetClient(ctx, tenantID, "")
+	_, err := client.AuditLog.Create().
+		SetID(id).
+		SetTenantID(tenantID).
+		SetNillableUserID(&userID).
+		SetActorType(auditlog.ActorTypeUser).
+		SetEventType(eventType).
+		SetNillableIPAddress(&ipAddress).
+		SetNillableUserAgent(&userAgent).
+		SetNillableRequestOrigin(&origin).
+		Save(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed creating audit log: %w", err)
+	}
+	return nil
+}
+
+// UpdateUserLastSignIn updates the user's last_sign_in_at timestamp.
+func (r *Repository) UpdateUserLastSignIn(ctx context.Context, userID string) error {
+	client := r.factory.GetClient(ctx, "", "")
+	now := time.Now()
+	_, err := client.User.UpdateOneID(userID).
+		SetLastSignInAt(now).
+		Save(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed updating last_sign_in_at: %w", err)
 	}
 	return nil
 }

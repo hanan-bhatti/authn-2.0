@@ -34,6 +34,7 @@ type LoginRequest struct {
 // AuthResponse defines the successful authentication response payload.
 type AuthResponse struct {
 	User         UserDTO `json:"user"`
+	AccessToken  string  `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
 	RefreshToken string  `json:"refresh_token" example:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"`
 }
 
@@ -66,7 +67,7 @@ func (h *Handler) RegisterRoutes(app *fiber.App) {
 // SignUp handles user registration requests.
 //
 // @Summary Client Password Signup
-// @Description Registers a new user with password credentials and issues an active refresh token.
+// @Description Registers a new user with password credentials, issues a short-lived JWT access token, and creates a refresh session.
 // @Tags Client Auth
 // @Accept json
 // @Produce json
@@ -91,7 +92,10 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
 	}
 
-	u, token, err := h.service.SignUpWithPassword(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, req.Name)
+	ipAddress := c.IP()
+	userAgent := c.Get("User-Agent")
+
+	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, userAgent, ipAddress)
 	if err != nil {
 		if errorsIs(err, ErrUserAlreadyExists) {
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
@@ -104,6 +108,16 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		namePtr = &u.Name
 	}
 
+	// Set HttpOnly cookie for web clients
+	c.Cookie(&fiber.Cookie{
+		Name:     "authn_refresh_token",
+		Value:    refreshToken,
+		HTTPOnly: true,
+		Secure:   false, // Set true in production HTTPS
+		SameSite: "Lax",
+		Path:     "/v1/client",
+	})
+
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
 		User: UserDTO{
 			ID:        u.ID,
@@ -112,14 +126,15 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 			Status:    string(u.Status),
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		},
-		RefreshToken: token,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	})
 }
 
 // Login handles password authentication requests.
 //
 // @Summary Client Password Login
-// @Description Authenticates user password credentials and issues an active refresh token.
+// @Description Authenticates user password credentials, issues a short-lived JWT access token, and creates a refresh session.
 // @Tags Client Auth
 // @Accept json
 // @Produce json
@@ -140,7 +155,10 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		req.Environment = "test"
 	}
 
-	u, token, err := h.service.ValidatePasswordCredentials(c.Context(), req.TenantID, req.Environment, req.Email, req.Password)
+	ipAddress := c.IP()
+	userAgent := c.Get("User-Agent")
+
+	u, accessToken, refreshToken, err := h.service.ValidatePasswordCredentials(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, userAgent, ipAddress)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -150,6 +168,16 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		namePtr = &u.Name
 	}
 
+	// Set HttpOnly cookie for web clients
+	c.Cookie(&fiber.Cookie{
+		Name:     "authn_refresh_token",
+		Value:    refreshToken,
+		HTTPOnly: true,
+		Secure:   false,
+		SameSite: "Lax",
+		Path:     "/v1/client",
+	})
+
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
 		User: UserDTO{
 			ID:        u.ID,
@@ -158,7 +186,8 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 			Status:    string(u.Status),
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		},
-		RefreshToken: token,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	})
 }
 
