@@ -12,6 +12,7 @@ package auth
 
 import (
 	"fmt"
+	"net/mail"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -94,6 +95,9 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 	if req.Email == "" || req.Password == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
 	}
+	if !isValidEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+	}
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
@@ -168,6 +172,13 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		req.Environment = "test"
 	}
 
+	if req.Email == "" || req.Password == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
+	}
+	if !isValidEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+	}
+
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 	clientType, err := parseAndValidateClientType(c)
@@ -227,6 +238,23 @@ func parseAndValidateClientType(c *fiber.Ctx) (string, error) {
 	default:
 		return "", fmt.Errorf("unrecognized X-Authn-Client-Type header '%s': expected 'web', 'native', or 'mobile'", raw)
 	}
+}
+
+// isValidEmail checks whether an email address format complies with standard RFC email structure.
+func isValidEmail(email string) bool {
+	addr, err := mail.ParseAddress(strings.TrimSpace(email))
+	if err != nil || addr.Address != strings.TrimSpace(email) {
+		return false
+	}
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	domainParts := strings.Split(parts[1], ".")
+	if len(domainParts) < 2 || len(domainParts[len(domainParts)-1]) < 2 {
+		return false
+	}
+	return true
 }
 
 func errorsIs(err error, target error) bool {

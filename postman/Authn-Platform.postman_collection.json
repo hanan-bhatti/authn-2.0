@@ -1,0 +1,424 @@
+{
+	"info": {
+		"_postman_id": "authn-platform-collection-v1",
+		"name": "Authn Platform — Core Engine Test Suite",
+		"description": "Complete Postman test collection for Authn Engine. Includes happy paths, validation failures, email format checks, and client-type header edge cases.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "System & Health",
+			"item": [
+				{
+					"name": "Engine Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"health"
+							]
+						},
+						"description": "Verifies that the Authn Go Fiber engine is operational."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Signup Scenarios",
+			"item": [
+				{
+					"name": "01. Successful Web Signup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Web User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Registers a new user for web browser client. Expects 201 Created and HttpOnly cookie. Refresh token is omitted from JSON body for XSS protection."
+					},
+					"response": []
+				},
+				{
+					"name": "02. Successful Native Signup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Authn-Client-Type",
+								"value": "native",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"native.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Native User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Registers a new user for native mobile app. Expects 201 Created and refresh_token in JSON body."
+					},
+					"response": []
+				},
+				{
+					"name": "03. Duplicate Email Signup (409 Conflict)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Web User Duplicate\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Attempts duplicate registration with an existing email. Expects 409 Conflict."
+					},
+					"response": []
+				},
+				{
+					"name": "04. Invalid Email Format - 12@cd (400 Bad Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"12@cd\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Invalid Email User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Attempts signup with invalid email domain format ('12@cd'). Expects 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "05. Missing Required Field - Password (400 Bad Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"nopass@example.com\",\n  \"name\": \"No Password User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Attempts signup without providing a password. Expects 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "06. Disallowed Client Type Header - cli (400 Bad Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Authn-Client-Type",
+								"value": "cli",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"cliuser@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Attempts signup with removed 'cli' header value. Expects 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "07. Invalid Client Type Header - banana (400 Bad Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Authn-Client-Type",
+								"value": "banana",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"banana@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"signup"
+							]
+						},
+						"description": "Attempts signup with unrecognized header value 'banana'. Expects 400 Bad Request."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Login Scenarios",
+			"item": [
+				{
+					"name": "01. Successful Web Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"login"
+							]
+						},
+						"description": "Authenticates web user. Expects 200 OK, signed JWT access token in body, and HttpOnly refresh cookie."
+					},
+					"response": []
+				},
+				{
+					"name": "02. Successful Native Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Authn-Client-Type",
+								"value": "native",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"native.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"login"
+							]
+						},
+						"description": "Authenticates native mobile user. Expects 200 OK and refresh_token in JSON body."
+					},
+					"response": []
+				},
+				{
+					"name": "03. Invalid Email Format Login - not-an-email (400 Bad Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"not-an-email\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"login"
+							]
+						},
+						"description": "Attempts login with malformed email format ('not-an-email'). Expects 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "04. Auth Error - Wrong Password (401 Unauthorized)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"WrongPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"login"
+							]
+						},
+						"description": "Attempts login with incorrect password. Expects 401 Unauthorized."
+					},
+					"response": []
+				},
+				{
+					"name": "05. Auth Error - Non-Existent User (401 Unauthorized)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"nobody@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"client",
+								"login"
+							]
+						},
+						"description": "Attempts login for an un-registered email address. Expects 401 Unauthorized."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
