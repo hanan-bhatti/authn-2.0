@@ -11,6 +11,9 @@
 package auth
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -94,7 +97,10 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
-	clientType := c.Get("X-Authn-Client-Type", "web")
+	clientType, err := parseAndValidateClientType(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, userAgent, ipAddress)
 	if err != nil {
@@ -110,7 +116,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 	}
 
 	refreshTokenBody := ""
-	if clientType == "native" || clientType == "mobile" {
+	if clientType == "native" || clientType == "mobile" || clientType == "cli" {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
@@ -146,6 +152,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 // @Produce json
 // @Param request body LoginRequest true "Login Request Payload"
 // @Success 200 {object} AuthResponse
+// @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Router /v1/client/login [post]
 func (h *Handler) Login(c *fiber.Ctx) error {
@@ -163,7 +170,10 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
-	clientType := c.Get("X-Authn-Client-Type", "web")
+	clientType, err := parseAndValidateClientType(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	u, accessToken, refreshToken, err := h.service.ValidatePasswordCredentials(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, userAgent, ipAddress)
 	if err != nil {
@@ -176,7 +186,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	}
 
 	refreshTokenBody := ""
-	if clientType == "native" || clientType == "mobile" {
+	if clientType == "native" || clientType == "mobile" || clientType == "cli" {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
@@ -201,6 +211,22 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenBody,
 	})
+}
+
+// parseAndValidateClientType validates and normalizes the X-Authn-Client-Type HTTP header.
+func parseAndValidateClientType(c *fiber.Ctx) (string, error) {
+	raw := c.Get("X-Authn-Client-Type", "web")
+	clientType := strings.ToLower(strings.TrimSpace(raw))
+	if clientType == "" {
+		clientType = "web"
+	}
+
+	switch clientType {
+	case "web", "native", "mobile", "cli":
+		return clientType, nil
+	default:
+		return "", fmt.Errorf("unrecognized X-Authn-Client-Type header '%s': expected 'web', 'native', 'mobile', or 'cli'", raw)
+	}
 }
 
 func errorsIs(err error, target error) bool {
