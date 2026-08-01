@@ -35,7 +35,7 @@ type LoginRequest struct {
 type AuthResponse struct {
 	User         UserDTO `json:"user"`
 	AccessToken  string  `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	RefreshToken string  `json:"refresh_token" example:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"`
+	RefreshToken string  `json:"refresh_token,omitempty" example:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"`
 }
 
 // UserDTO defines the public profile payload returned to clients.
@@ -67,7 +67,7 @@ func (h *Handler) RegisterRoutes(app *fiber.App) {
 // SignUp handles user registration requests.
 //
 // @Summary Client Password Signup
-// @Description Registers a new user with password credentials, issues a short-lived JWT access token, and creates a refresh session.
+// @Description Registers a new user with password credentials, issues a short-lived JWT access token, and sets a secure HttpOnly refresh cookie (or returns refresh token in JSON for native apps).
 // @Tags Client Auth
 // @Accept json
 // @Produce json
@@ -94,6 +94,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
+	clientType := c.Get("X-Authn-Client-Type", "web")
 
 	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, userAgent, ipAddress)
 	if err != nil {
@@ -108,15 +109,20 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		namePtr = &u.Name
 	}
 
-	// Set HttpOnly cookie for web clients
-	c.Cookie(&fiber.Cookie{
-		Name:     "authn_refresh_token",
-		Value:    refreshToken,
-		HTTPOnly: true,
-		Secure:   false, // Set true in production HTTPS
-		SameSite: "Lax",
-		Path:     "/v1/client",
-	})
+	refreshTokenBody := ""
+	if clientType == "native" || clientType == "mobile" {
+		refreshTokenBody = refreshToken
+	} else {
+		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
+		c.Cookie(&fiber.Cookie{
+			Name:     "authn_refresh_token",
+			Value:    refreshToken,
+			HTTPOnly: true,
+			Secure:   false,
+			SameSite: "Lax",
+			Path:     "/v1/client",
+		})
+	}
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
 		User: UserDTO{
@@ -127,14 +133,14 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		},
 		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		RefreshToken: refreshTokenBody,
 	})
 }
 
 // Login handles password authentication requests.
 //
 // @Summary Client Password Login
-// @Description Authenticates user password credentials, issues a short-lived JWT access token, and creates a refresh session.
+// @Description Authenticates user password credentials, issues a short-lived JWT access token, and sets a secure HttpOnly refresh cookie (or returns refresh token in JSON for native apps).
 // @Tags Client Auth
 // @Accept json
 // @Produce json
@@ -157,6 +163,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
+	clientType := c.Get("X-Authn-Client-Type", "web")
 
 	u, accessToken, refreshToken, err := h.service.ValidatePasswordCredentials(c.Context(), req.TenantID, req.Environment, req.Email, req.Password, userAgent, ipAddress)
 	if err != nil {
@@ -168,15 +175,20 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		namePtr = &u.Name
 	}
 
-	// Set HttpOnly cookie for web clients
-	c.Cookie(&fiber.Cookie{
-		Name:     "authn_refresh_token",
-		Value:    refreshToken,
-		HTTPOnly: true,
-		Secure:   false,
-		SameSite: "Lax",
-		Path:     "/v1/client",
-	})
+	refreshTokenBody := ""
+	if clientType == "native" || clientType == "mobile" {
+		refreshTokenBody = refreshToken
+	} else {
+		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
+		c.Cookie(&fiber.Cookie{
+			Name:     "authn_refresh_token",
+			Value:    refreshToken,
+			HTTPOnly: true,
+			Secure:   false,
+			SameSite: "Lax",
+			Path:     "/v1/client",
+		})
+	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
 		User: UserDTO{
@@ -187,7 +199,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		},
 		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		RefreshToken: refreshTokenBody,
 	})
 }
 
