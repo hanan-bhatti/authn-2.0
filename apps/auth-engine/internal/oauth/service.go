@@ -13,12 +13,8 @@ package oauth
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -55,9 +51,9 @@ func (s *Service) GetDiscoveryMetadata(issuer string) OIDCDiscoveryConfig {
 		TokenEndpoint:                     fmt.Sprintf("%s/v1/oauth/token", issuer),
 		UserinfoEndpoint:                  fmt.Sprintf("%s/v1/oauth/userinfo", issuer),
 		JwksURI:                           fmt.Sprintf("%s/v1/oauth/jwks", issuer),
-		ResponseTypesSupported:            []string{"code", "token", "id_token"},
+		ResponseTypesSupported:            []string{"code"},
 		SubjectTypesSupported:             []string{"public"},
-		IDTokenSigningAlgValuesSupported:  []string{"HS256"},
+		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
 		ScopesSupported:                   []string{"openid", "profile", "email"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post", "none"},
 		CodeChallengeMethodsSupported:     []string{"S256", "plain"},
@@ -116,12 +112,17 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	}
 
 	// Issue Access Token
-	accessToken, err := jwtpkg.IssueAccessToken(s.cfg.AuthnEncryptionKey, authCode.UserID, authCode.TenantID, "test", email, name)
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, "test", email, name, s.cfg.AuthnEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
 
-	// Issue Signed OIDC ID Token
+	// Issue Signed OIDC ID Token with RS256 (RSA Private Key)
+	rsaPrivKey, err := jwtpkg.GetOrGenerateRSAPrivateKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving RSA key for OIDC signing: %w", err)
+	}
+
 	now := time.Now()
 	idClaims := IDTokenClaims{
 		Issuer:        s.cfg.Issuer,
@@ -136,21 +137,10 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		AuthTime:      now.Unix(),
 	}
 
-	headerJSON, _ := json.Marshal(map[string]string{
-		"alg": "HS256",
-		"typ": "JWT",
-		"kid": s.cfg.AuthnKeyID,
-	})
-	payloadJSON, err := json.Marshal(idClaims)
+	idTokenStr, err := jwtpkg.SignIDTokenRS256(rsaPrivKey, idClaims, s.cfg.AuthnKeyID)
 	if err != nil {
-		return nil, fmt.Errorf("failed marshaling id token claims: %w", err)
+		return nil, fmt.Errorf("failed signing ID token with RS256: %w", err)
 	}
-
-	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." + base64.RawURLEncoding.EncodeToString(payloadJSON)
-	h := hmac.New(sha256.New, []byte(s.cfg.AuthnEncryptionKey))
-	h.Write([]byte(signingInput))
-	signature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-	idTokenStr := signingInput + "." + signature
 
 	return &OAuth2TokenResponse{
 		AccessToken: accessToken,
