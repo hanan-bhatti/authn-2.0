@@ -4,7 +4,8 @@
  * Tier: Internal Feature Package / OAuth2 & OIDC Service
  *
  * Description: Core business logic layer for OpenID Connect (OIDC) discovery,
- *              PKCE authorization code generation, and JWT ID token signing.
+ *              PKCE authorization code generation, registered client validation,
+ *              and JWT ID token signing.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -37,6 +38,39 @@ func NewService(repo *Repository, authRepo *auth.Repository, cfg *config.EnvConf
 		authRepo: authRepo,
 		cfg:      cfg,
 	}
+}
+
+// ValidateClientApplication verifies that clientID is registered in database and redirectURI is strictly authorized.
+func (s *Service) ValidateClientApplication(ctx context.Context, clientID string, redirectURI string) error {
+	if clientID == "" {
+		return fmt.Errorf("invalid_client: client_id parameter is missing")
+	}
+	if redirectURI == "" {
+		return fmt.Errorf("invalid_request: redirect_uri parameter is missing")
+	}
+
+	if s.authRepo != nil {
+		app, err := s.authRepo.FindApplicationByID(ctx, clientID)
+		if err != nil {
+			return fmt.Errorf("failed querying client application: %w", err)
+		}
+		if app == nil {
+			return fmt.Errorf("invalid_client: client_id '%s' is not registered", clientID)
+		}
+
+		var match bool
+		for _, uri := range app.ExactRedirectUris {
+			if uri == redirectURI {
+				match = true
+				break
+			}
+		}
+		if !match {
+			return fmt.Errorf("invalid_grant: redirect_uri '%s' is not authorized for client '%s'", redirectURI, clientID)
+		}
+	}
+
+	return nil
 }
 
 // GetDiscoveryMetadata returns standard OIDC Discovery configurations.

@@ -18,6 +18,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
@@ -244,4 +245,42 @@ func (r *Repository) FindUserByID(ctx context.Context, userID string) (*ent.User
 		return nil, fmt.Errorf("failed querying user by ID %s: %w", userID, err)
 	}
 	return u, nil
+}
+
+// EnsureDefaultApplicationExists checks if an Application exists and creates a default record if missing.
+func (r *Repository) EnsureDefaultApplicationExists(ctx context.Context, appID string, tenantID string, redirectURIs []string) error {
+	client := r.factory.GetClient(ctx, tenantID, "test")
+	exists, err := client.Application.Query().Where(application.ID(appID)).Exist(ctx)
+	if err != nil {
+		return fmt.Errorf("failed checking application existence: %w", err)
+	}
+	if !exists {
+		_, err := client.Application.Create().
+			SetID(appID).
+			SetTenantID(tenantID).
+			SetName("Default Client App").
+			SetEnvironment(application.EnvironmentTest).
+			SetExactRedirectUris(redirectURIs).
+			Save(ctx)
+		if err != nil && !ent.IsConstraintError(err) {
+			return fmt.Errorf("failed auto-creating application %s: %w", appID, err)
+		}
+	}
+	return nil
+}
+
+// FindApplicationByID retrieves an Application record by client_id.
+func (r *Repository) FindApplicationByID(ctx context.Context, appID string) (*ent.Application, error) {
+	client := r.factory.GetClient(ctx, "", "")
+	app, err := client.Application.Query().
+		Where(application.ID(appID)).
+		Only(ctx)
+
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed querying application by ID %s: %w", appID, err)
+	}
+	return app, nil
 }

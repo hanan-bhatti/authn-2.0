@@ -48,7 +48,7 @@ func (h *Handler) GetJWKS(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(jwks)
 }
 
-// extractAccessToken attempts to find an active access token from cookies, Bearer header, or query params.
+// extractAccessToken attempts to find an active access token from cookies or Authorization Bearer header.
 func extractAccessToken(c *fiber.Ctx) string {
 	if tok := c.Cookies("authn_access_token"); tok != "" {
 		return tok
@@ -60,14 +60,12 @@ func extractAccessToken(c *fiber.Ctx) string {
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		return strings.TrimPrefix(authHeader, "Bearer ")
 	}
-	if tok := c.Query("access_token"); tok != "" {
-		return tok
-	}
 	return ""
 }
 
 // Authorize handles GET /v1/oauth/authorize.
 // Requires a valid authenticated session (session cookie or Bearer access token).
+// Validates client_id and redirect_uri against database registration before issuing code.
 // Binds authorization code strictly to the verified caller's subject ID from session claims.
 func (h *Handler) Authorize(c *fiber.Ctx) error {
 	tokenStr := extractAccessToken(c)
@@ -95,7 +93,12 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported_response_type: expected response_type=code"})
 	}
 
-	// User ID comes strictly from verified session claims (claims.Sub)
+	// 1. Validate registered client Application and authorized redirect URI
+	if err := h.service.ValidateClientApplication(c.Context(), clientID, redirectURI); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// 2. User ID comes strictly from verified session claims (claims.Sub)
 	userID := claims.Sub
 	tenantID := claims.TenantID
 

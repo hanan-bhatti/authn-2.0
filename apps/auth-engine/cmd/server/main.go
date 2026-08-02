@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -114,6 +115,14 @@ func main() {
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg)
 	authHandler := auth.NewHandler(authService, policyRepo)
+
+	ctx := context.Background()
+	if err := authRepo.EnsureTenantExists(ctx, "tnt_default"); err != nil {
+		log.Printf("⚠️ Default tenant initialization notice: %v", err)
+	}
+	if err := authRepo.EnsureDefaultApplicationExists(ctx, "app_test123", "tnt_default", []string{"http://localhost:3000/callback"}); err != nil {
+		log.Printf("⚠️ Default application seeding notice: %v", err)
+	}
 
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, cfg)
