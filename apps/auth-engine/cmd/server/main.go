@@ -26,6 +26,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -66,6 +67,8 @@ func main() {
 			DatabaseURL:        "file:authn.db?cache=shared&_fk=1",
 			AuthnAPIKeyPepper:  "dev_pepper_key_32_bytes_long_123456",
 			AuthnEncryptionKey: "dev_encryption_key_32_bytes_long_12345",
+			AuthnKeyID:         "key_v1",
+			Issuer:             "http://localhost:8080",
 		}
 	}
 
@@ -112,10 +115,15 @@ func main() {
 	authService := auth.NewService(authRepo, cfg)
 	authHandler := auth.NewHandler(authService, policyRepo)
 
+	oauthRepo := oauth.NewRepository()
+	oauthService := oauth.NewService(oauthRepo, cfg)
+	oauthHandler := oauth.NewHandler(oauthService)
+
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app)
 	policyHandler.RegisterRoutes(app)
+	oauthHandler.RegisterRoutes(app)
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

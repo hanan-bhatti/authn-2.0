@@ -36,6 +36,8 @@ type EnvConfig struct {
 	// KMS & Cryptographic Secrets
 	AuthnEncryptionKey string // 32-byte AES-256-GCM KMS key
 	AuthnAPIKeyPepper  string // 32-byte pepper key for secret API key HMAC hashing
+	AuthnKeyID         string // Active JWKS key identifier
+	Issuer             string // OpenID Connect Issuer URL
 	JWTSigningKeyPath  string // Path to RSA/ECDSA private key for ID token signing
 
 	// Feature Flags
@@ -61,6 +63,8 @@ func LoadAndValidateConfig() (*EnvConfig, error) {
 		RedisURL:                    getEnvOrDefault("REDIS_URL", "localhost:6379"),
 		AuthnEncryptionKey:          os.Getenv("AUTHN_ENCRYPTION_KEY"),
 		AuthnAPIKeyPepper:           os.Getenv("AUTHN_API_KEY_PEPPER"),
+		AuthnKeyID:                  getEnvOrDefault("AUTHN_KEY_ID", "key_v1"),
+		Issuer:                      getEnvOrDefault("ISSUER_URL", "http://localhost:8080"),
 		JWTSigningKeyPath:           getEnvOrDefault("JWT_SIGNING_KEY_PATH", "/etc/authn/keys/rsa_private.pem"),
 		FeaturePush2FAEnabled:       getEnvAsBoolOrDefault("FEATURE_PUSH_2FA_ENABLED", true),
 		FeatureMagicLinkEnabled:     getEnvAsBoolOrDefault("FEATURE_MAGIC_LINK_ENABLED", true),

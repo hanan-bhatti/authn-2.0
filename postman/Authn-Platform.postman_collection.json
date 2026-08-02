@@ -533,6 +533,118 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "OpenID Connect & OAuth2 Server",
+			"item": [
+				{
+					"name": "01. OIDC Discovery Document",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/.well-known/openid-configuration",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								".well-known",
+								"openid-configuration"
+							]
+						},
+						"description": "Returns standard RFC 8414 OpenID Connect Discovery metadata document."
+					},
+					"response": []
+				},
+				{
+					"name": "02. JWKS Public Keys",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/jwks",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"oauth",
+								"jwks"
+							]
+						},
+						"description": "Returns RFC 7517 JSON Web Key Set (JWKS) for client-side JWT token verification."
+					},
+					"response": []
+				},
+				{
+					"name": "03. Issue PKCE Authorization Code",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/authorize?client_id=app_test123&response_type=code&code_challenge=my_verifier_123&code_challenge_method=plain",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"oauth",
+								"authorize"
+							],
+							"query": [
+								{
+									"key": "client_id",
+									"value": "app_test123"
+								},
+								{
+									"key": "response_type",
+									"value": "code"
+								},
+								{
+									"key": "code_challenge",
+									"value": "my_verifier_123"
+								},
+								{
+									"key": "code_challenge_method",
+									"value": "plain"
+								}
+							]
+						},
+						"description": "Initiates OAuth2 PKCE authorization flow and issues a 10-minute ephemeral authorization code."
+					},
+					"response": []
+				},
+				{
+					"name": "04. Token Exchange (PKCE Code -> Access & ID Tokens)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"grant_type\": \"authorization_code\",\n  \"code\": \"ac_bf7d51205e6b67200ab42a30b3c323ef8393a60115f3d267\",\n  \"client_id\": \"app_test123\",\n  \"code_verifier\": \"my_verifier_123\",\n  \"email\": \"alex@example.com\",\n  \"name\": \"Alex Smith\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/token",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"v1",
+								"oauth",
+								"token"
+							]
+						},
+						"description": "Exchanges authorization code + PKCE code_verifier for Access Token and OIDC ID Token."
+					},
+					"response": []
+				}
+			]
 		}
 	]
 }
