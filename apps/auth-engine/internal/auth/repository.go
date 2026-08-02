@@ -229,3 +229,19 @@ func (r *Repository) UpdateUserLastSignIn(ctx context.Context, userID string) er
 	}
 	return nil
 }
+
+// FindUserByID retrieves a user record by unique ID across tenant clients.
+func (r *Repository) FindUserByID(ctx context.Context, userID string) (*ent.User, error) {
+	client := r.factory.GetClient(ctx, "", "")
+	u, err := client.User.Query().
+		Where(user.ID(userID)).
+		Only(ctx)
+
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed querying user by ID %s: %w", userID, err)
+	}
+	return u, nil
+}

@@ -18,21 +18,24 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
 // Service provides business logic for OAuth2 and OIDC flows.
 type Service struct {
-	repo *Repository
-	cfg  *config.EnvConfig
+	repo     *Repository
+	authRepo *auth.Repository
+	cfg      *config.EnvConfig
 }
 
 // NewService constructs a new OAuth2 Service instance.
-func NewService(repo *Repository, cfg *config.EnvConfig) *Service {
+func NewService(repo *Repository, authRepo *auth.Repository, cfg *config.EnvConfig) *Service {
 	return &Service{
-		repo: repo,
-		cfg:  cfg,
+		repo:     repo,
+		authRepo: authRepo,
+		cfg:      cfg,
 	}
 }
 
@@ -90,7 +93,8 @@ func (s *Service) IssueAuthorizationCode(ctx context.Context, clientID string, u
 }
 
 // ExchangeCodeForTokens consumes an authorization code, verifies PKCE code_verifier, and issues signed ID & Access tokens.
-func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, clientID string, redirectURI string, codeVerifier string, email string, name string) (*OAuth2TokenResponse, error) {
+// Identity claims (email, name) are loaded STRICTLY from the database using the user ID bound to the authorization code.
+func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, clientID string, redirectURI string, codeVerifier string) (*OAuth2TokenResponse, error) {
 	authCode, err := s.repo.ConsumeAuthorizationCode(ctx, codeStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid authorization code: %w", err)
@@ -111,8 +115,26 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		}
 	}
 
+	// Fetch authentic User entity from database by bound UserID
+	var email string
+	var name string
+	var env string = "test"
+
+	if s.authRepo != nil {
+		u, err := s.authRepo.FindUserByID(ctx, authCode.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("failed retrieving user for authorization code: %w", err)
+		}
+		if u == nil {
+			return nil, fmt.Errorf("user %s not found", authCode.UserID)
+		}
+		email = u.Email
+		name = u.Name
+		env = string(u.Environment)
+	}
+
 	// Issue Access Token
-	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, "test", email, name, s.cfg.AuthnEncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.cfg.AuthnEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}

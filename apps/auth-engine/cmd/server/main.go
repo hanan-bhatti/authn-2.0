@@ -116,7 +116,7 @@ func main() {
 	authHandler := auth.NewHandler(authService, policyRepo)
 
 	oauthRepo := oauth.NewRepository()
-	oauthService := oauth.NewService(oauthRepo, cfg)
+	oauthService := oauth.NewService(oauthRepo, authRepo, cfg)
 	oauthHandler := oauth.NewHandler(oauthService)
 
 	// 6. System & Feature Routes
