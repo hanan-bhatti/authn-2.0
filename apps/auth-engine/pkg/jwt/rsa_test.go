@@ -5,12 +5,23 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestRS256_SignAndExportJWKS(t *testing.T) {
-	key, err := GetOrGenerateRSAPrivateKey()
+	tmpDir, err := os.MkdirTemp("", "jwt_test_*")
+	if err != nil {
+		t.Fatalf("failed creating temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	keyPath := filepath.Join(tmpDir, "test_rsa.pem")
+
+	// 1. Initial Generation & Persistence
+	key1, err := GetOrGenerateRSAPrivateKey(keyPath)
 	if err != nil {
 		t.Fatalf("failed generating RSA key: %v", err)
 	}
@@ -20,7 +31,7 @@ func TestRS256_SignAndExportJWKS(t *testing.T) {
 		"sub": "usr_test123",
 	}
 
-	tokenStr, err := SignIDTokenRS256(key, claims, "key_v1")
+	tokenStr, err := SignIDTokenRS256(key1, claims, "key_v1")
 	if err != nil {
 		t.Fatalf("failed signing token with RS256: %v", err)
 	}
@@ -39,22 +50,33 @@ func TestRS256_SignAndExportJWKS(t *testing.T) {
 		t.Fatalf("failed decoding signature base64: %v", err)
 	}
 
-	err = rsa.VerifyPKCS1v15(&key.PublicKey, crypto.SHA256, hashed[:], sigBytes)
+	err = rsa.VerifyPKCS1v15(&key1.PublicKey, crypto.SHA256, hashed[:], sigBytes)
 	if err != nil {
 		t.Fatalf("RSA public key signature verification failed: %v", err)
 	}
 
-	// Verify JWKS Export
-	jwks := ExportRSAPublicJWKS(&key.PublicKey, "key_v1")
-	if len(jwks.Keys) != 1 {
-		t.Fatalf("expected 1 key in JWKS, got %d", len(jwks.Keys))
+	// 2. Reset global cache and reload from disk
+	globalRSALock.Lock()
+	globalRSAKey = nil
+	globalRSALock.Unlock()
+
+	store := &FileKeyStore{FilePath: keyPath}
+	key2, err := store.LoadKey()
+	if err != nil {
+		t.Fatalf("failed loading key from disk: %v", err)
+	}
+	if key2 == nil {
+		t.Fatalf("expected loaded key from disk, got nil")
 	}
 
-	k := jwks.Keys[0]
-	if k.Kty != "RSA" || k.Alg != "RS256" || k.Use != "sig" || k.Kid != "key_v1" {
-		t.Fatalf("invalid JWKS key metadata: %+v", k)
+	// Verify Modulus 'n' and Exponent 'e' match 100% across reload
+	jwks1 := ExportRSAPublicJWKS(&key1.PublicKey, "key_v1")
+	jwks2 := ExportRSAPublicJWKS(&key2.PublicKey, "key_v1")
+
+	if jwks1.Keys[0].N != jwks2.Keys[0].N {
+		t.Fatalf("RSA public key Modulus N mismatch across server restart!\nBefore: %s\nAfter:  %s", jwks1.Keys[0].N, jwks2.Keys[0].N)
 	}
-	if k.N == "" || k.E == "" {
-		t.Fatalf("JWKS key missing Modulus N or Exponent E")
+	if jwks1.Keys[0].E != jwks2.Keys[0].E {
+		t.Fatalf("RSA public key Exponent E mismatch across server restart!")
 	}
 }

@@ -65,7 +65,7 @@ func LoadAndValidateConfig() (*EnvConfig, error) {
 		AuthnAPIKeyPepper:           os.Getenv("AUTHN_API_KEY_PEPPER"),
 		AuthnKeyID:                  getEnvOrDefault("AUTHN_KEY_ID", "key_v1"),
 		Issuer:                      getEnvOrDefault("ISSUER_URL", "http://localhost:8080"),
-		JWTSigningKeyPath:           getEnvOrDefault("JWT_SIGNING_KEY_PATH", "/etc/authn/keys/rsa_private.pem"),
+		JWTSigningKeyPath:           getEnvOrDefault("AUTHN_RSA_KEY_PATH", getEnvOrDefault("JWT_SIGNING_KEY_PATH", ".keys/rsa_private.pem")),
 		FeaturePush2FAEnabled:       getEnvAsBoolOrDefault("FEATURE_PUSH_2FA_ENABLED", true),
 		FeatureMagicLinkEnabled:     getEnvAsBoolOrDefault("FEATURE_MAGIC_LINK_ENABLED", true),
 		FeatureWebhooksEnabled:      getEnvAsBoolOrDefault("FEATURE_WEBHOOKS_ENABLED", true),

@@ -39,7 +39,7 @@ func (h *Handler) GetOIDCDiscovery(c *fiber.Ctx) error {
 
 // GetJWKS handles GET /v1/oauth/jwks.
 func (h *Handler) GetJWKS(c *fiber.Ctx) error {
-	rsaKey, err := jwtpkg.GetOrGenerateRSAPrivateKey()
+	rsaKey, err := jwtpkg.GetOrGenerateRSAPrivateKey(h.service.cfg.JWTSigningKeyPath)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed generating public JWKS"})
 	}

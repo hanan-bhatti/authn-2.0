@@ -25,6 +25,8 @@ bin/
 *.key
 rsa_private.pem
 jwt_secret.txt
+.keys/
+apps/auth-engine/.keys/
 
 # Log Files & Coverage
 *.log

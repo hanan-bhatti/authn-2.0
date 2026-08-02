@@ -118,7 +118,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	}
 
 	// Issue Signed OIDC ID Token with RS256 (RSA Private Key)
-	rsaPrivKey, err := jwtpkg.GetOrGenerateRSAPrivateKey()
+	rsaPrivKey, err := jwtpkg.GetOrGenerateRSAPrivateKey(s.cfg.JWTSigningKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving RSA key for OIDC signing: %w", err)
 	}
