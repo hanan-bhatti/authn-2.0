@@ -215,7 +215,7 @@ func main() {
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app, pkMiddleware)
-	policyHandler.RegisterRoutes(app)
+	policyHandler.RegisterRoutes(app, skMiddleware) // admin-only: requires sk_... secret key
 	oauthHandler.RegisterRoutes(app, pkMiddleware)
 	apiKeyHandler.RegisterRoutes(app, skMiddleware)
 

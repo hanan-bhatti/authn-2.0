@@ -124,17 +124,21 @@ func (h *Handler) UpdateRecoveryPolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(updated)
 }
 
-// RegisterRoutes registers tenant policy routes with Fiber router.
-func (h *Handler) RegisterRoutes(app *fiber.App) {
+// RegisterRoutes registers tenant policy admin routes behind secret key authentication.
+// All policy endpoints are admin-only operations — they require a valid sk_... secret key
+// in the Authorization: Bearer header (same guard as /v1/admin/keys/*).
+func (h *Handler) RegisterRoutes(app *fiber.App, skMiddleware fiber.Handler) {
+	mw := skMiddleware
+
 	passwordGroup := app.Group("/v1/tenant/password-policy")
-	passwordGroup.Get("", h.GetPolicy)
-	passwordGroup.Put("", h.UpdatePolicy)
+	passwordGroup.Get("", mw, h.GetPolicy)
+	passwordGroup.Put("", mw, h.UpdatePolicy)
 
 	securityGroup := app.Group("/v1/tenant/security-policy")
-	securityGroup.Get("", h.GetSecurityPolicy)
-	securityGroup.Put("", h.UpdateSecurityPolicy)
+	securityGroup.Get("", mw, h.GetSecurityPolicy)
+	securityGroup.Put("", mw, h.UpdateSecurityPolicy)
 
 	recoveryGroup := app.Group("/v1/tenant/recovery-policy")
-	recoveryGroup.Get("", h.GetRecoveryPolicy)
-	recoveryGroup.Put("", h.UpdateRecoveryPolicy)
+	recoveryGroup.Get("", mw, h.GetRecoveryPolicy)
+	recoveryGroup.Put("", mw, h.UpdateRecoveryPolicy)
 }
