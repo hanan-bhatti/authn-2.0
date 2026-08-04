@@ -1,0 +1,82 @@
+{
+  "name": "@authn/js",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for the Authn Platform — production-grade authentication client with type-safe APIs, automatic token refresh, PKCE, and structured error handling.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Hanan Bhatti (https://github.com/hanan-bhatti)",
+  "homepage": "https://github.com/hanan-bhatti/authn-2.0/tree/main/packages/sdk-js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hanan-bhatti/authn-2.0.git",
+    "directory": "packages/sdk-js"
+  },
+  "bugs": {
+    "url": "https://github.com/hanan-bhatti/authn-2.0/issues"
+  },
+  "keywords": [
+    "authn",
+    "authentication",
+    "auth",
+    "identity",
+    "login",
+    "signup",
+    "session",
+    "jwt",
+    "magic-link",
+    "pkce",
+    "oauth2",
+    "oidc",
+    "sdk",
+    "typescript"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./pkce": {
+      "import": {
+        "types": "./dist/pkce.d.ts",
+        "default": "./dist/pkce.js"
+      },
+      "require": {
+        "types": "./dist/pkce.d.cts",
+        "default": "./dist/pkce.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --outDir dist",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

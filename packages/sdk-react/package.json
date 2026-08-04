@@ -1,0 +1,84 @@
+{
+  "name": "@authn/react",
+  "version": "0.1.0",
+  "description": "Official React SDK for the Authn Platform — production-grade React Context provider & hooks around @authn/js with automatic state subscription, managed loading/error states, and tree-shakeable exports.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Hanan Bhatti (https://github.com/hanan-bhatti)",
+  "homepage": "https://github.com/hanan-bhatti/authn-2.0/tree/main/packages/sdk-react",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hanan-bhatti/authn-2.0.git",
+    "directory": "packages/sdk-react"
+  },
+  "bugs": {
+    "url": "https://github.com/hanan-bhatti/authn-2.0/issues"
+  },
+  "keywords": [
+    "authn",
+    "authentication",
+    "auth",
+    "identity",
+    "react",
+    "hooks",
+    "context",
+    "provider",
+    "login",
+    "signup",
+    "session",
+    "jwt",
+    "magic-link",
+    "sdk",
+    "typescript"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --outDir dist",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run build"
+  },
+  "peerDependencies": {
+    "@authn/js": "workspace:*",
+    "react": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@authn/js": "workspace:*",
+    "@testing-library/react": "^16.2.0",
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "happy-dom": "^17.1.8",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
