@@ -34,6 +34,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/redis/go-redis/v9"
@@ -220,12 +221,17 @@ func main() {
 	socialService := social.NewService(socialRepo, cfg)
 	socialHandler := social.NewHandler(socialService)
 
+	sessionRepo := session.NewRepository(factory)
+	sessionService := session.NewService(sessionRepo, cfg)
+	sessionHandler := session.NewHandler(sessionService)
+
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 	oauthHandler.RegisterRoutes(app, pkMiddleware)
 	socialHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
+	sessionHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 
 	// 6. Graceful Shutdown Listener
