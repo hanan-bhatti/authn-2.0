@@ -83,16 +83,13 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/client/auth/recovery/cancel` — Cancel recovery via active authenticated session
 - `POST /v1/client/auth/recovery/cancel/token` — Cancel recovery via public signed link token
 
-### 2.10 Admin Policies & Keys (`/v1/tenant/*`, `/v1/admin/*`)
-- `GET /v1/tenant/password-policy` — Get tenant password policy
-- `PUT /v1/tenant/password-policy` — Update tenant password policy
-- `GET /v1/tenant/security-policy` — Get tenant security policy
-- `PUT /v1/tenant/security-policy` — Update tenant security policy
-- `GET /v1/tenant/recovery-policy` — Get tenant recovery policy
-- `PUT /v1/tenant/recovery-policy` — Update tenant recovery policy with 9 strict validation rules
-- `POST /v1/admin/keys/` — Issue publishable or secret API key
-- `GET /v1/admin/keys/` — List application API keys
-- `POST /v1/admin/keys/:id/revoke` — Revoke API key
+### 2.11 Social Identity Providers (FR-7)
+- `GET /v1/tenant/social-providers` — List all supported social providers, setup guides & status
+- `GET /v1/tenant/social-providers/:provider` — Get setup guide & configuration for specific provider
+- `PUT /v1/tenant/social-providers/:provider` — Configure provider client ID & encrypted secret with format validation
+- `DELETE /v1/tenant/social-providers/:provider` — Remove provider configuration
+- `GET /v1/client/auth/social/:provider/authorize` — Initiate social auth, generate 10-min CSRF state token & 302 redirect
+- `GET /v1/client/auth/social/:provider/callback` — OAuth2 callback handler (exchanges code, finds/creates user, issues JWT)
 
 ---
 
@@ -174,3 +171,79 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - **Response (200 OK)**: Returns updated `RecoveryPolicy` JSON object.
 - **Edge Cases & Error Codes**:
   - `400 Bad Request`: Fails if any of the 9 validation rules are violated (e.g. `freeze_window_hours` out of 24-168 bounds, non-monotonic lockout schedule, all method toggles set to false).
+
+### 3.4 `GET /v1/tenant/social-providers` & `GET /v1/tenant/social-providers/:provider`
+- **Description**: List configured and supported social identity providers with dynamic setup instructions (derived from `APP_BASE_URL` runtime configuration) and credentials format validation rules. Secrets are never exposed in API responses.
+- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
+- **Response (200 OK)**:
+```json
+{
+  "providers": [
+    {
+      "provider": "google",
+      "enabled": true,
+      "client_id": "123456789012-abc.apps.googleusercontent.com",
+      "configured": true,
+      "setup": {
+        "callback_url": "http://localhost:8080/v1/client/auth/social/google/callback",
+        "step_by_step": [
+          "Go to console.cloud.google.com → APIs & Services → Credentials",
+          "Click 'Create Credentials' → OAuth 2.0 Client ID",
+          "Set Application type to 'Web application'",
+          "Under 'Authorized redirect URIs' add: http://localhost:8080/v1/client/auth/social/google/callback",
+          "Copy the Client ID and Client Secret into Authn"
+        ],
+        "console_url": "https://console.cloud.google.com/apis/credentials",
+        "client_id_format": "must end with .apps.googleusercontent.com",
+        "client_secret_format": "starts with GOCSPX- (newer apps) or alphanumeric"
+      }
+    }
+  ]
+}
+```
+
+### 3.5 `PUT /v1/tenant/social-providers/:provider`
+- **Description**: Configures OAuth2/OIDC credentials for a social provider. Validates credentials format per provider rules and encrypts `client_secret` at rest with AES-256-GCM.
+- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
+- **Request**:
+```json
+{
+  "enabled": true,
+  "client_id": "123456789012-abc.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-validsecret123"
+}
+```
+- **Response (200 OK)**:
+```json
+{
+  "message": "provider configured successfully",
+  "provider": "google"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `422 Unprocessable Entity`: Validation failure for provider format rules (e.g. Google client ID not ending with `.apps.googleusercontent.com`, Discord client ID not numeric, Microsoft client ID not UUID v4).
+
+### 3.6 `GET /v1/client/auth/social/:provider/authorize`
+- **Description**: Initiates social auth flow. Generates a 32-byte random hex CSRF state token stored with 10-minute TTL, then redirects (302 Found) to provider's OAuth authorization URL.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
+- **Query Params**:
+  - `redirect_uri` (required): Application's post-login redirect callback URL.
+  - `post_callback_redirect` (optional): Deep link URL for mobile/web app post-login destination.
+- **Response (302 Found)**: Redirects browser to provider's authorization page (e.g. `https://accounts.google.com/o/oauth2/v2/auth?...&state=...`).
+- **Edge Cases**:
+  - `400 Bad Request`: Provider not configured or missing `redirect_uri`.
+
+### 3.7 `GET /v1/client/auth/social/:provider/callback`
+- **Description**: Handles OAuth2 redirect callback from provider. One-time consumption of state token, exchanges code for access token, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
+- **Query Params**: `code` (OAuth code), `state` (CSRF state token).
+- **Response (200 OK or 302 Found)**:
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "Bearer"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request`: Missing `code`/`state`, or state token expired/consumed (`social auth state not found or already consumed`).
+  - `409 Conflict` (`email_exists_social_account`): Email exists as a password account. Prevents credential injection via signup. Directs user to login first then link provider.
+

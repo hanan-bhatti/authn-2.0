@@ -1211,6 +1211,134 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "12 Social Identity Providers (FR-7)",
+			"item": [
+				{
+					"name": "List Social Identity Providers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/social-providers",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "social-providers"]
+						},
+						"description": "Lists all 8 supported social providers with dynamic setup guides and configuration status."
+					}
+				},
+				{
+					"name": "Get Provider Setup & Config (Google)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/social-providers/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "social-providers", "google"]
+						},
+						"description": "Returns setup instructions, step-by-step developer console guide, and client_id (secrets masked)."
+					}
+				},
+				{
+					"name": "Configure Social Provider — Invalid Format (expect 422)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"enabled\": true,\n  \"client_id\": \"invalid-id\",\n  \"client_secret\": \"GOCSPX-secret123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/social-providers/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "social-providers", "google"]
+						},
+						"description": "Validates format rules per provider (Google client_id must end with .apps.googleusercontent.com)."
+					}
+				},
+				{
+					"name": "Configure Social Provider — Valid Credentials",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"enabled\": true,\n  \"client_id\": \"123456789012-abc.apps.googleusercontent.com\",\n  \"client_secret\": \"GOCSPX-validsecret123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/social-providers/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "social-providers", "google"]
+						},
+						"description": "Configures provider and encrypts client_secret at rest using AES-256-GCM."
+					}
+				},
+				{
+					"name": "Initiate Social Authorization (Client 302)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/social/google/authorize?redirect_uri=http://localhost:3000/callback",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "social", "google", "authorize"],
+							"query": [
+								{ "key": "redirect_uri", "value": "http://localhost:3000/callback" }
+							]
+						},
+						"description": "Generates 10-min CSRF state token and 302 redirects browser to provider OAuth endpoint."
+					}
+				},
+				{
+					"name": "Social OAuth Callback — Invalid State (expect 400)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/social/google/callback?code=fake_code&state=invalid_state",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "social", "google", "callback"],
+							"query": [
+								{ "key": "code", "value": "fake_code" },
+								{ "key": "state", "value": "invalid_state" }
+							]
+						},
+						"description": "Verifies state token existence and 10-min expiration window."
+					}
+				},
+				{
+					"name": "Delete Social Provider",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/social-providers/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "social-providers", "google"]
+						},
+						"description": "Removes social provider configuration for the tenant."
+					}
+				}
+			]
 		}
 	]
 }
+
