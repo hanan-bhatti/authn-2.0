@@ -169,8 +169,8 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		env = string(u.Environment)
 	}
 
-	// Issue Access Token
-	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.cfg.AuthnEncryptionKey)
+	// Issue Access Token (OAuth users are regular end-users, role is always empty)
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, "", s.cfg.AuthnEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}

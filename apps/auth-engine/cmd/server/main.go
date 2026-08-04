@@ -163,7 +163,10 @@ func main() {
 	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
 	apiKeyHandler := apikey.NewHandler(apiKeyService)
 	pkMiddleware := middleware.RequirePublishableKey(apiKeyService)
-	skMiddleware := middleware.RequireSecretKey(apiKeyService)
+	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
+	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
+	// This is the single auth gate for all /v1/tenant/* and /v1/admin/* routes.
+	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.AuthnEncryptionKey)
 
 	policyRepo := policy.NewRepository(factory)
 	policyHandler := policy.NewHandler(policyRepo)
@@ -215,9 +218,9 @@ func main() {
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app, pkMiddleware)
-	policyHandler.RegisterRoutes(app, skMiddleware) // admin-only: requires sk_... secret key
+	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 	oauthHandler.RegisterRoutes(app, pkMiddleware)
-	apiKeyHandler.RegisterRoutes(app, skMiddleware)
+	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

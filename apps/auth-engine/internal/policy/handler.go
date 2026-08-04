@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+
 // Handler handles HTTP requests for tenant password policy configuration.
 type Handler struct {
 	repo *Repository

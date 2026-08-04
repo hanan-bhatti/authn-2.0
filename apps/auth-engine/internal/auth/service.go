@@ -246,6 +246,21 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 		return nil, "", "", ErrUserAlreadyExists
 	}
 
+	// Detect whether this is the first user in this tenant+environment.
+	// The first user is automatically granted the tenant_admin role so they can
+	// access the developer console without needing a manually issued sk_ key.
+	// Full RBAC (FR-12) will replace this coarse role with granular permissions.
+	existingCount, err := s.repo.CountUsersByTenant(ctx, tenantID, env)
+	if err != nil {
+		// Non-fatal: log and default to regular user if count query fails.
+		log.Printf("[AuthService] Warning: could not count users for tenant %s: %v", tenantID, err)
+		existingCount = 1
+	}
+	role := ""
+	if existingCount == 0 {
+		role = "tenant_admin"
+	}
+
 	passwordHash, err := crypto.HashPasswordArgon2id(password)
 	if err != nil {
 		return nil, "", "", err
@@ -273,8 +288,8 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 		return nil, "", "", err
 	}
 
-	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.config.AuthnEncryptionKey)
+	// Issue 15-minute JWT Access Token (role embedded for console auth)
+	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, role, s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -290,6 +305,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 
 	return u, accessToken, rawRefreshToken, nil
 }
+
 
 // SendVerificationEmail generates a 32-byte token and sends the verification email.
 func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error {
@@ -469,7 +485,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessToken(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, "", s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -542,7 +558,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, "", s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -613,7 +629,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Issue new 15-minute access token
 		tenantID := string(u.TenantID)
 		env := string(u.Environment)
-		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.config.AuthnEncryptionKey)
+		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, "", s.config.AuthnEncryptionKey)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -633,7 +649,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 					if err == nil && u != nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.config.AuthnEncryptionKey)
+						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, "", s.config.AuthnEncryptionKey)
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -792,7 +808,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, "", s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -1484,7 +1500,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, "", s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

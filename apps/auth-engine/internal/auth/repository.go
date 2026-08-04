@@ -134,6 +134,23 @@ func (r *Repository) CreateUser(ctx context.Context, id string, tenantID string,
 	return u, nil
 }
 
+// CountUsersByTenant returns the total number of users registered under a tenant+environment.
+// Used by SignUpWithPassword to detect the first user and grant the tenant_admin role.
+func (r *Repository) CountUsersByTenant(ctx context.Context, tenantID string, env string) (int, error) {
+	client := r.factory.GetClient(ctx, tenantID, env)
+	count, err := client.User.
+		Query().
+		Where(
+			user.TenantID(tenantID),
+			user.EnvironmentEQ(user.Environment(env)),
+		).
+		Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed counting users for tenant %s: %w", tenantID, err)
+	}
+	return count, nil
+}
+
 // FindApiKeyByHash retrieves an API key by its hash.
 //
 // Parameters:

@@ -28,6 +28,11 @@ type Claims struct {
 	Environment string `json:"environment"`
 	Email       string `json:"email"`
 	Name        string `json:"name,omitempty"`
+	// Role is set at signup time: "tenant_admin" for the first user in a tenant,
+	// empty string for all subsequent users. Used by console auth middleware to
+	// gate access to /v1/tenant/* and /v1/admin/* routes without requiring an sk_ key.
+	// Full RBAC (FR-12) will replace this with granular permissions in a later phase.
+	Role        string `json:"role,omitempty"`
 	Iss         string `json:"iss"`
 	Iat         int64  `json:"iat"`
 	Exp         int64  `json:"exp"`
@@ -42,12 +47,13 @@ type Claims struct {
 //   - environment: "test" or "live".
 //   - email: User registered email.
 //   - name: User name.
+//   - role: User platform role ("tenant_admin" for first user in tenant, "" for regular users).
 //   - signingSecret: Signing secret key string (`AUTHN_ENCRYPTION_KEY`).
 //
 // Returns:
 //   - string: Signed JWT string (`header.payload.signature`).
 //   - error: Non-nil if signing fails.
-func IssueAccessToken(userID string, tenantID string, environment string, email string, name string, signingSecret string) (string, error) {
+func IssueAccessToken(userID string, tenantID string, environment string, email string, name string, role string, signingSecret string) (string, error) {
 	now := time.Now().UTC()
 	exp := now.Add(15 * time.Minute) // 15-minute Access Token TTL
 
@@ -57,6 +63,7 @@ func IssueAccessToken(userID string, tenantID string, environment string, email 
 		Environment: environment,
 		Email:       email,
 		Name:        name,
+		Role:        role,
 		Iss:         "authn-engine",
 		Iat:         now.Unix(),
 		Exp:         exp.Unix(),
