@@ -13625,6 +13625,7 @@ type TenantMutation struct {
 	custom_domain             *string
 	domain_verified           *bool
 	domain_verification_token *string
+	first_admin_claimed       *bool
 	branding_config           *map[string]interface{}
 	password_policy           *map[string]interface{}
 	security_policy           *map[string]interface{}
@@ -13963,6 +13964,42 @@ func (m *TenantMutation) DomainVerificationTokenCleared() bool {
 func (m *TenantMutation) ResetDomainVerificationToken() {
 	m.domain_verification_token = nil
 	delete(m.clearedFields, tenant.FieldDomainVerificationToken)
+}
+
+// SetFirstAdminClaimed sets the "first_admin_claimed" field.
+func (m *TenantMutation) SetFirstAdminClaimed(b bool) {
+	m.first_admin_claimed = &b
+}
+
+// FirstAdminClaimed returns the value of the "first_admin_claimed" field in the mutation.
+func (m *TenantMutation) FirstAdminClaimed() (r bool, exists bool) {
+	v := m.first_admin_claimed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstAdminClaimed returns the old "first_admin_claimed" field's value of the Tenant entity.
+// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantMutation) OldFirstAdminClaimed(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstAdminClaimed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstAdminClaimed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstAdminClaimed: %w", err)
+	}
+	return oldValue.FirstAdminClaimed, nil
+}
+
+// ResetFirstAdminClaimed resets all changes to the "first_admin_claimed" field.
+func (m *TenantMutation) ResetFirstAdminClaimed() {
+	m.first_admin_claimed = nil
 }
 
 // SetBrandingConfig sets the "branding_config" field.
@@ -14591,7 +14628,7 @@ func (m *TenantMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TenantMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.name != nil {
 		fields = append(fields, tenant.FieldName)
 	}
@@ -14606,6 +14643,9 @@ func (m *TenantMutation) Fields() []string {
 	}
 	if m.domain_verification_token != nil {
 		fields = append(fields, tenant.FieldDomainVerificationToken)
+	}
+	if m.first_admin_claimed != nil {
+		fields = append(fields, tenant.FieldFirstAdminClaimed)
 	}
 	if m.branding_config != nil {
 		fields = append(fields, tenant.FieldBrandingConfig)
@@ -14643,6 +14683,8 @@ func (m *TenantMutation) Field(name string) (ent.Value, bool) {
 		return m.DomainVerified()
 	case tenant.FieldDomainVerificationToken:
 		return m.DomainVerificationToken()
+	case tenant.FieldFirstAdminClaimed:
+		return m.FirstAdminClaimed()
 	case tenant.FieldBrandingConfig:
 		return m.BrandingConfig()
 	case tenant.FieldPasswordPolicy:
@@ -14674,6 +14716,8 @@ func (m *TenantMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDomainVerified(ctx)
 	case tenant.FieldDomainVerificationToken:
 		return m.OldDomainVerificationToken(ctx)
+	case tenant.FieldFirstAdminClaimed:
+		return m.OldFirstAdminClaimed(ctx)
 	case tenant.FieldBrandingConfig:
 		return m.OldBrandingConfig(ctx)
 	case tenant.FieldPasswordPolicy:
@@ -14729,6 +14773,13 @@ func (m *TenantMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDomainVerificationToken(v)
+		return nil
+	case tenant.FieldFirstAdminClaimed:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstAdminClaimed(v)
 		return nil
 	case tenant.FieldBrandingConfig:
 		v, ok := value.(map[string]interface{})
@@ -14874,6 +14925,9 @@ func (m *TenantMutation) ResetField(name string) error {
 		return nil
 	case tenant.FieldDomainVerificationToken:
 		m.ResetDomainVerificationToken()
+		return nil
+	case tenant.FieldFirstAdminClaimed:
+		m.ResetFirstAdminClaimed()
 		return nil
 	case tenant.FieldBrandingConfig:
 		m.ResetBrandingConfig()

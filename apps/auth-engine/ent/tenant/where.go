@@ -90,6 +90,11 @@ func DomainVerificationToken(v string) predicate.Tenant {
 	return predicate.Tenant(sql.FieldEQ(FieldDomainVerificationToken, v))
 }
 
+// FirstAdminClaimed applies equality check predicate on the "first_admin_claimed" field. It's identical to FirstAdminClaimedEQ.
+func FirstAdminClaimed(v bool) predicate.Tenant {
+	return predicate.Tenant(sql.FieldEQ(FieldFirstAdminClaimed, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Tenant {
 	return predicate.Tenant(sql.FieldEQ(FieldCreatedAt, v))
@@ -388,6 +393,16 @@ func DomainVerificationTokenEqualFold(v string) predicate.Tenant {
 // DomainVerificationTokenContainsFold applies the ContainsFold predicate on the "domain_verification_token" field.
 func DomainVerificationTokenContainsFold(v string) predicate.Tenant {
 	return predicate.Tenant(sql.FieldContainsFold(FieldDomainVerificationToken, v))
+}
+
+// FirstAdminClaimedEQ applies the EQ predicate on the "first_admin_claimed" field.
+func FirstAdminClaimedEQ(v bool) predicate.Tenant {
+	return predicate.Tenant(sql.FieldEQ(FieldFirstAdminClaimed, v))
+}
+
+// FirstAdminClaimedNEQ applies the NEQ predicate on the "first_admin_claimed" field.
+func FirstAdminClaimedNEQ(v bool) predicate.Tenant {
+	return predicate.Tenant(sql.FieldNEQ(FieldFirstAdminClaimed, v))
 }
 
 // BrandingConfigIsNil applies the IsNil predicate on the "branding_config" field.

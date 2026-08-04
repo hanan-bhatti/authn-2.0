@@ -565,6 +565,7 @@ var (
 		{Name: "custom_domain", Type: field.TypeString, Unique: true, Nullable: true},
 		{Name: "domain_verified", Type: field.TypeBool, Default: false},
 		{Name: "domain_verification_token", Type: field.TypeString, Nullable: true},
+		{Name: "first_admin_claimed", Type: field.TypeBool, Default: false},
 		{Name: "branding_config", Type: field.TypeJSON, Nullable: true},
 		{Name: "password_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "security_policy", Type: field.TypeJSON, Nullable: true},

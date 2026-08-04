@@ -339,12 +339,16 @@ func init() {
 	tenantDescDomainVerified := tenantFields[4].Descriptor()
 	// tenant.DefaultDomainVerified holds the default value on creation for the domain_verified field.
 	tenant.DefaultDomainVerified = tenantDescDomainVerified.Default.(bool)
+	// tenantDescFirstAdminClaimed is the schema descriptor for first_admin_claimed field.
+	tenantDescFirstAdminClaimed := tenantFields[6].Descriptor()
+	// tenant.DefaultFirstAdminClaimed holds the default value on creation for the first_admin_claimed field.
+	tenant.DefaultFirstAdminClaimed = tenantDescFirstAdminClaimed.Default.(bool)
 	// tenantDescCreatedAt is the schema descriptor for created_at field.
-	tenantDescCreatedAt := tenantFields[10].Descriptor()
+	tenantDescCreatedAt := tenantFields[11].Descriptor()
 	// tenant.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tenant.DefaultCreatedAt = tenantDescCreatedAt.Default.(func() time.Time)
 	// tenantDescUpdatedAt is the schema descriptor for updated_at field.
-	tenantDescUpdatedAt := tenantFields[11].Descriptor()
+	tenantDescUpdatedAt := tenantFields[12].Descriptor()
 	// tenant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	tenant.DefaultUpdatedAt = tenantDescUpdatedAt.Default.(func() time.Time)
 	// tenant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

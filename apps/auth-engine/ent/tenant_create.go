@@ -80,6 +80,20 @@ func (tc *TenantCreate) SetNillableDomainVerificationToken(s *string) *TenantCre
 	return tc
 }
 
+// SetFirstAdminClaimed sets the "first_admin_claimed" field.
+func (tc *TenantCreate) SetFirstAdminClaimed(b bool) *TenantCreate {
+	tc.mutation.SetFirstAdminClaimed(b)
+	return tc
+}
+
+// SetNillableFirstAdminClaimed sets the "first_admin_claimed" field if the given value is not nil.
+func (tc *TenantCreate) SetNillableFirstAdminClaimed(b *bool) *TenantCreate {
+	if b != nil {
+		tc.SetFirstAdminClaimed(*b)
+	}
+	return tc
+}
+
 // SetBrandingConfig sets the "branding_config" field.
 func (tc *TenantCreate) SetBrandingConfig(m map[string]interface{}) *TenantCreate {
 	tc.mutation.SetBrandingConfig(m)
@@ -267,6 +281,10 @@ func (tc *TenantCreate) defaults() {
 		v := tenant.DefaultDomainVerified
 		tc.mutation.SetDomainVerified(v)
 	}
+	if _, ok := tc.mutation.FirstAdminClaimed(); !ok {
+		v := tenant.DefaultFirstAdminClaimed
+		tc.mutation.SetFirstAdminClaimed(v)
+	}
 	if _, ok := tc.mutation.CreatedAt(); !ok {
 		v := tenant.DefaultCreatedAt()
 		tc.mutation.SetCreatedAt(v)
@@ -297,6 +315,9 @@ func (tc *TenantCreate) check() error {
 	}
 	if _, ok := tc.mutation.DomainVerified(); !ok {
 		return &ValidationError{Name: "domain_verified", err: errors.New(`ent: missing required field "Tenant.domain_verified"`)}
+	}
+	if _, ok := tc.mutation.FirstAdminClaimed(); !ok {
+		return &ValidationError{Name: "first_admin_claimed", err: errors.New(`ent: missing required field "Tenant.first_admin_claimed"`)}
 	}
 	if _, ok := tc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Tenant.created_at"`)}
@@ -358,6 +379,10 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.DomainVerificationToken(); ok {
 		_spec.SetField(tenant.FieldDomainVerificationToken, field.TypeString, value)
 		_node.DomainVerificationToken = value
+	}
+	if value, ok := tc.mutation.FirstAdminClaimed(); ok {
+		_spec.SetField(tenant.FieldFirstAdminClaimed, field.TypeBool, value)
+		_node.FirstAdminClaimed = value
 	}
 	if value, ok := tc.mutation.BrandingConfig(); ok {
 		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)

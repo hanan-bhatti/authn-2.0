@@ -134,21 +134,33 @@ func (r *Repository) CreateUser(ctx context.Context, id string, tenantID string,
 	return u, nil
 }
 
-// CountUsersByTenant returns the total number of users registered under a tenant+environment.
-// Used by SignUpWithPassword to detect the first user and grant the tenant_admin role.
-func (r *Repository) CountUsersByTenant(ctx context.Context, tenantID string, env string) (int, error) {
-	client := r.factory.GetClient(ctx, tenantID, env)
-	count, err := client.User.
-		Query().
+// ClaimFirstAdminRole atomically claims the first-admin slot for a tenant.
+//
+// It issues a conditional UPDATE:
+//
+//	UPDATE tenants SET first_admin_claimed = true
+//	WHERE id = ? AND first_admin_claimed = false
+//
+// The DB engine guarantees only one concurrent writer can flip false → true.
+// The caller that gets n=1 (rows affected) is the first user and receives
+// role="tenant_admin" in their JWT. All other concurrent callers get n=0
+// and receive role="" (regular user). No transaction or advisory lock needed.
+//
+// This replaces the previous CountUsersByTenant-then-create pattern which
+// had a TOCTOU race when two signups arrived concurrently on a new tenant.
+func (r *Repository) ClaimFirstAdminRole(ctx context.Context, tenantID string) (bool, error) {
+	client := r.factory.GetClient(ctx, tenantID, "test") // tenant-level, not env-scoped
+	n, err := client.Tenant.Update().
 		Where(
-			user.TenantID(tenantID),
-			user.EnvironmentEQ(user.Environment(env)),
+			tenant.ID(tenantID),
+			tenant.FirstAdminClaimed(false),
 		).
-		Count(ctx)
+		SetFirstAdminClaimed(true).
+		Save(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed counting users for tenant %s: %w", tenantID, err)
+		return false, fmt.Errorf("failed claiming first admin role for tenant %s: %w", tenantID, err)
 	}
-	return count, nil
+	return n == 1, nil
 }
 
 // FindApiKeyByHash retrieves an API key by its hash.

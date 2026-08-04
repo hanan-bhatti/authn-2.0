@@ -116,6 +116,20 @@ func (tu *TenantUpdate) ClearDomainVerificationToken() *TenantUpdate {
 	return tu
 }
 
+// SetFirstAdminClaimed sets the "first_admin_claimed" field.
+func (tu *TenantUpdate) SetFirstAdminClaimed(b bool) *TenantUpdate {
+	tu.mutation.SetFirstAdminClaimed(b)
+	return tu
+}
+
+// SetNillableFirstAdminClaimed sets the "first_admin_claimed" field if the given value is not nil.
+func (tu *TenantUpdate) SetNillableFirstAdminClaimed(b *bool) *TenantUpdate {
+	if b != nil {
+		tu.SetFirstAdminClaimed(*b)
+	}
+	return tu
+}
+
 // SetBrandingConfig sets the "branding_config" field.
 func (tu *TenantUpdate) SetBrandingConfig(m map[string]interface{}) *TenantUpdate {
 	tu.mutation.SetBrandingConfig(m)
@@ -474,6 +488,9 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if tu.mutation.DomainVerificationTokenCleared() {
 		_spec.ClearField(tenant.FieldDomainVerificationToken, field.TypeString)
+	}
+	if value, ok := tu.mutation.FirstAdminClaimed(); ok {
+		_spec.SetField(tenant.FieldFirstAdminClaimed, field.TypeBool, value)
 	}
 	if value, ok := tu.mutation.BrandingConfig(); ok {
 		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)
@@ -874,6 +891,20 @@ func (tuo *TenantUpdateOne) ClearDomainVerificationToken() *TenantUpdateOne {
 	return tuo
 }
 
+// SetFirstAdminClaimed sets the "first_admin_claimed" field.
+func (tuo *TenantUpdateOne) SetFirstAdminClaimed(b bool) *TenantUpdateOne {
+	tuo.mutation.SetFirstAdminClaimed(b)
+	return tuo
+}
+
+// SetNillableFirstAdminClaimed sets the "first_admin_claimed" field if the given value is not nil.
+func (tuo *TenantUpdateOne) SetNillableFirstAdminClaimed(b *bool) *TenantUpdateOne {
+	if b != nil {
+		tuo.SetFirstAdminClaimed(*b)
+	}
+	return tuo
+}
+
 // SetBrandingConfig sets the "branding_config" field.
 func (tuo *TenantUpdateOne) SetBrandingConfig(m map[string]interface{}) *TenantUpdateOne {
 	tuo.mutation.SetBrandingConfig(m)
@@ -1262,6 +1293,9 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if tuo.mutation.DomainVerificationTokenCleared() {
 		_spec.ClearField(tenant.FieldDomainVerificationToken, field.TypeString)
+	}
+	if value, ok := tuo.mutation.FirstAdminClaimed(); ok {
+		_spec.SetField(tenant.FieldFirstAdminClaimed, field.TypeBool, value)
 	}
 	if value, ok := tuo.mutation.BrandingConfig(); ok {
 		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)

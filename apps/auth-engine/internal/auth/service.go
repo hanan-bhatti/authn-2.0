@@ -246,18 +246,19 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 		return nil, "", "", ErrUserAlreadyExists
 	}
 
-	// Detect whether this is the first user in this tenant+environment.
-	// The first user is automatically granted the tenant_admin role so they can
-	// access the developer console without needing a manually issued sk_ key.
-	// Full RBAC (FR-12) will replace this coarse role with granular permissions.
-	existingCount, err := s.repo.CountUsersByTenant(ctx, tenantID, env)
+	// Atomically claim the tenant_admin role for the first user in this tenant.
+	// ClaimFirstAdminRole issues a conditional UPDATE at the DB level:
+	//   UPDATE tenants SET first_admin_claimed = true WHERE id = ? AND first_admin_claimed = false
+	// Only one concurrent signup can win (n=1 rows affected). All others get n=0.
+	// This eliminates the TOCTOU race that existed with the previous count-then-create approach.
+	claimed, err := s.repo.ClaimFirstAdminRole(ctx, tenantID)
 	if err != nil {
-		// Non-fatal: log and default to regular user if count query fails.
-		log.Printf("[AuthService] Warning: could not count users for tenant %s: %v", tenantID, err)
-		existingCount = 1
+		// Non-fatal: log and default to regular user if the claim query fails.
+		log.Printf("[AuthService] Warning: could not claim first admin role for tenant %s: %v", tenantID, err)
+		claimed = false
 	}
 	role := ""
-	if existingCount == 0 {
+	if claimed {
 		role = "tenant_admin"
 	}
 

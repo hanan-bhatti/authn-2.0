@@ -24,6 +24,8 @@ const (
 	FieldDomainVerified = "domain_verified"
 	// FieldDomainVerificationToken holds the string denoting the domain_verification_token field in the database.
 	FieldDomainVerificationToken = "domain_verification_token"
+	// FieldFirstAdminClaimed holds the string denoting the first_admin_claimed field in the database.
+	FieldFirstAdminClaimed = "first_admin_claimed"
 	// FieldBrandingConfig holds the string denoting the branding_config field in the database.
 	FieldBrandingConfig = "branding_config"
 	// FieldPasswordPolicy holds the string denoting the password_policy field in the database.
@@ -102,6 +104,7 @@ var Columns = []string{
 	FieldCustomDomain,
 	FieldDomainVerified,
 	FieldDomainVerificationToken,
+	FieldFirstAdminClaimed,
 	FieldBrandingConfig,
 	FieldPasswordPolicy,
 	FieldSecurityPolicy,
@@ -127,6 +130,8 @@ var (
 	SlugValidator func(string) error
 	// DefaultDomainVerified holds the default value on creation for the "domain_verified" field.
 	DefaultDomainVerified bool
+	// DefaultFirstAdminClaimed holds the default value on creation for the "first_admin_claimed" field.
+	DefaultFirstAdminClaimed bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -166,6 +171,11 @@ func ByDomainVerified(opts ...sql.OrderTermOption) OrderOption {
 // ByDomainVerificationToken orders the results by the domain_verification_token field.
 func ByDomainVerificationToken(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDomainVerificationToken, opts...).ToFunc()
+}
+
+// ByFirstAdminClaimed orders the results by the first_admin_claimed field.
+func ByFirstAdminClaimed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFirstAdminClaimed, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

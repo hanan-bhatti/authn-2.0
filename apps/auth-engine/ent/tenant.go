@@ -29,6 +29,8 @@ type Tenant struct {
 	DomainVerified bool `json:"domain_verified,omitempty"`
 	// TXT record token used for DNS ownership verification
 	DomainVerificationToken string `json:"domain_verification_token,omitempty"`
+	// Atomic flag: true once the first tenant_admin role has been claimed via signup. Set via a conditional UPDATE (WHERE first_admin_claimed = false) to prevent concurrent signups from both receiving tenant_admin (TOCTOU race fix).
+	FirstAdminClaimed bool `json:"first_admin_claimed,omitempty"`
 	// JSON blob containing brand colors, logo URL, custom CSS, and email templates
 	BrandingConfig map[string]interface{} `json:"branding_config,omitempty"`
 	// JSON blob containing password complexity policy rules
@@ -127,7 +129,7 @@ func (*Tenant) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy:
 			values[i] = new([]byte)
-		case tenant.FieldDomainVerified:
+		case tenant.FieldDomainVerified, tenant.FieldFirstAdminClaimed:
 			values[i] = new(sql.NullBool)
 		case tenant.FieldID, tenant.FieldName, tenant.FieldSlug, tenant.FieldCustomDomain, tenant.FieldDomainVerificationToken:
 			values[i] = new(sql.NullString)
@@ -184,6 +186,12 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field domain_verification_token", values[i])
 			} else if value.Valid {
 				t.DomainVerificationToken = value.String
+			}
+		case tenant.FieldFirstAdminClaimed:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field first_admin_claimed", values[i])
+			} else if value.Valid {
+				t.FirstAdminClaimed = value.Bool
 			}
 		case tenant.FieldBrandingConfig:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -311,6 +319,9 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("domain_verification_token=")
 	builder.WriteString(t.DomainVerificationToken)
+	builder.WriteString(", ")
+	builder.WriteString("first_admin_claimed=")
+	builder.WriteString(fmt.Sprintf("%v", t.FirstAdminClaimed))
 	builder.WriteString(", ")
 	builder.WriteString("branding_config=")
 	builder.WriteString(fmt.Sprintf("%v", t.BrandingConfig))

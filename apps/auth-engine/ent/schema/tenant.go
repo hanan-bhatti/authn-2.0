@@ -54,6 +54,9 @@ func (Tenant) Fields() []ent.Field {
 		field.String("domain_verification_token").
 			Optional().
 			Comment("TXT record token used for DNS ownership verification"),
+		field.Bool("first_admin_claimed").
+			Default(false).
+			Comment("Atomic flag: true once the first tenant_admin role has been claimed via signup. Set via a conditional UPDATE (WHERE first_admin_claimed = false) to prevent concurrent signups from both receiving tenant_admin (TOCTOU race fix)."),
 		field.JSON("branding_config", map[string]interface{}{}).
 			Optional().
 			Comment("JSON blob containing brand colors, logo URL, custom CSS, and email templates"),
