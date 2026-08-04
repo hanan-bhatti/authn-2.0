@@ -86,6 +86,19 @@ type EnvConfig struct {
 	WebAuthnRPDisplayName string   // e.g. "Authn Platform"
 }
 
+// SocialCallbackURL returns the exact redirect URI to register in each OAuth provider's console.
+// It is derived from AppBaseURL (AUTHN_BASE_URL / APP_BASE_URL env var) so it adapts to any
+// self-hosted domain, cloud domain, or local dev server — never hardcoded.
+//
+// Example: cfg.SocialCallbackURL("google")
+//
+//	→ "https://auth.acme.com/v1/client/auth/social/google/callback"
+//	→ "http://localhost:8080/v1/client/auth/social/google/callback"  (dev)
+func (c *EnvConfig) SocialCallbackURL(provider string) string {
+	base := strings.TrimRight(c.AppBaseURL, "/")
+	return base + "/v1/client/auth/social/" + provider + "/callback"
+}
+
 // loadDotEnv searches candidate paths for a .env file and populates missing process environment variables.
 func loadDotEnv() {
 	candidatePaths := []string{".env", "../.env", "../../.env", "../../../.env", "/home/hanan-bhatti/authn/.env"}
