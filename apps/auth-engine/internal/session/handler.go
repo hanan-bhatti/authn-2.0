@@ -16,8 +16,10 @@ package session
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
 type Handler struct {
@@ -45,8 +47,10 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware f
 	admin.Post("/revoke-all", h.AdminRevokeAllUserSessions)
 }
 
-func (h *Handler) ListSessions(c *fiber.Ctx) error {
+func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 	var userID string
+	var sessionID string
+
 	if val := c.Locals("user_id"); val != nil {
 		userID = val.(string)
 	} else if val := c.Locals("userID"); val != nil {
@@ -55,9 +59,31 @@ func (h *Handler) ListSessions(c *fiber.Ctx) error {
 		userID = val.(string)
 	}
 
-	currentSessionID := ""
-	if val := c.Locals("sessionID"); val != nil {
-		currentSessionID = val.(string)
+	if val := c.Locals("session_id"); val != nil {
+		sessionID = val.(string)
+	} else if val := c.Locals("sessionID"); val != nil {
+		sessionID = val.(string)
+	}
+
+	// If userID is missing, try parsing Authorization Bearer <jwt>
+	if userID == "" {
+		authHeader := c.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.AuthnEncryptionKey)
+			if err == nil && claims != nil {
+				userID = claims.Sub
+			}
+		}
+	}
+
+	return userID, sessionID
+}
+
+func (h *Handler) ListSessions(c *fiber.Ctx) error {
+	userID, currentSessionID := h.getUserIDAndSessionID(c)
+	if userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
 	}
 
 	sessions, err := h.svc.ListUserSessions(c.UserContext(), userID, currentSessionID)
@@ -76,9 +102,9 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	var userID string
-	if val := c.Locals("userID"); val != nil {
-		userID = val.(string)
+	userID, _ := h.getUserIDAndSessionID(c)
+	if userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
 	}
 
 	err := h.svc.RevokeSession(c.UserContext(), userID, req.SessionID)
@@ -90,14 +116,9 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 }
 
 func (h *Handler) RevokeOtherSessions(c *fiber.Ctx) error {
-	var userID string
-	if val := c.Locals("userID"); val != nil {
-		userID = val.(string)
-	}
-
-	var currentSessionID string
-	if val := c.Locals("sessionID"); val != nil {
-		currentSessionID = val.(string)
+	userID, currentSessionID := h.getUserIDAndSessionID(c)
+	if userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
 	}
 
 	count, err := h.svc.RevokeOtherSessions(c.UserContext(), userID, currentSessionID)
@@ -109,9 +130,9 @@ func (h *Handler) RevokeOtherSessions(c *fiber.Ctx) error {
 }
 
 func (h *Handler) RevokeAllSessions(c *fiber.Ctx) error {
-	var userID string
-	if val := c.Locals("userID"); val != nil {
-		userID = val.(string)
+	userID, _ := h.getUserIDAndSessionID(c)
+	if userID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
 	}
 
 	count, err := h.svc.RevokeAllSessions(c.UserContext(), userID)

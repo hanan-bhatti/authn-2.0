@@ -1338,7 +1338,132 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "13 Session Management (FR-8)",
+			"item": [
+				{
+					"name": "Token Refresh (RTR Exchange)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "refresh"]
+						},
+						"description": "Exchanges refresh token for new access/refresh tokens with 10s grace period and breach detection."
+					}
+				},
+				{
+					"name": "List Active Sessions (Client)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions"]
+						},
+						"description": "Lists all active sessions for current user with parsed browser/OS device info and is_current flag."
+					}
+				},
+				{
+					"name": "Revoke Specific Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"ses_123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions/revoke",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions", "revoke"]
+						},
+						"description": "Revokes a specific session by ID."
+					}
+				},
+				{
+					"name": "Revoke All Other Sessions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions/revoke-others",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions", "revoke-others"]
+						},
+						"description": "Revokes all active sessions except the current one."
+					}
+				},
+				{
+					"name": "Revoke All Sessions (Client Logout)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions/revoke-all",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions", "revoke-all"]
+						},
+						"description": "Revokes all active user sessions across all devices."
+					}
+				},
+				{
+					"name": "Admin List User Sessions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/sessions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_demo123", "sessions"]
+						},
+						"description": "Admin endpoint to view all active sessions for a specific user."
+					}
+				},
+				{
+					"name": "Admin Revoke All User Sessions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/sessions/revoke-all",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_demo123", "sessions", "revoke-all"]
+						},
+						"description": "Admin kill-switch to revoke all sessions for a user."
+					}
+				}
+			]
 		}
 	]
 }
+
 

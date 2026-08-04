@@ -88,8 +88,14 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `GET /v1/tenant/social-providers/:provider` — Get setup guide & configuration for specific provider
 - `PUT /v1/tenant/social-providers/:provider` — Configure provider client ID & encrypted secret with format validation
 - `DELETE /v1/tenant/social-providers/:provider` — Remove provider configuration
-- `GET /v1/client/auth/social/:provider/authorize` — Initiate social auth, generate 10-min CSRF state token & 302 redirect
-- `GET /v1/client/auth/social/:provider/callback` — OAuth2 callback handler (exchanges code, finds/creates user, issues JWT)
+### 2.12 Session Management & Revocation (FR-8)
+- `POST /v1/client/auth/refresh` — Rotate refresh token with 10s grace window & issue new JWT access token
+- `GET /v1/client/sessions` — List active sessions for authenticated user with device parsing & `is_current` flag
+- `POST /v1/client/sessions/revoke` — Revoke a specific session by ID
+- `POST /v1/client/sessions/revoke-others` — Revoke all active user sessions except current
+- `POST /v1/client/sessions/revoke-all` — Revoke all active user sessions
+- `GET /v1/admin/users/:user_id/sessions` — Admin list user sessions
+- `POST /v1/admin/users/:user_id/sessions/revoke-all` — Admin kill-switch to revoke all sessions for a user
 
 ---
 
@@ -233,17 +239,80 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - **Edge Cases**:
   - `400 Bad Request`: Provider not configured or missing `redirect_uri`.
 
-### 3.7 `GET /v1/client/auth/social/:provider/callback`
-- **Description**: Handles OAuth2 redirect callback from provider. One-time consumption of state token, exchanges code for access token, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
-- **Query Params**: `code` (OAuth code), `state` (CSRF state token).
-- **Response (200 OK or 302 Found)**:
+### 3.8 `POST /v1/client/auth/refresh`
+- **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a new 64-byte Refresh Token. Implements Refresh Token Rotation (RTR) with a 10-second grace window (`rotated_grace`) for handling concurrent parallel requests, and automatic compromise mitigation (revoking all sessions) if token reuse occurs after the 10-second grace window.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
+- **Request**:
+```json
+{
+  "refresh_token": "91c6044c-b80b-4897-9147-4a9a082c311c..."
+}
+```
+*(Also reads `authn_refresh_token` HTTP-only cookie if body field is omitted)*
+- **Response (200 OK)**:
 ```json
 {
   "access_token": "eyJhbGciOi...",
-  "token_type": "Bearer"
+  "refresh_token": "a1b2c3d4-...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "session_id": "ses_67f048b7"
 }
 ```
 - **Edge Cases & Error Codes**:
-  - `400 Bad Request`: Missing `code`/`state`, or state token expired/consumed (`social auth state not found or already consumed`).
-  - `409 Conflict` (`email_exists_social_account`): Email exists as a password account. Prevents credential injection via signup. Directs user to login first then link provider.
+  - `401 Unauthorized` (`session_expired`): Session reached absolute TTL or idle timeout.
+  - `401 Unauthorized` (`session_revoked`): Session was explicitly revoked.
+  - `401 Unauthorized` (`session_compromised`): Token reuse detected outside 10s grace window. Triggers immediate revocation of all user sessions.
+
+### 3.9 `GET /v1/client/sessions`
+- **Description**: Returns all active non-expired sessions for the authenticated user with User-Agent device parsing (`browser`, `os`, `device`, `label`) and `is_current` boolean flag.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Authorization: Bearer <jwt>`
+- **Response (200 OK)**:
+```json
+{
+  "sessions": [
+    {
+      "id": "ses_67f048b7",
+      "device": {
+        "browser": "Chrome",
+        "os": "macOS",
+        "device": "Desktop",
+        "label": "Chrome on macOS"
+      },
+      "ip_address": "192.168.1.100",
+      "location": "London, UK",
+      "last_active_at": "2026-08-05T02:00:51Z",
+      "created_at": "2026-08-05T01:30:00Z",
+      "is_current": true
+    }
+  ]
+}
+```
+
+### 3.10 `POST /v1/client/sessions/revoke`, `/revoke-others`, `/revoke-all`
+- **Description**: Allows authenticated users to manage their active login sessions.
+  - `/revoke`: Revokes a specific session by ID (`{"session_id": "ses_..."}`).
+  - `/revoke-others`: Revokes all active sessions for the user except current.
+  - `/revoke-all`: Revokes all active sessions for the user (logs out all devices).
+- **Headers**: `Authorization: Bearer <jwt>`
+- **Response (200 OK)**:
+```json
+{
+  "message": "all other sessions revoked",
+  "count": 3
+}
+```
+
+### 3.11 `GET /v1/admin/users/:user_id/sessions` & `POST /v1/admin/users/:user_id/sessions/revoke-all`
+- **Description**: Administrative endpoints for security teams to inspect active user sessions or trigger an emergency kill-switch to revoke all sessions for a compromised account.
+- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
+- **Response (200 OK)**:
+```json
+{
+  "message": "all sessions revoked for user",
+  "user_id": "usr_4d5a1533-735",
+  "count": 4
+}
+```
+
 

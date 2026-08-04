@@ -90,7 +90,7 @@
 - Pluggable Go `IdentityProvider` driver interface allowing admins to enable social login providers by entering client keys in the console:
   - Google, Apple, X (Twitter), Facebook, GitHub, Microsoft, Discord, LinkedIn, and generic OIDC providers.
 
-### FR-8: Session Management & SHA-256 Refresh Token Hashing
+### FR-8: Session Management & SHA-256 Refresh Token Hashing [Completed & Verified]
 - 64-byte high-entropy opaque refresh tokens stored strictly as SHA-256 hashes in the database.
 - Refresh token rotation on every exchange with a 10-second grace window to allow concurrent network requests.
 - Active session listing by device, browser, IP, and location with single-click remote session revocation.
