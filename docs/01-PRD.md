@@ -86,7 +86,7 @@
 - Public JWKS endpoint (`/v1/oauth/jwks` & `/.well-known/openid-configuration`) with RS256 signed ID tokens.
 - Strict exact-string matching for `redirect_uri` parameters (no wildcards) per OAuth 2.0 BCP.
 
-### FR-7: Pluggable Social Identity Drivers
+### FR-7: Pluggable Social Identity Drivers [Completed & Verified]
 - Pluggable Go `IdentityProvider` driver interface allowing admins to enable social login providers by entering client keys in the console:
   - Google, Apple, X (Twitter), Facebook, GitHub, Microsoft, Discord, LinkedIn, and generic OIDC providers.
 
