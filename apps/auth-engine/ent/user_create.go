@@ -13,10 +13,15 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/pushdevice"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/useripsubnethistory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 )
 
@@ -91,6 +96,62 @@ func (uc *UserCreate) SetEmailVerified(b bool) *UserCreate {
 func (uc *UserCreate) SetNillableEmailVerified(b *bool) *UserCreate {
 	if b != nil {
 		uc.SetEmailVerified(*b)
+	}
+	return uc
+}
+
+// SetEmailVerificationToken sets the "email_verification_token" field.
+func (uc *UserCreate) SetEmailVerificationToken(s string) *UserCreate {
+	uc.mutation.SetEmailVerificationToken(s)
+	return uc
+}
+
+// SetNillableEmailVerificationToken sets the "email_verification_token" field if the given value is not nil.
+func (uc *UserCreate) SetNillableEmailVerificationToken(s *string) *UserCreate {
+	if s != nil {
+		uc.SetEmailVerificationToken(*s)
+	}
+	return uc
+}
+
+// SetEmailVerificationExpiresAt sets the "email_verification_expires_at" field.
+func (uc *UserCreate) SetEmailVerificationExpiresAt(t time.Time) *UserCreate {
+	uc.mutation.SetEmailVerificationExpiresAt(t)
+	return uc
+}
+
+// SetNillableEmailVerificationExpiresAt sets the "email_verification_expires_at" field if the given value is not nil.
+func (uc *UserCreate) SetNillableEmailVerificationExpiresAt(t *time.Time) *UserCreate {
+	if t != nil {
+		uc.SetEmailVerificationExpiresAt(*t)
+	}
+	return uc
+}
+
+// SetMagicLinkToken sets the "magic_link_token" field.
+func (uc *UserCreate) SetMagicLinkToken(s string) *UserCreate {
+	uc.mutation.SetMagicLinkToken(s)
+	return uc
+}
+
+// SetNillableMagicLinkToken sets the "magic_link_token" field if the given value is not nil.
+func (uc *UserCreate) SetNillableMagicLinkToken(s *string) *UserCreate {
+	if s != nil {
+		uc.SetMagicLinkToken(*s)
+	}
+	return uc
+}
+
+// SetMagicLinkExpiresAt sets the "magic_link_expires_at" field.
+func (uc *UserCreate) SetMagicLinkExpiresAt(t time.Time) *UserCreate {
+	uc.mutation.SetMagicLinkExpiresAt(t)
+	return uc
+}
+
+// SetNillableMagicLinkExpiresAt sets the "magic_link_expires_at" field if the given value is not nil.
+func (uc *UserCreate) SetNillableMagicLinkExpiresAt(t *time.Time) *UserCreate {
+	if t != nil {
+		uc.SetMagicLinkExpiresAt(*t)
 	}
 	return uc
 }
@@ -196,6 +257,48 @@ func (uc *UserCreate) SetNillableLastSignInAt(t *time.Time) *UserCreate {
 // SetMetadata sets the "metadata" field.
 func (uc *UserCreate) SetMetadata(m map[string]interface{}) *UserCreate {
 	uc.mutation.SetMetadata(m)
+	return uc
+}
+
+// SetRecoveryFailedAttempts sets the "recovery_failed_attempts" field.
+func (uc *UserCreate) SetRecoveryFailedAttempts(i int) *UserCreate {
+	uc.mutation.SetRecoveryFailedAttempts(i)
+	return uc
+}
+
+// SetNillableRecoveryFailedAttempts sets the "recovery_failed_attempts" field if the given value is not nil.
+func (uc *UserCreate) SetNillableRecoveryFailedAttempts(i *int) *UserCreate {
+	if i != nil {
+		uc.SetRecoveryFailedAttempts(*i)
+	}
+	return uc
+}
+
+// SetRecoveryLockoutUntil sets the "recovery_lockout_until" field.
+func (uc *UserCreate) SetRecoveryLockoutUntil(t time.Time) *UserCreate {
+	uc.mutation.SetRecoveryLockoutUntil(t)
+	return uc
+}
+
+// SetNillableRecoveryLockoutUntil sets the "recovery_lockout_until" field if the given value is not nil.
+func (uc *UserCreate) SetNillableRecoveryLockoutUntil(t *time.Time) *UserCreate {
+	if t != nil {
+		uc.SetRecoveryLockoutUntil(*t)
+	}
+	return uc
+}
+
+// SetSecurityReviewRequired sets the "security_review_required" field.
+func (uc *UserCreate) SetSecurityReviewRequired(b bool) *UserCreate {
+	uc.mutation.SetSecurityReviewRequired(b)
+	return uc
+}
+
+// SetNillableSecurityReviewRequired sets the "security_review_required" field if the given value is not nil.
+func (uc *UserCreate) SetNillableSecurityReviewRequired(b *bool) *UserCreate {
+	if b != nil {
+		uc.SetSecurityReviewRequired(*b)
+	}
 	return uc
 }
 
@@ -328,6 +431,81 @@ func (uc *UserCreate) AddUserRoles(u ...*UserRole) *UserCreate {
 	return uc.AddUserRoleIDs(ids...)
 }
 
+// AddTrustedDeviceIDs adds the "trusted_devices" edge to the TrustedDevice entity by IDs.
+func (uc *UserCreate) AddTrustedDeviceIDs(ids ...string) *UserCreate {
+	uc.mutation.AddTrustedDeviceIDs(ids...)
+	return uc
+}
+
+// AddTrustedDevices adds the "trusted_devices" edges to the TrustedDevice entity.
+func (uc *UserCreate) AddTrustedDevices(t ...*TrustedDevice) *UserCreate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uc.AddTrustedDeviceIDs(ids...)
+}
+
+// AddIPSubnetHistoryIDs adds the "ip_subnet_history" edge to the UserIpSubnetHistory entity by IDs.
+func (uc *UserCreate) AddIPSubnetHistoryIDs(ids ...string) *UserCreate {
+	uc.mutation.AddIPSubnetHistoryIDs(ids...)
+	return uc
+}
+
+// AddIPSubnetHistory adds the "ip_subnet_history" edges to the UserIpSubnetHistory entity.
+func (uc *UserCreate) AddIPSubnetHistory(u ...*UserIpSubnetHistory) *UserCreate {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uc.AddIPSubnetHistoryIDs(ids...)
+}
+
+// AddRecoveryContactIDs adds the "recovery_contacts" edge to the RecoveryContact entity by IDs.
+func (uc *UserCreate) AddRecoveryContactIDs(ids ...string) *UserCreate {
+	uc.mutation.AddRecoveryContactIDs(ids...)
+	return uc
+}
+
+// AddRecoveryContacts adds the "recovery_contacts" edges to the RecoveryContact entity.
+func (uc *UserCreate) AddRecoveryContacts(r ...*RecoveryContact) *UserCreate {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uc.AddRecoveryContactIDs(ids...)
+}
+
+// AddPasswordHistoryIDs adds the "password_history" edge to the UserPasswordHistory entity by IDs.
+func (uc *UserCreate) AddPasswordHistoryIDs(ids ...string) *UserCreate {
+	uc.mutation.AddPasswordHistoryIDs(ids...)
+	return uc
+}
+
+// AddPasswordHistory adds the "password_history" edges to the UserPasswordHistory entity.
+func (uc *UserCreate) AddPasswordHistory(u ...*UserPasswordHistory) *UserCreate {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uc.AddPasswordHistoryIDs(ids...)
+}
+
+// AddRecoveryRequestIDs adds the "recovery_requests" edge to the RecoveryRequest entity by IDs.
+func (uc *UserCreate) AddRecoveryRequestIDs(ids ...string) *UserCreate {
+	uc.mutation.AddRecoveryRequestIDs(ids...)
+	return uc
+}
+
+// AddRecoveryRequests adds the "recovery_requests" edges to the RecoveryRequest entity.
+func (uc *UserCreate) AddRecoveryRequests(r ...*RecoveryRequest) *UserCreate {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uc.AddRecoveryRequestIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (uc *UserCreate) Mutation() *UserMutation {
 	return uc.mutation
@@ -379,6 +557,14 @@ func (uc *UserCreate) defaults() {
 		v := user.DefaultStatus
 		uc.mutation.SetStatus(v)
 	}
+	if _, ok := uc.mutation.RecoveryFailedAttempts(); !ok {
+		v := user.DefaultRecoveryFailedAttempts
+		uc.mutation.SetRecoveryFailedAttempts(v)
+	}
+	if _, ok := uc.mutation.SecurityReviewRequired(); !ok {
+		v := user.DefaultSecurityReviewRequired
+		uc.mutation.SetSecurityReviewRequired(v)
+	}
 	if _, ok := uc.mutation.CreatedAt(); !ok {
 		v := user.DefaultCreatedAt()
 		uc.mutation.SetCreatedAt(v)
@@ -428,6 +614,12 @@ func (uc *UserCreate) check() error {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
+	}
+	if _, ok := uc.mutation.RecoveryFailedAttempts(); !ok {
+		return &ValidationError{Name: "recovery_failed_attempts", err: errors.New(`ent: missing required field "User.recovery_failed_attempts"`)}
+	}
+	if _, ok := uc.mutation.SecurityReviewRequired(); !ok {
+		return &ValidationError{Name: "security_review_required", err: errors.New(`ent: missing required field "User.security_review_required"`)}
 	}
 	if _, ok := uc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "User.created_at"`)}
@@ -493,6 +685,22 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldEmailVerified, field.TypeBool, value)
 		_node.EmailVerified = value
 	}
+	if value, ok := uc.mutation.EmailVerificationToken(); ok {
+		_spec.SetField(user.FieldEmailVerificationToken, field.TypeString, value)
+		_node.EmailVerificationToken = &value
+	}
+	if value, ok := uc.mutation.EmailVerificationExpiresAt(); ok {
+		_spec.SetField(user.FieldEmailVerificationExpiresAt, field.TypeTime, value)
+		_node.EmailVerificationExpiresAt = &value
+	}
+	if value, ok := uc.mutation.MagicLinkToken(); ok {
+		_spec.SetField(user.FieldMagicLinkToken, field.TypeString, value)
+		_node.MagicLinkToken = &value
+	}
+	if value, ok := uc.mutation.MagicLinkExpiresAt(); ok {
+		_spec.SetField(user.FieldMagicLinkExpiresAt, field.TypeTime, value)
+		_node.MagicLinkExpiresAt = &value
+	}
 	if value, ok := uc.mutation.PhoneNumber(); ok {
 		_spec.SetField(user.FieldPhoneNumber, field.TypeString, value)
 		_node.PhoneNumber = value
@@ -524,6 +732,18 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := uc.mutation.Metadata(); ok {
 		_spec.SetField(user.FieldMetadata, field.TypeJSON, value)
 		_node.Metadata = value
+	}
+	if value, ok := uc.mutation.RecoveryFailedAttempts(); ok {
+		_spec.SetField(user.FieldRecoveryFailedAttempts, field.TypeInt, value)
+		_node.RecoveryFailedAttempts = value
+	}
+	if value, ok := uc.mutation.RecoveryLockoutUntil(); ok {
+		_spec.SetField(user.FieldRecoveryLockoutUntil, field.TypeTime, value)
+		_node.RecoveryLockoutUntil = &value
+	}
+	if value, ok := uc.mutation.SecurityReviewRequired(); ok {
+		_spec.SetField(user.FieldSecurityReviewRequired, field.TypeBool, value)
+		_node.SecurityReviewRequired = value
 	}
 	if value, ok := uc.mutation.CreatedAt(); ok {
 		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)
@@ -639,6 +859,86 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(userrole.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.TrustedDevicesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.IPSubnetHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.RecoveryContactsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.PasswordHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.RecoveryRequestsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

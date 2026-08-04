@@ -30,16 +30,28 @@ type Tx struct {
 	Permission *PermissionClient
 	// PushDevice is the client for interacting with the PushDevice builders.
 	PushDevice *PushDeviceClient
+	// RecoveryContact is the client for interacting with the RecoveryContact builders.
+	RecoveryContact *RecoveryContactClient
+	// RecoveryRequest is the client for interacting with the RecoveryRequest builders.
+	RecoveryRequest *RecoveryRequestClient
 	// Role is the client for interacting with the Role builders.
 	Role *RoleClient
+	// SecurityBlacklist is the client for interacting with the SecurityBlacklist builders.
+	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
+	// TrustedDevice is the client for interacting with the TrustedDevice builders.
+	TrustedDevice *TrustedDeviceClient
 	// TwoFactorMethod is the client for interacting with the TwoFactorMethod builders.
 	TwoFactorMethod *TwoFactorMethodClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// UserIpSubnetHistory is the client for interacting with the UserIpSubnetHistory builders.
+	UserIpSubnetHistory *UserIpSubnetHistoryClient
+	// UserPasswordHistory is the client for interacting with the UserPasswordHistory builders.
+	UserPasswordHistory *UserPasswordHistoryClient
 	// UserRole is the client for interacting with the UserRole builders.
 	UserRole *UserRoleClient
 	// WebhookEndpoint is the client for interacting with the WebhookEndpoint builders.
@@ -186,11 +198,17 @@ func (tx *Tx) init() {
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.Permission = NewPermissionClient(tx.config)
 	tx.PushDevice = NewPushDeviceClient(tx.config)
+	tx.RecoveryContact = NewRecoveryContactClient(tx.config)
+	tx.RecoveryRequest = NewRecoveryRequestClient(tx.config)
 	tx.Role = NewRoleClient(tx.config)
+	tx.SecurityBlacklist = NewSecurityBlacklistClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.Tenant = NewTenantClient(tx.config)
+	tx.TrustedDevice = NewTrustedDeviceClient(tx.config)
 	tx.TwoFactorMethod = NewTwoFactorMethodClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.UserIpSubnetHistory = NewUserIpSubnetHistoryClient(tx.config)
+	tx.UserPasswordHistory = NewUserPasswordHistoryClient(tx.config)
 	tx.UserRole = NewUserRoleClient(tx.config)
 	tx.WebhookEndpoint = NewWebhookEndpointClient(tx.config)
 	tx.WebhookEvent = NewWebhookEventClient(tx.config)

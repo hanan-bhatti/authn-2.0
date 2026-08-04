@@ -92,6 +92,18 @@ func (tc *TenantCreate) SetPasswordPolicy(m map[string]interface{}) *TenantCreat
 	return tc
 }
 
+// SetSecurityPolicy sets the "security_policy" field.
+func (tc *TenantCreate) SetSecurityPolicy(m map[string]interface{}) *TenantCreate {
+	tc.mutation.SetSecurityPolicy(m)
+	return tc
+}
+
+// SetRecoveryPolicy sets the "recovery_policy" field.
+func (tc *TenantCreate) SetRecoveryPolicy(m map[string]interface{}) *TenantCreate {
+	tc.mutation.SetRecoveryPolicy(m)
+	return tc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (tc *TenantCreate) SetCreatedAt(t time.Time) *TenantCreate {
 	tc.mutation.SetCreatedAt(t)
@@ -354,6 +366,14 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.PasswordPolicy(); ok {
 		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
 		_node.PasswordPolicy = value
+	}
+	if value, ok := tc.mutation.SecurityPolicy(); ok {
+		_spec.SetField(tenant.FieldSecurityPolicy, field.TypeJSON, value)
+		_node.SecurityPolicy = value
+	}
+	if value, ok := tc.mutation.RecoveryPolicy(); ok {
+		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
+		_node.RecoveryPolicy = value
 	}
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(tenant.FieldCreatedAt, field.TypeTime, value)

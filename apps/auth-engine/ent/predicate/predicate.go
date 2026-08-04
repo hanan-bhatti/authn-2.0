@@ -33,8 +33,17 @@ type Permission func(*sql.Selector)
 // PushDevice is the predicate function for pushdevice builders.
 type PushDevice func(*sql.Selector)
 
+// RecoveryContact is the predicate function for recoverycontact builders.
+type RecoveryContact func(*sql.Selector)
+
+// RecoveryRequest is the predicate function for recoveryrequest builders.
+type RecoveryRequest func(*sql.Selector)
+
 // Role is the predicate function for role builders.
 type Role func(*sql.Selector)
+
+// SecurityBlacklist is the predicate function for securityblacklist builders.
+type SecurityBlacklist func(*sql.Selector)
 
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
@@ -42,11 +51,20 @@ type Session func(*sql.Selector)
 // Tenant is the predicate function for tenant builders.
 type Tenant func(*sql.Selector)
 
+// TrustedDevice is the predicate function for trusteddevice builders.
+type TrustedDevice func(*sql.Selector)
+
 // TwoFactorMethod is the predicate function for twofactormethod builders.
 type TwoFactorMethod func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
+
+// UserIpSubnetHistory is the predicate function for useripsubnethistory builders.
+type UserIpSubnetHistory func(*sql.Selector)
+
+// UserPasswordHistory is the predicate function for userpasswordhistory builders.
+type UserPasswordHistory func(*sql.Selector)
 
 // UserRole is the predicate function for userrole builders.
 type UserRole func(*sql.Selector)

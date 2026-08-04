@@ -129,6 +129,39 @@ func (tfmu *TwoFactorMethodUpdate) ClearPublicKey() *TwoFactorMethodUpdate {
 	return tfmu
 }
 
+// SetSignCount sets the "sign_count" field.
+func (tfmu *TwoFactorMethodUpdate) SetSignCount(u uint32) *TwoFactorMethodUpdate {
+	tfmu.mutation.ResetSignCount()
+	tfmu.mutation.SetSignCount(u)
+	return tfmu
+}
+
+// SetNillableSignCount sets the "sign_count" field if the given value is not nil.
+func (tfmu *TwoFactorMethodUpdate) SetNillableSignCount(u *uint32) *TwoFactorMethodUpdate {
+	if u != nil {
+		tfmu.SetSignCount(*u)
+	}
+	return tfmu
+}
+
+// AddSignCount adds u to the "sign_count" field.
+func (tfmu *TwoFactorMethodUpdate) AddSignCount(u int32) *TwoFactorMethodUpdate {
+	tfmu.mutation.AddSignCount(u)
+	return tfmu
+}
+
+// SetWebauthnMetadata sets the "webauthn_metadata" field.
+func (tfmu *TwoFactorMethodUpdate) SetWebauthnMetadata(m map[string]interface{}) *TwoFactorMethodUpdate {
+	tfmu.mutation.SetWebauthnMetadata(m)
+	return tfmu
+}
+
+// ClearWebauthnMetadata clears the value of the "webauthn_metadata" field.
+func (tfmu *TwoFactorMethodUpdate) ClearWebauthnMetadata() *TwoFactorMethodUpdate {
+	tfmu.mutation.ClearWebauthnMetadata()
+	return tfmu
+}
+
 // SetIsEnabled sets the "is_enabled" field.
 func (tfmu *TwoFactorMethodUpdate) SetIsEnabled(b bool) *TwoFactorMethodUpdate {
 	tfmu.mutation.SetIsEnabled(b)
@@ -262,6 +295,18 @@ func (tfmu *TwoFactorMethodUpdate) sqlSave(ctx context.Context) (n int, err erro
 	}
 	if tfmu.mutation.PublicKeyCleared() {
 		_spec.ClearField(twofactormethod.FieldPublicKey, field.TypeBytes)
+	}
+	if value, ok := tfmu.mutation.SignCount(); ok {
+		_spec.SetField(twofactormethod.FieldSignCount, field.TypeUint32, value)
+	}
+	if value, ok := tfmu.mutation.AddedSignCount(); ok {
+		_spec.AddField(twofactormethod.FieldSignCount, field.TypeUint32, value)
+	}
+	if value, ok := tfmu.mutation.WebauthnMetadata(); ok {
+		_spec.SetField(twofactormethod.FieldWebauthnMetadata, field.TypeJSON, value)
+	}
+	if tfmu.mutation.WebauthnMetadataCleared() {
+		_spec.ClearField(twofactormethod.FieldWebauthnMetadata, field.TypeJSON)
 	}
 	if value, ok := tfmu.mutation.IsEnabled(); ok {
 		_spec.SetField(twofactormethod.FieldIsEnabled, field.TypeBool, value)
@@ -418,6 +463,39 @@ func (tfmuo *TwoFactorMethodUpdateOne) SetPublicKey(b []byte) *TwoFactorMethodUp
 // ClearPublicKey clears the value of the "public_key" field.
 func (tfmuo *TwoFactorMethodUpdateOne) ClearPublicKey() *TwoFactorMethodUpdateOne {
 	tfmuo.mutation.ClearPublicKey()
+	return tfmuo
+}
+
+// SetSignCount sets the "sign_count" field.
+func (tfmuo *TwoFactorMethodUpdateOne) SetSignCount(u uint32) *TwoFactorMethodUpdateOne {
+	tfmuo.mutation.ResetSignCount()
+	tfmuo.mutation.SetSignCount(u)
+	return tfmuo
+}
+
+// SetNillableSignCount sets the "sign_count" field if the given value is not nil.
+func (tfmuo *TwoFactorMethodUpdateOne) SetNillableSignCount(u *uint32) *TwoFactorMethodUpdateOne {
+	if u != nil {
+		tfmuo.SetSignCount(*u)
+	}
+	return tfmuo
+}
+
+// AddSignCount adds u to the "sign_count" field.
+func (tfmuo *TwoFactorMethodUpdateOne) AddSignCount(u int32) *TwoFactorMethodUpdateOne {
+	tfmuo.mutation.AddSignCount(u)
+	return tfmuo
+}
+
+// SetWebauthnMetadata sets the "webauthn_metadata" field.
+func (tfmuo *TwoFactorMethodUpdateOne) SetWebauthnMetadata(m map[string]interface{}) *TwoFactorMethodUpdateOne {
+	tfmuo.mutation.SetWebauthnMetadata(m)
+	return tfmuo
+}
+
+// ClearWebauthnMetadata clears the value of the "webauthn_metadata" field.
+func (tfmuo *TwoFactorMethodUpdateOne) ClearWebauthnMetadata() *TwoFactorMethodUpdateOne {
+	tfmuo.mutation.ClearWebauthnMetadata()
 	return tfmuo
 }
 
@@ -584,6 +662,18 @@ func (tfmuo *TwoFactorMethodUpdateOne) sqlSave(ctx context.Context) (_node *TwoF
 	}
 	if tfmuo.mutation.PublicKeyCleared() {
 		_spec.ClearField(twofactormethod.FieldPublicKey, field.TypeBytes)
+	}
+	if value, ok := tfmuo.mutation.SignCount(); ok {
+		_spec.SetField(twofactormethod.FieldSignCount, field.TypeUint32, value)
+	}
+	if value, ok := tfmuo.mutation.AddedSignCount(); ok {
+		_spec.AddField(twofactormethod.FieldSignCount, field.TypeUint32, value)
+	}
+	if value, ok := tfmuo.mutation.WebauthnMetadata(); ok {
+		_spec.SetField(twofactormethod.FieldWebauthnMetadata, field.TypeJSON, value)
+	}
+	if tfmuo.mutation.WebauthnMetadataCleared() {
+		_spec.ClearField(twofactormethod.FieldWebauthnMetadata, field.TypeJSON)
 	}
 	if value, ok := tfmuo.mutation.IsEnabled(); ok {
 		_spec.SetField(twofactormethod.FieldIsEnabled, field.TypeBool, value)

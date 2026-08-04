@@ -27,6 +27,10 @@ const (
 	FieldCredentialID = "credential_id"
 	// FieldPublicKey holds the string denoting the public_key field in the database.
 	FieldPublicKey = "public_key"
+	// FieldSignCount holds the string denoting the sign_count field in the database.
+	FieldSignCount = "sign_count"
+	// FieldWebauthnMetadata holds the string denoting the webauthn_metadata field in the database.
+	FieldWebauthnMetadata = "webauthn_metadata"
 	// FieldIsEnabled holds the string denoting the is_enabled field in the database.
 	FieldIsEnabled = "is_enabled"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
@@ -55,6 +59,8 @@ var Columns = []string{
 	FieldSecretEncrypted,
 	FieldCredentialID,
 	FieldPublicKey,
+	FieldSignCount,
+	FieldWebauthnMetadata,
 	FieldIsEnabled,
 	FieldLastUsedAt,
 	FieldCreatedAt,
@@ -73,6 +79,8 @@ func ValidColumn(column string) bool {
 var (
 	// UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
 	UserIDValidator func(string) error
+	// DefaultSignCount holds the default value on creation for the "sign_count" field.
+	DefaultSignCount uint32
 	// DefaultIsEnabled holds the default value on creation for the "is_enabled" field.
 	DefaultIsEnabled bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -136,6 +144,11 @@ func BySecretEncrypted(opts ...sql.OrderTermOption) OrderOption {
 // ByCredentialID orders the results by the credential_id field.
 func ByCredentialID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCredentialID, opts...).ToFunc()
+}
+
+// BySignCount orders the results by the sign_count field.
+func BySignCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSignCount, opts...).ToFunc()
 }
 
 // ByIsEnabled orders the results by the is_enabled field.

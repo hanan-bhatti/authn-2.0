@@ -27,6 +27,14 @@ const (
 	FieldPasswordHash = "password_hash"
 	// FieldEmailVerified holds the string denoting the email_verified field in the database.
 	FieldEmailVerified = "email_verified"
+	// FieldEmailVerificationToken holds the string denoting the email_verification_token field in the database.
+	FieldEmailVerificationToken = "email_verification_token"
+	// FieldEmailVerificationExpiresAt holds the string denoting the email_verification_expires_at field in the database.
+	FieldEmailVerificationExpiresAt = "email_verification_expires_at"
+	// FieldMagicLinkToken holds the string denoting the magic_link_token field in the database.
+	FieldMagicLinkToken = "magic_link_token"
+	// FieldMagicLinkExpiresAt holds the string denoting the magic_link_expires_at field in the database.
+	FieldMagicLinkExpiresAt = "magic_link_expires_at"
 	// FieldPhoneNumber holds the string denoting the phone_number field in the database.
 	FieldPhoneNumber = "phone_number"
 	// FieldPhoneVerified holds the string denoting the phone_verified field in the database.
@@ -43,6 +51,12 @@ const (
 	FieldLastSignInAt = "last_sign_in_at"
 	// FieldMetadata holds the string denoting the metadata field in the database.
 	FieldMetadata = "metadata"
+	// FieldRecoveryFailedAttempts holds the string denoting the recovery_failed_attempts field in the database.
+	FieldRecoveryFailedAttempts = "recovery_failed_attempts"
+	// FieldRecoveryLockoutUntil holds the string denoting the recovery_lockout_until field in the database.
+	FieldRecoveryLockoutUntil = "recovery_lockout_until"
+	// FieldSecurityReviewRequired holds the string denoting the security_review_required field in the database.
+	FieldSecurityReviewRequired = "security_review_required"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -61,6 +75,16 @@ const (
 	EdgeOrgMemberships = "org_memberships"
 	// EdgeUserRoles holds the string denoting the user_roles edge name in mutations.
 	EdgeUserRoles = "user_roles"
+	// EdgeTrustedDevices holds the string denoting the trusted_devices edge name in mutations.
+	EdgeTrustedDevices = "trusted_devices"
+	// EdgeIPSubnetHistory holds the string denoting the ip_subnet_history edge name in mutations.
+	EdgeIPSubnetHistory = "ip_subnet_history"
+	// EdgeRecoveryContacts holds the string denoting the recovery_contacts edge name in mutations.
+	EdgeRecoveryContacts = "recovery_contacts"
+	// EdgePasswordHistory holds the string denoting the password_history edge name in mutations.
+	EdgePasswordHistory = "password_history"
+	// EdgeRecoveryRequests holds the string denoting the recovery_requests edge name in mutations.
+	EdgeRecoveryRequests = "recovery_requests"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// TenantTable is the table that holds the tenant relation/edge.
@@ -112,6 +136,41 @@ const (
 	UserRolesInverseTable = "user_roles"
 	// UserRolesColumn is the table column denoting the user_roles relation/edge.
 	UserRolesColumn = "user_id"
+	// TrustedDevicesTable is the table that holds the trusted_devices relation/edge.
+	TrustedDevicesTable = "trusted_devices"
+	// TrustedDevicesInverseTable is the table name for the TrustedDevice entity.
+	// It exists in this package in order to avoid circular dependency with the "trusteddevice" package.
+	TrustedDevicesInverseTable = "trusted_devices"
+	// TrustedDevicesColumn is the table column denoting the trusted_devices relation/edge.
+	TrustedDevicesColumn = "user_id"
+	// IPSubnetHistoryTable is the table that holds the ip_subnet_history relation/edge.
+	IPSubnetHistoryTable = "user_ip_subnet_histories"
+	// IPSubnetHistoryInverseTable is the table name for the UserIpSubnetHistory entity.
+	// It exists in this package in order to avoid circular dependency with the "useripsubnethistory" package.
+	IPSubnetHistoryInverseTable = "user_ip_subnet_histories"
+	// IPSubnetHistoryColumn is the table column denoting the ip_subnet_history relation/edge.
+	IPSubnetHistoryColumn = "user_id"
+	// RecoveryContactsTable is the table that holds the recovery_contacts relation/edge.
+	RecoveryContactsTable = "recovery_contacts"
+	// RecoveryContactsInverseTable is the table name for the RecoveryContact entity.
+	// It exists in this package in order to avoid circular dependency with the "recoverycontact" package.
+	RecoveryContactsInverseTable = "recovery_contacts"
+	// RecoveryContactsColumn is the table column denoting the recovery_contacts relation/edge.
+	RecoveryContactsColumn = "user_id"
+	// PasswordHistoryTable is the table that holds the password_history relation/edge.
+	PasswordHistoryTable = "user_password_histories"
+	// PasswordHistoryInverseTable is the table name for the UserPasswordHistory entity.
+	// It exists in this package in order to avoid circular dependency with the "userpasswordhistory" package.
+	PasswordHistoryInverseTable = "user_password_histories"
+	// PasswordHistoryColumn is the table column denoting the password_history relation/edge.
+	PasswordHistoryColumn = "user_id"
+	// RecoveryRequestsTable is the table that holds the recovery_requests relation/edge.
+	RecoveryRequestsTable = "recovery_requests"
+	// RecoveryRequestsInverseTable is the table name for the RecoveryRequest entity.
+	// It exists in this package in order to avoid circular dependency with the "recoveryrequest" package.
+	RecoveryRequestsInverseTable = "recovery_requests"
+	// RecoveryRequestsColumn is the table column denoting the recovery_requests relation/edge.
+	RecoveryRequestsColumn = "user_id"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -123,6 +182,10 @@ var Columns = []string{
 	FieldUsername,
 	FieldPasswordHash,
 	FieldEmailVerified,
+	FieldEmailVerificationToken,
+	FieldEmailVerificationExpiresAt,
+	FieldMagicLinkToken,
+	FieldMagicLinkExpiresAt,
 	FieldPhoneNumber,
 	FieldPhoneVerified,
 	FieldName,
@@ -131,6 +194,9 @@ var Columns = []string{
 	FieldStatus,
 	FieldLastSignInAt,
 	FieldMetadata,
+	FieldRecoveryFailedAttempts,
+	FieldRecoveryLockoutUntil,
+	FieldSecurityReviewRequired,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -154,6 +220,10 @@ var (
 	DefaultEmailVerified bool
 	// DefaultPhoneVerified holds the default value on creation for the "phone_verified" field.
 	DefaultPhoneVerified bool
+	// DefaultRecoveryFailedAttempts holds the default value on creation for the "recovery_failed_attempts" field.
+	DefaultRecoveryFailedAttempts int
+	// DefaultSecurityReviewRequired holds the default value on creation for the "security_review_required" field.
+	DefaultSecurityReviewRequired bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -253,6 +323,26 @@ func ByEmailVerified(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEmailVerified, opts...).ToFunc()
 }
 
+// ByEmailVerificationToken orders the results by the email_verification_token field.
+func ByEmailVerificationToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEmailVerificationToken, opts...).ToFunc()
+}
+
+// ByEmailVerificationExpiresAt orders the results by the email_verification_expires_at field.
+func ByEmailVerificationExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEmailVerificationExpiresAt, opts...).ToFunc()
+}
+
+// ByMagicLinkToken orders the results by the magic_link_token field.
+func ByMagicLinkToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMagicLinkToken, opts...).ToFunc()
+}
+
+// ByMagicLinkExpiresAt orders the results by the magic_link_expires_at field.
+func ByMagicLinkExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMagicLinkExpiresAt, opts...).ToFunc()
+}
+
 // ByPhoneNumber orders the results by the phone_number field.
 func ByPhoneNumber(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPhoneNumber, opts...).ToFunc()
@@ -286,6 +376,21 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSignInAt orders the results by the last_sign_in_at field.
 func ByLastSignInAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSignInAt, opts...).ToFunc()
+}
+
+// ByRecoveryFailedAttempts orders the results by the recovery_failed_attempts field.
+func ByRecoveryFailedAttempts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRecoveryFailedAttempts, opts...).ToFunc()
+}
+
+// ByRecoveryLockoutUntil orders the results by the recovery_lockout_until field.
+func ByRecoveryLockoutUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRecoveryLockoutUntil, opts...).ToFunc()
+}
+
+// BySecurityReviewRequired orders the results by the security_review_required field.
+func BySecurityReviewRequired(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSecurityReviewRequired, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
@@ -388,6 +493,76 @@ func ByUserRoles(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserRolesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByTrustedDevicesCount orders the results by trusted_devices count.
+func ByTrustedDevicesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTrustedDevicesStep(), opts...)
+	}
+}
+
+// ByTrustedDevices orders the results by trusted_devices terms.
+func ByTrustedDevices(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTrustedDevicesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByIPSubnetHistoryCount orders the results by ip_subnet_history count.
+func ByIPSubnetHistoryCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newIPSubnetHistoryStep(), opts...)
+	}
+}
+
+// ByIPSubnetHistory orders the results by ip_subnet_history terms.
+func ByIPSubnetHistory(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newIPSubnetHistoryStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByRecoveryContactsCount orders the results by recovery_contacts count.
+func ByRecoveryContactsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRecoveryContactsStep(), opts...)
+	}
+}
+
+// ByRecoveryContacts orders the results by recovery_contacts terms.
+func ByRecoveryContacts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRecoveryContactsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByPasswordHistoryCount orders the results by password_history count.
+func ByPasswordHistoryCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPasswordHistoryStep(), opts...)
+	}
+}
+
+// ByPasswordHistory orders the results by password_history terms.
+func ByPasswordHistory(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPasswordHistoryStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByRecoveryRequestsCount orders the results by recovery_requests count.
+func ByRecoveryRequestsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRecoveryRequestsStep(), opts...)
+	}
+}
+
+// ByRecoveryRequests orders the results by recovery_requests terms.
+func ByRecoveryRequests(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRecoveryRequestsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newTenantStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -435,5 +610,40 @@ func newUserRolesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserRolesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UserRolesTable, UserRolesColumn),
+	)
+}
+func newTrustedDevicesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TrustedDevicesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, TrustedDevicesTable, TrustedDevicesColumn),
+	)
+}
+func newIPSubnetHistoryStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(IPSubnetHistoryInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, IPSubnetHistoryTable, IPSubnetHistoryColumn),
+	)
+}
+func newRecoveryContactsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RecoveryContactsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RecoveryContactsTable, RecoveryContactsColumn),
+	)
+}
+func newPasswordHistoryStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PasswordHistoryInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, PasswordHistoryTable, PasswordHistoryColumn),
+	)
+}
+func newRecoveryRequestsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RecoveryRequestsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RecoveryRequestsTable, RecoveryRequestsColumn),
 	)
 }

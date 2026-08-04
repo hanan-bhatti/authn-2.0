@@ -48,13 +48,19 @@ func (TwoFactorMethod) Fields() []ent.Field {
 		field.String("secret_encrypted").
 			Optional().
 			Sensitive().
-			Comment("AES-256-GCM encrypted secret or recovery code string"),
+			Comment("AES-256-GCM encrypted TOTP secret, Argon2id hashed recovery code, or AES-256-GCM encrypted phone number for PII privacy protection (type=sms). Unused/NULL for type=passkey"),
 		field.String("credential_id").
 			Optional().
 			Comment("WebAuthn Passkey credential ID or device identifier"),
 		field.Bytes("public_key").
 			Optional().
 			Comment("WebAuthn COSE public key bytes"),
+		field.Uint32("sign_count").
+			Default(0).
+			Comment("WebAuthn signature counter for clone detection"),
+		field.JSON("webauthn_metadata", map[string]interface{}{}).
+			Optional().
+			Comment("WebAuthn metadata (AAGUID, attestation type, flags, transports)"),
 		field.Bool("is_enabled").
 			Default(true).
 			Comment("Flag indicating if this 2FA method is active"),

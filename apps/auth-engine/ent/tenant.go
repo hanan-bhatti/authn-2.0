@@ -33,6 +33,10 @@ type Tenant struct {
 	BrandingConfig map[string]interface{} `json:"branding_config,omitempty"`
 	// JSON blob containing password complexity policy rules
 	PasswordPolicy map[string]interface{} `json:"password_policy,omitempty"`
+	// JSON blob containing tenant security policy settings (require_email_verification, email_verification_mode)
+	SecurityPolicy map[string]interface{} `json:"security_policy,omitempty"`
+	// JSON blob containing tenant account recovery policy rules
+	RecoveryPolicy map[string]interface{} `json:"recovery_policy,omitempty"`
 	// Timestamp when the tenant was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when the tenant was last updated
@@ -121,7 +125,7 @@ func (*Tenant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy:
+		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy:
 			values[i] = new([]byte)
 		case tenant.FieldDomainVerified:
 			values[i] = new(sql.NullBool)
@@ -195,6 +199,22 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &t.PasswordPolicy); err != nil {
 					return fmt.Errorf("unmarshal field password_policy: %w", err)
+				}
+			}
+		case tenant.FieldSecurityPolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field security_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &t.SecurityPolicy); err != nil {
+					return fmt.Errorf("unmarshal field security_policy: %w", err)
+				}
+			}
+		case tenant.FieldRecoveryPolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field recovery_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &t.RecoveryPolicy); err != nil {
+					return fmt.Errorf("unmarshal field recovery_policy: %w", err)
 				}
 			}
 		case tenant.FieldCreatedAt:
@@ -297,6 +317,12 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("password_policy=")
 	builder.WriteString(fmt.Sprintf("%v", t.PasswordPolicy))
+	builder.WriteString(", ")
+	builder.WriteString("security_policy=")
+	builder.WriteString(fmt.Sprintf("%v", t.SecurityPolicy))
+	builder.WriteString(", ")
+	builder.WriteString("recovery_policy=")
+	builder.WriteString(fmt.Sprintf("%v", t.RecoveryPolicy))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(t.CreatedAt.Format(time.ANSIC))

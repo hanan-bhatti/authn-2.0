@@ -90,6 +90,26 @@ func EmailVerified(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldEmailVerified, v))
 }
 
+// EmailVerificationToken applies equality check predicate on the "email_verification_token" field. It's identical to EmailVerificationTokenEQ.
+func EmailVerificationToken(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationExpiresAt applies equality check predicate on the "email_verification_expires_at" field. It's identical to EmailVerificationExpiresAtEQ.
+func EmailVerificationExpiresAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldEmailVerificationExpiresAt, v))
+}
+
+// MagicLinkToken applies equality check predicate on the "magic_link_token" field. It's identical to MagicLinkTokenEQ.
+func MagicLinkToken(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMagicLinkToken, v))
+}
+
+// MagicLinkExpiresAt applies equality check predicate on the "magic_link_expires_at" field. It's identical to MagicLinkExpiresAtEQ.
+func MagicLinkExpiresAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMagicLinkExpiresAt, v))
+}
+
 // PhoneNumber applies equality check predicate on the "phone_number" field. It's identical to PhoneNumberEQ.
 func PhoneNumber(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldPhoneNumber, v))
@@ -118,6 +138,21 @@ func Locale(v string) predicate.User {
 // LastSignInAt applies equality check predicate on the "last_sign_in_at" field. It's identical to LastSignInAtEQ.
 func LastSignInAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldLastSignInAt, v))
+}
+
+// RecoveryFailedAttempts applies equality check predicate on the "recovery_failed_attempts" field. It's identical to RecoveryFailedAttemptsEQ.
+func RecoveryFailedAttempts(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryLockoutUntil applies equality check predicate on the "recovery_lockout_until" field. It's identical to RecoveryLockoutUntilEQ.
+func RecoveryLockoutUntil(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRecoveryLockoutUntil, v))
+}
+
+// SecurityReviewRequired applies equality check predicate on the "security_review_required" field. It's identical to SecurityReviewRequiredEQ.
+func SecurityReviewRequired(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSecurityReviewRequired, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -438,6 +473,256 @@ func EmailVerifiedEQ(v bool) predicate.User {
 // EmailVerifiedNEQ applies the NEQ predicate on the "email_verified" field.
 func EmailVerifiedNEQ(v bool) predicate.User {
 	return predicate.User(sql.FieldNEQ(FieldEmailVerified, v))
+}
+
+// EmailVerificationTokenEQ applies the EQ predicate on the "email_verification_token" field.
+func EmailVerificationTokenEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenNEQ applies the NEQ predicate on the "email_verification_token" field.
+func EmailVerificationTokenNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenIn applies the In predicate on the "email_verification_token" field.
+func EmailVerificationTokenIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldEmailVerificationToken, vs...))
+}
+
+// EmailVerificationTokenNotIn applies the NotIn predicate on the "email_verification_token" field.
+func EmailVerificationTokenNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldEmailVerificationToken, vs...))
+}
+
+// EmailVerificationTokenGT applies the GT predicate on the "email_verification_token" field.
+func EmailVerificationTokenGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenGTE applies the GTE predicate on the "email_verification_token" field.
+func EmailVerificationTokenGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenLT applies the LT predicate on the "email_verification_token" field.
+func EmailVerificationTokenLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenLTE applies the LTE predicate on the "email_verification_token" field.
+func EmailVerificationTokenLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenContains applies the Contains predicate on the "email_verification_token" field.
+func EmailVerificationTokenContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenHasPrefix applies the HasPrefix predicate on the "email_verification_token" field.
+func EmailVerificationTokenHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenHasSuffix applies the HasSuffix predicate on the "email_verification_token" field.
+func EmailVerificationTokenHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenIsNil applies the IsNil predicate on the "email_verification_token" field.
+func EmailVerificationTokenIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldEmailVerificationToken))
+}
+
+// EmailVerificationTokenNotNil applies the NotNil predicate on the "email_verification_token" field.
+func EmailVerificationTokenNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldEmailVerificationToken))
+}
+
+// EmailVerificationTokenEqualFold applies the EqualFold predicate on the "email_verification_token" field.
+func EmailVerificationTokenEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationTokenContainsFold applies the ContainsFold predicate on the "email_verification_token" field.
+func EmailVerificationTokenContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldEmailVerificationToken, v))
+}
+
+// EmailVerificationExpiresAtEQ applies the EQ predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldEmailVerificationExpiresAt, v))
+}
+
+// EmailVerificationExpiresAtNEQ applies the NEQ predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldEmailVerificationExpiresAt, v))
+}
+
+// EmailVerificationExpiresAtIn applies the In predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldEmailVerificationExpiresAt, vs...))
+}
+
+// EmailVerificationExpiresAtNotIn applies the NotIn predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldEmailVerificationExpiresAt, vs...))
+}
+
+// EmailVerificationExpiresAtGT applies the GT predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldEmailVerificationExpiresAt, v))
+}
+
+// EmailVerificationExpiresAtGTE applies the GTE predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldEmailVerificationExpiresAt, v))
+}
+
+// EmailVerificationExpiresAtLT applies the LT predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldEmailVerificationExpiresAt, v))
+}
+
+// EmailVerificationExpiresAtLTE applies the LTE predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldEmailVerificationExpiresAt, v))
+}
+
+// EmailVerificationExpiresAtIsNil applies the IsNil predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldEmailVerificationExpiresAt))
+}
+
+// EmailVerificationExpiresAtNotNil applies the NotNil predicate on the "email_verification_expires_at" field.
+func EmailVerificationExpiresAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldEmailVerificationExpiresAt))
+}
+
+// MagicLinkTokenEQ applies the EQ predicate on the "magic_link_token" field.
+func MagicLinkTokenEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenNEQ applies the NEQ predicate on the "magic_link_token" field.
+func MagicLinkTokenNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenIn applies the In predicate on the "magic_link_token" field.
+func MagicLinkTokenIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldMagicLinkToken, vs...))
+}
+
+// MagicLinkTokenNotIn applies the NotIn predicate on the "magic_link_token" field.
+func MagicLinkTokenNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldMagicLinkToken, vs...))
+}
+
+// MagicLinkTokenGT applies the GT predicate on the "magic_link_token" field.
+func MagicLinkTokenGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenGTE applies the GTE predicate on the "magic_link_token" field.
+func MagicLinkTokenGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenLT applies the LT predicate on the "magic_link_token" field.
+func MagicLinkTokenLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenLTE applies the LTE predicate on the "magic_link_token" field.
+func MagicLinkTokenLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenContains applies the Contains predicate on the "magic_link_token" field.
+func MagicLinkTokenContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenHasPrefix applies the HasPrefix predicate on the "magic_link_token" field.
+func MagicLinkTokenHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenHasSuffix applies the HasSuffix predicate on the "magic_link_token" field.
+func MagicLinkTokenHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenIsNil applies the IsNil predicate on the "magic_link_token" field.
+func MagicLinkTokenIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldMagicLinkToken))
+}
+
+// MagicLinkTokenNotNil applies the NotNil predicate on the "magic_link_token" field.
+func MagicLinkTokenNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldMagicLinkToken))
+}
+
+// MagicLinkTokenEqualFold applies the EqualFold predicate on the "magic_link_token" field.
+func MagicLinkTokenEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldMagicLinkToken, v))
+}
+
+// MagicLinkTokenContainsFold applies the ContainsFold predicate on the "magic_link_token" field.
+func MagicLinkTokenContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldMagicLinkToken, v))
+}
+
+// MagicLinkExpiresAtEQ applies the EQ predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMagicLinkExpiresAt, v))
+}
+
+// MagicLinkExpiresAtNEQ applies the NEQ predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldMagicLinkExpiresAt, v))
+}
+
+// MagicLinkExpiresAtIn applies the In predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldMagicLinkExpiresAt, vs...))
+}
+
+// MagicLinkExpiresAtNotIn applies the NotIn predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldMagicLinkExpiresAt, vs...))
+}
+
+// MagicLinkExpiresAtGT applies the GT predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldMagicLinkExpiresAt, v))
+}
+
+// MagicLinkExpiresAtGTE applies the GTE predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldMagicLinkExpiresAt, v))
+}
+
+// MagicLinkExpiresAtLT applies the LT predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldMagicLinkExpiresAt, v))
+}
+
+// MagicLinkExpiresAtLTE applies the LTE predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldMagicLinkExpiresAt, v))
+}
+
+// MagicLinkExpiresAtIsNil applies the IsNil predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldMagicLinkExpiresAt))
+}
+
+// MagicLinkExpiresAtNotNil applies the NotNil predicate on the "magic_link_expires_at" field.
+func MagicLinkExpiresAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldMagicLinkExpiresAt))
 }
 
 // PhoneNumberEQ applies the EQ predicate on the "phone_number" field.
@@ -830,6 +1115,106 @@ func MetadataNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldMetadata))
 }
 
+// RecoveryFailedAttemptsEQ applies the EQ predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryFailedAttemptsNEQ applies the NEQ predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryFailedAttemptsIn applies the In predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRecoveryFailedAttempts, vs...))
+}
+
+// RecoveryFailedAttemptsNotIn applies the NotIn predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRecoveryFailedAttempts, vs...))
+}
+
+// RecoveryFailedAttemptsGT applies the GT predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryFailedAttemptsGTE applies the GTE predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryFailedAttemptsLT applies the LT predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryFailedAttemptsLTE applies the LTE predicate on the "recovery_failed_attempts" field.
+func RecoveryFailedAttemptsLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRecoveryFailedAttempts, v))
+}
+
+// RecoveryLockoutUntilEQ applies the EQ predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRecoveryLockoutUntil, v))
+}
+
+// RecoveryLockoutUntilNEQ applies the NEQ predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRecoveryLockoutUntil, v))
+}
+
+// RecoveryLockoutUntilIn applies the In predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRecoveryLockoutUntil, vs...))
+}
+
+// RecoveryLockoutUntilNotIn applies the NotIn predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRecoveryLockoutUntil, vs...))
+}
+
+// RecoveryLockoutUntilGT applies the GT predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRecoveryLockoutUntil, v))
+}
+
+// RecoveryLockoutUntilGTE applies the GTE predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRecoveryLockoutUntil, v))
+}
+
+// RecoveryLockoutUntilLT applies the LT predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRecoveryLockoutUntil, v))
+}
+
+// RecoveryLockoutUntilLTE applies the LTE predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRecoveryLockoutUntil, v))
+}
+
+// RecoveryLockoutUntilIsNil applies the IsNil predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldRecoveryLockoutUntil))
+}
+
+// RecoveryLockoutUntilNotNil applies the NotNil predicate on the "recovery_lockout_until" field.
+func RecoveryLockoutUntilNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldRecoveryLockoutUntil))
+}
+
+// SecurityReviewRequiredEQ applies the EQ predicate on the "security_review_required" field.
+func SecurityReviewRequiredEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSecurityReviewRequired, v))
+}
+
+// SecurityReviewRequiredNEQ applies the NEQ predicate on the "security_review_required" field.
+func SecurityReviewRequiredNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSecurityReviewRequired, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1063,6 +1448,121 @@ func HasUserRoles() predicate.User {
 func HasUserRolesWith(preds ...predicate.UserRole) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newUserRolesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTrustedDevices applies the HasEdge predicate on the "trusted_devices" edge.
+func HasTrustedDevices() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, TrustedDevicesTable, TrustedDevicesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTrustedDevicesWith applies the HasEdge predicate on the "trusted_devices" edge with a given conditions (other predicates).
+func HasTrustedDevicesWith(preds ...predicate.TrustedDevice) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newTrustedDevicesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasIPSubnetHistory applies the HasEdge predicate on the "ip_subnet_history" edge.
+func HasIPSubnetHistory() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, IPSubnetHistoryTable, IPSubnetHistoryColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasIPSubnetHistoryWith applies the HasEdge predicate on the "ip_subnet_history" edge with a given conditions (other predicates).
+func HasIPSubnetHistoryWith(preds ...predicate.UserIpSubnetHistory) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newIPSubnetHistoryStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasRecoveryContacts applies the HasEdge predicate on the "recovery_contacts" edge.
+func HasRecoveryContacts() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, RecoveryContactsTable, RecoveryContactsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasRecoveryContactsWith applies the HasEdge predicate on the "recovery_contacts" edge with a given conditions (other predicates).
+func HasRecoveryContactsWith(preds ...predicate.RecoveryContact) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newRecoveryContactsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasPasswordHistory applies the HasEdge predicate on the "password_history" edge.
+func HasPasswordHistory() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, PasswordHistoryTable, PasswordHistoryColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasPasswordHistoryWith applies the HasEdge predicate on the "password_history" edge with a given conditions (other predicates).
+func HasPasswordHistoryWith(preds ...predicate.UserPasswordHistory) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newPasswordHistoryStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasRecoveryRequests applies the HasEdge predicate on the "recovery_requests" edge.
+func HasRecoveryRequests() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, RecoveryRequestsTable, RecoveryRequestsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasRecoveryRequestsWith applies the HasEdge predicate on the "recovery_requests" edge with a given conditions (other predicates).
+func HasRecoveryRequestsWith(preds ...predicate.RecoveryRequest) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newRecoveryRequestsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

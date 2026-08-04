@@ -58,6 +58,24 @@ func (User) Fields() []ent.Field {
 		field.Bool("email_verified").
 			Default(false).
 			Comment("Flag indicating if email address has been verified"),
+		field.String("email_verification_token").
+			Optional().
+			Nillable().
+			Sensitive().
+			Comment("SHA-256 hash of active single-use email verification token"),
+		field.Time("email_verification_expires_at").
+			Optional().
+			Nillable().
+			Comment("Expiration timestamp of active email verification token"),
+		field.String("magic_link_token").
+			Optional().
+			Nillable().
+			Sensitive().
+			Comment("SHA-256 hash of active single-use passwordless magic link token"),
+		field.Time("magic_link_expires_at").
+			Optional().
+			Nillable().
+			Comment("Expiration timestamp of active magic link token"),
 		field.String("phone_number").
 			Optional().
 			Comment("User registered phone number (E.164 format)"),
@@ -84,6 +102,16 @@ func (User) Fields() []ent.Field {
 		field.JSON("metadata", map[string]interface{}{}).
 			Optional().
 			Comment("Custom key-value metadata attributes for user profile"),
+		field.Int("recovery_failed_attempts").
+			Default(0).
+			Comment("Consecutive failed recovery proof attempts count for exponential lockout schedule"),
+		field.Time("recovery_lockout_until").
+			Optional().
+			Nillable().
+			Comment("Expiration timestamp of current exponential lockout penalty window"),
+		field.Bool("security_review_required").
+			Default(false).
+			Comment("Flag requiring password reset & 2FA review following a cancelled recovery attempt"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
@@ -109,6 +137,11 @@ func (User) Edges() []ent.Edge {
 		edge.To("push_devices", PushDevice.Type),
 		edge.To("org_memberships", OrgMember.Type),
 		edge.To("user_roles", UserRole.Type),
+		edge.To("trusted_devices", TrustedDevice.Type),
+		edge.To("ip_subnet_history", UserIpSubnetHistory.Type),
+		edge.To("recovery_contacts", RecoveryContact.Type),
+		edge.To("password_history", UserPasswordHistory.Type),
+		edge.To("recovery_requests", RecoveryRequest.Type),
 	}
 }
 

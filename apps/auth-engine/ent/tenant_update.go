@@ -140,6 +140,30 @@ func (tu *TenantUpdate) ClearPasswordPolicy() *TenantUpdate {
 	return tu
 }
 
+// SetSecurityPolicy sets the "security_policy" field.
+func (tu *TenantUpdate) SetSecurityPolicy(m map[string]interface{}) *TenantUpdate {
+	tu.mutation.SetSecurityPolicy(m)
+	return tu
+}
+
+// ClearSecurityPolicy clears the value of the "security_policy" field.
+func (tu *TenantUpdate) ClearSecurityPolicy() *TenantUpdate {
+	tu.mutation.ClearSecurityPolicy()
+	return tu
+}
+
+// SetRecoveryPolicy sets the "recovery_policy" field.
+func (tu *TenantUpdate) SetRecoveryPolicy(m map[string]interface{}) *TenantUpdate {
+	tu.mutation.SetRecoveryPolicy(m)
+	return tu
+}
+
+// ClearRecoveryPolicy clears the value of the "recovery_policy" field.
+func (tu *TenantUpdate) ClearRecoveryPolicy() *TenantUpdate {
+	tu.mutation.ClearRecoveryPolicy()
+	return tu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tu *TenantUpdate) SetUpdatedAt(t time.Time) *TenantUpdate {
 	tu.mutation.SetUpdatedAt(t)
@@ -462,6 +486,18 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if tu.mutation.PasswordPolicyCleared() {
 		_spec.ClearField(tenant.FieldPasswordPolicy, field.TypeJSON)
+	}
+	if value, ok := tu.mutation.SecurityPolicy(); ok {
+		_spec.SetField(tenant.FieldSecurityPolicy, field.TypeJSON, value)
+	}
+	if tu.mutation.SecurityPolicyCleared() {
+		_spec.ClearField(tenant.FieldSecurityPolicy, field.TypeJSON)
+	}
+	if value, ok := tu.mutation.RecoveryPolicy(); ok {
+		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
+	}
+	if tu.mutation.RecoveryPolicyCleared() {
+		_spec.ClearField(tenant.FieldRecoveryPolicy, field.TypeJSON)
 	}
 	if value, ok := tu.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -862,6 +898,30 @@ func (tuo *TenantUpdateOne) ClearPasswordPolicy() *TenantUpdateOne {
 	return tuo
 }
 
+// SetSecurityPolicy sets the "security_policy" field.
+func (tuo *TenantUpdateOne) SetSecurityPolicy(m map[string]interface{}) *TenantUpdateOne {
+	tuo.mutation.SetSecurityPolicy(m)
+	return tuo
+}
+
+// ClearSecurityPolicy clears the value of the "security_policy" field.
+func (tuo *TenantUpdateOne) ClearSecurityPolicy() *TenantUpdateOne {
+	tuo.mutation.ClearSecurityPolicy()
+	return tuo
+}
+
+// SetRecoveryPolicy sets the "recovery_policy" field.
+func (tuo *TenantUpdateOne) SetRecoveryPolicy(m map[string]interface{}) *TenantUpdateOne {
+	tuo.mutation.SetRecoveryPolicy(m)
+	return tuo
+}
+
+// ClearRecoveryPolicy clears the value of the "recovery_policy" field.
+func (tuo *TenantUpdateOne) ClearRecoveryPolicy() *TenantUpdateOne {
+	tuo.mutation.ClearRecoveryPolicy()
+	return tuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tuo *TenantUpdateOne) SetUpdatedAt(t time.Time) *TenantUpdateOne {
 	tuo.mutation.SetUpdatedAt(t)
@@ -1214,6 +1274,18 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if tuo.mutation.PasswordPolicyCleared() {
 		_spec.ClearField(tenant.FieldPasswordPolicy, field.TypeJSON)
+	}
+	if value, ok := tuo.mutation.SecurityPolicy(); ok {
+		_spec.SetField(tenant.FieldSecurityPolicy, field.TypeJSON, value)
+	}
+	if tuo.mutation.SecurityPolicyCleared() {
+		_spec.ClearField(tenant.FieldSecurityPolicy, field.TypeJSON)
+	}
+	if value, ok := tuo.mutation.RecoveryPolicy(); ok {
+		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
+	}
+	if tuo.mutation.RecoveryPolicyCleared() {
+		_spec.ClearField(tenant.FieldRecoveryPolicy, field.TypeJSON)
 	}
 	if value, ok := tuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)

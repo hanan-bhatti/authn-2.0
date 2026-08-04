@@ -60,6 +60,12 @@ func (Tenant) Fields() []ent.Field {
 		field.JSON("password_policy", map[string]interface{}{}).
 			Optional().
 			Comment("JSON blob containing password complexity policy rules"),
+		field.JSON("security_policy", map[string]interface{}{}).
+			Optional().
+			Comment("JSON blob containing tenant security policy settings (require_email_verification, email_verification_mode)"),
+		field.JSON("recovery_policy", map[string]interface{}{}).
+			Optional().
+			Comment("JSON blob containing tenant account recovery policy rules"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

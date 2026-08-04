@@ -350,6 +350,104 @@ var (
 			},
 		},
 	}
+	// RecoveryContactsColumns holds the columns for the "recovery_contacts" table.
+	RecoveryContactsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "guardian_email", Type: field.TypeString},
+		{Name: "guardian_name", Type: field.TypeString},
+		{Name: "share_index", Type: field.TypeInt},
+		{Name: "share_hash", Type: field.TypeString},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending_invite", "active", "revoked"}, Default: "pending_invite"},
+		{Name: "invitation_token_hash", Type: field.TypeString, Nullable: true},
+		{Name: "invitation_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// RecoveryContactsTable holds the schema information for the "recovery_contacts" table.
+	RecoveryContactsTable = &schema.Table{
+		Name:       "recovery_contacts",
+		Columns:    RecoveryContactsColumns,
+		PrimaryKey: []*schema.Column{RecoveryContactsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "recovery_contacts_users_recovery_contacts",
+				Columns:    []*schema.Column{RecoveryContactsColumns[10]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "recoverycontact_user_id_guardian_email",
+				Unique:  true,
+				Columns: []*schema.Column{RecoveryContactsColumns[10], RecoveryContactsColumns[1]},
+			},
+			{
+				Name:    "recoverycontact_user_id_share_index",
+				Unique:  true,
+				Columns: []*schema.Column{RecoveryContactsColumns[10], RecoveryContactsColumns[3]},
+			},
+		},
+	}
+	// RecoveryRequestsColumns holds the columns for the "recovery_requests" table.
+	RecoveryRequestsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "initiated_from_ip", Type: field.TypeString},
+		{Name: "initiated_from_subnet", Type: field.TypeString},
+		{Name: "initiated_from_user_agent", Type: field.TypeString},
+		{Name: "is_trusted_device_origin", Type: field.TypeBool, Default: false},
+		{Name: "proof_method_used", Type: field.TypeEnum, Nullable: true, Enums: []string{"guardian_consensus", "phone_otp", "email_otp", "old_password", "security_questions"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"initiated", "awaiting_proof", "proof_verified", "freeze_active", "ready_for_claim", "completed", "cancelled", "expired"}, Default: "initiated"},
+		{Name: "submitted_shares_count", Type: field.TypeInt, Default: 0},
+		{Name: "submitted_share_indexes", Type: field.TypeJSON, Nullable: true},
+		{Name: "freeze_started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "freeze_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "cancellation_token_hash", Type: field.TypeString},
+		{Name: "claim_token_hash", Type: field.TypeString, Nullable: true},
+		{Name: "claim_token_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "cancelled_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// RecoveryRequestsTable holds the schema information for the "recovery_requests" table.
+	RecoveryRequestsTable = &schema.Table{
+		Name:       "recovery_requests",
+		Columns:    RecoveryRequestsColumns,
+		PrimaryKey: []*schema.Column{RecoveryRequestsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "recovery_requests_users_recovery_requests",
+				Columns:    []*schema.Column{RecoveryRequestsColumns[18]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "recoveryrequest_user_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{RecoveryRequestsColumns[18], RecoveryRequestsColumns[6]},
+			},
+			{
+				Name:    "recoveryrequest_cancellation_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{RecoveryRequestsColumns[11]},
+			},
+			{
+				Name:    "recoveryrequest_claim_token_hash",
+				Unique:  false,
+				Columns: []*schema.Column{RecoveryRequestsColumns[12]},
+			},
+			{
+				Name:    "recoveryrequest_freeze_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{RecoveryRequestsColumns[10]},
+			},
+		},
+	}
 	// RolesColumns holds the columns for the "roles" table.
 	RolesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -377,6 +475,41 @@ var (
 				Name:    "role_tenant_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{RolesColumns[5], RolesColumns[1]},
+			},
+		},
+	}
+	// SecurityBlacklistsColumns holds the columns for the "security_blacklists" table.
+	SecurityBlacklistsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "tenant_id", Type: field.TypeString},
+		{Name: "user_id", Type: field.TypeString},
+		{Name: "ip_address", Type: field.TypeString, Nullable: true},
+		{Name: "subnet", Type: field.TypeString, Nullable: true},
+		{Name: "fingerprint_hash", Type: field.TypeString, Nullable: true},
+		{Name: "reason", Type: field.TypeString, Default: "recovery_cancelled"},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// SecurityBlacklistsTable holds the schema information for the "security_blacklists" table.
+	SecurityBlacklistsTable = &schema.Table{
+		Name:       "security_blacklists",
+		Columns:    SecurityBlacklistsColumns,
+		PrimaryKey: []*schema.Column{SecurityBlacklistsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "securityblacklist_tenant_id_user_id_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityBlacklistsColumns[1], SecurityBlacklistsColumns[2], SecurityBlacklistsColumns[7]},
+			},
+			{
+				Name:    "securityblacklist_subnet_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityBlacklistsColumns[4], SecurityBlacklistsColumns[7]},
+			},
+			{
+				Name:    "securityblacklist_fingerprint_hash_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityBlacklistsColumns[5], SecurityBlacklistsColumns[7]},
 			},
 		},
 	}
@@ -434,6 +567,8 @@ var (
 		{Name: "domain_verification_token", Type: field.TypeString, Nullable: true},
 		{Name: "branding_config", Type: field.TypeJSON, Nullable: true},
 		{Name: "password_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "security_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "recovery_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -455,6 +590,51 @@ var (
 			},
 		},
 	}
+	// TrustedDevicesColumns holds the columns for the "trusted_devices" table.
+	TrustedDevicesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "device_token_hash", Type: field.TypeString, Unique: true},
+		{Name: "fingerprint_hash", Type: field.TypeString},
+		{Name: "device_name", Type: field.TypeString, Nullable: true},
+		{Name: "last_ip_address", Type: field.TypeString},
+		{Name: "last_ip_subnet", Type: field.TypeString},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "revoked", "expired"}, Default: "active"},
+		{Name: "first_seen_at", Type: field.TypeTime},
+		{Name: "last_seen_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// TrustedDevicesTable holds the schema information for the "trusted_devices" table.
+	TrustedDevicesTable = &schema.Table{
+		Name:       "trusted_devices",
+		Columns:    TrustedDevicesColumns,
+		PrimaryKey: []*schema.Column{TrustedDevicesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "trusted_devices_users_trusted_devices",
+				Columns:    []*schema.Column{TrustedDevicesColumns[10]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "trusteddevice_device_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{TrustedDevicesColumns[1]},
+			},
+			{
+				Name:    "trusteddevice_user_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{TrustedDevicesColumns[10], TrustedDevicesColumns[6]},
+			},
+			{
+				Name:    "trusteddevice_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{TrustedDevicesColumns[9]},
+			},
+		},
+	}
 	// TwoFactorMethodsColumns holds the columns for the "two_factor_methods" table.
 	TwoFactorMethodsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -463,6 +643,8 @@ var (
 		{Name: "secret_encrypted", Type: field.TypeString, Nullable: true},
 		{Name: "credential_id", Type: field.TypeString, Nullable: true},
 		{Name: "public_key", Type: field.TypeBytes, Nullable: true},
+		{Name: "sign_count", Type: field.TypeUint32, Default: 0},
+		{Name: "webauthn_metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "is_enabled", Type: field.TypeBool, Default: true},
 		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -476,7 +658,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "two_factor_methods_users_two_factor_methods",
-				Columns:    []*schema.Column{TwoFactorMethodsColumns[9]},
+				Columns:    []*schema.Column{TwoFactorMethodsColumns[11]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -485,7 +667,7 @@ var (
 			{
 				Name:    "twofactormethod_user_id_type",
 				Unique:  false,
-				Columns: []*schema.Column{TwoFactorMethodsColumns[9], TwoFactorMethodsColumns[1]},
+				Columns: []*schema.Column{TwoFactorMethodsColumns[11], TwoFactorMethodsColumns[1]},
 			},
 		},
 	}
@@ -497,6 +679,10 @@ var (
 		{Name: "username", Type: field.TypeString, Nullable: true},
 		{Name: "password_hash", Type: field.TypeString, Nullable: true},
 		{Name: "email_verified", Type: field.TypeBool, Default: false},
+		{Name: "email_verification_token", Type: field.TypeString, Nullable: true},
+		{Name: "email_verification_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "magic_link_token", Type: field.TypeString, Nullable: true},
+		{Name: "magic_link_expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "phone_number", Type: field.TypeString, Nullable: true},
 		{Name: "phone_verified", Type: field.TypeBool, Default: false},
 		{Name: "name", Type: field.TypeString, Nullable: true},
@@ -505,6 +691,9 @@ var (
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "banned", "recovery_hold"}, Default: "active"},
 		{Name: "last_sign_in_at", Type: field.TypeTime, Nullable: true},
 		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "recovery_failed_attempts", Type: field.TypeInt, Default: 0},
+		{Name: "recovery_lockout_until", Type: field.TypeTime, Nullable: true},
+		{Name: "security_review_required", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "tenant_id", Type: field.TypeString},
@@ -517,7 +706,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "users_tenants_users",
-				Columns:    []*schema.Column{UsersColumns[16]},
+				Columns:    []*schema.Column{UsersColumns[23]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -526,12 +715,76 @@ var (
 			{
 				Name:    "user_tenant_id_environment_email",
 				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[16], UsersColumns[1], UsersColumns[2]},
+				Columns: []*schema.Column{UsersColumns[23], UsersColumns[1], UsersColumns[2]},
 			},
 			{
 				Name:    "user_tenant_id_environment_username",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[16], UsersColumns[1], UsersColumns[3]},
+				Columns: []*schema.Column{UsersColumns[23], UsersColumns[1], UsersColumns[3]},
+			},
+		},
+	}
+	// UserIPSubnetHistoriesColumns holds the columns for the "user_ip_subnet_histories" table.
+	UserIPSubnetHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "subnet", Type: field.TypeString},
+		{Name: "ip_version", Type: field.TypeInt},
+		{Name: "login_count", Type: field.TypeInt, Default: 1},
+		{Name: "first_seen_at", Type: field.TypeTime},
+		{Name: "last_seen_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// UserIPSubnetHistoriesTable holds the schema information for the "user_ip_subnet_histories" table.
+	UserIPSubnetHistoriesTable = &schema.Table{
+		Name:       "user_ip_subnet_histories",
+		Columns:    UserIPSubnetHistoriesColumns,
+		PrimaryKey: []*schema.Column{UserIPSubnetHistoriesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_ip_subnet_histories_users_ip_subnet_history",
+				Columns:    []*schema.Column{UserIPSubnetHistoriesColumns[6]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "useripsubnethistory_user_id_subnet",
+				Unique:  true,
+				Columns: []*schema.Column{UserIPSubnetHistoriesColumns[6], UserIPSubnetHistoriesColumns[1]},
+			},
+			{
+				Name:    "useripsubnethistory_last_seen_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserIPSubnetHistoriesColumns[5]},
+			},
+		},
+	}
+	// UserPasswordHistoriesColumns holds the columns for the "user_password_histories" table.
+	UserPasswordHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "password_hash", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// UserPasswordHistoriesTable holds the schema information for the "user_password_histories" table.
+	UserPasswordHistoriesTable = &schema.Table{
+		Name:       "user_password_histories",
+		Columns:    UserPasswordHistoriesColumns,
+		PrimaryKey: []*schema.Column{UserPasswordHistoriesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_password_histories_users_password_history",
+				Columns:    []*schema.Column{UserPasswordHistoriesColumns[3]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userpasswordhistory_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserPasswordHistoriesColumns[3], UserPasswordHistoriesColumns[2]},
 			},
 		},
 	}
@@ -655,11 +908,17 @@ var (
 		OrganizationsTable,
 		PermissionsTable,
 		PushDevicesTable,
+		RecoveryContactsTable,
+		RecoveryRequestsTable,
 		RolesTable,
+		SecurityBlacklistsTable,
 		SessionsTable,
 		TenantsTable,
+		TrustedDevicesTable,
 		TwoFactorMethodsTable,
 		UsersTable,
+		UserIPSubnetHistoriesTable,
+		UserPasswordHistoriesTable,
 		UserRolesTable,
 		WebhookEndpointsTable,
 		WebhookEventsTable,
@@ -678,10 +937,15 @@ func init() {
 	OrganizationsTable.ForeignKeys[0].RefTable = TenantsTable
 	PermissionsTable.ForeignKeys[0].RefTable = RolesTable
 	PushDevicesTable.ForeignKeys[0].RefTable = UsersTable
+	RecoveryContactsTable.ForeignKeys[0].RefTable = UsersTable
+	RecoveryRequestsTable.ForeignKeys[0].RefTable = UsersTable
 	RolesTable.ForeignKeys[0].RefTable = TenantsTable
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
+	TrustedDevicesTable.ForeignKeys[0].RefTable = UsersTable
 	TwoFactorMethodsTable.ForeignKeys[0].RefTable = UsersTable
 	UsersTable.ForeignKeys[0].RefTable = TenantsTable
+	UserIPSubnetHistoriesTable.ForeignKeys[0].RefTable = UsersTable
+	UserPasswordHistoriesTable.ForeignKeys[0].RefTable = UsersTable
 	UserRolesTable.ForeignKeys[0].RefTable = RolesTable
 	UserRolesTable.ForeignKeys[1].RefTable = UsersTable
 	WebhookEndpointsTable.ForeignKeys[0].RefTable = TenantsTable

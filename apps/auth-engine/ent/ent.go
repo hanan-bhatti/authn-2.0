@@ -21,11 +21,17 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/permission"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/pushdevice"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/useripsubnethistory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookevent"
@@ -89,23 +95,29 @@ var (
 func checkColumn(table, column string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			apikey.Table:          apikey.ValidColumn,
-			application.Table:     application.ValidColumn,
-			auditlog.Table:        auditlog.ValidColumn,
-			identity.Table:        identity.ValidColumn,
-			orginvitation.Table:   orginvitation.ValidColumn,
-			orgmember.Table:       orgmember.ValidColumn,
-			organization.Table:    organization.ValidColumn,
-			permission.Table:      permission.ValidColumn,
-			pushdevice.Table:      pushdevice.ValidColumn,
-			role.Table:            role.ValidColumn,
-			session.Table:         session.ValidColumn,
-			tenant.Table:          tenant.ValidColumn,
-			twofactormethod.Table: twofactormethod.ValidColumn,
-			user.Table:            user.ValidColumn,
-			userrole.Table:        userrole.ValidColumn,
-			webhookendpoint.Table: webhookendpoint.ValidColumn,
-			webhookevent.Table:    webhookevent.ValidColumn,
+			apikey.Table:              apikey.ValidColumn,
+			application.Table:         application.ValidColumn,
+			auditlog.Table:            auditlog.ValidColumn,
+			identity.Table:            identity.ValidColumn,
+			orginvitation.Table:       orginvitation.ValidColumn,
+			orgmember.Table:           orgmember.ValidColumn,
+			organization.Table:        organization.ValidColumn,
+			permission.Table:          permission.ValidColumn,
+			pushdevice.Table:          pushdevice.ValidColumn,
+			recoverycontact.Table:     recoverycontact.ValidColumn,
+			recoveryrequest.Table:     recoveryrequest.ValidColumn,
+			role.Table:                role.ValidColumn,
+			securityblacklist.Table:   securityblacklist.ValidColumn,
+			session.Table:             session.ValidColumn,
+			tenant.Table:              tenant.ValidColumn,
+			trusteddevice.Table:       trusteddevice.ValidColumn,
+			twofactormethod.Table:     twofactormethod.ValidColumn,
+			user.Table:                user.ValidColumn,
+			useripsubnethistory.Table: useripsubnethistory.ValidColumn,
+			userpasswordhistory.Table: userpasswordhistory.ValidColumn,
+			userrole.Table:            userrole.ValidColumn,
+			webhookendpoint.Table:     webhookendpoint.ValidColumn,
+			webhookevent.Table:        webhookevent.ValidColumn,
 		})
 	})
 	return columnCheck(table, column)

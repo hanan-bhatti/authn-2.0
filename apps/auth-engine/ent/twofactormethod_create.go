@@ -81,6 +81,26 @@ func (tfmc *TwoFactorMethodCreate) SetPublicKey(b []byte) *TwoFactorMethodCreate
 	return tfmc
 }
 
+// SetSignCount sets the "sign_count" field.
+func (tfmc *TwoFactorMethodCreate) SetSignCount(u uint32) *TwoFactorMethodCreate {
+	tfmc.mutation.SetSignCount(u)
+	return tfmc
+}
+
+// SetNillableSignCount sets the "sign_count" field if the given value is not nil.
+func (tfmc *TwoFactorMethodCreate) SetNillableSignCount(u *uint32) *TwoFactorMethodCreate {
+	if u != nil {
+		tfmc.SetSignCount(*u)
+	}
+	return tfmc
+}
+
+// SetWebauthnMetadata sets the "webauthn_metadata" field.
+func (tfmc *TwoFactorMethodCreate) SetWebauthnMetadata(m map[string]interface{}) *TwoFactorMethodCreate {
+	tfmc.mutation.SetWebauthnMetadata(m)
+	return tfmc
+}
+
 // SetIsEnabled sets the "is_enabled" field.
 func (tfmc *TwoFactorMethodCreate) SetIsEnabled(b bool) *TwoFactorMethodCreate {
 	tfmc.mutation.SetIsEnabled(b)
@@ -169,6 +189,10 @@ func (tfmc *TwoFactorMethodCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (tfmc *TwoFactorMethodCreate) defaults() {
+	if _, ok := tfmc.mutation.SignCount(); !ok {
+		v := twofactormethod.DefaultSignCount
+		tfmc.mutation.SetSignCount(v)
+	}
 	if _, ok := tfmc.mutation.IsEnabled(); !ok {
 		v := twofactormethod.DefaultIsEnabled
 		tfmc.mutation.SetIsEnabled(v)
@@ -196,6 +220,9 @@ func (tfmc *TwoFactorMethodCreate) check() error {
 		if err := twofactormethod.TypeValidator(v); err != nil {
 			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "TwoFactorMethod.type": %w`, err)}
 		}
+	}
+	if _, ok := tfmc.mutation.SignCount(); !ok {
+		return &ValidationError{Name: "sign_count", err: errors.New(`ent: missing required field "TwoFactorMethod.sign_count"`)}
 	}
 	if _, ok := tfmc.mutation.IsEnabled(); !ok {
 		return &ValidationError{Name: "is_enabled", err: errors.New(`ent: missing required field "TwoFactorMethod.is_enabled"`)}
@@ -260,6 +287,14 @@ func (tfmc *TwoFactorMethodCreate) createSpec() (*TwoFactorMethod, *sqlgraph.Cre
 	if value, ok := tfmc.mutation.PublicKey(); ok {
 		_spec.SetField(twofactormethod.FieldPublicKey, field.TypeBytes, value)
 		_node.PublicKey = value
+	}
+	if value, ok := tfmc.mutation.SignCount(); ok {
+		_spec.SetField(twofactormethod.FieldSignCount, field.TypeUint32, value)
+		_node.SignCount = value
+	}
+	if value, ok := tfmc.mutation.WebauthnMetadata(); ok {
+		_spec.SetField(twofactormethod.FieldWebauthnMetadata, field.TypeJSON, value)
+		_node.WebauthnMetadata = value
 	}
 	if value, ok := tfmc.mutation.IsEnabled(); ok {
 		_spec.SetField(twofactormethod.FieldIsEnabled, field.TypeBool, value)

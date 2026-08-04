@@ -90,6 +90,11 @@ func PublicKey(v []byte) predicate.TwoFactorMethod {
 	return predicate.TwoFactorMethod(sql.FieldEQ(FieldPublicKey, v))
 }
 
+// SignCount applies equality check predicate on the "sign_count" field. It's identical to SignCountEQ.
+func SignCount(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldEQ(FieldSignCount, v))
+}
+
 // IsEnabled applies equality check predicate on the "is_enabled" field. It's identical to IsEnabledEQ.
 func IsEnabled(v bool) predicate.TwoFactorMethod {
 	return predicate.TwoFactorMethod(sql.FieldEQ(FieldIsEnabled, v))
@@ -463,6 +468,56 @@ func PublicKeyIsNil() predicate.TwoFactorMethod {
 // PublicKeyNotNil applies the NotNil predicate on the "public_key" field.
 func PublicKeyNotNil() predicate.TwoFactorMethod {
 	return predicate.TwoFactorMethod(sql.FieldNotNull(FieldPublicKey))
+}
+
+// SignCountEQ applies the EQ predicate on the "sign_count" field.
+func SignCountEQ(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldEQ(FieldSignCount, v))
+}
+
+// SignCountNEQ applies the NEQ predicate on the "sign_count" field.
+func SignCountNEQ(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldNEQ(FieldSignCount, v))
+}
+
+// SignCountIn applies the In predicate on the "sign_count" field.
+func SignCountIn(vs ...uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldIn(FieldSignCount, vs...))
+}
+
+// SignCountNotIn applies the NotIn predicate on the "sign_count" field.
+func SignCountNotIn(vs ...uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldNotIn(FieldSignCount, vs...))
+}
+
+// SignCountGT applies the GT predicate on the "sign_count" field.
+func SignCountGT(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldGT(FieldSignCount, v))
+}
+
+// SignCountGTE applies the GTE predicate on the "sign_count" field.
+func SignCountGTE(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldGTE(FieldSignCount, v))
+}
+
+// SignCountLT applies the LT predicate on the "sign_count" field.
+func SignCountLT(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldLT(FieldSignCount, v))
+}
+
+// SignCountLTE applies the LTE predicate on the "sign_count" field.
+func SignCountLTE(v uint32) predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldLTE(FieldSignCount, v))
+}
+
+// WebauthnMetadataIsNil applies the IsNil predicate on the "webauthn_metadata" field.
+func WebauthnMetadataIsNil() predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldIsNull(FieldWebauthnMetadata))
+}
+
+// WebauthnMetadataNotNil applies the NotNil predicate on the "webauthn_metadata" field.
+func WebauthnMetadataNotNil() predicate.TwoFactorMethod {
+	return predicate.TwoFactorMethod(sql.FieldNotNull(FieldWebauthnMetadata))
 }
 
 // IsEnabledEQ applies the EQ predicate on the "is_enabled" field.

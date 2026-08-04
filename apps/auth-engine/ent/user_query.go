@@ -16,10 +16,15 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/pushdevice"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/useripsubnethistory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 )
 
@@ -37,6 +42,11 @@ type UserQuery struct {
 	withPushDevices      *PushDeviceQuery
 	withOrgMemberships   *OrgMemberQuery
 	withUserRoles        *UserRoleQuery
+	withTrustedDevices   *TrustedDeviceQuery
+	withIPSubnetHistory  *UserIpSubnetHistoryQuery
+	withRecoveryContacts *RecoveryContactQuery
+	withPasswordHistory  *UserPasswordHistoryQuery
+	withRecoveryRequests *RecoveryRequestQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -220,6 +230,116 @@ func (uq *UserQuery) QueryUserRoles() *UserRoleQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(userrole.Table, userrole.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.UserRolesTable, user.UserRolesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTrustedDevices chains the current query on the "trusted_devices" edge.
+func (uq *UserQuery) QueryTrustedDevices() *TrustedDeviceQuery {
+	query := (&TrustedDeviceClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(trusteddevice.Table, trusteddevice.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.TrustedDevicesTable, user.TrustedDevicesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryIPSubnetHistory chains the current query on the "ip_subnet_history" edge.
+func (uq *UserQuery) QueryIPSubnetHistory() *UserIpSubnetHistoryQuery {
+	query := (&UserIpSubnetHistoryClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(useripsubnethistory.Table, useripsubnethistory.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.IPSubnetHistoryTable, user.IPSubnetHistoryColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryRecoveryContacts chains the current query on the "recovery_contacts" edge.
+func (uq *UserQuery) QueryRecoveryContacts() *RecoveryContactQuery {
+	query := (&RecoveryContactClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(recoverycontact.Table, recoverycontact.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RecoveryContactsTable, user.RecoveryContactsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryPasswordHistory chains the current query on the "password_history" edge.
+func (uq *UserQuery) QueryPasswordHistory() *UserPasswordHistoryQuery {
+	query := (&UserPasswordHistoryClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(userpasswordhistory.Table, userpasswordhistory.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.PasswordHistoryTable, user.PasswordHistoryColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryRecoveryRequests chains the current query on the "recovery_requests" edge.
+func (uq *UserQuery) QueryRecoveryRequests() *RecoveryRequestQuery {
+	query := (&RecoveryRequestClient{config: uq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := uq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := uq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(recoveryrequest.Table, recoveryrequest.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RecoveryRequestsTable, user.RecoveryRequestsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(uq.driver.Dialect(), step)
 		return fromU, nil
@@ -426,6 +546,11 @@ func (uq *UserQuery) Clone() *UserQuery {
 		withPushDevices:      uq.withPushDevices.Clone(),
 		withOrgMemberships:   uq.withOrgMemberships.Clone(),
 		withUserRoles:        uq.withUserRoles.Clone(),
+		withTrustedDevices:   uq.withTrustedDevices.Clone(),
+		withIPSubnetHistory:  uq.withIPSubnetHistory.Clone(),
+		withRecoveryContacts: uq.withRecoveryContacts.Clone(),
+		withPasswordHistory:  uq.withPasswordHistory.Clone(),
+		withRecoveryRequests: uq.withRecoveryRequests.Clone(),
 		// clone intermediate query.
 		sql:  uq.sql.Clone(),
 		path: uq.path,
@@ -509,6 +634,61 @@ func (uq *UserQuery) WithUserRoles(opts ...func(*UserRoleQuery)) *UserQuery {
 	return uq
 }
 
+// WithTrustedDevices tells the query-builder to eager-load the nodes that are connected to
+// the "trusted_devices" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithTrustedDevices(opts ...func(*TrustedDeviceQuery)) *UserQuery {
+	query := (&TrustedDeviceClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withTrustedDevices = query
+	return uq
+}
+
+// WithIPSubnetHistory tells the query-builder to eager-load the nodes that are connected to
+// the "ip_subnet_history" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithIPSubnetHistory(opts ...func(*UserIpSubnetHistoryQuery)) *UserQuery {
+	query := (&UserIpSubnetHistoryClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withIPSubnetHistory = query
+	return uq
+}
+
+// WithRecoveryContacts tells the query-builder to eager-load the nodes that are connected to
+// the "recovery_contacts" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithRecoveryContacts(opts ...func(*RecoveryContactQuery)) *UserQuery {
+	query := (&RecoveryContactClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withRecoveryContacts = query
+	return uq
+}
+
+// WithPasswordHistory tells the query-builder to eager-load the nodes that are connected to
+// the "password_history" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithPasswordHistory(opts ...func(*UserPasswordHistoryQuery)) *UserQuery {
+	query := (&UserPasswordHistoryClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withPasswordHistory = query
+	return uq
+}
+
+// WithRecoveryRequests tells the query-builder to eager-load the nodes that are connected to
+// the "recovery_requests" edge. The optional arguments are used to configure the query builder of the edge.
+func (uq *UserQuery) WithRecoveryRequests(opts ...func(*RecoveryRequestQuery)) *UserQuery {
+	query := (&RecoveryRequestClient{config: uq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	uq.withRecoveryRequests = query
+	return uq
+}
+
 // GroupBy is used to group vertices by one or more fields/columns.
 // It is often used with aggregate functions, like: count, max, mean, min, sum.
 //
@@ -587,7 +767,7 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = uq.querySpec()
-		loadedTypes = [7]bool{
+		loadedTypes = [12]bool{
 			uq.withTenant != nil,
 			uq.withIdentities != nil,
 			uq.withSessions != nil,
@@ -595,6 +775,11 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			uq.withPushDevices != nil,
 			uq.withOrgMemberships != nil,
 			uq.withUserRoles != nil,
+			uq.withTrustedDevices != nil,
+			uq.withIPSubnetHistory != nil,
+			uq.withRecoveryContacts != nil,
+			uq.withPasswordHistory != nil,
+			uq.withRecoveryRequests != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -660,6 +845,41 @@ func (uq *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := uq.loadUserRoles(ctx, query, nodes,
 			func(n *User) { n.Edges.UserRoles = []*UserRole{} },
 			func(n *User, e *UserRole) { n.Edges.UserRoles = append(n.Edges.UserRoles, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withTrustedDevices; query != nil {
+		if err := uq.loadTrustedDevices(ctx, query, nodes,
+			func(n *User) { n.Edges.TrustedDevices = []*TrustedDevice{} },
+			func(n *User, e *TrustedDevice) { n.Edges.TrustedDevices = append(n.Edges.TrustedDevices, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withIPSubnetHistory; query != nil {
+		if err := uq.loadIPSubnetHistory(ctx, query, nodes,
+			func(n *User) { n.Edges.IPSubnetHistory = []*UserIpSubnetHistory{} },
+			func(n *User, e *UserIpSubnetHistory) { n.Edges.IPSubnetHistory = append(n.Edges.IPSubnetHistory, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withRecoveryContacts; query != nil {
+		if err := uq.loadRecoveryContacts(ctx, query, nodes,
+			func(n *User) { n.Edges.RecoveryContacts = []*RecoveryContact{} },
+			func(n *User, e *RecoveryContact) { n.Edges.RecoveryContacts = append(n.Edges.RecoveryContacts, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withPasswordHistory; query != nil {
+		if err := uq.loadPasswordHistory(ctx, query, nodes,
+			func(n *User) { n.Edges.PasswordHistory = []*UserPasswordHistory{} },
+			func(n *User, e *UserPasswordHistory) { n.Edges.PasswordHistory = append(n.Edges.PasswordHistory, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := uq.withRecoveryRequests; query != nil {
+		if err := uq.loadRecoveryRequests(ctx, query, nodes,
+			func(n *User) { n.Edges.RecoveryRequests = []*RecoveryRequest{} },
+			func(n *User, e *RecoveryRequest) { n.Edges.RecoveryRequests = append(n.Edges.RecoveryRequests, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -860,6 +1080,156 @@ func (uq *UserQuery) loadUserRoles(ctx context.Context, query *UserRoleQuery, no
 	}
 	query.Where(predicate.UserRole(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.UserRolesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (uq *UserQuery) loadTrustedDevices(ctx context.Context, query *TrustedDeviceQuery, nodes []*User, init func(*User), assign func(*User, *TrustedDevice)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(trusteddevice.FieldUserID)
+	}
+	query.Where(predicate.TrustedDevice(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.TrustedDevicesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (uq *UserQuery) loadIPSubnetHistory(ctx context.Context, query *UserIpSubnetHistoryQuery, nodes []*User, init func(*User), assign func(*User, *UserIpSubnetHistory)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(useripsubnethistory.FieldUserID)
+	}
+	query.Where(predicate.UserIpSubnetHistory(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.IPSubnetHistoryColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (uq *UserQuery) loadRecoveryContacts(ctx context.Context, query *RecoveryContactQuery, nodes []*User, init func(*User), assign func(*User, *RecoveryContact)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(recoverycontact.FieldUserID)
+	}
+	query.Where(predicate.RecoveryContact(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.RecoveryContactsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (uq *UserQuery) loadPasswordHistory(ctx context.Context, query *UserPasswordHistoryQuery, nodes []*User, init func(*User), assign func(*User, *UserPasswordHistory)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(userpasswordhistory.FieldUserID)
+	}
+	query.Where(predicate.UserPasswordHistory(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.PasswordHistoryColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (uq *UserQuery) loadRecoveryRequests(ctx context.Context, query *RecoveryRequestQuery, nodes []*User, init func(*User), assign func(*User, *RecoveryRequest)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(recoveryrequest.FieldUserID)
+	}
+	query.Where(predicate.RecoveryRequest(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.RecoveryRequestsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

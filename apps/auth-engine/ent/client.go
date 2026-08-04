@@ -24,11 +24,17 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/permission"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/pushdevice"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/useripsubnethistory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookevent"
@@ -57,16 +63,28 @@ type Client struct {
 	Permission *PermissionClient
 	// PushDevice is the client for interacting with the PushDevice builders.
 	PushDevice *PushDeviceClient
+	// RecoveryContact is the client for interacting with the RecoveryContact builders.
+	RecoveryContact *RecoveryContactClient
+	// RecoveryRequest is the client for interacting with the RecoveryRequest builders.
+	RecoveryRequest *RecoveryRequestClient
 	// Role is the client for interacting with the Role builders.
 	Role *RoleClient
+	// SecurityBlacklist is the client for interacting with the SecurityBlacklist builders.
+	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
+	// TrustedDevice is the client for interacting with the TrustedDevice builders.
+	TrustedDevice *TrustedDeviceClient
 	// TwoFactorMethod is the client for interacting with the TwoFactorMethod builders.
 	TwoFactorMethod *TwoFactorMethodClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// UserIpSubnetHistory is the client for interacting with the UserIpSubnetHistory builders.
+	UserIpSubnetHistory *UserIpSubnetHistoryClient
+	// UserPasswordHistory is the client for interacting with the UserPasswordHistory builders.
+	UserPasswordHistory *UserPasswordHistoryClient
 	// UserRole is the client for interacting with the UserRole builders.
 	UserRole *UserRoleClient
 	// WebhookEndpoint is the client for interacting with the WebhookEndpoint builders.
@@ -93,11 +111,17 @@ func (c *Client) init() {
 	c.Organization = NewOrganizationClient(c.config)
 	c.Permission = NewPermissionClient(c.config)
 	c.PushDevice = NewPushDeviceClient(c.config)
+	c.RecoveryContact = NewRecoveryContactClient(c.config)
+	c.RecoveryRequest = NewRecoveryRequestClient(c.config)
 	c.Role = NewRoleClient(c.config)
+	c.SecurityBlacklist = NewSecurityBlacklistClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.Tenant = NewTenantClient(c.config)
+	c.TrustedDevice = NewTrustedDeviceClient(c.config)
 	c.TwoFactorMethod = NewTwoFactorMethodClient(c.config)
 	c.User = NewUserClient(c.config)
+	c.UserIpSubnetHistory = NewUserIpSubnetHistoryClient(c.config)
+	c.UserPasswordHistory = NewUserPasswordHistoryClient(c.config)
 	c.UserRole = NewUserRoleClient(c.config)
 	c.WebhookEndpoint = NewWebhookEndpointClient(c.config)
 	c.WebhookEvent = NewWebhookEventClient(c.config)
@@ -191,25 +215,31 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		ApiKey:          NewApiKeyClient(cfg),
-		Application:     NewApplicationClient(cfg),
-		AuditLog:        NewAuditLogClient(cfg),
-		Identity:        NewIdentityClient(cfg),
-		OrgInvitation:   NewOrgInvitationClient(cfg),
-		OrgMember:       NewOrgMemberClient(cfg),
-		Organization:    NewOrganizationClient(cfg),
-		Permission:      NewPermissionClient(cfg),
-		PushDevice:      NewPushDeviceClient(cfg),
-		Role:            NewRoleClient(cfg),
-		Session:         NewSessionClient(cfg),
-		Tenant:          NewTenantClient(cfg),
-		TwoFactorMethod: NewTwoFactorMethodClient(cfg),
-		User:            NewUserClient(cfg),
-		UserRole:        NewUserRoleClient(cfg),
-		WebhookEndpoint: NewWebhookEndpointClient(cfg),
-		WebhookEvent:    NewWebhookEventClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		ApiKey:              NewApiKeyClient(cfg),
+		Application:         NewApplicationClient(cfg),
+		AuditLog:            NewAuditLogClient(cfg),
+		Identity:            NewIdentityClient(cfg),
+		OrgInvitation:       NewOrgInvitationClient(cfg),
+		OrgMember:           NewOrgMemberClient(cfg),
+		Organization:        NewOrganizationClient(cfg),
+		Permission:          NewPermissionClient(cfg),
+		PushDevice:          NewPushDeviceClient(cfg),
+		RecoveryContact:     NewRecoveryContactClient(cfg),
+		RecoveryRequest:     NewRecoveryRequestClient(cfg),
+		Role:                NewRoleClient(cfg),
+		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
+		Session:             NewSessionClient(cfg),
+		Tenant:              NewTenantClient(cfg),
+		TrustedDevice:       NewTrustedDeviceClient(cfg),
+		TwoFactorMethod:     NewTwoFactorMethodClient(cfg),
+		User:                NewUserClient(cfg),
+		UserIpSubnetHistory: NewUserIpSubnetHistoryClient(cfg),
+		UserPasswordHistory: NewUserPasswordHistoryClient(cfg),
+		UserRole:            NewUserRoleClient(cfg),
+		WebhookEndpoint:     NewWebhookEndpointClient(cfg),
+		WebhookEvent:        NewWebhookEventClient(cfg),
 	}, nil
 }
 
@@ -227,25 +257,31 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		ApiKey:          NewApiKeyClient(cfg),
-		Application:     NewApplicationClient(cfg),
-		AuditLog:        NewAuditLogClient(cfg),
-		Identity:        NewIdentityClient(cfg),
-		OrgInvitation:   NewOrgInvitationClient(cfg),
-		OrgMember:       NewOrgMemberClient(cfg),
-		Organization:    NewOrganizationClient(cfg),
-		Permission:      NewPermissionClient(cfg),
-		PushDevice:      NewPushDeviceClient(cfg),
-		Role:            NewRoleClient(cfg),
-		Session:         NewSessionClient(cfg),
-		Tenant:          NewTenantClient(cfg),
-		TwoFactorMethod: NewTwoFactorMethodClient(cfg),
-		User:            NewUserClient(cfg),
-		UserRole:        NewUserRoleClient(cfg),
-		WebhookEndpoint: NewWebhookEndpointClient(cfg),
-		WebhookEvent:    NewWebhookEventClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		ApiKey:              NewApiKeyClient(cfg),
+		Application:         NewApplicationClient(cfg),
+		AuditLog:            NewAuditLogClient(cfg),
+		Identity:            NewIdentityClient(cfg),
+		OrgInvitation:       NewOrgInvitationClient(cfg),
+		OrgMember:           NewOrgMemberClient(cfg),
+		Organization:        NewOrganizationClient(cfg),
+		Permission:          NewPermissionClient(cfg),
+		PushDevice:          NewPushDeviceClient(cfg),
+		RecoveryContact:     NewRecoveryContactClient(cfg),
+		RecoveryRequest:     NewRecoveryRequestClient(cfg),
+		Role:                NewRoleClient(cfg),
+		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
+		Session:             NewSessionClient(cfg),
+		Tenant:              NewTenantClient(cfg),
+		TrustedDevice:       NewTrustedDeviceClient(cfg),
+		TwoFactorMethod:     NewTwoFactorMethodClient(cfg),
+		User:                NewUserClient(cfg),
+		UserIpSubnetHistory: NewUserIpSubnetHistoryClient(cfg),
+		UserPasswordHistory: NewUserPasswordHistoryClient(cfg),
+		UserRole:            NewUserRoleClient(cfg),
+		WebhookEndpoint:     NewWebhookEndpointClient(cfg),
+		WebhookEvent:        NewWebhookEventClient(cfg),
 	}, nil
 }
 
@@ -276,8 +312,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
-		c.Organization, c.Permission, c.PushDevice, c.Role, c.Session, c.Tenant,
-		c.TwoFactorMethod, c.User, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
+		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.Tenant,
+		c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
+		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -288,8 +326,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
-		c.Organization, c.Permission, c.PushDevice, c.Role, c.Session, c.Tenant,
-		c.TwoFactorMethod, c.User, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
+		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.Tenant,
+		c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
+		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -316,16 +356,28 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Permission.mutate(ctx, m)
 	case *PushDeviceMutation:
 		return c.PushDevice.mutate(ctx, m)
+	case *RecoveryContactMutation:
+		return c.RecoveryContact.mutate(ctx, m)
+	case *RecoveryRequestMutation:
+		return c.RecoveryRequest.mutate(ctx, m)
 	case *RoleMutation:
 		return c.Role.mutate(ctx, m)
+	case *SecurityBlacklistMutation:
+		return c.SecurityBlacklist.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
 	case *TenantMutation:
 		return c.Tenant.mutate(ctx, m)
+	case *TrustedDeviceMutation:
+		return c.TrustedDevice.mutate(ctx, m)
 	case *TwoFactorMethodMutation:
 		return c.TwoFactorMethod.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
+	case *UserIpSubnetHistoryMutation:
+		return c.UserIpSubnetHistory.mutate(ctx, m)
+	case *UserPasswordHistoryMutation:
+		return c.UserPasswordHistory.mutate(ctx, m)
 	case *UserRoleMutation:
 		return c.UserRole.mutate(ctx, m)
 	case *WebhookEndpointMutation:
@@ -1758,6 +1810,304 @@ func (c *PushDeviceClient) mutate(ctx context.Context, m *PushDeviceMutation) (V
 	}
 }
 
+// RecoveryContactClient is a client for the RecoveryContact schema.
+type RecoveryContactClient struct {
+	config
+}
+
+// NewRecoveryContactClient returns a client for the RecoveryContact from the given config.
+func NewRecoveryContactClient(c config) *RecoveryContactClient {
+	return &RecoveryContactClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `recoverycontact.Hooks(f(g(h())))`.
+func (c *RecoveryContactClient) Use(hooks ...Hook) {
+	c.hooks.RecoveryContact = append(c.hooks.RecoveryContact, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `recoverycontact.Intercept(f(g(h())))`.
+func (c *RecoveryContactClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RecoveryContact = append(c.inters.RecoveryContact, interceptors...)
+}
+
+// Create returns a builder for creating a RecoveryContact entity.
+func (c *RecoveryContactClient) Create() *RecoveryContactCreate {
+	mutation := newRecoveryContactMutation(c.config, OpCreate)
+	return &RecoveryContactCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RecoveryContact entities.
+func (c *RecoveryContactClient) CreateBulk(builders ...*RecoveryContactCreate) *RecoveryContactCreateBulk {
+	return &RecoveryContactCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RecoveryContactClient) MapCreateBulk(slice any, setFunc func(*RecoveryContactCreate, int)) *RecoveryContactCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RecoveryContactCreateBulk{err: fmt.Errorf("calling to RecoveryContactClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RecoveryContactCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RecoveryContactCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RecoveryContact.
+func (c *RecoveryContactClient) Update() *RecoveryContactUpdate {
+	mutation := newRecoveryContactMutation(c.config, OpUpdate)
+	return &RecoveryContactUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RecoveryContactClient) UpdateOne(rc *RecoveryContact) *RecoveryContactUpdateOne {
+	mutation := newRecoveryContactMutation(c.config, OpUpdateOne, withRecoveryContact(rc))
+	return &RecoveryContactUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RecoveryContactClient) UpdateOneID(id string) *RecoveryContactUpdateOne {
+	mutation := newRecoveryContactMutation(c.config, OpUpdateOne, withRecoveryContactID(id))
+	return &RecoveryContactUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RecoveryContact.
+func (c *RecoveryContactClient) Delete() *RecoveryContactDelete {
+	mutation := newRecoveryContactMutation(c.config, OpDelete)
+	return &RecoveryContactDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RecoveryContactClient) DeleteOne(rc *RecoveryContact) *RecoveryContactDeleteOne {
+	return c.DeleteOneID(rc.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RecoveryContactClient) DeleteOneID(id string) *RecoveryContactDeleteOne {
+	builder := c.Delete().Where(recoverycontact.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RecoveryContactDeleteOne{builder}
+}
+
+// Query returns a query builder for RecoveryContact.
+func (c *RecoveryContactClient) Query() *RecoveryContactQuery {
+	return &RecoveryContactQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRecoveryContact},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RecoveryContact entity by its id.
+func (c *RecoveryContactClient) Get(ctx context.Context, id string) (*RecoveryContact, error) {
+	return c.Query().Where(recoverycontact.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RecoveryContactClient) GetX(ctx context.Context, id string) *RecoveryContact {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a RecoveryContact.
+func (c *RecoveryContactClient) QueryUser(rc *RecoveryContact) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := rc.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(recoverycontact.Table, recoverycontact.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, recoverycontact.UserTable, recoverycontact.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(rc.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RecoveryContactClient) Hooks() []Hook {
+	return c.hooks.RecoveryContact
+}
+
+// Interceptors returns the client interceptors.
+func (c *RecoveryContactClient) Interceptors() []Interceptor {
+	return c.inters.RecoveryContact
+}
+
+func (c *RecoveryContactClient) mutate(ctx context.Context, m *RecoveryContactMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RecoveryContactCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RecoveryContactUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RecoveryContactUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RecoveryContactDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RecoveryContact mutation op: %q", m.Op())
+	}
+}
+
+// RecoveryRequestClient is a client for the RecoveryRequest schema.
+type RecoveryRequestClient struct {
+	config
+}
+
+// NewRecoveryRequestClient returns a client for the RecoveryRequest from the given config.
+func NewRecoveryRequestClient(c config) *RecoveryRequestClient {
+	return &RecoveryRequestClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `recoveryrequest.Hooks(f(g(h())))`.
+func (c *RecoveryRequestClient) Use(hooks ...Hook) {
+	c.hooks.RecoveryRequest = append(c.hooks.RecoveryRequest, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `recoveryrequest.Intercept(f(g(h())))`.
+func (c *RecoveryRequestClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RecoveryRequest = append(c.inters.RecoveryRequest, interceptors...)
+}
+
+// Create returns a builder for creating a RecoveryRequest entity.
+func (c *RecoveryRequestClient) Create() *RecoveryRequestCreate {
+	mutation := newRecoveryRequestMutation(c.config, OpCreate)
+	return &RecoveryRequestCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RecoveryRequest entities.
+func (c *RecoveryRequestClient) CreateBulk(builders ...*RecoveryRequestCreate) *RecoveryRequestCreateBulk {
+	return &RecoveryRequestCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RecoveryRequestClient) MapCreateBulk(slice any, setFunc func(*RecoveryRequestCreate, int)) *RecoveryRequestCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RecoveryRequestCreateBulk{err: fmt.Errorf("calling to RecoveryRequestClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RecoveryRequestCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RecoveryRequestCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RecoveryRequest.
+func (c *RecoveryRequestClient) Update() *RecoveryRequestUpdate {
+	mutation := newRecoveryRequestMutation(c.config, OpUpdate)
+	return &RecoveryRequestUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RecoveryRequestClient) UpdateOne(rr *RecoveryRequest) *RecoveryRequestUpdateOne {
+	mutation := newRecoveryRequestMutation(c.config, OpUpdateOne, withRecoveryRequest(rr))
+	return &RecoveryRequestUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RecoveryRequestClient) UpdateOneID(id string) *RecoveryRequestUpdateOne {
+	mutation := newRecoveryRequestMutation(c.config, OpUpdateOne, withRecoveryRequestID(id))
+	return &RecoveryRequestUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RecoveryRequest.
+func (c *RecoveryRequestClient) Delete() *RecoveryRequestDelete {
+	mutation := newRecoveryRequestMutation(c.config, OpDelete)
+	return &RecoveryRequestDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RecoveryRequestClient) DeleteOne(rr *RecoveryRequest) *RecoveryRequestDeleteOne {
+	return c.DeleteOneID(rr.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RecoveryRequestClient) DeleteOneID(id string) *RecoveryRequestDeleteOne {
+	builder := c.Delete().Where(recoveryrequest.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RecoveryRequestDeleteOne{builder}
+}
+
+// Query returns a query builder for RecoveryRequest.
+func (c *RecoveryRequestClient) Query() *RecoveryRequestQuery {
+	return &RecoveryRequestQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRecoveryRequest},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RecoveryRequest entity by its id.
+func (c *RecoveryRequestClient) Get(ctx context.Context, id string) (*RecoveryRequest, error) {
+	return c.Query().Where(recoveryrequest.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RecoveryRequestClient) GetX(ctx context.Context, id string) *RecoveryRequest {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a RecoveryRequest.
+func (c *RecoveryRequestClient) QueryUser(rr *RecoveryRequest) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := rr.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(recoveryrequest.Table, recoveryrequest.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, recoveryrequest.UserTable, recoveryrequest.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(rr.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RecoveryRequestClient) Hooks() []Hook {
+	return c.hooks.RecoveryRequest
+}
+
+// Interceptors returns the client interceptors.
+func (c *RecoveryRequestClient) Interceptors() []Interceptor {
+	return c.inters.RecoveryRequest
+}
+
+func (c *RecoveryRequestClient) mutate(ctx context.Context, m *RecoveryRequestMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RecoveryRequestCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RecoveryRequestUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RecoveryRequestUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RecoveryRequestDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RecoveryRequest mutation op: %q", m.Op())
+	}
+}
+
 // RoleClient is a client for the Role schema.
 type RoleClient struct {
 	config
@@ -1952,6 +2302,139 @@ func (c *RoleClient) mutate(ctx context.Context, m *RoleMutation) (Value, error)
 		return (&RoleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Role mutation op: %q", m.Op())
+	}
+}
+
+// SecurityBlacklistClient is a client for the SecurityBlacklist schema.
+type SecurityBlacklistClient struct {
+	config
+}
+
+// NewSecurityBlacklistClient returns a client for the SecurityBlacklist from the given config.
+func NewSecurityBlacklistClient(c config) *SecurityBlacklistClient {
+	return &SecurityBlacklistClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `securityblacklist.Hooks(f(g(h())))`.
+func (c *SecurityBlacklistClient) Use(hooks ...Hook) {
+	c.hooks.SecurityBlacklist = append(c.hooks.SecurityBlacklist, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `securityblacklist.Intercept(f(g(h())))`.
+func (c *SecurityBlacklistClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SecurityBlacklist = append(c.inters.SecurityBlacklist, interceptors...)
+}
+
+// Create returns a builder for creating a SecurityBlacklist entity.
+func (c *SecurityBlacklistClient) Create() *SecurityBlacklistCreate {
+	mutation := newSecurityBlacklistMutation(c.config, OpCreate)
+	return &SecurityBlacklistCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SecurityBlacklist entities.
+func (c *SecurityBlacklistClient) CreateBulk(builders ...*SecurityBlacklistCreate) *SecurityBlacklistCreateBulk {
+	return &SecurityBlacklistCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SecurityBlacklistClient) MapCreateBulk(slice any, setFunc func(*SecurityBlacklistCreate, int)) *SecurityBlacklistCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SecurityBlacklistCreateBulk{err: fmt.Errorf("calling to SecurityBlacklistClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SecurityBlacklistCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SecurityBlacklistCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SecurityBlacklist.
+func (c *SecurityBlacklistClient) Update() *SecurityBlacklistUpdate {
+	mutation := newSecurityBlacklistMutation(c.config, OpUpdate)
+	return &SecurityBlacklistUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SecurityBlacklistClient) UpdateOne(sb *SecurityBlacklist) *SecurityBlacklistUpdateOne {
+	mutation := newSecurityBlacklistMutation(c.config, OpUpdateOne, withSecurityBlacklist(sb))
+	return &SecurityBlacklistUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SecurityBlacklistClient) UpdateOneID(id string) *SecurityBlacklistUpdateOne {
+	mutation := newSecurityBlacklistMutation(c.config, OpUpdateOne, withSecurityBlacklistID(id))
+	return &SecurityBlacklistUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SecurityBlacklist.
+func (c *SecurityBlacklistClient) Delete() *SecurityBlacklistDelete {
+	mutation := newSecurityBlacklistMutation(c.config, OpDelete)
+	return &SecurityBlacklistDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SecurityBlacklistClient) DeleteOne(sb *SecurityBlacklist) *SecurityBlacklistDeleteOne {
+	return c.DeleteOneID(sb.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SecurityBlacklistClient) DeleteOneID(id string) *SecurityBlacklistDeleteOne {
+	builder := c.Delete().Where(securityblacklist.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SecurityBlacklistDeleteOne{builder}
+}
+
+// Query returns a query builder for SecurityBlacklist.
+func (c *SecurityBlacklistClient) Query() *SecurityBlacklistQuery {
+	return &SecurityBlacklistQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSecurityBlacklist},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SecurityBlacklist entity by its id.
+func (c *SecurityBlacklistClient) Get(ctx context.Context, id string) (*SecurityBlacklist, error) {
+	return c.Query().Where(securityblacklist.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SecurityBlacklistClient) GetX(ctx context.Context, id string) *SecurityBlacklist {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SecurityBlacklistClient) Hooks() []Hook {
+	return c.hooks.SecurityBlacklist
+}
+
+// Interceptors returns the client interceptors.
+func (c *SecurityBlacklistClient) Interceptors() []Interceptor {
+	return c.inters.SecurityBlacklist
+}
+
+func (c *SecurityBlacklistClient) mutate(ctx context.Context, m *SecurityBlacklistMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SecurityBlacklistCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SecurityBlacklistUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SecurityBlacklistUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SecurityBlacklistDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SecurityBlacklist mutation op: %q", m.Op())
 	}
 }
 
@@ -2333,6 +2816,155 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 	}
 }
 
+// TrustedDeviceClient is a client for the TrustedDevice schema.
+type TrustedDeviceClient struct {
+	config
+}
+
+// NewTrustedDeviceClient returns a client for the TrustedDevice from the given config.
+func NewTrustedDeviceClient(c config) *TrustedDeviceClient {
+	return &TrustedDeviceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `trusteddevice.Hooks(f(g(h())))`.
+func (c *TrustedDeviceClient) Use(hooks ...Hook) {
+	c.hooks.TrustedDevice = append(c.hooks.TrustedDevice, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `trusteddevice.Intercept(f(g(h())))`.
+func (c *TrustedDeviceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TrustedDevice = append(c.inters.TrustedDevice, interceptors...)
+}
+
+// Create returns a builder for creating a TrustedDevice entity.
+func (c *TrustedDeviceClient) Create() *TrustedDeviceCreate {
+	mutation := newTrustedDeviceMutation(c.config, OpCreate)
+	return &TrustedDeviceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TrustedDevice entities.
+func (c *TrustedDeviceClient) CreateBulk(builders ...*TrustedDeviceCreate) *TrustedDeviceCreateBulk {
+	return &TrustedDeviceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TrustedDeviceClient) MapCreateBulk(slice any, setFunc func(*TrustedDeviceCreate, int)) *TrustedDeviceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TrustedDeviceCreateBulk{err: fmt.Errorf("calling to TrustedDeviceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TrustedDeviceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TrustedDeviceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TrustedDevice.
+func (c *TrustedDeviceClient) Update() *TrustedDeviceUpdate {
+	mutation := newTrustedDeviceMutation(c.config, OpUpdate)
+	return &TrustedDeviceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TrustedDeviceClient) UpdateOne(td *TrustedDevice) *TrustedDeviceUpdateOne {
+	mutation := newTrustedDeviceMutation(c.config, OpUpdateOne, withTrustedDevice(td))
+	return &TrustedDeviceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TrustedDeviceClient) UpdateOneID(id string) *TrustedDeviceUpdateOne {
+	mutation := newTrustedDeviceMutation(c.config, OpUpdateOne, withTrustedDeviceID(id))
+	return &TrustedDeviceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TrustedDevice.
+func (c *TrustedDeviceClient) Delete() *TrustedDeviceDelete {
+	mutation := newTrustedDeviceMutation(c.config, OpDelete)
+	return &TrustedDeviceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TrustedDeviceClient) DeleteOne(td *TrustedDevice) *TrustedDeviceDeleteOne {
+	return c.DeleteOneID(td.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TrustedDeviceClient) DeleteOneID(id string) *TrustedDeviceDeleteOne {
+	builder := c.Delete().Where(trusteddevice.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TrustedDeviceDeleteOne{builder}
+}
+
+// Query returns a query builder for TrustedDevice.
+func (c *TrustedDeviceClient) Query() *TrustedDeviceQuery {
+	return &TrustedDeviceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTrustedDevice},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TrustedDevice entity by its id.
+func (c *TrustedDeviceClient) Get(ctx context.Context, id string) (*TrustedDevice, error) {
+	return c.Query().Where(trusteddevice.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TrustedDeviceClient) GetX(ctx context.Context, id string) *TrustedDevice {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a TrustedDevice.
+func (c *TrustedDeviceClient) QueryUser(td *TrustedDevice) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := td.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(trusteddevice.Table, trusteddevice.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, trusteddevice.UserTable, trusteddevice.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(td.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TrustedDeviceClient) Hooks() []Hook {
+	return c.hooks.TrustedDevice
+}
+
+// Interceptors returns the client interceptors.
+func (c *TrustedDeviceClient) Interceptors() []Interceptor {
+	return c.inters.TrustedDevice
+}
+
+func (c *TrustedDeviceClient) mutate(ctx context.Context, m *TrustedDeviceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TrustedDeviceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TrustedDeviceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TrustedDeviceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TrustedDeviceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TrustedDevice mutation op: %q", m.Op())
+	}
+}
+
 // TwoFactorMethodClient is a client for the TwoFactorMethod schema.
 type TwoFactorMethodClient struct {
 	config
@@ -2702,6 +3334,86 @@ func (c *UserClient) QueryUserRoles(u *User) *UserRoleQuery {
 	return query
 }
 
+// QueryTrustedDevices queries the trusted_devices edge of a User.
+func (c *UserClient) QueryTrustedDevices(u *User) *TrustedDeviceQuery {
+	query := (&TrustedDeviceClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(trusteddevice.Table, trusteddevice.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.TrustedDevicesTable, user.TrustedDevicesColumn),
+		)
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryIPSubnetHistory queries the ip_subnet_history edge of a User.
+func (c *UserClient) QueryIPSubnetHistory(u *User) *UserIpSubnetHistoryQuery {
+	query := (&UserIpSubnetHistoryClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(useripsubnethistory.Table, useripsubnethistory.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.IPSubnetHistoryTable, user.IPSubnetHistoryColumn),
+		)
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryRecoveryContacts queries the recovery_contacts edge of a User.
+func (c *UserClient) QueryRecoveryContacts(u *User) *RecoveryContactQuery {
+	query := (&RecoveryContactClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(recoverycontact.Table, recoverycontact.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RecoveryContactsTable, user.RecoveryContactsColumn),
+		)
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPasswordHistory queries the password_history edge of a User.
+func (c *UserClient) QueryPasswordHistory(u *User) *UserPasswordHistoryQuery {
+	query := (&UserPasswordHistoryClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(userpasswordhistory.Table, userpasswordhistory.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.PasswordHistoryTable, user.PasswordHistoryColumn),
+		)
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryRecoveryRequests queries the recovery_requests edge of a User.
+func (c *UserClient) QueryRecoveryRequests(u *User) *RecoveryRequestQuery {
+	query := (&RecoveryRequestClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := u.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(recoveryrequest.Table, recoveryrequest.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.RecoveryRequestsTable, user.RecoveryRequestsColumn),
+		)
+		fromV = sqlgraph.Neighbors(u.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *UserClient) Hooks() []Hook {
 	return c.hooks.User
@@ -2724,6 +3436,304 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 		return (&UserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown User mutation op: %q", m.Op())
+	}
+}
+
+// UserIpSubnetHistoryClient is a client for the UserIpSubnetHistory schema.
+type UserIpSubnetHistoryClient struct {
+	config
+}
+
+// NewUserIpSubnetHistoryClient returns a client for the UserIpSubnetHistory from the given config.
+func NewUserIpSubnetHistoryClient(c config) *UserIpSubnetHistoryClient {
+	return &UserIpSubnetHistoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `useripsubnethistory.Hooks(f(g(h())))`.
+func (c *UserIpSubnetHistoryClient) Use(hooks ...Hook) {
+	c.hooks.UserIpSubnetHistory = append(c.hooks.UserIpSubnetHistory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `useripsubnethistory.Intercept(f(g(h())))`.
+func (c *UserIpSubnetHistoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserIpSubnetHistory = append(c.inters.UserIpSubnetHistory, interceptors...)
+}
+
+// Create returns a builder for creating a UserIpSubnetHistory entity.
+func (c *UserIpSubnetHistoryClient) Create() *UserIpSubnetHistoryCreate {
+	mutation := newUserIpSubnetHistoryMutation(c.config, OpCreate)
+	return &UserIpSubnetHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserIpSubnetHistory entities.
+func (c *UserIpSubnetHistoryClient) CreateBulk(builders ...*UserIpSubnetHistoryCreate) *UserIpSubnetHistoryCreateBulk {
+	return &UserIpSubnetHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserIpSubnetHistoryClient) MapCreateBulk(slice any, setFunc func(*UserIpSubnetHistoryCreate, int)) *UserIpSubnetHistoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserIpSubnetHistoryCreateBulk{err: fmt.Errorf("calling to UserIpSubnetHistoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserIpSubnetHistoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserIpSubnetHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserIpSubnetHistory.
+func (c *UserIpSubnetHistoryClient) Update() *UserIpSubnetHistoryUpdate {
+	mutation := newUserIpSubnetHistoryMutation(c.config, OpUpdate)
+	return &UserIpSubnetHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserIpSubnetHistoryClient) UpdateOne(uish *UserIpSubnetHistory) *UserIpSubnetHistoryUpdateOne {
+	mutation := newUserIpSubnetHistoryMutation(c.config, OpUpdateOne, withUserIpSubnetHistory(uish))
+	return &UserIpSubnetHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserIpSubnetHistoryClient) UpdateOneID(id string) *UserIpSubnetHistoryUpdateOne {
+	mutation := newUserIpSubnetHistoryMutation(c.config, OpUpdateOne, withUserIpSubnetHistoryID(id))
+	return &UserIpSubnetHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserIpSubnetHistory.
+func (c *UserIpSubnetHistoryClient) Delete() *UserIpSubnetHistoryDelete {
+	mutation := newUserIpSubnetHistoryMutation(c.config, OpDelete)
+	return &UserIpSubnetHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserIpSubnetHistoryClient) DeleteOne(uish *UserIpSubnetHistory) *UserIpSubnetHistoryDeleteOne {
+	return c.DeleteOneID(uish.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserIpSubnetHistoryClient) DeleteOneID(id string) *UserIpSubnetHistoryDeleteOne {
+	builder := c.Delete().Where(useripsubnethistory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserIpSubnetHistoryDeleteOne{builder}
+}
+
+// Query returns a query builder for UserIpSubnetHistory.
+func (c *UserIpSubnetHistoryClient) Query() *UserIpSubnetHistoryQuery {
+	return &UserIpSubnetHistoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserIpSubnetHistory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserIpSubnetHistory entity by its id.
+func (c *UserIpSubnetHistoryClient) Get(ctx context.Context, id string) (*UserIpSubnetHistory, error) {
+	return c.Query().Where(useripsubnethistory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserIpSubnetHistoryClient) GetX(ctx context.Context, id string) *UserIpSubnetHistory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a UserIpSubnetHistory.
+func (c *UserIpSubnetHistoryClient) QueryUser(uish *UserIpSubnetHistory) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := uish.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(useripsubnethistory.Table, useripsubnethistory.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, useripsubnethistory.UserTable, useripsubnethistory.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(uish.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserIpSubnetHistoryClient) Hooks() []Hook {
+	return c.hooks.UserIpSubnetHistory
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserIpSubnetHistoryClient) Interceptors() []Interceptor {
+	return c.inters.UserIpSubnetHistory
+}
+
+func (c *UserIpSubnetHistoryClient) mutate(ctx context.Context, m *UserIpSubnetHistoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserIpSubnetHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserIpSubnetHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserIpSubnetHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserIpSubnetHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserIpSubnetHistory mutation op: %q", m.Op())
+	}
+}
+
+// UserPasswordHistoryClient is a client for the UserPasswordHistory schema.
+type UserPasswordHistoryClient struct {
+	config
+}
+
+// NewUserPasswordHistoryClient returns a client for the UserPasswordHistory from the given config.
+func NewUserPasswordHistoryClient(c config) *UserPasswordHistoryClient {
+	return &UserPasswordHistoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userpasswordhistory.Hooks(f(g(h())))`.
+func (c *UserPasswordHistoryClient) Use(hooks ...Hook) {
+	c.hooks.UserPasswordHistory = append(c.hooks.UserPasswordHistory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userpasswordhistory.Intercept(f(g(h())))`.
+func (c *UserPasswordHistoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserPasswordHistory = append(c.inters.UserPasswordHistory, interceptors...)
+}
+
+// Create returns a builder for creating a UserPasswordHistory entity.
+func (c *UserPasswordHistoryClient) Create() *UserPasswordHistoryCreate {
+	mutation := newUserPasswordHistoryMutation(c.config, OpCreate)
+	return &UserPasswordHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserPasswordHistory entities.
+func (c *UserPasswordHistoryClient) CreateBulk(builders ...*UserPasswordHistoryCreate) *UserPasswordHistoryCreateBulk {
+	return &UserPasswordHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserPasswordHistoryClient) MapCreateBulk(slice any, setFunc func(*UserPasswordHistoryCreate, int)) *UserPasswordHistoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserPasswordHistoryCreateBulk{err: fmt.Errorf("calling to UserPasswordHistoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserPasswordHistoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserPasswordHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserPasswordHistory.
+func (c *UserPasswordHistoryClient) Update() *UserPasswordHistoryUpdate {
+	mutation := newUserPasswordHistoryMutation(c.config, OpUpdate)
+	return &UserPasswordHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserPasswordHistoryClient) UpdateOne(uph *UserPasswordHistory) *UserPasswordHistoryUpdateOne {
+	mutation := newUserPasswordHistoryMutation(c.config, OpUpdateOne, withUserPasswordHistory(uph))
+	return &UserPasswordHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserPasswordHistoryClient) UpdateOneID(id string) *UserPasswordHistoryUpdateOne {
+	mutation := newUserPasswordHistoryMutation(c.config, OpUpdateOne, withUserPasswordHistoryID(id))
+	return &UserPasswordHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserPasswordHistory.
+func (c *UserPasswordHistoryClient) Delete() *UserPasswordHistoryDelete {
+	mutation := newUserPasswordHistoryMutation(c.config, OpDelete)
+	return &UserPasswordHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserPasswordHistoryClient) DeleteOne(uph *UserPasswordHistory) *UserPasswordHistoryDeleteOne {
+	return c.DeleteOneID(uph.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserPasswordHistoryClient) DeleteOneID(id string) *UserPasswordHistoryDeleteOne {
+	builder := c.Delete().Where(userpasswordhistory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserPasswordHistoryDeleteOne{builder}
+}
+
+// Query returns a query builder for UserPasswordHistory.
+func (c *UserPasswordHistoryClient) Query() *UserPasswordHistoryQuery {
+	return &UserPasswordHistoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserPasswordHistory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserPasswordHistory entity by its id.
+func (c *UserPasswordHistoryClient) Get(ctx context.Context, id string) (*UserPasswordHistory, error) {
+	return c.Query().Where(userpasswordhistory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserPasswordHistoryClient) GetX(ctx context.Context, id string) *UserPasswordHistory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a UserPasswordHistory.
+func (c *UserPasswordHistoryClient) QueryUser(uph *UserPasswordHistory) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := uph.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(userpasswordhistory.Table, userpasswordhistory.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, userpasswordhistory.UserTable, userpasswordhistory.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(uph.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserPasswordHistoryClient) Hooks() []Hook {
+	return c.hooks.UserPasswordHistory
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserPasswordHistoryClient) Interceptors() []Interceptor {
+	return c.inters.UserPasswordHistory
+}
+
+func (c *UserPasswordHistoryClient) mutate(ctx context.Context, m *UserPasswordHistoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserPasswordHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserPasswordHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserPasswordHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserPasswordHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserPasswordHistory mutation op: %q", m.Op())
 	}
 }
 
@@ -3210,12 +4220,16 @@ func (c *WebhookEventClient) mutate(ctx context.Context, m *WebhookEventMutation
 type (
 	hooks struct {
 		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
-		Permission, PushDevice, Role, Session, Tenant, TwoFactorMethod, User, UserRole,
-		WebhookEndpoint, WebhookEvent []ent.Hook
+		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role,
+		SecurityBlacklist, Session, Tenant, TrustedDevice, TwoFactorMethod, User,
+		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
+		WebhookEvent []ent.Hook
 	}
 	inters struct {
 		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
-		Permission, PushDevice, Role, Session, Tenant, TwoFactorMethod, User, UserRole,
-		WebhookEndpoint, WebhookEvent []ent.Interceptor
+		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role,
+		SecurityBlacklist, Session, Tenant, TrustedDevice, TwoFactorMethod, User,
+		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
+		WebhookEvent []ent.Interceptor
 	}
 )

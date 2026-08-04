@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -25,12 +26,16 @@ type TwoFactorMethod struct {
 	Type twofactormethod.Type `json:"type,omitempty"`
 	// Friendly label for 2FA method (e.g. Work YubiKey 5C)
 	Name string `json:"name,omitempty"`
-	// AES-256-GCM encrypted secret or recovery code string
+	// AES-256-GCM encrypted TOTP secret, Argon2id hashed recovery code, or AES-256-GCM encrypted phone number for PII privacy protection (type=sms). Unused/NULL for type=passkey
 	SecretEncrypted string `json:"-"`
 	// WebAuthn Passkey credential ID or device identifier
 	CredentialID string `json:"credential_id,omitempty"`
 	// WebAuthn COSE public key bytes
 	PublicKey []byte `json:"public_key,omitempty"`
+	// WebAuthn signature counter for clone detection
+	SignCount uint32 `json:"sign_count,omitempty"`
+	// WebAuthn metadata (AAGUID, attestation type, flags, transports)
+	WebauthnMetadata map[string]interface{} `json:"webauthn_metadata,omitempty"`
 	// Flag indicating if this 2FA method is active
 	IsEnabled bool `json:"is_enabled,omitempty"`
 	// Timestamp when 2FA method was last used for verification
@@ -68,10 +73,12 @@ func (*TwoFactorMethod) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case twofactormethod.FieldPublicKey:
+		case twofactormethod.FieldPublicKey, twofactormethod.FieldWebauthnMetadata:
 			values[i] = new([]byte)
 		case twofactormethod.FieldIsEnabled:
 			values[i] = new(sql.NullBool)
+		case twofactormethod.FieldSignCount:
+			values[i] = new(sql.NullInt64)
 		case twofactormethod.FieldID, twofactormethod.FieldUserID, twofactormethod.FieldType, twofactormethod.FieldName, twofactormethod.FieldSecretEncrypted, twofactormethod.FieldCredentialID:
 			values[i] = new(sql.NullString)
 		case twofactormethod.FieldLastUsedAt, twofactormethod.FieldCreatedAt:
@@ -132,6 +139,20 @@ func (tfm *TwoFactorMethod) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field public_key", values[i])
 			} else if value != nil {
 				tfm.PublicKey = *value
+			}
+		case twofactormethod.FieldSignCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field sign_count", values[i])
+			} else if value.Valid {
+				tfm.SignCount = uint32(value.Int64)
+			}
+		case twofactormethod.FieldWebauthnMetadata:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field webauthn_metadata", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &tfm.WebauthnMetadata); err != nil {
+					return fmt.Errorf("unmarshal field webauthn_metadata: %w", err)
+				}
 			}
 		case twofactormethod.FieldIsEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -209,6 +230,12 @@ func (tfm *TwoFactorMethod) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("public_key=")
 	builder.WriteString(fmt.Sprintf("%v", tfm.PublicKey))
+	builder.WriteString(", ")
+	builder.WriteString("sign_count=")
+	builder.WriteString(fmt.Sprintf("%v", tfm.SignCount))
+	builder.WriteString(", ")
+	builder.WriteString("webauthn_metadata=")
+	builder.WriteString(fmt.Sprintf("%v", tfm.WebauthnMetadata))
 	builder.WriteString(", ")
 	builder.WriteString("is_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", tfm.IsEnabled))

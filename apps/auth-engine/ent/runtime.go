@@ -14,12 +14,18 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/permission"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/pushdevice"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/schema"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/useripsubnethistory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookevent"
@@ -201,6 +207,74 @@ func init() {
 	pushdeviceDescCreatedAt := pushdeviceFields[12].Descriptor()
 	// pushdevice.DefaultCreatedAt holds the default value on creation for the created_at field.
 	pushdevice.DefaultCreatedAt = pushdeviceDescCreatedAt.Default.(func() time.Time)
+	recoverycontactFields := schema.RecoveryContact{}.Fields()
+	_ = recoverycontactFields
+	// recoverycontactDescUserID is the schema descriptor for user_id field.
+	recoverycontactDescUserID := recoverycontactFields[1].Descriptor()
+	// recoverycontact.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	recoverycontact.UserIDValidator = recoverycontactDescUserID.Validators[0].(func(string) error)
+	// recoverycontactDescGuardianEmail is the schema descriptor for guardian_email field.
+	recoverycontactDescGuardianEmail := recoverycontactFields[2].Descriptor()
+	// recoverycontact.GuardianEmailValidator is a validator for the "guardian_email" field. It is called by the builders before save.
+	recoverycontact.GuardianEmailValidator = recoverycontactDescGuardianEmail.Validators[0].(func(string) error)
+	// recoverycontactDescGuardianName is the schema descriptor for guardian_name field.
+	recoverycontactDescGuardianName := recoverycontactFields[3].Descriptor()
+	// recoverycontact.GuardianNameValidator is a validator for the "guardian_name" field. It is called by the builders before save.
+	recoverycontact.GuardianNameValidator = recoverycontactDescGuardianName.Validators[0].(func(string) error)
+	// recoverycontactDescShareHash is the schema descriptor for share_hash field.
+	recoverycontactDescShareHash := recoverycontactFields[5].Descriptor()
+	// recoverycontact.ShareHashValidator is a validator for the "share_hash" field. It is called by the builders before save.
+	recoverycontact.ShareHashValidator = recoverycontactDescShareHash.Validators[0].(func(string) error)
+	// recoverycontactDescCreatedAt is the schema descriptor for created_at field.
+	recoverycontactDescCreatedAt := recoverycontactFields[9].Descriptor()
+	// recoverycontact.DefaultCreatedAt holds the default value on creation for the created_at field.
+	recoverycontact.DefaultCreatedAt = recoverycontactDescCreatedAt.Default.(func() time.Time)
+	// recoverycontactDescUpdatedAt is the schema descriptor for updated_at field.
+	recoverycontactDescUpdatedAt := recoverycontactFields[10].Descriptor()
+	// recoverycontact.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	recoverycontact.DefaultUpdatedAt = recoverycontactDescUpdatedAt.Default.(func() time.Time)
+	// recoverycontact.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	recoverycontact.UpdateDefaultUpdatedAt = recoverycontactDescUpdatedAt.UpdateDefault.(func() time.Time)
+	recoveryrequestFields := schema.RecoveryRequest{}.Fields()
+	_ = recoveryrequestFields
+	// recoveryrequestDescUserID is the schema descriptor for user_id field.
+	recoveryrequestDescUserID := recoveryrequestFields[1].Descriptor()
+	// recoveryrequest.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	recoveryrequest.UserIDValidator = recoveryrequestDescUserID.Validators[0].(func(string) error)
+	// recoveryrequestDescInitiatedFromIP is the schema descriptor for initiated_from_ip field.
+	recoveryrequestDescInitiatedFromIP := recoveryrequestFields[2].Descriptor()
+	// recoveryrequest.InitiatedFromIPValidator is a validator for the "initiated_from_ip" field. It is called by the builders before save.
+	recoveryrequest.InitiatedFromIPValidator = recoveryrequestDescInitiatedFromIP.Validators[0].(func(string) error)
+	// recoveryrequestDescInitiatedFromSubnet is the schema descriptor for initiated_from_subnet field.
+	recoveryrequestDescInitiatedFromSubnet := recoveryrequestFields[3].Descriptor()
+	// recoveryrequest.InitiatedFromSubnetValidator is a validator for the "initiated_from_subnet" field. It is called by the builders before save.
+	recoveryrequest.InitiatedFromSubnetValidator = recoveryrequestDescInitiatedFromSubnet.Validators[0].(func(string) error)
+	// recoveryrequestDescInitiatedFromUserAgent is the schema descriptor for initiated_from_user_agent field.
+	recoveryrequestDescInitiatedFromUserAgent := recoveryrequestFields[4].Descriptor()
+	// recoveryrequest.InitiatedFromUserAgentValidator is a validator for the "initiated_from_user_agent" field. It is called by the builders before save.
+	recoveryrequest.InitiatedFromUserAgentValidator = recoveryrequestDescInitiatedFromUserAgent.Validators[0].(func(string) error)
+	// recoveryrequestDescIsTrustedDeviceOrigin is the schema descriptor for is_trusted_device_origin field.
+	recoveryrequestDescIsTrustedDeviceOrigin := recoveryrequestFields[5].Descriptor()
+	// recoveryrequest.DefaultIsTrustedDeviceOrigin holds the default value on creation for the is_trusted_device_origin field.
+	recoveryrequest.DefaultIsTrustedDeviceOrigin = recoveryrequestDescIsTrustedDeviceOrigin.Default.(bool)
+	// recoveryrequestDescSubmittedSharesCount is the schema descriptor for submitted_shares_count field.
+	recoveryrequestDescSubmittedSharesCount := recoveryrequestFields[8].Descriptor()
+	// recoveryrequest.DefaultSubmittedSharesCount holds the default value on creation for the submitted_shares_count field.
+	recoveryrequest.DefaultSubmittedSharesCount = recoveryrequestDescSubmittedSharesCount.Default.(int)
+	// recoveryrequestDescCancellationTokenHash is the schema descriptor for cancellation_token_hash field.
+	recoveryrequestDescCancellationTokenHash := recoveryrequestFields[12].Descriptor()
+	// recoveryrequest.CancellationTokenHashValidator is a validator for the "cancellation_token_hash" field. It is called by the builders before save.
+	recoveryrequest.CancellationTokenHashValidator = recoveryrequestDescCancellationTokenHash.Validators[0].(func(string) error)
+	// recoveryrequestDescCreatedAt is the schema descriptor for created_at field.
+	recoveryrequestDescCreatedAt := recoveryrequestFields[17].Descriptor()
+	// recoveryrequest.DefaultCreatedAt holds the default value on creation for the created_at field.
+	recoveryrequest.DefaultCreatedAt = recoveryrequestDescCreatedAt.Default.(func() time.Time)
+	// recoveryrequestDescUpdatedAt is the schema descriptor for updated_at field.
+	recoveryrequestDescUpdatedAt := recoveryrequestFields[18].Descriptor()
+	// recoveryrequest.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	recoveryrequest.DefaultUpdatedAt = recoveryrequestDescUpdatedAt.Default.(func() time.Time)
+	// recoveryrequest.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	recoveryrequest.UpdateDefaultUpdatedAt = recoveryrequestDescUpdatedAt.UpdateDefault.(func() time.Time)
 	roleFields := schema.Role{}.Fields()
 	_ = roleFields
 	// roleDescTenantID is the schema descriptor for tenant_id field.
@@ -219,6 +293,24 @@ func init() {
 	roleDescCreatedAt := roleFields[5].Descriptor()
 	// role.DefaultCreatedAt holds the default value on creation for the created_at field.
 	role.DefaultCreatedAt = roleDescCreatedAt.Default.(func() time.Time)
+	securityblacklistFields := schema.SecurityBlacklist{}.Fields()
+	_ = securityblacklistFields
+	// securityblacklistDescTenantID is the schema descriptor for tenant_id field.
+	securityblacklistDescTenantID := securityblacklistFields[1].Descriptor()
+	// securityblacklist.TenantIDValidator is a validator for the "tenant_id" field. It is called by the builders before save.
+	securityblacklist.TenantIDValidator = securityblacklistDescTenantID.Validators[0].(func(string) error)
+	// securityblacklistDescUserID is the schema descriptor for user_id field.
+	securityblacklistDescUserID := securityblacklistFields[2].Descriptor()
+	// securityblacklist.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	securityblacklist.UserIDValidator = securityblacklistDescUserID.Validators[0].(func(string) error)
+	// securityblacklistDescReason is the schema descriptor for reason field.
+	securityblacklistDescReason := securityblacklistFields[6].Descriptor()
+	// securityblacklist.DefaultReason holds the default value on creation for the reason field.
+	securityblacklist.DefaultReason = securityblacklistDescReason.Default.(string)
+	// securityblacklistDescCreatedAt is the schema descriptor for created_at field.
+	securityblacklistDescCreatedAt := securityblacklistFields[8].Descriptor()
+	// securityblacklist.DefaultCreatedAt holds the default value on creation for the created_at field.
+	securityblacklist.DefaultCreatedAt = securityblacklistDescCreatedAt.Default.(func() time.Time)
 	sessionFields := schema.Session{}.Fields()
 	_ = sessionFields
 	// sessionDescUserID is the schema descriptor for user_id field.
@@ -248,27 +340,63 @@ func init() {
 	// tenant.DefaultDomainVerified holds the default value on creation for the domain_verified field.
 	tenant.DefaultDomainVerified = tenantDescDomainVerified.Default.(bool)
 	// tenantDescCreatedAt is the schema descriptor for created_at field.
-	tenantDescCreatedAt := tenantFields[8].Descriptor()
+	tenantDescCreatedAt := tenantFields[10].Descriptor()
 	// tenant.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tenant.DefaultCreatedAt = tenantDescCreatedAt.Default.(func() time.Time)
 	// tenantDescUpdatedAt is the schema descriptor for updated_at field.
-	tenantDescUpdatedAt := tenantFields[9].Descriptor()
+	tenantDescUpdatedAt := tenantFields[11].Descriptor()
 	// tenant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	tenant.DefaultUpdatedAt = tenantDescUpdatedAt.Default.(func() time.Time)
 	// tenant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	tenant.UpdateDefaultUpdatedAt = tenantDescUpdatedAt.UpdateDefault.(func() time.Time)
+	trusteddeviceFields := schema.TrustedDevice{}.Fields()
+	_ = trusteddeviceFields
+	// trusteddeviceDescUserID is the schema descriptor for user_id field.
+	trusteddeviceDescUserID := trusteddeviceFields[1].Descriptor()
+	// trusteddevice.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	trusteddevice.UserIDValidator = trusteddeviceDescUserID.Validators[0].(func(string) error)
+	// trusteddeviceDescDeviceTokenHash is the schema descriptor for device_token_hash field.
+	trusteddeviceDescDeviceTokenHash := trusteddeviceFields[2].Descriptor()
+	// trusteddevice.DeviceTokenHashValidator is a validator for the "device_token_hash" field. It is called by the builders before save.
+	trusteddevice.DeviceTokenHashValidator = trusteddeviceDescDeviceTokenHash.Validators[0].(func(string) error)
+	// trusteddeviceDescFingerprintHash is the schema descriptor for fingerprint_hash field.
+	trusteddeviceDescFingerprintHash := trusteddeviceFields[3].Descriptor()
+	// trusteddevice.FingerprintHashValidator is a validator for the "fingerprint_hash" field. It is called by the builders before save.
+	trusteddevice.FingerprintHashValidator = trusteddeviceDescFingerprintHash.Validators[0].(func(string) error)
+	// trusteddeviceDescLastIPAddress is the schema descriptor for last_ip_address field.
+	trusteddeviceDescLastIPAddress := trusteddeviceFields[5].Descriptor()
+	// trusteddevice.LastIPAddressValidator is a validator for the "last_ip_address" field. It is called by the builders before save.
+	trusteddevice.LastIPAddressValidator = trusteddeviceDescLastIPAddress.Validators[0].(func(string) error)
+	// trusteddeviceDescLastIPSubnet is the schema descriptor for last_ip_subnet field.
+	trusteddeviceDescLastIPSubnet := trusteddeviceFields[6].Descriptor()
+	// trusteddevice.LastIPSubnetValidator is a validator for the "last_ip_subnet" field. It is called by the builders before save.
+	trusteddevice.LastIPSubnetValidator = trusteddeviceDescLastIPSubnet.Validators[0].(func(string) error)
+	// trusteddeviceDescFirstSeenAt is the schema descriptor for first_seen_at field.
+	trusteddeviceDescFirstSeenAt := trusteddeviceFields[8].Descriptor()
+	// trusteddevice.DefaultFirstSeenAt holds the default value on creation for the first_seen_at field.
+	trusteddevice.DefaultFirstSeenAt = trusteddeviceDescFirstSeenAt.Default.(func() time.Time)
+	// trusteddeviceDescLastSeenAt is the schema descriptor for last_seen_at field.
+	trusteddeviceDescLastSeenAt := trusteddeviceFields[9].Descriptor()
+	// trusteddevice.DefaultLastSeenAt holds the default value on creation for the last_seen_at field.
+	trusteddevice.DefaultLastSeenAt = trusteddeviceDescLastSeenAt.Default.(func() time.Time)
+	// trusteddevice.UpdateDefaultLastSeenAt holds the default value on update for the last_seen_at field.
+	trusteddevice.UpdateDefaultLastSeenAt = trusteddeviceDescLastSeenAt.UpdateDefault.(func() time.Time)
 	twofactormethodFields := schema.TwoFactorMethod{}.Fields()
 	_ = twofactormethodFields
 	// twofactormethodDescUserID is the schema descriptor for user_id field.
 	twofactormethodDescUserID := twofactormethodFields[1].Descriptor()
 	// twofactormethod.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
 	twofactormethod.UserIDValidator = twofactormethodDescUserID.Validators[0].(func(string) error)
+	// twofactormethodDescSignCount is the schema descriptor for sign_count field.
+	twofactormethodDescSignCount := twofactormethodFields[7].Descriptor()
+	// twofactormethod.DefaultSignCount holds the default value on creation for the sign_count field.
+	twofactormethod.DefaultSignCount = twofactormethodDescSignCount.Default.(uint32)
 	// twofactormethodDescIsEnabled is the schema descriptor for is_enabled field.
-	twofactormethodDescIsEnabled := twofactormethodFields[7].Descriptor()
+	twofactormethodDescIsEnabled := twofactormethodFields[9].Descriptor()
 	// twofactormethod.DefaultIsEnabled holds the default value on creation for the is_enabled field.
 	twofactormethod.DefaultIsEnabled = twofactormethodDescIsEnabled.Default.(bool)
 	// twofactormethodDescCreatedAt is the schema descriptor for created_at field.
-	twofactormethodDescCreatedAt := twofactormethodFields[9].Descriptor()
+	twofactormethodDescCreatedAt := twofactormethodFields[11].Descriptor()
 	// twofactormethod.DefaultCreatedAt holds the default value on creation for the created_at field.
 	twofactormethod.DefaultCreatedAt = twofactormethodDescCreatedAt.Default.(func() time.Time)
 	userFields := schema.User{}.Fields()
@@ -286,19 +414,65 @@ func init() {
 	// user.DefaultEmailVerified holds the default value on creation for the email_verified field.
 	user.DefaultEmailVerified = userDescEmailVerified.Default.(bool)
 	// userDescPhoneVerified is the schema descriptor for phone_verified field.
-	userDescPhoneVerified := userFields[8].Descriptor()
+	userDescPhoneVerified := userFields[12].Descriptor()
 	// user.DefaultPhoneVerified holds the default value on creation for the phone_verified field.
 	user.DefaultPhoneVerified = userDescPhoneVerified.Default.(bool)
+	// userDescRecoveryFailedAttempts is the schema descriptor for recovery_failed_attempts field.
+	userDescRecoveryFailedAttempts := userFields[19].Descriptor()
+	// user.DefaultRecoveryFailedAttempts holds the default value on creation for the recovery_failed_attempts field.
+	user.DefaultRecoveryFailedAttempts = userDescRecoveryFailedAttempts.Default.(int)
+	// userDescSecurityReviewRequired is the schema descriptor for security_review_required field.
+	userDescSecurityReviewRequired := userFields[21].Descriptor()
+	// user.DefaultSecurityReviewRequired holds the default value on creation for the security_review_required field.
+	user.DefaultSecurityReviewRequired = userDescSecurityReviewRequired.Default.(bool)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[15].Descriptor()
+	userDescCreatedAt := userFields[22].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[16].Descriptor()
+	userDescUpdatedAt := userFields[23].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	user.UpdateDefaultUpdatedAt = userDescUpdatedAt.UpdateDefault.(func() time.Time)
+	useripsubnethistoryFields := schema.UserIpSubnetHistory{}.Fields()
+	_ = useripsubnethistoryFields
+	// useripsubnethistoryDescUserID is the schema descriptor for user_id field.
+	useripsubnethistoryDescUserID := useripsubnethistoryFields[1].Descriptor()
+	// useripsubnethistory.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	useripsubnethistory.UserIDValidator = useripsubnethistoryDescUserID.Validators[0].(func(string) error)
+	// useripsubnethistoryDescSubnet is the schema descriptor for subnet field.
+	useripsubnethistoryDescSubnet := useripsubnethistoryFields[2].Descriptor()
+	// useripsubnethistory.SubnetValidator is a validator for the "subnet" field. It is called by the builders before save.
+	useripsubnethistory.SubnetValidator = useripsubnethistoryDescSubnet.Validators[0].(func(string) error)
+	// useripsubnethistoryDescLoginCount is the schema descriptor for login_count field.
+	useripsubnethistoryDescLoginCount := useripsubnethistoryFields[4].Descriptor()
+	// useripsubnethistory.DefaultLoginCount holds the default value on creation for the login_count field.
+	useripsubnethistory.DefaultLoginCount = useripsubnethistoryDescLoginCount.Default.(int)
+	// useripsubnethistoryDescFirstSeenAt is the schema descriptor for first_seen_at field.
+	useripsubnethistoryDescFirstSeenAt := useripsubnethistoryFields[5].Descriptor()
+	// useripsubnethistory.DefaultFirstSeenAt holds the default value on creation for the first_seen_at field.
+	useripsubnethistory.DefaultFirstSeenAt = useripsubnethistoryDescFirstSeenAt.Default.(func() time.Time)
+	// useripsubnethistoryDescLastSeenAt is the schema descriptor for last_seen_at field.
+	useripsubnethistoryDescLastSeenAt := useripsubnethistoryFields[6].Descriptor()
+	// useripsubnethistory.DefaultLastSeenAt holds the default value on creation for the last_seen_at field.
+	useripsubnethistory.DefaultLastSeenAt = useripsubnethistoryDescLastSeenAt.Default.(func() time.Time)
+	// useripsubnethistory.UpdateDefaultLastSeenAt holds the default value on update for the last_seen_at field.
+	useripsubnethistory.UpdateDefaultLastSeenAt = useripsubnethistoryDescLastSeenAt.UpdateDefault.(func() time.Time)
+	userpasswordhistoryFields := schema.UserPasswordHistory{}.Fields()
+	_ = userpasswordhistoryFields
+	// userpasswordhistoryDescUserID is the schema descriptor for user_id field.
+	userpasswordhistoryDescUserID := userpasswordhistoryFields[1].Descriptor()
+	// userpasswordhistory.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	userpasswordhistory.UserIDValidator = userpasswordhistoryDescUserID.Validators[0].(func(string) error)
+	// userpasswordhistoryDescPasswordHash is the schema descriptor for password_hash field.
+	userpasswordhistoryDescPasswordHash := userpasswordhistoryFields[2].Descriptor()
+	// userpasswordhistory.PasswordHashValidator is a validator for the "password_hash" field. It is called by the builders before save.
+	userpasswordhistory.PasswordHashValidator = userpasswordhistoryDescPasswordHash.Validators[0].(func(string) error)
+	// userpasswordhistoryDescCreatedAt is the schema descriptor for created_at field.
+	userpasswordhistoryDescCreatedAt := userpasswordhistoryFields[3].Descriptor()
+	// userpasswordhistory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userpasswordhistory.DefaultCreatedAt = userpasswordhistoryDescCreatedAt.Default.(func() time.Time)
 	userroleFields := schema.UserRole{}.Fields()
 	_ = userroleFields
 	// userroleDescUserID is the schema descriptor for user_id field.

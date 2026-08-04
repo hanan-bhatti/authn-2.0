@@ -15,10 +15,15 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/pushdevice"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/useripsubnethistory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 )
 
@@ -128,6 +133,86 @@ func (uu *UserUpdate) SetNillableEmailVerified(b *bool) *UserUpdate {
 	if b != nil {
 		uu.SetEmailVerified(*b)
 	}
+	return uu
+}
+
+// SetEmailVerificationToken sets the "email_verification_token" field.
+func (uu *UserUpdate) SetEmailVerificationToken(s string) *UserUpdate {
+	uu.mutation.SetEmailVerificationToken(s)
+	return uu
+}
+
+// SetNillableEmailVerificationToken sets the "email_verification_token" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableEmailVerificationToken(s *string) *UserUpdate {
+	if s != nil {
+		uu.SetEmailVerificationToken(*s)
+	}
+	return uu
+}
+
+// ClearEmailVerificationToken clears the value of the "email_verification_token" field.
+func (uu *UserUpdate) ClearEmailVerificationToken() *UserUpdate {
+	uu.mutation.ClearEmailVerificationToken()
+	return uu
+}
+
+// SetEmailVerificationExpiresAt sets the "email_verification_expires_at" field.
+func (uu *UserUpdate) SetEmailVerificationExpiresAt(t time.Time) *UserUpdate {
+	uu.mutation.SetEmailVerificationExpiresAt(t)
+	return uu
+}
+
+// SetNillableEmailVerificationExpiresAt sets the "email_verification_expires_at" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableEmailVerificationExpiresAt(t *time.Time) *UserUpdate {
+	if t != nil {
+		uu.SetEmailVerificationExpiresAt(*t)
+	}
+	return uu
+}
+
+// ClearEmailVerificationExpiresAt clears the value of the "email_verification_expires_at" field.
+func (uu *UserUpdate) ClearEmailVerificationExpiresAt() *UserUpdate {
+	uu.mutation.ClearEmailVerificationExpiresAt()
+	return uu
+}
+
+// SetMagicLinkToken sets the "magic_link_token" field.
+func (uu *UserUpdate) SetMagicLinkToken(s string) *UserUpdate {
+	uu.mutation.SetMagicLinkToken(s)
+	return uu
+}
+
+// SetNillableMagicLinkToken sets the "magic_link_token" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableMagicLinkToken(s *string) *UserUpdate {
+	if s != nil {
+		uu.SetMagicLinkToken(*s)
+	}
+	return uu
+}
+
+// ClearMagicLinkToken clears the value of the "magic_link_token" field.
+func (uu *UserUpdate) ClearMagicLinkToken() *UserUpdate {
+	uu.mutation.ClearMagicLinkToken()
+	return uu
+}
+
+// SetMagicLinkExpiresAt sets the "magic_link_expires_at" field.
+func (uu *UserUpdate) SetMagicLinkExpiresAt(t time.Time) *UserUpdate {
+	uu.mutation.SetMagicLinkExpiresAt(t)
+	return uu
+}
+
+// SetNillableMagicLinkExpiresAt sets the "magic_link_expires_at" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableMagicLinkExpiresAt(t *time.Time) *UserUpdate {
+	if t != nil {
+		uu.SetMagicLinkExpiresAt(*t)
+	}
+	return uu
+}
+
+// ClearMagicLinkExpiresAt clears the value of the "magic_link_expires_at" field.
+func (uu *UserUpdate) ClearMagicLinkExpiresAt() *UserUpdate {
+	uu.mutation.ClearMagicLinkExpiresAt()
 	return uu
 }
 
@@ -271,6 +356,61 @@ func (uu *UserUpdate) ClearMetadata() *UserUpdate {
 	return uu
 }
 
+// SetRecoveryFailedAttempts sets the "recovery_failed_attempts" field.
+func (uu *UserUpdate) SetRecoveryFailedAttempts(i int) *UserUpdate {
+	uu.mutation.ResetRecoveryFailedAttempts()
+	uu.mutation.SetRecoveryFailedAttempts(i)
+	return uu
+}
+
+// SetNillableRecoveryFailedAttempts sets the "recovery_failed_attempts" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableRecoveryFailedAttempts(i *int) *UserUpdate {
+	if i != nil {
+		uu.SetRecoveryFailedAttempts(*i)
+	}
+	return uu
+}
+
+// AddRecoveryFailedAttempts adds i to the "recovery_failed_attempts" field.
+func (uu *UserUpdate) AddRecoveryFailedAttempts(i int) *UserUpdate {
+	uu.mutation.AddRecoveryFailedAttempts(i)
+	return uu
+}
+
+// SetRecoveryLockoutUntil sets the "recovery_lockout_until" field.
+func (uu *UserUpdate) SetRecoveryLockoutUntil(t time.Time) *UserUpdate {
+	uu.mutation.SetRecoveryLockoutUntil(t)
+	return uu
+}
+
+// SetNillableRecoveryLockoutUntil sets the "recovery_lockout_until" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableRecoveryLockoutUntil(t *time.Time) *UserUpdate {
+	if t != nil {
+		uu.SetRecoveryLockoutUntil(*t)
+	}
+	return uu
+}
+
+// ClearRecoveryLockoutUntil clears the value of the "recovery_lockout_until" field.
+func (uu *UserUpdate) ClearRecoveryLockoutUntil() *UserUpdate {
+	uu.mutation.ClearRecoveryLockoutUntil()
+	return uu
+}
+
+// SetSecurityReviewRequired sets the "security_review_required" field.
+func (uu *UserUpdate) SetSecurityReviewRequired(b bool) *UserUpdate {
+	uu.mutation.SetSecurityReviewRequired(b)
+	return uu
+}
+
+// SetNillableSecurityReviewRequired sets the "security_review_required" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableSecurityReviewRequired(b *bool) *UserUpdate {
+	if b != nil {
+		uu.SetSecurityReviewRequired(*b)
+	}
+	return uu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (uu *UserUpdate) SetUpdatedAt(t time.Time) *UserUpdate {
 	uu.mutation.SetUpdatedAt(t)
@@ -370,6 +510,81 @@ func (uu *UserUpdate) AddUserRoles(u ...*UserRole) *UserUpdate {
 		ids[i] = u[i].ID
 	}
 	return uu.AddUserRoleIDs(ids...)
+}
+
+// AddTrustedDeviceIDs adds the "trusted_devices" edge to the TrustedDevice entity by IDs.
+func (uu *UserUpdate) AddTrustedDeviceIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddTrustedDeviceIDs(ids...)
+	return uu
+}
+
+// AddTrustedDevices adds the "trusted_devices" edges to the TrustedDevice entity.
+func (uu *UserUpdate) AddTrustedDevices(t ...*TrustedDevice) *UserUpdate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uu.AddTrustedDeviceIDs(ids...)
+}
+
+// AddIPSubnetHistoryIDs adds the "ip_subnet_history" edge to the UserIpSubnetHistory entity by IDs.
+func (uu *UserUpdate) AddIPSubnetHistoryIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddIPSubnetHistoryIDs(ids...)
+	return uu
+}
+
+// AddIPSubnetHistory adds the "ip_subnet_history" edges to the UserIpSubnetHistory entity.
+func (uu *UserUpdate) AddIPSubnetHistory(u ...*UserIpSubnetHistory) *UserUpdate {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uu.AddIPSubnetHistoryIDs(ids...)
+}
+
+// AddRecoveryContactIDs adds the "recovery_contacts" edge to the RecoveryContact entity by IDs.
+func (uu *UserUpdate) AddRecoveryContactIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddRecoveryContactIDs(ids...)
+	return uu
+}
+
+// AddRecoveryContacts adds the "recovery_contacts" edges to the RecoveryContact entity.
+func (uu *UserUpdate) AddRecoveryContacts(r ...*RecoveryContact) *UserUpdate {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uu.AddRecoveryContactIDs(ids...)
+}
+
+// AddPasswordHistoryIDs adds the "password_history" edge to the UserPasswordHistory entity by IDs.
+func (uu *UserUpdate) AddPasswordHistoryIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddPasswordHistoryIDs(ids...)
+	return uu
+}
+
+// AddPasswordHistory adds the "password_history" edges to the UserPasswordHistory entity.
+func (uu *UserUpdate) AddPasswordHistory(u ...*UserPasswordHistory) *UserUpdate {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uu.AddPasswordHistoryIDs(ids...)
+}
+
+// AddRecoveryRequestIDs adds the "recovery_requests" edge to the RecoveryRequest entity by IDs.
+func (uu *UserUpdate) AddRecoveryRequestIDs(ids ...string) *UserUpdate {
+	uu.mutation.AddRecoveryRequestIDs(ids...)
+	return uu
+}
+
+// AddRecoveryRequests adds the "recovery_requests" edges to the RecoveryRequest entity.
+func (uu *UserUpdate) AddRecoveryRequests(r ...*RecoveryRequest) *UserUpdate {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uu.AddRecoveryRequestIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -509,6 +724,111 @@ func (uu *UserUpdate) RemoveUserRoles(u ...*UserRole) *UserUpdate {
 	return uu.RemoveUserRoleIDs(ids...)
 }
 
+// ClearTrustedDevices clears all "trusted_devices" edges to the TrustedDevice entity.
+func (uu *UserUpdate) ClearTrustedDevices() *UserUpdate {
+	uu.mutation.ClearTrustedDevices()
+	return uu
+}
+
+// RemoveTrustedDeviceIDs removes the "trusted_devices" edge to TrustedDevice entities by IDs.
+func (uu *UserUpdate) RemoveTrustedDeviceIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemoveTrustedDeviceIDs(ids...)
+	return uu
+}
+
+// RemoveTrustedDevices removes "trusted_devices" edges to TrustedDevice entities.
+func (uu *UserUpdate) RemoveTrustedDevices(t ...*TrustedDevice) *UserUpdate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uu.RemoveTrustedDeviceIDs(ids...)
+}
+
+// ClearIPSubnetHistory clears all "ip_subnet_history" edges to the UserIpSubnetHistory entity.
+func (uu *UserUpdate) ClearIPSubnetHistory() *UserUpdate {
+	uu.mutation.ClearIPSubnetHistory()
+	return uu
+}
+
+// RemoveIPSubnetHistoryIDs removes the "ip_subnet_history" edge to UserIpSubnetHistory entities by IDs.
+func (uu *UserUpdate) RemoveIPSubnetHistoryIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemoveIPSubnetHistoryIDs(ids...)
+	return uu
+}
+
+// RemoveIPSubnetHistory removes "ip_subnet_history" edges to UserIpSubnetHistory entities.
+func (uu *UserUpdate) RemoveIPSubnetHistory(u ...*UserIpSubnetHistory) *UserUpdate {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uu.RemoveIPSubnetHistoryIDs(ids...)
+}
+
+// ClearRecoveryContacts clears all "recovery_contacts" edges to the RecoveryContact entity.
+func (uu *UserUpdate) ClearRecoveryContacts() *UserUpdate {
+	uu.mutation.ClearRecoveryContacts()
+	return uu
+}
+
+// RemoveRecoveryContactIDs removes the "recovery_contacts" edge to RecoveryContact entities by IDs.
+func (uu *UserUpdate) RemoveRecoveryContactIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemoveRecoveryContactIDs(ids...)
+	return uu
+}
+
+// RemoveRecoveryContacts removes "recovery_contacts" edges to RecoveryContact entities.
+func (uu *UserUpdate) RemoveRecoveryContacts(r ...*RecoveryContact) *UserUpdate {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uu.RemoveRecoveryContactIDs(ids...)
+}
+
+// ClearPasswordHistory clears all "password_history" edges to the UserPasswordHistory entity.
+func (uu *UserUpdate) ClearPasswordHistory() *UserUpdate {
+	uu.mutation.ClearPasswordHistory()
+	return uu
+}
+
+// RemovePasswordHistoryIDs removes the "password_history" edge to UserPasswordHistory entities by IDs.
+func (uu *UserUpdate) RemovePasswordHistoryIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemovePasswordHistoryIDs(ids...)
+	return uu
+}
+
+// RemovePasswordHistory removes "password_history" edges to UserPasswordHistory entities.
+func (uu *UserUpdate) RemovePasswordHistory(u ...*UserPasswordHistory) *UserUpdate {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uu.RemovePasswordHistoryIDs(ids...)
+}
+
+// ClearRecoveryRequests clears all "recovery_requests" edges to the RecoveryRequest entity.
+func (uu *UserUpdate) ClearRecoveryRequests() *UserUpdate {
+	uu.mutation.ClearRecoveryRequests()
+	return uu
+}
+
+// RemoveRecoveryRequestIDs removes the "recovery_requests" edge to RecoveryRequest entities by IDs.
+func (uu *UserUpdate) RemoveRecoveryRequestIDs(ids ...string) *UserUpdate {
+	uu.mutation.RemoveRecoveryRequestIDs(ids...)
+	return uu
+}
+
+// RemoveRecoveryRequests removes "recovery_requests" edges to RecoveryRequest entities.
+func (uu *UserUpdate) RemoveRecoveryRequests(r ...*RecoveryRequest) *UserUpdate {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uu.RemoveRecoveryRequestIDs(ids...)
+}
+
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (uu *UserUpdate) Save(ctx context.Context) (int, error) {
 	uu.defaults()
@@ -606,6 +926,30 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := uu.mutation.EmailVerified(); ok {
 		_spec.SetField(user.FieldEmailVerified, field.TypeBool, value)
 	}
+	if value, ok := uu.mutation.EmailVerificationToken(); ok {
+		_spec.SetField(user.FieldEmailVerificationToken, field.TypeString, value)
+	}
+	if uu.mutation.EmailVerificationTokenCleared() {
+		_spec.ClearField(user.FieldEmailVerificationToken, field.TypeString)
+	}
+	if value, ok := uu.mutation.EmailVerificationExpiresAt(); ok {
+		_spec.SetField(user.FieldEmailVerificationExpiresAt, field.TypeTime, value)
+	}
+	if uu.mutation.EmailVerificationExpiresAtCleared() {
+		_spec.ClearField(user.FieldEmailVerificationExpiresAt, field.TypeTime)
+	}
+	if value, ok := uu.mutation.MagicLinkToken(); ok {
+		_spec.SetField(user.FieldMagicLinkToken, field.TypeString, value)
+	}
+	if uu.mutation.MagicLinkTokenCleared() {
+		_spec.ClearField(user.FieldMagicLinkToken, field.TypeString)
+	}
+	if value, ok := uu.mutation.MagicLinkExpiresAt(); ok {
+		_spec.SetField(user.FieldMagicLinkExpiresAt, field.TypeTime, value)
+	}
+	if uu.mutation.MagicLinkExpiresAtCleared() {
+		_spec.ClearField(user.FieldMagicLinkExpiresAt, field.TypeTime)
+	}
 	if value, ok := uu.mutation.PhoneNumber(); ok {
 		_spec.SetField(user.FieldPhoneNumber, field.TypeString, value)
 	}
@@ -647,6 +991,21 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if uu.mutation.MetadataCleared() {
 		_spec.ClearField(user.FieldMetadata, field.TypeJSON)
+	}
+	if value, ok := uu.mutation.RecoveryFailedAttempts(); ok {
+		_spec.SetField(user.FieldRecoveryFailedAttempts, field.TypeInt, value)
+	}
+	if value, ok := uu.mutation.AddedRecoveryFailedAttempts(); ok {
+		_spec.AddField(user.FieldRecoveryFailedAttempts, field.TypeInt, value)
+	}
+	if value, ok := uu.mutation.RecoveryLockoutUntil(); ok {
+		_spec.SetField(user.FieldRecoveryLockoutUntil, field.TypeTime, value)
+	}
+	if uu.mutation.RecoveryLockoutUntilCleared() {
+		_spec.ClearField(user.FieldRecoveryLockoutUntil, field.TypeTime)
+	}
+	if value, ok := uu.mutation.SecurityReviewRequired(); ok {
+		_spec.SetField(user.FieldSecurityReviewRequired, field.TypeBool, value)
 	}
 	if value, ok := uu.mutation.UpdatedAt(); ok {
 		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
@@ -950,6 +1309,231 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if uu.mutation.TrustedDevicesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedTrustedDevicesIDs(); len(nodes) > 0 && !uu.mutation.TrustedDevicesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.TrustedDevicesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uu.mutation.IPSubnetHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedIPSubnetHistoryIDs(); len(nodes) > 0 && !uu.mutation.IPSubnetHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.IPSubnetHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uu.mutation.RecoveryContactsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedRecoveryContactsIDs(); len(nodes) > 0 && !uu.mutation.RecoveryContactsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RecoveryContactsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uu.mutation.PasswordHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedPasswordHistoryIDs(); len(nodes) > 0 && !uu.mutation.PasswordHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.PasswordHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uu.mutation.RecoveryRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RemovedRecoveryRequestsIDs(); len(nodes) > 0 && !uu.mutation.RecoveryRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uu.mutation.RecoveryRequestsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if n, err = sqlgraph.UpdateNodes(ctx, uu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -1063,6 +1647,86 @@ func (uuo *UserUpdateOne) SetNillableEmailVerified(b *bool) *UserUpdateOne {
 	if b != nil {
 		uuo.SetEmailVerified(*b)
 	}
+	return uuo
+}
+
+// SetEmailVerificationToken sets the "email_verification_token" field.
+func (uuo *UserUpdateOne) SetEmailVerificationToken(s string) *UserUpdateOne {
+	uuo.mutation.SetEmailVerificationToken(s)
+	return uuo
+}
+
+// SetNillableEmailVerificationToken sets the "email_verification_token" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableEmailVerificationToken(s *string) *UserUpdateOne {
+	if s != nil {
+		uuo.SetEmailVerificationToken(*s)
+	}
+	return uuo
+}
+
+// ClearEmailVerificationToken clears the value of the "email_verification_token" field.
+func (uuo *UserUpdateOne) ClearEmailVerificationToken() *UserUpdateOne {
+	uuo.mutation.ClearEmailVerificationToken()
+	return uuo
+}
+
+// SetEmailVerificationExpiresAt sets the "email_verification_expires_at" field.
+func (uuo *UserUpdateOne) SetEmailVerificationExpiresAt(t time.Time) *UserUpdateOne {
+	uuo.mutation.SetEmailVerificationExpiresAt(t)
+	return uuo
+}
+
+// SetNillableEmailVerificationExpiresAt sets the "email_verification_expires_at" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableEmailVerificationExpiresAt(t *time.Time) *UserUpdateOne {
+	if t != nil {
+		uuo.SetEmailVerificationExpiresAt(*t)
+	}
+	return uuo
+}
+
+// ClearEmailVerificationExpiresAt clears the value of the "email_verification_expires_at" field.
+func (uuo *UserUpdateOne) ClearEmailVerificationExpiresAt() *UserUpdateOne {
+	uuo.mutation.ClearEmailVerificationExpiresAt()
+	return uuo
+}
+
+// SetMagicLinkToken sets the "magic_link_token" field.
+func (uuo *UserUpdateOne) SetMagicLinkToken(s string) *UserUpdateOne {
+	uuo.mutation.SetMagicLinkToken(s)
+	return uuo
+}
+
+// SetNillableMagicLinkToken sets the "magic_link_token" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableMagicLinkToken(s *string) *UserUpdateOne {
+	if s != nil {
+		uuo.SetMagicLinkToken(*s)
+	}
+	return uuo
+}
+
+// ClearMagicLinkToken clears the value of the "magic_link_token" field.
+func (uuo *UserUpdateOne) ClearMagicLinkToken() *UserUpdateOne {
+	uuo.mutation.ClearMagicLinkToken()
+	return uuo
+}
+
+// SetMagicLinkExpiresAt sets the "magic_link_expires_at" field.
+func (uuo *UserUpdateOne) SetMagicLinkExpiresAt(t time.Time) *UserUpdateOne {
+	uuo.mutation.SetMagicLinkExpiresAt(t)
+	return uuo
+}
+
+// SetNillableMagicLinkExpiresAt sets the "magic_link_expires_at" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableMagicLinkExpiresAt(t *time.Time) *UserUpdateOne {
+	if t != nil {
+		uuo.SetMagicLinkExpiresAt(*t)
+	}
+	return uuo
+}
+
+// ClearMagicLinkExpiresAt clears the value of the "magic_link_expires_at" field.
+func (uuo *UserUpdateOne) ClearMagicLinkExpiresAt() *UserUpdateOne {
+	uuo.mutation.ClearMagicLinkExpiresAt()
 	return uuo
 }
 
@@ -1206,6 +1870,61 @@ func (uuo *UserUpdateOne) ClearMetadata() *UserUpdateOne {
 	return uuo
 }
 
+// SetRecoveryFailedAttempts sets the "recovery_failed_attempts" field.
+func (uuo *UserUpdateOne) SetRecoveryFailedAttempts(i int) *UserUpdateOne {
+	uuo.mutation.ResetRecoveryFailedAttempts()
+	uuo.mutation.SetRecoveryFailedAttempts(i)
+	return uuo
+}
+
+// SetNillableRecoveryFailedAttempts sets the "recovery_failed_attempts" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableRecoveryFailedAttempts(i *int) *UserUpdateOne {
+	if i != nil {
+		uuo.SetRecoveryFailedAttempts(*i)
+	}
+	return uuo
+}
+
+// AddRecoveryFailedAttempts adds i to the "recovery_failed_attempts" field.
+func (uuo *UserUpdateOne) AddRecoveryFailedAttempts(i int) *UserUpdateOne {
+	uuo.mutation.AddRecoveryFailedAttempts(i)
+	return uuo
+}
+
+// SetRecoveryLockoutUntil sets the "recovery_lockout_until" field.
+func (uuo *UserUpdateOne) SetRecoveryLockoutUntil(t time.Time) *UserUpdateOne {
+	uuo.mutation.SetRecoveryLockoutUntil(t)
+	return uuo
+}
+
+// SetNillableRecoveryLockoutUntil sets the "recovery_lockout_until" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableRecoveryLockoutUntil(t *time.Time) *UserUpdateOne {
+	if t != nil {
+		uuo.SetRecoveryLockoutUntil(*t)
+	}
+	return uuo
+}
+
+// ClearRecoveryLockoutUntil clears the value of the "recovery_lockout_until" field.
+func (uuo *UserUpdateOne) ClearRecoveryLockoutUntil() *UserUpdateOne {
+	uuo.mutation.ClearRecoveryLockoutUntil()
+	return uuo
+}
+
+// SetSecurityReviewRequired sets the "security_review_required" field.
+func (uuo *UserUpdateOne) SetSecurityReviewRequired(b bool) *UserUpdateOne {
+	uuo.mutation.SetSecurityReviewRequired(b)
+	return uuo
+}
+
+// SetNillableSecurityReviewRequired sets the "security_review_required" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableSecurityReviewRequired(b *bool) *UserUpdateOne {
+	if b != nil {
+		uuo.SetSecurityReviewRequired(*b)
+	}
+	return uuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (uuo *UserUpdateOne) SetUpdatedAt(t time.Time) *UserUpdateOne {
 	uuo.mutation.SetUpdatedAt(t)
@@ -1305,6 +2024,81 @@ func (uuo *UserUpdateOne) AddUserRoles(u ...*UserRole) *UserUpdateOne {
 		ids[i] = u[i].ID
 	}
 	return uuo.AddUserRoleIDs(ids...)
+}
+
+// AddTrustedDeviceIDs adds the "trusted_devices" edge to the TrustedDevice entity by IDs.
+func (uuo *UserUpdateOne) AddTrustedDeviceIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddTrustedDeviceIDs(ids...)
+	return uuo
+}
+
+// AddTrustedDevices adds the "trusted_devices" edges to the TrustedDevice entity.
+func (uuo *UserUpdateOne) AddTrustedDevices(t ...*TrustedDevice) *UserUpdateOne {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uuo.AddTrustedDeviceIDs(ids...)
+}
+
+// AddIPSubnetHistoryIDs adds the "ip_subnet_history" edge to the UserIpSubnetHistory entity by IDs.
+func (uuo *UserUpdateOne) AddIPSubnetHistoryIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddIPSubnetHistoryIDs(ids...)
+	return uuo
+}
+
+// AddIPSubnetHistory adds the "ip_subnet_history" edges to the UserIpSubnetHistory entity.
+func (uuo *UserUpdateOne) AddIPSubnetHistory(u ...*UserIpSubnetHistory) *UserUpdateOne {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uuo.AddIPSubnetHistoryIDs(ids...)
+}
+
+// AddRecoveryContactIDs adds the "recovery_contacts" edge to the RecoveryContact entity by IDs.
+func (uuo *UserUpdateOne) AddRecoveryContactIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddRecoveryContactIDs(ids...)
+	return uuo
+}
+
+// AddRecoveryContacts adds the "recovery_contacts" edges to the RecoveryContact entity.
+func (uuo *UserUpdateOne) AddRecoveryContacts(r ...*RecoveryContact) *UserUpdateOne {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uuo.AddRecoveryContactIDs(ids...)
+}
+
+// AddPasswordHistoryIDs adds the "password_history" edge to the UserPasswordHistory entity by IDs.
+func (uuo *UserUpdateOne) AddPasswordHistoryIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddPasswordHistoryIDs(ids...)
+	return uuo
+}
+
+// AddPasswordHistory adds the "password_history" edges to the UserPasswordHistory entity.
+func (uuo *UserUpdateOne) AddPasswordHistory(u ...*UserPasswordHistory) *UserUpdateOne {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uuo.AddPasswordHistoryIDs(ids...)
+}
+
+// AddRecoveryRequestIDs adds the "recovery_requests" edge to the RecoveryRequest entity by IDs.
+func (uuo *UserUpdateOne) AddRecoveryRequestIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.AddRecoveryRequestIDs(ids...)
+	return uuo
+}
+
+// AddRecoveryRequests adds the "recovery_requests" edges to the RecoveryRequest entity.
+func (uuo *UserUpdateOne) AddRecoveryRequests(r ...*RecoveryRequest) *UserUpdateOne {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uuo.AddRecoveryRequestIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -1444,6 +2238,111 @@ func (uuo *UserUpdateOne) RemoveUserRoles(u ...*UserRole) *UserUpdateOne {
 	return uuo.RemoveUserRoleIDs(ids...)
 }
 
+// ClearTrustedDevices clears all "trusted_devices" edges to the TrustedDevice entity.
+func (uuo *UserUpdateOne) ClearTrustedDevices() *UserUpdateOne {
+	uuo.mutation.ClearTrustedDevices()
+	return uuo
+}
+
+// RemoveTrustedDeviceIDs removes the "trusted_devices" edge to TrustedDevice entities by IDs.
+func (uuo *UserUpdateOne) RemoveTrustedDeviceIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemoveTrustedDeviceIDs(ids...)
+	return uuo
+}
+
+// RemoveTrustedDevices removes "trusted_devices" edges to TrustedDevice entities.
+func (uuo *UserUpdateOne) RemoveTrustedDevices(t ...*TrustedDevice) *UserUpdateOne {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return uuo.RemoveTrustedDeviceIDs(ids...)
+}
+
+// ClearIPSubnetHistory clears all "ip_subnet_history" edges to the UserIpSubnetHistory entity.
+func (uuo *UserUpdateOne) ClearIPSubnetHistory() *UserUpdateOne {
+	uuo.mutation.ClearIPSubnetHistory()
+	return uuo
+}
+
+// RemoveIPSubnetHistoryIDs removes the "ip_subnet_history" edge to UserIpSubnetHistory entities by IDs.
+func (uuo *UserUpdateOne) RemoveIPSubnetHistoryIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemoveIPSubnetHistoryIDs(ids...)
+	return uuo
+}
+
+// RemoveIPSubnetHistory removes "ip_subnet_history" edges to UserIpSubnetHistory entities.
+func (uuo *UserUpdateOne) RemoveIPSubnetHistory(u ...*UserIpSubnetHistory) *UserUpdateOne {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uuo.RemoveIPSubnetHistoryIDs(ids...)
+}
+
+// ClearRecoveryContacts clears all "recovery_contacts" edges to the RecoveryContact entity.
+func (uuo *UserUpdateOne) ClearRecoveryContacts() *UserUpdateOne {
+	uuo.mutation.ClearRecoveryContacts()
+	return uuo
+}
+
+// RemoveRecoveryContactIDs removes the "recovery_contacts" edge to RecoveryContact entities by IDs.
+func (uuo *UserUpdateOne) RemoveRecoveryContactIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemoveRecoveryContactIDs(ids...)
+	return uuo
+}
+
+// RemoveRecoveryContacts removes "recovery_contacts" edges to RecoveryContact entities.
+func (uuo *UserUpdateOne) RemoveRecoveryContacts(r ...*RecoveryContact) *UserUpdateOne {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uuo.RemoveRecoveryContactIDs(ids...)
+}
+
+// ClearPasswordHistory clears all "password_history" edges to the UserPasswordHistory entity.
+func (uuo *UserUpdateOne) ClearPasswordHistory() *UserUpdateOne {
+	uuo.mutation.ClearPasswordHistory()
+	return uuo
+}
+
+// RemovePasswordHistoryIDs removes the "password_history" edge to UserPasswordHistory entities by IDs.
+func (uuo *UserUpdateOne) RemovePasswordHistoryIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemovePasswordHistoryIDs(ids...)
+	return uuo
+}
+
+// RemovePasswordHistory removes "password_history" edges to UserPasswordHistory entities.
+func (uuo *UserUpdateOne) RemovePasswordHistory(u ...*UserPasswordHistory) *UserUpdateOne {
+	ids := make([]string, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uuo.RemovePasswordHistoryIDs(ids...)
+}
+
+// ClearRecoveryRequests clears all "recovery_requests" edges to the RecoveryRequest entity.
+func (uuo *UserUpdateOne) ClearRecoveryRequests() *UserUpdateOne {
+	uuo.mutation.ClearRecoveryRequests()
+	return uuo
+}
+
+// RemoveRecoveryRequestIDs removes the "recovery_requests" edge to RecoveryRequest entities by IDs.
+func (uuo *UserUpdateOne) RemoveRecoveryRequestIDs(ids ...string) *UserUpdateOne {
+	uuo.mutation.RemoveRecoveryRequestIDs(ids...)
+	return uuo
+}
+
+// RemoveRecoveryRequests removes "recovery_requests" edges to RecoveryRequest entities.
+func (uuo *UserUpdateOne) RemoveRecoveryRequests(r ...*RecoveryRequest) *UserUpdateOne {
+	ids := make([]string, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return uuo.RemoveRecoveryRequestIDs(ids...)
+}
+
 // Where appends a list predicates to the UserUpdate builder.
 func (uuo *UserUpdateOne) Where(ps ...predicate.User) *UserUpdateOne {
 	uuo.mutation.Where(ps...)
@@ -1571,6 +2470,30 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 	if value, ok := uuo.mutation.EmailVerified(); ok {
 		_spec.SetField(user.FieldEmailVerified, field.TypeBool, value)
 	}
+	if value, ok := uuo.mutation.EmailVerificationToken(); ok {
+		_spec.SetField(user.FieldEmailVerificationToken, field.TypeString, value)
+	}
+	if uuo.mutation.EmailVerificationTokenCleared() {
+		_spec.ClearField(user.FieldEmailVerificationToken, field.TypeString)
+	}
+	if value, ok := uuo.mutation.EmailVerificationExpiresAt(); ok {
+		_spec.SetField(user.FieldEmailVerificationExpiresAt, field.TypeTime, value)
+	}
+	if uuo.mutation.EmailVerificationExpiresAtCleared() {
+		_spec.ClearField(user.FieldEmailVerificationExpiresAt, field.TypeTime)
+	}
+	if value, ok := uuo.mutation.MagicLinkToken(); ok {
+		_spec.SetField(user.FieldMagicLinkToken, field.TypeString, value)
+	}
+	if uuo.mutation.MagicLinkTokenCleared() {
+		_spec.ClearField(user.FieldMagicLinkToken, field.TypeString)
+	}
+	if value, ok := uuo.mutation.MagicLinkExpiresAt(); ok {
+		_spec.SetField(user.FieldMagicLinkExpiresAt, field.TypeTime, value)
+	}
+	if uuo.mutation.MagicLinkExpiresAtCleared() {
+		_spec.ClearField(user.FieldMagicLinkExpiresAt, field.TypeTime)
+	}
 	if value, ok := uuo.mutation.PhoneNumber(); ok {
 		_spec.SetField(user.FieldPhoneNumber, field.TypeString, value)
 	}
@@ -1612,6 +2535,21 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 	}
 	if uuo.mutation.MetadataCleared() {
 		_spec.ClearField(user.FieldMetadata, field.TypeJSON)
+	}
+	if value, ok := uuo.mutation.RecoveryFailedAttempts(); ok {
+		_spec.SetField(user.FieldRecoveryFailedAttempts, field.TypeInt, value)
+	}
+	if value, ok := uuo.mutation.AddedRecoveryFailedAttempts(); ok {
+		_spec.AddField(user.FieldRecoveryFailedAttempts, field.TypeInt, value)
+	}
+	if value, ok := uuo.mutation.RecoveryLockoutUntil(); ok {
+		_spec.SetField(user.FieldRecoveryLockoutUntil, field.TypeTime, value)
+	}
+	if uuo.mutation.RecoveryLockoutUntilCleared() {
+		_spec.ClearField(user.FieldRecoveryLockoutUntil, field.TypeTime)
+	}
+	if value, ok := uuo.mutation.SecurityReviewRequired(); ok {
+		_spec.SetField(user.FieldSecurityReviewRequired, field.TypeBool, value)
 	}
 	if value, ok := uuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
@@ -1908,6 +2846,231 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(userrole.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.TrustedDevicesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedTrustedDevicesIDs(); len(nodes) > 0 && !uuo.mutation.TrustedDevicesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.TrustedDevicesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TrustedDevicesTable,
+			Columns: []string{user.TrustedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(trusteddevice.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.IPSubnetHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedIPSubnetHistoryIDs(); len(nodes) > 0 && !uuo.mutation.IPSubnetHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.IPSubnetHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.IPSubnetHistoryTable,
+			Columns: []string{user.IPSubnetHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(useripsubnethistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.RecoveryContactsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedRecoveryContactsIDs(); len(nodes) > 0 && !uuo.mutation.RecoveryContactsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RecoveryContactsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryContactsTable,
+			Columns: []string{user.RecoveryContactsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoverycontact.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.PasswordHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedPasswordHistoryIDs(); len(nodes) > 0 && !uuo.mutation.PasswordHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.PasswordHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PasswordHistoryTable,
+			Columns: []string{user.PasswordHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpasswordhistory.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if uuo.mutation.RecoveryRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RemovedRecoveryRequestsIDs(); len(nodes) > 0 && !uuo.mutation.RecoveryRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := uuo.mutation.RecoveryRequestsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.RecoveryRequestsTable,
+			Columns: []string{user.RecoveryRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(recoveryrequest.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

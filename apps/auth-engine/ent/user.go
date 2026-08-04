@@ -32,6 +32,14 @@ type User struct {
 	PasswordHash string `json:"-"`
 	// Flag indicating if email address has been verified
 	EmailVerified bool `json:"email_verified,omitempty"`
+	// SHA-256 hash of active single-use email verification token
+	EmailVerificationToken *string `json:"-"`
+	// Expiration timestamp of active email verification token
+	EmailVerificationExpiresAt *time.Time `json:"email_verification_expires_at,omitempty"`
+	// SHA-256 hash of active single-use passwordless magic link token
+	MagicLinkToken *string `json:"-"`
+	// Expiration timestamp of active magic link token
+	MagicLinkExpiresAt *time.Time `json:"magic_link_expires_at,omitempty"`
 	// User registered phone number (E.164 format)
 	PhoneNumber string `json:"phone_number,omitempty"`
 	// Flag indicating if phone number has been verified
@@ -48,6 +56,12 @@ type User struct {
 	LastSignInAt *time.Time `json:"last_sign_in_at,omitempty"`
 	// Custom key-value metadata attributes for user profile
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	// Consecutive failed recovery proof attempts count for exponential lockout schedule
+	RecoveryFailedAttempts int `json:"recovery_failed_attempts,omitempty"`
+	// Expiration timestamp of current exponential lockout penalty window
+	RecoveryLockoutUntil *time.Time `json:"recovery_lockout_until,omitempty"`
+	// Flag requiring password reset & 2FA review following a cancelled recovery attempt
+	SecurityReviewRequired bool `json:"security_review_required,omitempty"`
 	// User registration timestamp
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// User profile last updated timestamp
@@ -74,9 +88,19 @@ type UserEdges struct {
 	OrgMemberships []*OrgMember `json:"org_memberships,omitempty"`
 	// UserRoles holds the value of the user_roles edge.
 	UserRoles []*UserRole `json:"user_roles,omitempty"`
+	// TrustedDevices holds the value of the trusted_devices edge.
+	TrustedDevices []*TrustedDevice `json:"trusted_devices,omitempty"`
+	// IPSubnetHistory holds the value of the ip_subnet_history edge.
+	IPSubnetHistory []*UserIpSubnetHistory `json:"ip_subnet_history,omitempty"`
+	// RecoveryContacts holds the value of the recovery_contacts edge.
+	RecoveryContacts []*RecoveryContact `json:"recovery_contacts,omitempty"`
+	// PasswordHistory holds the value of the password_history edge.
+	PasswordHistory []*UserPasswordHistory `json:"password_history,omitempty"`
+	// RecoveryRequests holds the value of the recovery_requests edge.
+	RecoveryRequests []*RecoveryRequest `json:"recovery_requests,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [7]bool
+	loadedTypes [12]bool
 }
 
 // TenantOrErr returns the Tenant value or an error if the edge
@@ -144,6 +168,51 @@ func (e UserEdges) UserRolesOrErr() ([]*UserRole, error) {
 	return nil, &NotLoadedError{edge: "user_roles"}
 }
 
+// TrustedDevicesOrErr returns the TrustedDevices value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) TrustedDevicesOrErr() ([]*TrustedDevice, error) {
+	if e.loadedTypes[7] {
+		return e.TrustedDevices, nil
+	}
+	return nil, &NotLoadedError{edge: "trusted_devices"}
+}
+
+// IPSubnetHistoryOrErr returns the IPSubnetHistory value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) IPSubnetHistoryOrErr() ([]*UserIpSubnetHistory, error) {
+	if e.loadedTypes[8] {
+		return e.IPSubnetHistory, nil
+	}
+	return nil, &NotLoadedError{edge: "ip_subnet_history"}
+}
+
+// RecoveryContactsOrErr returns the RecoveryContacts value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) RecoveryContactsOrErr() ([]*RecoveryContact, error) {
+	if e.loadedTypes[9] {
+		return e.RecoveryContacts, nil
+	}
+	return nil, &NotLoadedError{edge: "recovery_contacts"}
+}
+
+// PasswordHistoryOrErr returns the PasswordHistory value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) PasswordHistoryOrErr() ([]*UserPasswordHistory, error) {
+	if e.loadedTypes[10] {
+		return e.PasswordHistory, nil
+	}
+	return nil, &NotLoadedError{edge: "password_history"}
+}
+
+// RecoveryRequestsOrErr returns the RecoveryRequests value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) RecoveryRequestsOrErr() ([]*RecoveryRequest, error) {
+	if e.loadedTypes[11] {
+		return e.RecoveryRequests, nil
+	}
+	return nil, &NotLoadedError{edge: "recovery_requests"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -151,11 +220,13 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldMetadata:
 			values[i] = new([]byte)
-		case user.FieldEmailVerified, user.FieldPhoneVerified:
+		case user.FieldEmailVerified, user.FieldPhoneVerified, user.FieldSecurityReviewRequired:
 			values[i] = new(sql.NullBool)
-		case user.FieldID, user.FieldTenantID, user.FieldEnvironment, user.FieldEmail, user.FieldUsername, user.FieldPasswordHash, user.FieldPhoneNumber, user.FieldName, user.FieldAvatarURL, user.FieldLocale, user.FieldStatus:
+		case user.FieldRecoveryFailedAttempts:
+			values[i] = new(sql.NullInt64)
+		case user.FieldID, user.FieldTenantID, user.FieldEnvironment, user.FieldEmail, user.FieldUsername, user.FieldPasswordHash, user.FieldEmailVerificationToken, user.FieldMagicLinkToken, user.FieldPhoneNumber, user.FieldName, user.FieldAvatarURL, user.FieldLocale, user.FieldStatus:
 			values[i] = new(sql.NullString)
-		case user.FieldLastSignInAt, user.FieldCreatedAt, user.FieldUpdatedAt:
+		case user.FieldEmailVerificationExpiresAt, user.FieldMagicLinkExpiresAt, user.FieldLastSignInAt, user.FieldRecoveryLockoutUntil, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -215,6 +286,34 @@ func (u *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				u.EmailVerified = value.Bool
 			}
+		case user.FieldEmailVerificationToken:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field email_verification_token", values[i])
+			} else if value.Valid {
+				u.EmailVerificationToken = new(string)
+				*u.EmailVerificationToken = value.String
+			}
+		case user.FieldEmailVerificationExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field email_verification_expires_at", values[i])
+			} else if value.Valid {
+				u.EmailVerificationExpiresAt = new(time.Time)
+				*u.EmailVerificationExpiresAt = value.Time
+			}
+		case user.FieldMagicLinkToken:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field magic_link_token", values[i])
+			} else if value.Valid {
+				u.MagicLinkToken = new(string)
+				*u.MagicLinkToken = value.String
+			}
+		case user.FieldMagicLinkExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field magic_link_expires_at", values[i])
+			} else if value.Valid {
+				u.MagicLinkExpiresAt = new(time.Time)
+				*u.MagicLinkExpiresAt = value.Time
+			}
 		case user.FieldPhoneNumber:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field phone_number", values[i])
@@ -265,6 +364,25 @@ func (u *User) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &u.Metadata); err != nil {
 					return fmt.Errorf("unmarshal field metadata: %w", err)
 				}
+			}
+		case user.FieldRecoveryFailedAttempts:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field recovery_failed_attempts", values[i])
+			} else if value.Valid {
+				u.RecoveryFailedAttempts = int(value.Int64)
+			}
+		case user.FieldRecoveryLockoutUntil:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field recovery_lockout_until", values[i])
+			} else if value.Valid {
+				u.RecoveryLockoutUntil = new(time.Time)
+				*u.RecoveryLockoutUntil = value.Time
+			}
+		case user.FieldSecurityReviewRequired:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field security_review_required", values[i])
+			} else if value.Valid {
+				u.SecurityReviewRequired = value.Bool
 			}
 		case user.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -326,6 +444,31 @@ func (u *User) QueryUserRoles() *UserRoleQuery {
 	return NewUserClient(u.config).QueryUserRoles(u)
 }
 
+// QueryTrustedDevices queries the "trusted_devices" edge of the User entity.
+func (u *User) QueryTrustedDevices() *TrustedDeviceQuery {
+	return NewUserClient(u.config).QueryTrustedDevices(u)
+}
+
+// QueryIPSubnetHistory queries the "ip_subnet_history" edge of the User entity.
+func (u *User) QueryIPSubnetHistory() *UserIpSubnetHistoryQuery {
+	return NewUserClient(u.config).QueryIPSubnetHistory(u)
+}
+
+// QueryRecoveryContacts queries the "recovery_contacts" edge of the User entity.
+func (u *User) QueryRecoveryContacts() *RecoveryContactQuery {
+	return NewUserClient(u.config).QueryRecoveryContacts(u)
+}
+
+// QueryPasswordHistory queries the "password_history" edge of the User entity.
+func (u *User) QueryPasswordHistory() *UserPasswordHistoryQuery {
+	return NewUserClient(u.config).QueryPasswordHistory(u)
+}
+
+// QueryRecoveryRequests queries the "recovery_requests" edge of the User entity.
+func (u *User) QueryRecoveryRequests() *RecoveryRequestQuery {
+	return NewUserClient(u.config).QueryRecoveryRequests(u)
+}
+
 // Update returns a builder for updating this User.
 // Note that you need to call User.Unwrap() before calling this method if this User
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -368,6 +511,20 @@ func (u *User) String() string {
 	builder.WriteString("email_verified=")
 	builder.WriteString(fmt.Sprintf("%v", u.EmailVerified))
 	builder.WriteString(", ")
+	builder.WriteString("email_verification_token=<sensitive>")
+	builder.WriteString(", ")
+	if v := u.EmailVerificationExpiresAt; v != nil {
+		builder.WriteString("email_verification_expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("magic_link_token=<sensitive>")
+	builder.WriteString(", ")
+	if v := u.MagicLinkExpiresAt; v != nil {
+		builder.WriteString("magic_link_expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("phone_number=")
 	builder.WriteString(u.PhoneNumber)
 	builder.WriteString(", ")
@@ -393,6 +550,17 @@ func (u *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", u.Metadata))
+	builder.WriteString(", ")
+	builder.WriteString("recovery_failed_attempts=")
+	builder.WriteString(fmt.Sprintf("%v", u.RecoveryFailedAttempts))
+	builder.WriteString(", ")
+	if v := u.RecoveryLockoutUntil; v != nil {
+		builder.WriteString("recovery_lockout_until=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("security_review_required=")
+	builder.WriteString(fmt.Sprintf("%v", u.SecurityReviewRequired))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(u.CreatedAt.Format(time.ANSIC))
