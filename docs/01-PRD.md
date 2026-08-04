@@ -95,34 +95,34 @@
 - Refresh token rotation on every exchange with a 10-second grace window to allow concurrent network requests.
 - Active session listing by device, browser, IP, and location with single-click remote session revocation.
 
-### FR-9: Native Android & iOS Account Manager (Device-Level SSO) [Deferred to Native SDK Phase]
-- **Android (`AccountManager`)**: Registers Authn as an Android System Account Type for silent cross-app token exchange.
-- **iOS (`ASWebAuthenticationSession` & Shared Keychain)**: Uses Secure Enclave and Shared Keychain Groups for silent cross-app SSO on iOS devices.
+## 3. Execution Roadmap & Feature Order
 
-### FR-10: Developer Console & Tenant Management (`console.authn.com`)
-- Tenant management, environment toggling (Test vs Prod), API key generation, provider secrets, email/SMS provider settings, rate limit rules, audit logs, and user management.
+### Phase 1: Backend Core Engines (Current Target)
+- **FR-12: Role-Based Access Control (RBAC) & Fine-Grained Permissions**
+  - Roles (`tenant_admin`, `org_admin`, `editor`, `viewer`) & granular permissions (`users:read`, `orgs:write`).
+  - Permission evaluation middleware & role/permission claims in JWT tokens.
+- **FR-13: Outgoing Real-Time Event Webhooks**
+  - Event triggers (`user.signup`, `user.login`, `session.revoked`, `2fa.enabled`, `password.changed`).
+  - Worker pool with exponential backoff retries and HMAC-SHA256 signature (`X-Authn-Signature`).
+- **FR-14: Admin User Impersonation ("Log in as User")**
+  - Endpoint `POST /v1/admin/users/:userId/impersonate` generating short-lived (15-min) impersonation JWT with `impersonator_id` claim & audit trail.
+- **FR-15: B2B Organizations & Team Member Invitations**
+  - Multi-tenant Organization hierarchy (`tnt_...` $\to$ `org_...`), member invites with 7-day signed tokens, and org-scoped roles.
+- **FR-16: Enterprise SAML 2.0 & Native SSO**
+  - Native SAML 2.0 Identity Provider (IdP) & Service Provider (SP) integration for Okta, Azure AD / Entra ID, and Ping.
 
-### FR-11: Public Documentation & Interactive Demo (`docs.authn.com` & `demo.authn.com`)
-- Interactive docs hub with SDK quickstarts (`docs.authn.com`) and live playground (`demo.authn.com`).
+### Phase 2: Client SDKs
+- **JS SDK (`packages/js`)**: Core JavaScript/TypeScript client library.
+- **React SDK (`packages/react`)**: React hooks & context providers (`AuthProvider`, `useAuth`, `useUser`, `useSession`).
 
-### FR-12: Role-Based Access Control (RBAC) & Fine-Grained Permissions
-- Support for Roles (e.g., `admin`, `editor`, `viewer`) and granular Permissions (`posts:create`, `users:delete`).
-- Global tenant roles and per-organization roles included in JWT claims.
+### Phase 3: Developer Console & Operations
+- **FR-10: Developer Console (`apps/web-console`)**: Web admin panel for tenant settings, API keys, provider credentials, sessions, and audit logs.
 
-### FR-13: Outgoing Real-Time Event Webhooks
-- Signed webhook notifications sent to configured developer URLs on key security events (`user.created`, `user.deleted`, `session.revoked`, `2fa.enabled`, `password.changed`).
-- HMAC-SHA256 signature header (`X-Authn-Signature`) sent with every payload for developer verification.
+### Phase 4: Public Docs & Interactive Demo
+- **FR-11: Public Documentation & Interactive Demo (`apps/web-docs` & `apps/web-demo`)**: Interactive docs hub and live playground.
 
-### FR-14: Admin User Impersonation ("Log in as User")
-- Secure admin API endpoint (`POST /v1/admin/users/:userId/impersonate`) allowing admins to issue a short-lived impersonation session for customer support and troubleshooting.
-- All impersonation sessions carry an explicit `impersonator_id` claim in JWT and generate security audit logs.
-
-### FR-15: Passwordless Magic Links & Email/SMS OTP
-- Passwordless authentication flow: `POST /v1/client/auth/magic-link` sends a single-use 15-minute signed magic login URL to the user's email.
-
-### FR-16: B2B Organizations & Team Member Invitations
-- Support for Organizations within tenants.
-- Team member invitations with cryptographically signed 7-day expiration tokens (`invitationToken`) and per-org role assignment.
+### Phase 5: Native Mobile Integrations
+- **FR-9: Native Android & iOS Account Manager (Device-Level SSO)**: Android `AccountManager` & iOS Shared Keychain Secure Enclave SSO.
 
 ---
 
