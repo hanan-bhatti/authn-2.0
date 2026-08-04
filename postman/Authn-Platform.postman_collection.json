@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "authn-platform-collection-v2",
 		"name": "Authn Platform — Enterprise Engine Test Suite",
-		"description": "Complete Postman test collection for Authn Engine. Includes happy paths, edge cases, 2FA, Smart Account Recovery (FR-5), OIDC/OAuth2, and Tenant Policies.",
+		"description": "Complete Postman test collection for Authn Engine. Publishable key: pk_test_demo12345678901234567890123456789012. Secret key: sk_test_demo12345678901234567890123456789012.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -18,12 +18,12 @@
 		},
 		{
 			"key": "publishableKey",
-			"value": "pk_test_sample_key",
+			"value": "pk_test_demo12345678901234567890123456789012",
 			"type": "string"
 		},
 		{
 			"key": "secretKey",
-			"value": "sk_test_sample_secret_key",
+			"value": "sk_test_demo12345678901234567890123456789012",
 			"type": "string"
 		},
 		{
@@ -32,12 +32,17 @@
 			"type": "string"
 		},
 		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string"
+		},
+		{
 			"key": "recoveryRequestId",
 			"value": "",
 			"type": "string"
 		},
 		{
-			"key": "cancellationTokens",
+			"key": "cancellationToken",
 			"value": "",
 			"type": "string"
 		}
@@ -55,7 +60,8 @@
 							"raw": "{{baseUrl}}/v1/health",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "health"]
-						}
+						},
+						"description": "No auth required. Returns engine status."
 					}
 				},
 				{
@@ -67,7 +73,8 @@
 							"raw": "{{baseUrl}}/.well-known/openid-configuration",
 							"host": ["{{baseUrl}}"],
 							"path": [".well-known", "openid-configuration"]
-						}
+						},
+						"description": "No auth required. Public OIDC discovery document."
 					}
 				},
 				{
@@ -79,7 +86,8 @@
 							"raw": "{{baseUrl}}/v1/oauth/jwks",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "oauth", "jwks"]
-						}
+						},
+						"description": "No auth required. Public RSA JWKS used to verify JWTs."
 					}
 				}
 			]
@@ -89,6 +97,41 @@
 			"item": [
 				{
 					"name": "User Sign Up",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    if (json.access_token) pm.collectionVariables.set('accessToken', json.access_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Client-Type", "value": "web" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\",\n  \"name\": \"Alex Smith\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "signup"]
+						},
+						"description": "Register a new user. Web client: refresh token in HttpOnly cookie. Native client: refresh token in JSON body."
+					}
+				},
+				{
+					"name": "User Sign Up — Invalid Email (expect 400)",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -97,7 +140,46 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\",\n  \"name\": \"Alex Smith\"\n}"
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"not-an-email\",\n  \"password\": \"SecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "signup"]
+						}
+					}
+				},
+				{
+					"name": "User Sign Up — Weak Password (expect 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"user2@example.com\",\n  \"password\": \"123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "signup"]
+						}
+					}
+				},
+				{
+					"name": "User Sign Up — Native Client (refresh token in body)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Client-Type", "value": "native" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"mobile@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"name\": \"Mobile User\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/signup",
@@ -108,6 +190,41 @@
 				},
 				{
 					"name": "User Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var json = pm.response.json();",
+									"    if (json.access_token) pm.collectionVariables.set('accessToken', json.access_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Client-Type", "value": "web" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						},
+						"description": "Authenticate user. Auto-saves access_token to collection variable."
+					}
+				},
+				{
+					"name": "User Login — Wrong Password (expect 401)",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -116,7 +233,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\"\n}"
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"WrongPassword!\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/login",
@@ -126,15 +243,55 @@
 					}
 				},
 				{
+					"name": "User Login — Missing Key (expect 401)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						},
+						"description": "Edge case: missing X-Authn-Publishable-Key header. Should return 401."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
-						"header": [],
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/verify-email?token=sample_verification_token",
+							"raw": "{{baseUrl}}/v1/client/verify-email?token=sample_verification_token_here",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "verify-email"],
-							"query": [{ "key": "token", "value": "sample_verification_token" }]
+							"query": [{ "key": "token", "value": "sample_verification_token_here" }]
+						}
+					}
+				},
+				{
+					"name": "Resend Verification Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "resend-verification"]
 						}
 					}
 				}
@@ -147,7 +304,10 @@
 					"name": "Send Magic Link",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
@@ -156,17 +316,55 @@
 							"raw": "{{baseUrl}}/v1/client/auth/magic-link",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "magic-link"]
+						},
+						"description": "Sends a single-use 15-min magic link to user's email. Auto-provisions new account if user doesn't exist."
+					}
+				},
+				{
+					"name": "Verify Magic Link Token (POST)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"replace_with_token_from_email_link\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/magic-link/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "magic-link", "verify"]
 						}
 					}
 				},
 				{
-					"name": "Verify Magic Link Token",
+					"name": "Verify Magic Link Token (GET redirect)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/magic-link/verify?token=replace_with_token_from_email_link",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "magic-link", "verify"],
+							"query": [{ "key": "token", "value": "replace_with_token_from_email_link" }]
+						}
+					}
+				},
+				{
+					"name": "Send Magic Link — Expired Token (expect 400)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"token\": \"raw_magic_link_token\"\n}"
+							"raw": "{\n  \"token\": \"expired_token_abc123\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/magic-link/verify",
@@ -178,48 +376,61 @@
 			]
 		},
 		{
-			"name": "04 2FA & Multi-Factor Authentication",
+			"name": "04 2FA — TOTP Authenticator",
 			"item": [
 				{
 					"name": "Enroll TOTP",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"user_id\": \"usr_123456\"\n}"
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/2fa/totp/enroll",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "2fa", "totp", "enroll"]
-						}
+						},
+						"description": "Returns QR code URI and secret. Status goes to pending."
 					}
 				},
 				{
-					"name": "Confirm TOTP Initial Code",
+					"name": "Confirm TOTP (activate)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"user_id\": \"usr_123456\",\n  \"code\": \"123456\"\n}"
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"code\": \"123456\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/2fa/totp/confirm",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "2fa", "totp", "confirm"]
-						}
+						},
+						"description": "Validates initial TOTP code. Transitions status pending → active."
 					}
 				},
 				{
-					"name": "Verify 2FA Challenge",
+					"name": "Verify 2FA Challenge (TOTP)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"two_factor_token\": \"tft_sample_token\",\n  \"code\": \"123456\"\n}"
+							"raw": "{\n  \"mfa_token\": \"mfa_token_from_login_response\",\n  \"user_id\": \"replace_with_user_id\",\n  \"code\": \"123456\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/2fa/verify",
@@ -229,34 +440,266 @@
 					}
 				},
 				{
-					"name": "Regenerate Backup Recovery Codes",
+					"name": "Verify 2FA — Wrong Code (expect 401)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"user_id\": \"usr_123456\"\n}"
+							"raw": "{\n  \"mfa_token\": \"mfa_token_from_login_response\",\n  \"user_id\": \"replace_with_user_id\",\n  \"code\": \"000000\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/recovery-codes/regenerate",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/verify",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "recovery-codes", "regenerate"]
+							"path": ["v1", "client", "auth", "2fa", "verify"]
+						}
+					}
+				},
+				{
+					"name": "Disable TOTP (step-up required)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"password\": \"SecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/totp/disable",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "totp", "disable"]
 						}
 					}
 				}
 			]
 		},
 		{
-			"name": "05 Smart Account Recovery (FR-5)",
+			"name": "05 2FA — Backup Recovery Codes",
 			"item": [
 				{
-					"name": "Invite Guardians (Shamir Secret Sharing)",
+					"name": "Regenerate Recovery Codes",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"guardians\": [\n    { \"email\": \"guardian1@example.com\", \"name\": \"Guardian 1\" },\n    { \"email\": \"guardian2@example.com\", \"name\": \"Guardian 2\" }\n  ]\n}"
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/recovery-codes/regenerate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "recovery-codes", "regenerate"]
+						},
+						"description": "Issues 8 new single-use XXXX-XXXX codes. Previous codes invalidated immediately."
+					}
+				},
+				{
+					"name": "Get Recovery Codes Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/recovery-codes/status?user_id=replace_with_user_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "recovery-codes", "status"],
+							"query": [{ "key": "user_id", "value": "replace_with_user_id" }]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "06 2FA — SMS OTP",
+			"item": [
+				{
+					"name": "Enroll SMS OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"phone_number\": \"+14155551234\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/sms/enroll",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "sms", "enroll"]
+						}
+					}
+				},
+				{
+					"name": "Confirm SMS OTP (activate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"code\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/sms/confirm",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "sms", "confirm"]
+						}
+					}
+				},
+				{
+					"name": "Disable SMS OTP",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"password\": \"SecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/sms/disable",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "sms", "disable"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "07 2FA — WebAuthn / Passkeys",
+			"item": [
+				{
+					"name": "Begin Passkey Registration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/register/begin",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "webauthn", "register", "begin"]
+						}
+					}
+				},
+				{
+					"name": "Finish Passkey Registration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"credential\": { \"id\": \"...\", \"rawId\": \"...\", \"response\": { \"attestationObject\": \"...\", \"clientDataJSON\": \"...\" }, \"type\": \"public-key\" }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/register/finish",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "webauthn", "register", "finish"]
+						}
+					}
+				},
+				{
+					"name": "List Registered Passkeys",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/credentials?user_id=replace_with_user_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "webauthn", "credentials"],
+							"query": [{ "key": "user_id", "value": "replace_with_user_id" }]
+						}
+					}
+				},
+				{
+					"name": "Delete Passkey",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/credentials/replace_with_credential_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "webauthn", "credentials", "replace_with_credential_id"]
+						},
+						"description": "Edge case: cannot delete last active 2FA method if no password auth."
+					}
+				}
+			]
+		},
+		{
+			"name": "08 Smart Account Recovery (FR-5)",
+			"item": [
+				{
+					"name": "Invite Guardians",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"guardians\": [\n    { \"email\": \"guardian1@example.com\", \"name\": \"Guardian One\" },\n    { \"email\": \"guardian2@example.com\", \"name\": \"Guardian Two\" }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/account/guardians/invite",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "account", "guardians", "invite"]
+						},
+						"description": "Pre-enroll 1-5 guardians. Generates GF(2^8) Shamir shares. Raw shares delivered ONLY in guardian email URL fragment. DB stores SHA-256 hashes only."
+					}
+				},
+				{
+					"name": "Invite Guardians — Too Many (expect 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"guardians\": [\n    { \"email\": \"g1@example.com\", \"name\": \"G1\" },\n    { \"email\": \"g2@example.com\", \"name\": \"G2\" },\n    { \"email\": \"g3@example.com\", \"name\": \"G3\" },\n    { \"email\": \"g4@example.com\", \"name\": \"G4\" },\n    { \"email\": \"g5@example.com\", \"name\": \"G5\" },\n    { \"email\": \"g6@example.com\", \"name\": \"G6\" }\n  ]\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/account/guardians/invite",
@@ -266,10 +709,60 @@
 					}
 				},
 				{
+					"name": "List Guardians",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/account/guardians?user_id=replace_with_user_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "account", "guardians"],
+							"query": [{ "key": "user_id", "value": "replace_with_user_id" }]
+						}
+					}
+				},
+				{
+					"name": "Revoke Guardian",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/account/guardians/replace_with_guardian_id",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "account", "guardians", "replace_with_guardian_id"]
+						},
+						"description": "Revokes guardian and triggers Re-Key/Re-Split of all Shamir shares."
+					}
+				},
+				{
 					"name": "Initiate Account Recovery",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var json = pm.response.json();",
+									"    if (json.recovery_request_id) pm.collectionVariables.set('recoveryRequestId', json.recovery_request_id);",
+									"    if (json.cancellation_token) pm.collectionVariables.set('cancellationToken', json.cancellation_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
@@ -278,99 +771,326 @@
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/initiate",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "recovery", "initiate"]
-						}
+						},
+						"description": "Unauthenticated. Resolves available proof methods in priority order. Non-existent email returns timing-safe generic response (anti-enumeration)."
+					}
+				},
+				{
+					"name": "Initiate Recovery — Blacklisted Origin (expect 403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/initiate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "initiate"]
+						},
+						"description": "Same request from a blacklisted IP should return 403 ErrOriginBlacklisted."
 					}
 				},
 				{
 					"name": "Submit Guardian Share Proof",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"recovery_request_id\": \"req_123456\",\n  \"share_payload\": \"raw_guardian_share_hex\"\n}"
+							"raw": "{\n  \"recovery_request_id\": \"{{recoveryRequestId}}\",\n  \"share_payload\": \"raw_guardian_share_hex_from_url_fragment\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/proof/guardian",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "recovery", "proof", "guardian"]
-						}
+						},
+						"description": "Submit k-of-N Shamir share. Threshold met when k valid shares submitted."
 					}
 				},
 				{
 					"name": "Submit Old Password Proof",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"recovery_request_id\": \"req_123456\",\n  \"password\": \"OldPassword123!\"\n}"
+							"raw": "{\n  \"recovery_request_id\": \"{{recoveryRequestId}}\",\n  \"password\": \"OldPassword123!\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/proof/old-password",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "recovery", "proof", "old-password"]
+						},
+						"description": "Only available when trusted device token + familiar subnet confirmed by Telemetry Engine."
+					}
+				},
+				{
+					"name": "Submit Security Questions Proof",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recovery_request_id\": \"{{recoveryRequestId}}\",\n  \"answers\": [\n    { \"question_id\": \"q1\", \"answer\": \"Fluffy\" },\n    { \"question_id\": \"q2\", \"answer\": \"London\" }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/proof/security-questions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "proof", "security-questions"]
 						}
 					}
 				},
 				{
-					"name": "Claim Account (Post-Freeze Reset)",
+					"name": "Claim Account (after 48h freeze)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"request_id\": \"req_123456\",\n  \"claim_token\": \"raw_claim_token_hex\",\n  \"new_password\": \"NewSecurePassword123!\"\n}"
+							"raw": "{\n  \"request_id\": \"{{recoveryRequestId}}\",\n  \"claim_token\": \"claim_token_from_ready_for_claim_email\",\n  \"new_password\": \"NewSecurePassword123!\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/claim",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "recovery", "claim"]
-						}
+						},
+						"description": "15-min single-use claim token. Resets password with Argon2id, wipes 2FA, issues 8 fresh recovery codes, revokes old sessions."
 					}
 				},
 				{
-					"name": "Cancel Recovery (Authenticated Session)",
+					"name": "Cancel Recovery — Authenticated Session",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"recovery_request_id\": \"req_123456\"\n}"
+							"raw": "{\n  \"recovery_request_id\": \"{{recoveryRequestId}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/cancel",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "recovery", "cancel"]
-						}
+						},
+						"description": "Cancels recovery, creates 7-day blacklist, flags security_review_required=true. Preserves cancelling session."
 					}
 				},
 				{
-					"name": "Cancel Recovery (Public Signed Link Token)",
+					"name": "Cancel Recovery — Public Signed Link",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"cancellation_token\": \"raw_cancellation_token_hex\"\n}"
+							"raw": "{\n  \"cancellation_token\": \"{{cancellationToken}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/cancel/token",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "recovery", "cancel", "token"]
-						}
+						},
+						"description": "Public unauthenticated. Token from security alert email URL fragment. Revokes ALL active user sessions."
 					}
 				}
 			]
 		},
 		{
-			"name": "06 Admin Policies & Keys",
+			"name": "09 OAuth 2.0 / OIDC",
 			"item": [
 				{
-					"name": "Get Tenant Recovery Policy",
+					"name": "OAuth Authorize (PKCE - open in browser)",
 					"request": {
 						"method": "GET",
-						"header": [],
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/authorize?response_type=code&client_id=app_test123&redirect_uri=http://localhost:3000/callback&scope=openid+email+profile&state=random_state_abc&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw&code_challenge_method=S256",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "oauth", "authorize"],
+							"query": [
+								{ "key": "response_type", "value": "code" },
+								{ "key": "client_id", "value": "app_test123" },
+								{ "key": "redirect_uri", "value": "http://localhost:3000/callback" },
+								{ "key": "scope", "value": "openid email profile" },
+								{ "key": "state", "value": "random_state_abc" },
+								{ "key": "code_challenge", "value": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw" },
+								{ "key": "code_challenge_method", "value": "S256" }
+							]
+						}
+					}
+				},
+				{
+					"name": "OAuth Token Exchange (authorization_code)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "grant_type", "value": "authorization_code" },
+								{ "key": "code", "value": "replace_with_auth_code" },
+								{ "key": "redirect_uri", "value": "http://localhost:3000/callback" },
+								{ "key": "client_id", "value": "app_test123" },
+								{ "key": "code_verifier", "value": "replace_with_pkce_verifier" }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/token",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "oauth", "token"]
+						}
+					}
+				},
+				{
+					"name": "OAuth Token Refresh",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "grant_type", "value": "refresh_token" },
+								{ "key": "refresh_token", "value": "replace_with_refresh_token" },
+								{ "key": "client_id", "value": "app_test123" }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/token",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "oauth", "token"]
+						}
+					}
+				},
+				{
+					"name": "OAuth Authorize — Invalid redirect_uri (expect 400)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/authorize?response_type=code&client_id=app_test123&redirect_uri=https://evil.com/steal&scope=openid&state=abc",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "oauth", "authorize"],
+							"query": [
+								{ "key": "response_type", "value": "code" },
+								{ "key": "client_id", "value": "app_test123" },
+								{ "key": "redirect_uri", "value": "https://evil.com/steal" },
+								{ "key": "scope", "value": "openid" },
+								{ "key": "state", "value": "abc" }
+							]
+						},
+						"description": "Exact-match redirect_uri validation. Must fail for non-whitelisted URI."
+					}
+				}
+			]
+		},
+		{
+			"name": "10 Admin — Tenant Policies",
+			"item": [
+				{
+					"name": "Get Password Policy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/password-policy?tenant_id={{tenantId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "password-policy"],
+							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+						}
+					}
+				},
+				{
+					"name": "Update Password Policy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"min_length\": 8,\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_digit\": true,\n  \"require_special\": true,\n  \"max_age_days\": 90,\n  \"history_depth\": 5\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/password-policy",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "password-policy"]
+						}
+					}
+				},
+				{
+					"name": "Get Security Policy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/security-policy?tenant_id={{tenantId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "security-policy"],
+							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+						}
+					}
+				},
+				{
+					"name": "Update Security Policy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"require_email_verification\": \"hard_block\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/security-policy",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "security-policy"]
+						}
+					}
+				},
+				{
+					"name": "Get Recovery Policy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
 						"url": {
 							"raw": "{{baseUrl}}/v1/tenant/recovery-policy?tenant_id={{tenantId}}",
 							"host": ["{{baseUrl}}"],
@@ -380,22 +1100,49 @@
 					}
 				},
 				{
-					"name": "Update Tenant Recovery Policy",
+					"name": "Update Recovery Policy",
 					"request": {
 						"method": "PUT",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"guardians_enabled\": true,\n  \"phone_otp_enabled\": true,\n  \"email_otp_enabled\": true,\n  \"old_password_enabled\": true,\n  \"security_questions_enabled\": true,\n  \"freeze_window_hours\": 48,\n  \"claim_token_ttl_minutes\": 15,\n  \"lockout_schedule\": [\"24h\", \"3d\", \"7d\", \"14d\", \"4w\", \"8w\", \"12w\", \"permanent\"],\n  \"lockout_reset_days\": 30,\n  \"trusted_device_window_days\": 90,\n  \"ipv4_subnet_bits\": 24,\n  \"ipv6_subnet_bits\": 48,\n  \"max_proof_attempts_per_window\": 5,\n  \"min_guardians\": 1,\n  \"max_guardians\": 5\n}"
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"guardians_enabled\": true,\n  \"phone_otp_enabled\": true,\n  \"email_otp_enabled\": true,\n  \"old_password_enabled\": true,\n  \"security_questions_enabled\": true,\n  \"freeze_window_hours\": 48,\n  \"claim_token_ttl_minutes\": 15,\n  \"lockout_schedule\": [\"24h\", \"3d\", \"7d\", \"14d\", \"4w\", \"8w\", \"12w\", \"permanent\"],\n  \"lockout_reset_days\": 30,\n  \"trusted_device_window_days\": 90,\n  \"ipv4_subnet_bits\": 24,\n  \"ipv6_subnet_bits\": 48,\n  \"max_proof_attempts_per_window\": 5,\n  \"min_guardians\": 1,\n  \"max_guardians\": 5\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/recovery-policy?tenant_id={{tenantId}}",
+							"raw": "{{baseUrl}}/v1/tenant/recovery-policy",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "recovery-policy"],
-							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+							"path": ["v1", "tenant", "recovery-policy"]
 						}
 					}
 				},
+				{
+					"name": "Update Recovery Policy — Validation Failure (expect 400)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"freeze_window_hours\": 5,\n  \"guardians_enabled\": false,\n  \"phone_otp_enabled\": false,\n  \"email_otp_enabled\": false,\n  \"old_password_enabled\": false,\n  \"security_questions_enabled\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/recovery-policy",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "recovery-policy"]
+						},
+						"description": "freeze_window_hours=5 violates min 24. All methods disabled violates rule 7."
+					}
+				}
+			]
+		},
+		{
+			"name": "11 Admin — API Keys",
+			"item": [
 				{
 					"name": "Create API Key",
 					"request": {
@@ -406,7 +1153,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"Stripe Webhook Key\",\n  \"type\": \"publishable\",\n  \"environment\": \"test\"\n}"
+							"raw": "{\n  \"name\": \"My App Publishable Key\",\n  \"type\": \"publishable\",\n  \"environment\": \"test\",\n  \"application_id\": \"app_test123\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/admin/keys/",
@@ -423,10 +1170,44 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
+							"raw": "{{baseUrl}}/v1/admin/keys/?application_id=app_test123",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys", ""],
+							"query": [{ "key": "application_id", "value": "app_test123" }]
+						}
+					}
+				},
+				{
+					"name": "Revoke API Key",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/keys/replace_with_key_id/revoke",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys", "replace_with_key_id", "revoke"]
+						}
+					}
+				},
+				{
+					"name": "Create API Key — Missing Secret Key (expect 401)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Should fail\",\n  \"type\": \"publishable\"\n}"
+						},
+						"url": {
 							"raw": "{{baseUrl}}/v1/admin/keys/",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "admin", "keys", ""]
-						}
+						},
+						"description": "Edge case: admin routes require Bearer sk_... header."
 					}
 				}
 			]
