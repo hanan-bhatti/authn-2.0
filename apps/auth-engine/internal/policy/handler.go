@@ -70,9 +70,71 @@ func (h *Handler) UpdatePolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(updated)
 }
 
+// GetSecurityPolicy retrieves the security policy for the specified tenant.
+func (h *Handler) GetSecurityPolicy(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id", "tnt_default")
+	sp, err := h.repo.GetSecurityPolicy(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(sp)
+}
+
+// UpdateSecurityPolicy updates the security policy for the specified tenant.
+func (h *Handler) UpdateSecurityPolicy(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id", "tnt_default")
+
+	var req SecurityPolicy
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	updated, err := h.repo.UpdateSecurityPolicy(c.Context(), tenantID, req)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(updated)
+}
+
+// GetRecoveryPolicy retrieves the recovery policy for the specified tenant.
+func (h *Handler) GetRecoveryPolicy(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id", "tnt_default")
+	rp, err := h.repo.GetRecoveryPolicy(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(rp)
+}
+
+// UpdateRecoveryPolicy validates and updates the account recovery policy for the specified tenant.
+func (h *Handler) UpdateRecoveryPolicy(c *fiber.Ctx) error {
+	tenantID := c.Query("tenant_id", "tnt_default")
+
+	var req RecoveryPolicy
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	updated, err := h.repo.UpdateRecoveryPolicy(c.Context(), tenantID, req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(updated)
+}
+
 // RegisterRoutes registers tenant policy routes with Fiber router.
 func (h *Handler) RegisterRoutes(app *fiber.App) {
-	group := app.Group("/v1/tenant/password-policy")
-	group.Get("", h.GetPolicy)
-	group.Put("", h.UpdatePolicy)
+	passwordGroup := app.Group("/v1/tenant/password-policy")
+	passwordGroup.Get("", h.GetPolicy)
+	passwordGroup.Put("", h.UpdatePolicy)
+
+	securityGroup := app.Group("/v1/tenant/security-policy")
+	securityGroup.Get("", h.GetSecurityPolicy)
+	securityGroup.Put("", h.UpdateSecurityPolicy)
+
+	recoveryGroup := app.Group("/v1/tenant/recovery-policy")
+	recoveryGroup.Get("", h.GetRecoveryPolicy)
+	recoveryGroup.Put("", h.UpdateRecoveryPolicy)
 }

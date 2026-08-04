@@ -14,6 +14,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 	"github.com/stretchr/testify/assert"
@@ -42,7 +43,7 @@ func TestAuthService_ValidateApiKey_Invalid(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
-	svc := auth.NewService(repo, cfg)
+	svc := auth.NewService(repo, cfg, nil)
 
 	ctx := context.Background()
 	_, err = svc.ValidateApiKey(ctx, "invalid_key_prefix_999")
@@ -59,9 +60,9 @@ func TestAuthService_SignUpAndLogin(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
-	svc := auth.NewService(repo, cfg)
+	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := context.Background()
+	ctx := privacy.NewContext(context.Background(), "tnt_test", "", "test")
 
 	// 1. Test Signup
 	u, accessTok, refreshTok, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "testuser@example.com", "MyPassword123!", "Test User", "Mozilla/5.0", "127.0.0.1")

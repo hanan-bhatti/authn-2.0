@@ -12,7 +12,11 @@ package apikey
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
@@ -89,6 +93,46 @@ func (r *Repository) RevokeApiKey(ctx context.Context, id string) error {
 
 	if err != nil {
 		return fmt.Errorf("failed revoking api key %s: %w", id, err)
+	}
+	return nil
+}
+
+// EnsureDefaultApiKeyExists seeds a default publishable key for verification if missing.
+func (r *Repository) EnsureDefaultApiKeyExists(ctx context.Context, keyID string, appID string, rawKey string, pepper string) error {
+	h := hmac.New(sha256.New, []byte(pepper))
+	h.Write([]byte(rawKey))
+	keyHash := hex.EncodeToString(h.Sum(nil))
+
+	client := r.factory.GetClient(ctx, "", "")
+	exists, err := client.ApiKey.Query().Where(apikey.ID(keyID)).Exist(ctx)
+	if err != nil {
+		return fmt.Errorf("failed checking default api key: %w", err)
+	}
+	if !exists {
+		keyType := apikey.TypePublishable
+		prefix := "pk_test_"
+		if strings.HasPrefix(rawKey, "sk_test_") {
+			keyType = apikey.TypeSecret
+			prefix = "sk_test_"
+		} else if strings.HasPrefix(rawKey, "sk_live_") {
+			keyType = apikey.TypeSecret
+			prefix = "sk_live_"
+		} else if strings.HasPrefix(rawKey, "pk_live_") {
+			prefix = "pk_live_"
+		}
+
+		_, err := client.ApiKey.Create().
+			SetID(keyID).
+			SetApplicationID(appID).
+			SetName("Default Dev Key").
+			SetType(keyType).
+			SetKeyPrefix(prefix).
+			SetKeyHash(keyHash).
+			SetEnvironment(apikey.EnvironmentTest).
+			Save(ctx)
+		if err != nil && !ent.IsConstraintError(err) {
+			return fmt.Errorf("failed auto-creating default api key: %w", err)
+		}
 	}
 	return nil
 }

@@ -112,3 +112,136 @@ func (r *Repository) UpdatePasswordPolicy(ctx context.Context, tenantID string, 
 
 	return p, nil
 }
+
+// GetSecurityPolicy retrieves the tenant's security policy, defaulting if unconfigured.
+func (r *Repository) GetSecurityPolicy(ctx context.Context, tenantID string) (SecurityPolicy, error) {
+	client := r.factory.GetClient(ctx, tenantID, "test")
+	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+	if err != nil {
+		return DefaultSecurityPolicy(), nil
+	}
+
+	if t.SecurityPolicy == nil || len(t.SecurityPolicy) == 0 {
+		return DefaultSecurityPolicy(), nil
+	}
+
+	data, err := json.Marshal(t.SecurityPolicy)
+	if err != nil {
+		return DefaultSecurityPolicy(), nil
+	}
+
+	var sp SecurityPolicy
+	if err := json.Unmarshal(data, &sp); err != nil {
+		return DefaultSecurityPolicy(), nil
+	}
+
+	if sp.EmailVerificationMode != "hard" && sp.EmailVerificationMode != "soft" {
+		sp.EmailVerificationMode = "soft"
+	}
+
+	return sp, nil
+}
+
+// UpdateSecurityPolicy updates and persists a tenant's security policy.
+func (r *Repository) UpdateSecurityPolicy(ctx context.Context, tenantID string, sp SecurityPolicy) (SecurityPolicy, error) {
+	client := r.factory.GetClient(ctx, tenantID, "test")
+
+	if sp.EmailVerificationMode != "hard" && sp.EmailVerificationMode != "soft" {
+		sp.EmailVerificationMode = "soft"
+	}
+
+	var policyMap map[string]interface{}
+	data, _ := json.Marshal(sp)
+	_ = json.Unmarshal(data, &policyMap)
+
+	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(ctx)
+	if err != nil {
+		return sp, fmt.Errorf("failed checking tenant existence: %w", err)
+	}
+
+	if !exists {
+		_, err = client.Tenant.Create().
+			SetID(tenantID).
+			SetName("Default Workspace").
+			SetSlug(tenantID).
+			SetSecurityPolicy(policyMap).
+			Save(ctx)
+		if err != nil {
+			return sp, fmt.Errorf("failed creating tenant with security policy: %w", err)
+		}
+	} else {
+		_, err = client.Tenant.UpdateOneID(tenantID).
+			SetSecurityPolicy(policyMap).
+			Save(ctx)
+		if err != nil {
+			return sp, fmt.Errorf("failed updating tenant security policy: %w", err)
+		}
+	}
+
+	return sp, nil
+}
+
+// GetRecoveryPolicy retrieves the tenant's account recovery policy, defaulting if unconfigured.
+func (r *Repository) GetRecoveryPolicy(ctx context.Context, tenantID string) (RecoveryPolicy, error) {
+	client := r.factory.GetClient(ctx, tenantID, "test")
+	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+	if err != nil {
+		return DefaultRecoveryPolicy(), nil
+	}
+
+	if t.RecoveryPolicy == nil || len(t.RecoveryPolicy) == 0 {
+		return DefaultRecoveryPolicy(), nil
+	}
+
+	data, err := json.Marshal(t.RecoveryPolicy)
+	if err != nil {
+		return DefaultRecoveryPolicy(), nil
+	}
+
+	var rp RecoveryPolicy
+	if err := json.Unmarshal(data, &rp); err != nil {
+		return DefaultRecoveryPolicy(), nil
+	}
+
+	return rp, nil
+}
+
+// UpdateRecoveryPolicy validates and persists a tenant's account recovery policy.
+func (r *Repository) UpdateRecoveryPolicy(ctx context.Context, tenantID string, rp RecoveryPolicy) (RecoveryPolicy, error) {
+	// Execute strict 9-rule policy validation before saving
+	if err := ValidateRecoveryPolicy(rp); err != nil {
+		return rp, fmt.Errorf("invalid recovery policy: %w", err)
+	}
+
+	client := r.factory.GetClient(ctx, tenantID, "test")
+
+	var policyMap map[string]interface{}
+	data, _ := json.Marshal(rp)
+	_ = json.Unmarshal(data, &policyMap)
+
+	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(ctx)
+	if err != nil {
+		return rp, fmt.Errorf("failed checking tenant existence: %w", err)
+	}
+
+	if !exists {
+		_, err = client.Tenant.Create().
+			SetID(tenantID).
+			SetName("Default Workspace").
+			SetSlug(tenantID).
+			SetRecoveryPolicy(policyMap).
+			Save(ctx)
+		if err != nil {
+			return rp, fmt.Errorf("failed creating tenant with recovery policy: %w", err)
+		}
+	} else {
+		_, err = client.Tenant.UpdateOneID(tenantID).
+			SetRecoveryPolicy(policyMap).
+			Save(ctx)
+		if err != nil {
+			return rp, fmt.Errorf("failed updating tenant recovery policy: %w", err)
+		}
+	}
+
+	return rp, nil
+}

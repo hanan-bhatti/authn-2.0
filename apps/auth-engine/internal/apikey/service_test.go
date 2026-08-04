@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func TestApiKey_GeneratorAndRepository(t *testing.T) {
 	defer factory.Close()
 
 	repo := apikey.NewRepository(factory)
-	ctx := context.Background()
+	ctx := privacy.NewBypassContext(context.Background())
 
 	// Seed tenant and application first
 	client := factory.GetClient(ctx, "", "")

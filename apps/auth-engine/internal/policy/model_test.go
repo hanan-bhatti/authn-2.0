@@ -5,10 +5,10 @@ import (
 )
 
 func TestValidatePassword_DefaultPolicy(t *testing.T) {
-	p := DefaultPasswordPolicy() // Requires numeric, min length 6
+	p := DefaultPasswordPolicy() // Requires numeric, min length 8
 
-	// Valid password
-	missing := ValidatePassword(p, "Pass123")
+	// Valid password (8 characters)
+	missing := ValidatePassword(p, "Pass1234")
 	if len(missing) != 0 {
 		t.Fatalf("expected no missing criteria for valid password, got %v", missing)
 	}
@@ -19,8 +19,8 @@ func TestValidatePassword_DefaultPolicy(t *testing.T) {
 		t.Fatalf("expected ['require_numeric'], got %v", missing)
 	}
 
-	// Too short
-	missing = ValidatePassword(p, "123")
+	// Too short (< 8 chars)
+	missing = ValidatePassword(p, "Pass123")
 	if len(missing) != 1 || missing[0] != "min_length" {
 		t.Fatalf("expected ['min_length'], got %v", missing)
 	}
