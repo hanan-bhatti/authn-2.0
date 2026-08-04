@@ -14,6 +14,7 @@ package oauth
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -94,7 +95,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	}
 
 	// 1. Validate registered client Application and authorized redirect URI
-	if err := h.service.ValidateClientApplication(c.Context(), clientID, redirectURI); err != nil {
+	if err := h.service.ValidateClientApplication(c.UserContext(), clientID, redirectURI); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
@@ -102,7 +103,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	userID := claims.Sub
 	tenantID := claims.TenantID
 
-	codeStr, err := h.service.IssueAuthorizationCode(c.Context(), clientID, userID, tenantID, redirectURI, codeChallenge, codeChallengeMethod, scope)
+	codeStr, err := h.service.IssueAuthorizationCode(c.UserContext(), clientID, userID, tenantID, redirectURI, codeChallenge, codeChallengeMethod, scope)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -126,6 +127,7 @@ type TokenExchangeRequest struct {
 	ClientID     string `json:"client_id" form:"client_id"`
 	RedirectURI  string `json:"redirect_uri" form:"redirect_uri"`
 	CodeVerifier string `json:"code_verifier" form:"code_verifier"`
+	RefreshToken string `json:"refresh_token" form:"refresh_token"`
 }
 
 // TokenExchange handles POST /v1/oauth/token.
@@ -135,28 +137,89 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	if req.GrantType != "authorization_code" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported_grant_type: expected grant_type=authorization_code"})
-	}
+	switch req.GrantType {
+	case "authorization_code":
+		if req.Code == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid_request: code is required"})
+		}
 
-	if req.Code == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid_request: code is required"})
-	}
+		res, err := h.service.ExchangeCodeForTokens(c.UserContext(), req.Code, req.ClientID, req.RedirectURI, req.CodeVerifier)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(fiber.StatusOK).JSON(res)
 
-	res, err := h.service.ExchangeCodeForTokens(c.Context(), req.Code, req.ClientID, req.RedirectURI, req.CodeVerifier)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
+	case "refresh_token":
+		// Read refresh token from JSON body OR HttpOnly cookie
+		rawToken := req.RefreshToken
+		if rawToken == "" {
+			rawToken = c.Cookies("authn_refresh_token")
+		}
+		if rawToken == "" {
+			rawToken = c.Cookies("refresh_token")
+		}
+		if rawToken == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid_request: refresh token is required in request body or authn_refresh_token cookie",
+			})
+		}
 
-	return c.Status(fiber.StatusOK).JSON(res)
+		userAgent := c.Get("User-Agent")
+		ipAddress := c.IP()
+
+		userDTO, accessToken, newRawRefreshToken, err := h.service.RotateRefreshTokenSession(c.UserContext(), rawToken, userAgent, ipAddress)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		// Set updated HttpOnly cookie if new token was issued
+		if newRawRefreshToken != "" {
+			cookie := new(fiber.Cookie)
+			cookie.Name = "authn_refresh_token"
+			cookie.Value = newRawRefreshToken
+			cookie.Expires = time.Now().Add(30 * 24 * time.Hour)
+			cookie.HTTPOnly = true
+			cookie.SameSite = "Lax"
+			cookie.Path = "/"
+			c.Cookie(cookie)
+		}
+
+		res := fiber.Map{
+			"access_token": accessToken,
+			"token_type":   "Bearer",
+			"expires_in":   900,
+			"user":         userDTO,
+		}
+
+		// For native/mobile client requests (or when refresh token was sent in body), include refresh_token in JSON body too
+		if req.RefreshToken != "" || newRawRefreshToken != "" {
+			if newRawRefreshToken != "" {
+				res["refresh_token"] = newRawRefreshToken
+			} else {
+				res["refresh_token"] = rawToken
+			}
+		}
+
+		return c.Status(fiber.StatusOK).JSON(res)
+
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "unsupported_grant_type: expected grant_type=authorization_code or grant_type=refresh_token",
+		})
+	}
 }
 
 // RegisterRoutes registers OAuth2 and OIDC endpoints.
-func (h *Handler) RegisterRoutes(app *fiber.App) {
+func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	app.Get("/.well-known/openid-configuration", h.GetOIDCDiscovery)
 
 	group := app.Group("/v1/oauth")
 	group.Get("/jwks", h.GetJWKS)
-	group.Get("/authorize", h.Authorize)
-	group.Post("/token", h.TokenExchange)
+	if pkMiddleware != nil {
+		group.Get("/authorize", pkMiddleware, h.Authorize)
+		group.Post("/token", pkMiddleware, h.TokenExchange)
+	} else {
+		group.Get("/authorize", h.Authorize)
+		group.Post("/token", h.TokenExchange)
+	}
 }

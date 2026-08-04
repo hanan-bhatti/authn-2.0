@@ -26,17 +26,19 @@ import (
 
 // Service provides business logic for OAuth2 and OIDC flows.
 type Service struct {
-	repo     *Repository
-	authRepo *auth.Repository
-	cfg      *config.EnvConfig
+	repo        *Repository
+	authRepo    *auth.Repository
+	authService *auth.Service
+	cfg         *config.EnvConfig
 }
 
 // NewService constructs a new OAuth2 Service instance.
-func NewService(repo *Repository, authRepo *auth.Repository, cfg *config.EnvConfig) *Service {
+func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.Service, cfg *config.EnvConfig) *Service {
 	return &Service{
-		repo:     repo,
-		authRepo: authRepo,
-		cfg:      cfg,
+		repo:        repo,
+		authRepo:    authRepo,
+		authService: authService,
+		cfg:         cfg,
 	}
 }
 
@@ -206,3 +208,29 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		Scope:       "openid profile email",
 	}, nil
 }
+
+// RotateRefreshTokenSession validates and rotates a refresh token via authService.
+func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken string, userAgent string, ipAddress string) (*auth.UserDTO, string, string, error) {
+	if s.authService == nil {
+		return nil, "", "", fmt.Errorf("auth service unavailable")
+	}
+
+	u, accessToken, newRawRefreshToken, err := s.authService.RotateRefreshTokenSession(ctx, rawRefreshToken, userAgent, ipAddress)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	userDTO := &auth.UserDTO{
+		ID:            u.ID,
+		Email:         u.Email,
+		EmailVerified: u.EmailVerified,
+		Status:        string(u.Status),
+		CreatedAt:     u.CreatedAt.Format(time.RFC3339),
+	}
+	if u.Name != "" {
+		userDTO.Name = &u.Name
+	}
+
+	return userDTO, accessToken, newRawRefreshToken, nil
+}
+

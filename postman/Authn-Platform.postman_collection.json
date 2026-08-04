@@ -1,8 +1,8 @@
 {
 	"info": {
-		"_postman_id": "authn-platform-collection-v1",
-		"name": "Authn Platform — Core Engine Test Suite",
-		"description": "Complete Postman test collection for Authn Engine. Includes happy paths, validation failures, email format checks, and client-type header edge cases.",
+		"_postman_id": "authn-platform-collection-v2",
+		"name": "Authn Platform — Enterprise Engine Test Suite",
+		"description": "Complete Postman test collection for Authn Engine. Includes happy paths, edge cases, 2FA, Smart Account Recovery (FR-5), OIDC/OAuth2, and Tenant Policies.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -13,18 +13,38 @@
 		},
 		{
 			"key": "tenantId",
-			"value": "tnt_demo",
+			"value": "tnt_default",
 			"type": "string"
 		},
 		{
-			"key": "environment",
-			"value": "test",
+			"key": "publishableKey",
+			"value": "pk_test_sample_key",
+			"type": "string"
+		},
+		{
+			"key": "secretKey",
+			"value": "sk_test_sample_secret_key",
+			"type": "string"
+		},
+		{
+			"key": "userEmail",
+			"value": "user@example.com",
+			"type": "string"
+		},
+		{
+			"key": "recoveryRequestId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "cancellationTokens",
+			"value": "",
 			"type": "string"
 		}
 	],
 	"item": [
 		{
-			"name": "System & Health",
+			"name": "01 System & Health",
 			"item": [
 				{
 					"name": "Engine Health Check",
@@ -33,616 +53,381 @@
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/v1/health",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"health"
-							]
-						},
-						"description": "Verifies that the Authn Go Fiber engine is operational."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Signup Scenarios",
-			"item": [
-				{
-					"name": "01. Successful Web Signup",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Web User\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Registers a new user for web browser client. Expects 201 Created and HttpOnly cookie. Refresh token is omitted from JSON body for XSS protection."
-					},
-					"response": []
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "health"]
+						}
+					}
 				},
 				{
-					"name": "02. Successful Native Signup",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							},
-							{
-								"key": "X-Authn-Client-Type",
-								"value": "native",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"native.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Native User\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Registers a new user for native mobile app. Expects 201 Created and refresh_token in JSON body."
-					},
-					"response": []
-				},
-				{
-					"name": "03. Duplicate Email Signup (409 Conflict)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Web User Duplicate\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Attempts duplicate registration with an existing email. Expects 409 Conflict."
-					},
-					"response": []
-				},
-				{
-					"name": "04. Invalid Email Format - 12@cd (400 Bad Request)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"12@cd\",\n  \"password\": \"SuperSecretPassword123!\",\n  \"name\": \"Invalid Email User\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Attempts signup with invalid email domain format ('12@cd'). Expects 400 Bad Request."
-					},
-					"response": []
-				},
-				{
-					"name": "05. Missing Required Field - Password (400 Bad Request)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"nopass@example.com\",\n  \"name\": \"No Password User\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Attempts signup without providing a password. Expects 400 Bad Request."
-					},
-					"response": []
-				},
-				{
-					"name": "06. Disallowed Client Type Header - cli (400 Bad Request)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							},
-							{
-								"key": "X-Authn-Client-Type",
-								"value": "cli",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"cliuser@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Attempts signup with removed 'cli' header value. Expects 400 Bad Request."
-					},
-					"response": []
-				},
-				{
-					"name": "07. Invalid Client Type Header - banana (400 Bad Request)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							},
-							{
-								"key": "X-Authn-Client-Type",
-								"value": "banana",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"banana@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Attempts signup with unrecognized header value 'banana'. Expects 400 Bad Request."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Login Scenarios",
-			"item": [
-				{
-					"name": "01. Successful Web Login",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"login"
-							]
-						},
-						"description": "Authenticates web user. Expects 200 OK, signed JWT access token in body, and HttpOnly refresh cookie."
-					},
-					"response": []
-				},
-				{
-					"name": "02. Successful Native Login",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							},
-							{
-								"key": "X-Authn-Client-Type",
-								"value": "native",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"native.user@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"login"
-							]
-						},
-						"description": "Authenticates native mobile user. Expects 200 OK and refresh_token in JSON body."
-					},
-					"response": []
-				},
-				{
-					"name": "03. Invalid Email Format Login - not-an-email (400 Bad Request)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"not-an-email\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"login"
-							]
-						},
-						"description": "Attempts login with malformed email format ('not-an-email'). Expects 400 Bad Request."
-					},
-					"response": []
-				},
-				{
-					"name": "04. Auth Error - Wrong Password (401 Unauthorized)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"web.user@example.com\",\n  \"password\": \"WrongPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"login"
-							]
-						},
-						"description": "Attempts login with incorrect password. Expects 401 Unauthorized."
-					},
-					"response": []
-				},
-				{
-					"name": "05. Auth Error - Non-Existent User (401 Unauthorized)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"nobody@example.com\",\n  \"password\": \"SuperSecretPassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"login"
-							]
-						},
-						"description": "Attempts login for an un-registered email address. Expects 401 Unauthorized."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Password Policy Settings & Enforcement",
-			"item": [
-				{
-					"name": "01. Get Tenant Password Policy",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/password-policy?tenant_id={{tenantId}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"tenant",
-								"password-policy"
-							],
-							"query": [
-								{
-									"key": "tenant_id",
-									"value": "{{tenantId}}"
-								}
-							]
-						},
-						"description": "Fetches current password policy configuration for a tenant."
-					},
-					"response": []
-				},
-				{
-					"name": "02. Update Tenant Password Policy",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"enforcement_mode\": \"require\",\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_numeric\": true,\n  \"require_special\": true,\n  \"force_upgrade_on_signin\": true,\n  \"min_length\": 8,\n  \"max_length\": 64\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/password-policy?tenant_id={{tenantId}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"tenant",
-								"password-policy"
-							],
-							"query": [
-								{
-									"key": "tenant_id",
-									"value": "{{tenantId}}"
-								}
-							]
-						},
-						"description": "Updates password complexity, length boundaries, and enforcement mode for a tenant."
-					},
-					"response": []
-				},
-				{
-					"name": "03. Policy Violation Signup (400 Bad Request)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"{{environment}}\",\n  \"email\": \"weakuser@example.com\",\n  \"password\": \"weak\",\n  \"name\": \"Weak User\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"client",
-								"signup"
-							]
-						},
-						"description": "Attempts signup with a password that violates the tenant's password policy. Expects 400 Bad Request with missing_criteria list."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "OpenID Connect & OAuth2 Server",
-			"item": [
-				{
-					"name": "01. OIDC Discovery Document",
+					"name": "OIDC Discovery Metadata",
 					"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/.well-known/openid-configuration",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								".well-known",
-								"openid-configuration"
-							]
-						},
-						"description": "Returns standard RFC 8414 OpenID Connect Discovery metadata document."
-					},
-					"response": []
+							"host": ["{{baseUrl}}"],
+							"path": [".well-known", "openid-configuration"]
+						}
+					}
 				},
 				{
-					"name": "02. JWKS Public Keys",
+					"name": "JWKS Key Set",
 					"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/v1/oauth/jwks",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"oauth",
-								"jwks"
-							]
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "oauth", "jwks"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "02 Core Authentication",
+			"item": [
+				{
+					"name": "User Sign Up",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\",\n  \"name\": \"Alex Smith\"\n}"
 						},
-						"description": "Returns RFC 7517 JSON Web Key Set (JWKS) for client-side JWT token verification."
-					},
-					"response": []
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "signup"]
+						}
+					}
 				},
 				{
-					"name": "03. Issue PKCE Authorization Code",
+					"name": "User Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						}
+					}
+				},
+				{
+					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{baseUrl}}/v1/oauth/authorize?client_id=app_test123&response_type=code&code_challenge=my_verifier_123&code_challenge_method=plain",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"oauth",
-								"authorize"
-							],
-							"query": [
-								{
-									"key": "client_id",
-									"value": "app_test123"
-								},
-								{
-									"key": "response_type",
-									"value": "code"
-								},
-								{
-									"key": "code_challenge",
-									"value": "my_verifier_123"
-								},
-								{
-									"key": "code_challenge_method",
-									"value": "plain"
-								}
-							]
+							"raw": "{{baseUrl}}/v1/client/verify-email?token=sample_verification_token",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "verify-email"],
+							"query": [{ "key": "token", "value": "sample_verification_token" }]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "03 Passwordless Magic Links",
+			"item": [
+				{
+					"name": "Send Magic Link",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
 						},
-						"description": "Initiates OAuth2 PKCE authorization flow and issues a 10-minute ephemeral authorization code."
-					},
-					"response": []
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/magic-link",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "magic-link"]
+						}
+					}
 				},
 				{
-					"name": "04. Token Exchange (PKCE Code -> Access & ID Tokens)",
+					"name": "Verify Magic Link Token",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"raw_magic_link_token\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/magic-link/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "magic-link", "verify"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "04 2FA & Multi-Factor Authentication",
+			"item": [
+				{
+					"name": "Enroll TOTP",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"usr_123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/totp/enroll",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "totp", "enroll"]
+						}
+					}
+				},
+				{
+					"name": "Confirm TOTP Initial Code",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"usr_123456\",\n  \"code\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/totp/confirm",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "totp", "confirm"]
+						}
+					}
+				},
+				{
+					"name": "Verify 2FA Challenge",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"two_factor_token\": \"tft_sample_token\",\n  \"code\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "2fa", "verify"]
+						}
+					}
+				},
+				{
+					"name": "Regenerate Backup Recovery Codes",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"usr_123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/2fa/recovery-codes/regenerate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "2fa", "recovery-codes", "regenerate"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "05 Smart Account Recovery (FR-5)",
+			"item": [
+				{
+					"name": "Invite Guardians (Shamir Secret Sharing)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"guardians\": [\n    { \"email\": \"guardian1@example.com\", \"name\": \"Guardian 1\" },\n    { \"email\": \"guardian2@example.com\", \"name\": \"Guardian 2\" }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/account/guardians/invite",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "account", "guardians", "invite"]
+						}
+					}
+				},
+				{
+					"name": "Initiate Account Recovery",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/initiate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "initiate"]
+						}
+					}
+				},
+				{
+					"name": "Submit Guardian Share Proof",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recovery_request_id\": \"req_123456\",\n  \"share_payload\": \"raw_guardian_share_hex\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/proof/guardian",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "proof", "guardian"]
+						}
+					}
+				},
+				{
+					"name": "Submit Old Password Proof",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recovery_request_id\": \"req_123456\",\n  \"password\": \"OldPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/proof/old-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "proof", "old-password"]
+						}
+					}
+				},
+				{
+					"name": "Claim Account (Post-Freeze Reset)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"request_id\": \"req_123456\",\n  \"claim_token\": \"raw_claim_token_hex\",\n  \"new_password\": \"NewSecurePassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/claim",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "claim"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Recovery (Authenticated Session)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recovery_request_id\": \"req_123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "cancel"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Recovery (Public Signed Link Token)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cancellation_token\": \"raw_cancellation_token_hex\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/cancel/token",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "cancel", "token"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "06 Admin Policies & Keys",
+			"item": [
+				{
+					"name": "Get Tenant Recovery Policy",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/recovery-policy?tenant_id={{tenantId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "recovery-policy"],
+							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+						}
+					}
+				},
+				{
+					"name": "Update Tenant Recovery Policy",
+					"request": {
+						"method": "PUT",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"guardians_enabled\": true,\n  \"phone_otp_enabled\": true,\n  \"email_otp_enabled\": true,\n  \"old_password_enabled\": true,\n  \"security_questions_enabled\": true,\n  \"freeze_window_hours\": 48,\n  \"claim_token_ttl_minutes\": 15,\n  \"lockout_schedule\": [\"24h\", \"3d\", \"7d\", \"14d\", \"4w\", \"8w\", \"12w\", \"permanent\"],\n  \"lockout_reset_days\": 30,\n  \"trusted_device_window_days\": 90,\n  \"ipv4_subnet_bits\": 24,\n  \"ipv6_subnet_bits\": 48,\n  \"max_proof_attempts_per_window\": 5,\n  \"min_guardians\": 1,\n  \"max_guardians\": 5\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/recovery-policy?tenant_id={{tenantId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "recovery-policy"],
+							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+						}
+					}
+				},
+				{
+					"name": "Create API Key",
 					"request": {
 						"method": "POST",
 						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"grant_type\": \"authorization_code\",\n  \"code\": \"ac_bf7d51205e6b67200ab42a30b3c323ef8393a60115f3d267\",\n  \"client_id\": \"app_test123\",\n  \"code_verifier\": \"my_verifier_123\",\n  \"email\": \"alex@example.com\",\n  \"name\": \"Alex Smith\"\n}"
+							"raw": "{\n  \"name\": \"Stripe Webhook Key\",\n  \"type\": \"publishable\",\n  \"environment\": \"test\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/oauth/token",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"oauth",
-								"token"
-							]
-						},
-						"description": "Exchanges authorization code + PKCE code_verifier for Access Token and OIDC ID Token."
-					},
-					"response": []
+							"raw": "{{baseUrl}}/v1/admin/keys/",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys", ""]
+						}
+					}
+				},
+				{
+					"name": "List API Keys",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/keys/",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys", ""]
+						}
+					}
 				}
 			]
 		}

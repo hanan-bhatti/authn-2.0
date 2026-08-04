@@ -18,18 +18,24 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
+	"github.com/redis/go-redis/v9"
 )
 
 // HealthResponse represents the standard JSON payload returned by the health check endpoint.
@@ -75,12 +81,20 @@ func main() {
 
 	// 2. Initialize Ent ORM ClientFactory
 	driver := "sqlite3"
-	if cfg.DatabaseURL != "" && cfg.DatabaseURL != "file:authn.db?cache=shared&_fk=1" {
+	if cfg.DatabaseURL != "" && (strings.HasPrefix(cfg.DatabaseURL, "postgres://") || strings.HasPrefix(cfg.DatabaseURL, "postgresql://")) {
 		driver = "postgres"
 	}
 	factory, err := clientfactory.NewClientFactory(driver, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("❌ Failed initializing database client factory: %v", err)
+		if driver == "postgres" && cfg.Env != "production" {
+			log.Printf("⚠️ Postgres connection notice (%s): %v. Falling back to SQLite development database.", cfg.DatabaseURL, err)
+			driver = "sqlite3"
+			cfg.DatabaseURL = "file:authn.db?cache=shared&_fk=1"
+			factory, err = clientfactory.NewClientFactory(driver, cfg.DatabaseURL)
+		}
+		if err != nil {
+			log.Fatalf("❌ Failed initializing database client factory: %v", err)
+		}
 	}
 	defer factory.Close()
 
@@ -109,30 +123,101 @@ func main() {
 	app.Use(middleware.DegradedModeHeader(false))
 
 	// 5. Initialize Feature Services & Handlers
+	isProd := cfg.Env == "production"
+
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		opt, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			opt = &redis.Options{
+				Addr: cfg.RedisURL,
+			}
+		}
+		redisClient = redis.NewClient(opt)
+		if err := redisClient.Ping(context.Background()).Err(); err != nil {
+			log.Printf("⚠️ Redis ping notice (%s): %v. Rate limiter running with dev fallback / fail-closed protection.", cfg.RedisURL, err)
+			redisClient = nil
+		} else {
+			log.Printf("⚡ Connected to Redis at %s", cfg.RedisURL)
+		}
+	}
+
+	if !cfg.RateLimitEnabled {
+		log.Println("⚠️ LOUD WARNING: Rate limiting is DISABLED via AUTHN_RATELIMIT_ENABLED=false. Security boundaries are un-throttled!")
+	} else {
+		log.Printf("🛡️ Rate Limiter configuration loaded from .env: max_attempts=%d, window_seconds=%d, backoff_schedule=%v, reset_days=%d", cfg.RateLimitMaxAttempts, cfg.RateLimitWindowSeconds, cfg.RateLimitBackoffSchedule, cfg.RateLimitViolationResetDays)
+	}
+
+	rateLimiter := ratelimit.NewLimiter(
+		redisClient,
+		isProd,
+		true, // failClosed
+		cfg.RateLimitEnabled,
+		cfg.RateLimitMaxAttempts,
+		cfg.RateLimitWindowSeconds,
+		cfg.RateLimitBackoffSchedule,
+		cfg.RateLimitViolationResetDays,
+	)
+
+	apiKeyRepo := apikey.NewRepository(factory)
+	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
+	apiKeyHandler := apikey.NewHandler(apiKeyService)
+	pkMiddleware := middleware.RequirePublishableKey(apiKeyService)
+	skMiddleware := middleware.RequireSecretKey(apiKeyService)
+
 	policyRepo := policy.NewRepository(factory)
 	policyHandler := policy.NewHandler(policyRepo)
 
-	authRepo := auth.NewRepository(factory)
-	authService := auth.NewService(authRepo, cfg)
-	authHandler := auth.NewHandler(authService, policyRepo)
+	emailProvider, err := email.NewEmailProvider(cfg)
+	if err != nil {
+		log.Printf("⚠️ Email Provider warning: %v. Falling back to NoopProvider.", err)
+		emailProvider = email.NewNoopProvider()
+	} else {
+		log.Printf("📧 Email Provider initialized: %s (driver: %s, from: %s)", strings.ToUpper(cfg.EmailDriver), cfg.EmailDriver, cfg.EmailFromAddress)
+	}
 
-	ctx := context.Background()
+	authRepo := auth.NewRepository(factory)
+	authService := auth.NewService(authRepo, cfg, emailProvider)
+	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter)
+
+	ctx := privacy.NewBypassContext(context.Background())
 	if err := authRepo.EnsureTenantExists(ctx, "tnt_default"); err != nil {
 		log.Printf("⚠️ Default tenant initialization notice: %v", err)
 	}
 	if err := authRepo.EnsureDefaultApplicationExists(ctx, "app_test123", "tnt_default", []string{"http://localhost:3000/callback"}); err != nil {
 		log.Printf("⚠️ Default application seeding notice: %v", err)
 	}
+	// Seed Tenant A (Default) Publishable Key & Secret Key
+	defaultPK := "pk_test_demo12345678901234567890123456789012"
+	defaultSK := "sk_test_demo12345678901234567890123456789012"
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_test_demo123", "app_test123", defaultPK, cfg.AuthnAPIKeyPepper); err == nil {
+		log.Printf("🔑 Seeded Tenant A publishable key for verification: %s", defaultPK)
+	}
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_test_sk_demo123_v3", "app_test123", defaultSK, cfg.AuthnAPIKeyPepper); err == nil {
+		log.Printf("🔑 Seeded Tenant A secret key for verification: %s", defaultSK)
+	} else {
+		log.Printf("⚠️ Secret key seeding error: %v", err)
+	}
+
+	// Seed Tenant B, Application B, & Key B for cross-tenant HTTP isolation verification
+	if err := authRepo.EnsureTenantExists(ctx, "tnt_tenantB"); err == nil {
+		_ = authRepo.EnsureDefaultApplicationExists(ctx, "app_tenantB", "tnt_tenantB", []string{"http://localhost:3000/callback"})
+		tenantBPK := "pk_test_tenantB_9999999999999999999999999999"
+		tenantBSK := "sk_test_tenantB_9999999999999999999999999999"
+		_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_tenantB_123", "app_tenantB", tenantBPK, cfg.AuthnAPIKeyPepper)
+		_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_tenantB_sk_123_v2", "app_tenantB", tenantBSK, cfg.AuthnAPIKeyPepper)
+	}
 
 	oauthRepo := oauth.NewRepository()
-	oauthService := oauth.NewService(oauthRepo, authRepo, cfg)
+	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
 	oauthHandler := oauth.NewHandler(oauthService)
 
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
-	authHandler.RegisterRoutes(app)
+	authHandler.RegisterRoutes(app, pkMiddleware)
 	policyHandler.RegisterRoutes(app)
-	oauthHandler.RegisterRoutes(app)
+	oauthHandler.RegisterRoutes(app, pkMiddleware)
+	apiKeyHandler.RegisterRoutes(app, skMiddleware)
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

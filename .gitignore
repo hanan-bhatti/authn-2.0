@@ -14,6 +14,7 @@ bin/
 *.dll
 *.so
 *.dylib
+apps/auth-engine/authn.db
 
 # Environment Variables & Local Secrets
 .env

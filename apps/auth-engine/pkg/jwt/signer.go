@@ -124,3 +124,90 @@ func VerifyAccessToken(tokenString string, signingSecret string) (*Claims, error
 
 	return &claims, nil
 }
+
+// MFAClaims represents the payload structure for a short-lived 2FA challenge token.
+type MFAClaims struct {
+	Sub         string   `json:"sub"`
+	TenantID    string   `json:"tenant_id"`
+	Environment string   `json:"environment"`
+	Methods     []string `json:"methods"`
+	Purpose     string   `json:"purpose"`
+	Iss         string   `json:"iss"`
+	Iat         int64    `json:"iat"`
+	Exp         int64    `json:"exp"`
+}
+
+// IssueMFAChallengeToken issues a 5-minute JWT challenge token required for 2FA verification.
+func IssueMFAChallengeToken(userID string, tenantID string, environment string, methods []string, signingSecret string) (string, error) {
+	now := time.Now().UTC()
+	exp := now.Add(5 * time.Minute)
+
+	claims := MFAClaims{
+		Sub:         userID,
+		TenantID:    tenantID,
+		Environment: environment,
+		Methods:     methods,
+		Purpose:     "2fa_challenge",
+		Iss:         "authn-engine",
+		Iat:         now.Unix(),
+		Exp:         exp.Unix(),
+	}
+
+	headerJSON, _ := json.Marshal(map[string]string{
+		"alg": "HS256",
+		"typ": "JWT",
+	})
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed marshaling mfa claims: %w", err)
+	}
+
+	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	signingInput := encodedHeader + "." + encodedPayload
+
+	h := hmac.New(sha256.New, []byte(signingSecret))
+	h.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	return signingInput + "." + signature, nil
+}
+
+// VerifyMFAChallengeToken validates signature and expiration of an MFA challenge token string.
+func VerifyMFAChallengeToken(tokenString string, signingSecret string) (*MFAClaims, error) {
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid mfa token format")
+	}
+
+	signingInput := parts[0] + "." + parts[1]
+	h := hmac.New(sha256.New, []byte(signingSecret))
+	h.Write([]byte(signingInput))
+	expectedSignature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	if parts[2] != expectedSignature {
+		return nil, fmt.Errorf("invalid mfa token signature")
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed decoding mfa token payload: %w", err)
+	}
+
+	var claims MFAClaims
+	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
+		return nil, fmt.Errorf("failed unmarshaling mfa token claims: %w", err)
+	}
+
+	if claims.Purpose != "2fa_challenge" {
+		return nil, fmt.Errorf("invalid mfa token purpose")
+	}
+
+	if time.Now().UTC().Unix() > claims.Exp {
+		return nil, fmt.Errorf("mfa challenge token has expired")
+	}
+
+	return &claims, nil
+}
+
