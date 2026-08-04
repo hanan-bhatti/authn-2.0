@@ -87,8 +87,7 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 				"code":  "email_exists_social_account",
 			})
 		}
-		// In a real app we might differentiate ErrStateNotFound, ErrEmailRequired etc.
-		if err.Error() == "state not found" || errors.Is(err, ErrEmailRequired) || errors.Is(err, ErrProviderNotConfigured) {
+		if errors.Is(err, ErrStateNotFound) || errors.Is(err, ErrStateExpired) || errors.Is(err, ErrEmailRequired) || errors.Is(err, ErrProviderNotConfigured) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
