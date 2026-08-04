@@ -95,7 +95,7 @@
 - Refresh token rotation on every exchange with a 10-second grace window to allow concurrent network requests.
 - Active session listing by device, browser, IP, and location with single-click remote session revocation.
 
-### FR-9: Native Android & iOS Account Manager (Device-Level SSO)
+### FR-9: Native Android & iOS Account Manager (Device-Level SSO) [Deferred to Native SDK Phase]
 - **Android (`AccountManager`)**: Registers Authn as an Android System Account Type for silent cross-app token exchange.
 - **iOS (`ASWebAuthenticationSession` & Shared Keychain)**: Uses Secure Enclave and Shared Keychain Groups for silent cross-app SSO on iOS devices.
 
