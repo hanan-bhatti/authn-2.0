@@ -26,6 +26,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
@@ -109,6 +110,7 @@ func checkColumn(table, column string) error {
 			role.Table:                role.ValidColumn,
 			securityblacklist.Table:   securityblacklist.ValidColumn,
 			session.Table:             session.ValidColumn,
+			socialauthstate.Table:     socialauthstate.ValidColumn,
 			tenant.Table:              tenant.ValidColumn,
 			trusteddevice.Table:       trusteddevice.ValidColumn,
 			twofactormethod.Table:     twofactormethod.ValidColumn,

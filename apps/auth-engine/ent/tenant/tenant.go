@@ -34,6 +34,8 @@ const (
 	FieldSecurityPolicy = "security_policy"
 	// FieldRecoveryPolicy holds the string denoting the recovery_policy field in the database.
 	FieldRecoveryPolicy = "recovery_policy"
+	// FieldSocialProviders holds the string denoting the social_providers field in the database.
+	FieldSocialProviders = "social_providers"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -109,6 +111,7 @@ var Columns = []string{
 	FieldPasswordPolicy,
 	FieldSecurityPolicy,
 	FieldRecoveryPolicy,
+	FieldSocialProviders,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }

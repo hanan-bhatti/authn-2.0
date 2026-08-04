@@ -29,6 +29,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
@@ -73,6 +74,8 @@ type Client struct {
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SocialAuthState is the client for interacting with the SocialAuthState builders.
+	SocialAuthState *SocialAuthStateClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
 	// TrustedDevice is the client for interacting with the TrustedDevice builders.
@@ -116,6 +119,7 @@ func (c *Client) init() {
 	c.Role = NewRoleClient(c.config)
 	c.SecurityBlacklist = NewSecurityBlacklistClient(c.config)
 	c.Session = NewSessionClient(c.config)
+	c.SocialAuthState = NewSocialAuthStateClient(c.config)
 	c.Tenant = NewTenantClient(c.config)
 	c.TrustedDevice = NewTrustedDeviceClient(c.config)
 	c.TwoFactorMethod = NewTwoFactorMethodClient(c.config)
@@ -231,6 +235,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Role:                NewRoleClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
+		SocialAuthState:     NewSocialAuthStateClient(cfg),
 		Tenant:              NewTenantClient(cfg),
 		TrustedDevice:       NewTrustedDeviceClient(cfg),
 		TwoFactorMethod:     NewTwoFactorMethodClient(cfg),
@@ -273,6 +278,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Role:                NewRoleClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
+		SocialAuthState:     NewSocialAuthStateClient(cfg),
 		Tenant:              NewTenantClient(cfg),
 		TrustedDevice:       NewTrustedDeviceClient(cfg),
 		TwoFactorMethod:     NewTwoFactorMethodClient(cfg),
@@ -313,8 +319,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
 		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
-		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.Tenant,
-		c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
+		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.SocialAuthState,
+		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
 		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Use(hooks...)
@@ -327,8 +333,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
 		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
-		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.Tenant,
-		c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
+		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.SocialAuthState,
+		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
 		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Intercept(interceptors...)
@@ -366,6 +372,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecurityBlacklist.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
+	case *SocialAuthStateMutation:
+		return c.SocialAuthState.mutate(ctx, m)
 	case *TenantMutation:
 		return c.Tenant.mutate(ctx, m)
 	case *TrustedDeviceMutation:
@@ -2587,6 +2595,139 @@ func (c *SessionClient) mutate(ctx context.Context, m *SessionMutation) (Value, 
 	}
 }
 
+// SocialAuthStateClient is a client for the SocialAuthState schema.
+type SocialAuthStateClient struct {
+	config
+}
+
+// NewSocialAuthStateClient returns a client for the SocialAuthState from the given config.
+func NewSocialAuthStateClient(c config) *SocialAuthStateClient {
+	return &SocialAuthStateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `socialauthstate.Hooks(f(g(h())))`.
+func (c *SocialAuthStateClient) Use(hooks ...Hook) {
+	c.hooks.SocialAuthState = append(c.hooks.SocialAuthState, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `socialauthstate.Intercept(f(g(h())))`.
+func (c *SocialAuthStateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SocialAuthState = append(c.inters.SocialAuthState, interceptors...)
+}
+
+// Create returns a builder for creating a SocialAuthState entity.
+func (c *SocialAuthStateClient) Create() *SocialAuthStateCreate {
+	mutation := newSocialAuthStateMutation(c.config, OpCreate)
+	return &SocialAuthStateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SocialAuthState entities.
+func (c *SocialAuthStateClient) CreateBulk(builders ...*SocialAuthStateCreate) *SocialAuthStateCreateBulk {
+	return &SocialAuthStateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SocialAuthStateClient) MapCreateBulk(slice any, setFunc func(*SocialAuthStateCreate, int)) *SocialAuthStateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SocialAuthStateCreateBulk{err: fmt.Errorf("calling to SocialAuthStateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SocialAuthStateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SocialAuthStateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SocialAuthState.
+func (c *SocialAuthStateClient) Update() *SocialAuthStateUpdate {
+	mutation := newSocialAuthStateMutation(c.config, OpUpdate)
+	return &SocialAuthStateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SocialAuthStateClient) UpdateOne(sas *SocialAuthState) *SocialAuthStateUpdateOne {
+	mutation := newSocialAuthStateMutation(c.config, OpUpdateOne, withSocialAuthState(sas))
+	return &SocialAuthStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SocialAuthStateClient) UpdateOneID(id string) *SocialAuthStateUpdateOne {
+	mutation := newSocialAuthStateMutation(c.config, OpUpdateOne, withSocialAuthStateID(id))
+	return &SocialAuthStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SocialAuthState.
+func (c *SocialAuthStateClient) Delete() *SocialAuthStateDelete {
+	mutation := newSocialAuthStateMutation(c.config, OpDelete)
+	return &SocialAuthStateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SocialAuthStateClient) DeleteOne(sas *SocialAuthState) *SocialAuthStateDeleteOne {
+	return c.DeleteOneID(sas.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SocialAuthStateClient) DeleteOneID(id string) *SocialAuthStateDeleteOne {
+	builder := c.Delete().Where(socialauthstate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SocialAuthStateDeleteOne{builder}
+}
+
+// Query returns a query builder for SocialAuthState.
+func (c *SocialAuthStateClient) Query() *SocialAuthStateQuery {
+	return &SocialAuthStateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSocialAuthState},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SocialAuthState entity by its id.
+func (c *SocialAuthStateClient) Get(ctx context.Context, id string) (*SocialAuthState, error) {
+	return c.Query().Where(socialauthstate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SocialAuthStateClient) GetX(ctx context.Context, id string) *SocialAuthState {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SocialAuthStateClient) Hooks() []Hook {
+	return c.hooks.SocialAuthState
+}
+
+// Interceptors returns the client interceptors.
+func (c *SocialAuthStateClient) Interceptors() []Interceptor {
+	return c.inters.SocialAuthState
+}
+
+func (c *SocialAuthStateClient) mutate(ctx context.Context, m *SocialAuthStateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SocialAuthStateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SocialAuthStateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SocialAuthStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SocialAuthStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SocialAuthState mutation op: %q", m.Op())
+	}
+}
+
 // TenantClient is a client for the Tenant schema.
 type TenantClient struct {
 	config
@@ -4221,15 +4362,15 @@ type (
 	hooks struct {
 		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
 		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role,
-		SecurityBlacklist, Session, Tenant, TrustedDevice, TwoFactorMethod, User,
-		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
-		WebhookEvent []ent.Hook
+		SecurityBlacklist, Session, SocialAuthState, Tenant, TrustedDevice,
+		TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory, UserRole,
+		WebhookEndpoint, WebhookEvent []ent.Hook
 	}
 	inters struct {
 		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
 		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role,
-		SecurityBlacklist, Session, Tenant, TrustedDevice, TwoFactorMethod, User,
-		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
-		WebhookEvent []ent.Interceptor
+		SecurityBlacklist, Session, SocialAuthState, Tenant, TrustedDevice,
+		TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory, UserRole,
+		WebhookEndpoint, WebhookEvent []ent.Interceptor
 	}
 )

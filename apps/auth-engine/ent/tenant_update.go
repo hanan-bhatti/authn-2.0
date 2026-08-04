@@ -178,6 +178,18 @@ func (tu *TenantUpdate) ClearRecoveryPolicy() *TenantUpdate {
 	return tu
 }
 
+// SetSocialProviders sets the "social_providers" field.
+func (tu *TenantUpdate) SetSocialProviders(m map[string]interface{}) *TenantUpdate {
+	tu.mutation.SetSocialProviders(m)
+	return tu
+}
+
+// ClearSocialProviders clears the value of the "social_providers" field.
+func (tu *TenantUpdate) ClearSocialProviders() *TenantUpdate {
+	tu.mutation.ClearSocialProviders()
+	return tu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tu *TenantUpdate) SetUpdatedAt(t time.Time) *TenantUpdate {
 	tu.mutation.SetUpdatedAt(t)
@@ -515,6 +527,12 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if tu.mutation.RecoveryPolicyCleared() {
 		_spec.ClearField(tenant.FieldRecoveryPolicy, field.TypeJSON)
+	}
+	if value, ok := tu.mutation.SocialProviders(); ok {
+		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
+	}
+	if tu.mutation.SocialProvidersCleared() {
+		_spec.ClearField(tenant.FieldSocialProviders, field.TypeJSON)
 	}
 	if value, ok := tu.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -953,6 +971,18 @@ func (tuo *TenantUpdateOne) ClearRecoveryPolicy() *TenantUpdateOne {
 	return tuo
 }
 
+// SetSocialProviders sets the "social_providers" field.
+func (tuo *TenantUpdateOne) SetSocialProviders(m map[string]interface{}) *TenantUpdateOne {
+	tuo.mutation.SetSocialProviders(m)
+	return tuo
+}
+
+// ClearSocialProviders clears the value of the "social_providers" field.
+func (tuo *TenantUpdateOne) ClearSocialProviders() *TenantUpdateOne {
+	tuo.mutation.ClearSocialProviders()
+	return tuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tuo *TenantUpdateOne) SetUpdatedAt(t time.Time) *TenantUpdateOne {
 	tuo.mutation.SetUpdatedAt(t)
@@ -1320,6 +1350,12 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if tuo.mutation.RecoveryPolicyCleared() {
 		_spec.ClearField(tenant.FieldRecoveryPolicy, field.TypeJSON)
+	}
+	if value, ok := tuo.mutation.SocialProviders(); ok {
+		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
+	}
+	if tuo.mutation.SocialProvidersCleared() {
+		_spec.ClearField(tenant.FieldSocialProviders, field.TypeJSON)
 	}
 	if value, ok := tuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)

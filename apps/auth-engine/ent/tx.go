@@ -40,6 +40,8 @@ type Tx struct {
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SocialAuthState is the client for interacting with the SocialAuthState builders.
+	SocialAuthState *SocialAuthStateClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
 	// TrustedDevice is the client for interacting with the TrustedDevice builders.
@@ -203,6 +205,7 @@ func (tx *Tx) init() {
 	tx.Role = NewRoleClient(tx.config)
 	tx.SecurityBlacklist = NewSecurityBlacklistClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.SocialAuthState = NewSocialAuthStateClient(tx.config)
 	tx.Tenant = NewTenantClient(tx.config)
 	tx.TrustedDevice = NewTrustedDeviceClient(tx.config)
 	tx.TwoFactorMethod = NewTwoFactorMethodClient(tx.config)

@@ -26,6 +26,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
@@ -60,6 +61,7 @@ const (
 	TypeRole                = "Role"
 	TypeSecurityBlacklist   = "SecurityBlacklist"
 	TypeSession             = "Session"
+	TypeSocialAuthState     = "SocialAuthState"
 	TypeTenant              = "Tenant"
 	TypeTrustedDevice       = "TrustedDevice"
 	TypeTwoFactorMethod     = "TwoFactorMethod"
@@ -13614,6 +13616,738 @@ func (m *SessionMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Session edge %s", name)
 }
 
+// SocialAuthStateMutation represents an operation that mutates the SocialAuthState nodes in the graph.
+type SocialAuthStateMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *string
+	tenant_id              *string
+	application_id         *string
+	environment            *string
+	provider               *string
+	redirect_uri           *string
+	post_callback_redirect *string
+	expires_at             *time.Time
+	created_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*SocialAuthState, error)
+	predicates             []predicate.SocialAuthState
+}
+
+var _ ent.Mutation = (*SocialAuthStateMutation)(nil)
+
+// socialauthstateOption allows management of the mutation configuration using functional options.
+type socialauthstateOption func(*SocialAuthStateMutation)
+
+// newSocialAuthStateMutation creates new mutation for the SocialAuthState entity.
+func newSocialAuthStateMutation(c config, op Op, opts ...socialauthstateOption) *SocialAuthStateMutation {
+	m := &SocialAuthStateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSocialAuthState,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSocialAuthStateID sets the ID field of the mutation.
+func withSocialAuthStateID(id string) socialauthstateOption {
+	return func(m *SocialAuthStateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SocialAuthState
+		)
+		m.oldValue = func(ctx context.Context) (*SocialAuthState, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SocialAuthState.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSocialAuthState sets the old SocialAuthState of the mutation.
+func withSocialAuthState(node *SocialAuthState) socialauthstateOption {
+	return func(m *SocialAuthStateMutation) {
+		m.oldValue = func(context.Context) (*SocialAuthState, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SocialAuthStateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SocialAuthStateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SocialAuthState entities.
+func (m *SocialAuthStateMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SocialAuthStateMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SocialAuthStateMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SocialAuthState.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTenantID sets the "tenant_id" field.
+func (m *SocialAuthStateMutation) SetTenantID(s string) {
+	m.tenant_id = &s
+}
+
+// TenantID returns the value of the "tenant_id" field in the mutation.
+func (m *SocialAuthStateMutation) TenantID() (r string, exists bool) {
+	v := m.tenant_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTenantID returns the old "tenant_id" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldTenantID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTenantID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTenantID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTenantID: %w", err)
+	}
+	return oldValue.TenantID, nil
+}
+
+// ResetTenantID resets all changes to the "tenant_id" field.
+func (m *SocialAuthStateMutation) ResetTenantID() {
+	m.tenant_id = nil
+}
+
+// SetApplicationID sets the "application_id" field.
+func (m *SocialAuthStateMutation) SetApplicationID(s string) {
+	m.application_id = &s
+}
+
+// ApplicationID returns the value of the "application_id" field in the mutation.
+func (m *SocialAuthStateMutation) ApplicationID() (r string, exists bool) {
+	v := m.application_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationID returns the old "application_id" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldApplicationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationID: %w", err)
+	}
+	return oldValue.ApplicationID, nil
+}
+
+// ResetApplicationID resets all changes to the "application_id" field.
+func (m *SocialAuthStateMutation) ResetApplicationID() {
+	m.application_id = nil
+}
+
+// SetEnvironment sets the "environment" field.
+func (m *SocialAuthStateMutation) SetEnvironment(s string) {
+	m.environment = &s
+}
+
+// Environment returns the value of the "environment" field in the mutation.
+func (m *SocialAuthStateMutation) Environment() (r string, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironment returns the old "environment" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldEnvironment(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironment: %w", err)
+	}
+	return oldValue.Environment, nil
+}
+
+// ResetEnvironment resets all changes to the "environment" field.
+func (m *SocialAuthStateMutation) ResetEnvironment() {
+	m.environment = nil
+}
+
+// SetProvider sets the "provider" field.
+func (m *SocialAuthStateMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *SocialAuthStateMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *SocialAuthStateMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetRedirectURI sets the "redirect_uri" field.
+func (m *SocialAuthStateMutation) SetRedirectURI(s string) {
+	m.redirect_uri = &s
+}
+
+// RedirectURI returns the value of the "redirect_uri" field in the mutation.
+func (m *SocialAuthStateMutation) RedirectURI() (r string, exists bool) {
+	v := m.redirect_uri
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRedirectURI returns the old "redirect_uri" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldRedirectURI(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRedirectURI is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRedirectURI requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRedirectURI: %w", err)
+	}
+	return oldValue.RedirectURI, nil
+}
+
+// ResetRedirectURI resets all changes to the "redirect_uri" field.
+func (m *SocialAuthStateMutation) ResetRedirectURI() {
+	m.redirect_uri = nil
+}
+
+// SetPostCallbackRedirect sets the "post_callback_redirect" field.
+func (m *SocialAuthStateMutation) SetPostCallbackRedirect(s string) {
+	m.post_callback_redirect = &s
+}
+
+// PostCallbackRedirect returns the value of the "post_callback_redirect" field in the mutation.
+func (m *SocialAuthStateMutation) PostCallbackRedirect() (r string, exists bool) {
+	v := m.post_callback_redirect
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPostCallbackRedirect returns the old "post_callback_redirect" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldPostCallbackRedirect(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPostCallbackRedirect is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPostCallbackRedirect requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPostCallbackRedirect: %w", err)
+	}
+	return oldValue.PostCallbackRedirect, nil
+}
+
+// ClearPostCallbackRedirect clears the value of the "post_callback_redirect" field.
+func (m *SocialAuthStateMutation) ClearPostCallbackRedirect() {
+	m.post_callback_redirect = nil
+	m.clearedFields[socialauthstate.FieldPostCallbackRedirect] = struct{}{}
+}
+
+// PostCallbackRedirectCleared returns if the "post_callback_redirect" field was cleared in this mutation.
+func (m *SocialAuthStateMutation) PostCallbackRedirectCleared() bool {
+	_, ok := m.clearedFields[socialauthstate.FieldPostCallbackRedirect]
+	return ok
+}
+
+// ResetPostCallbackRedirect resets all changes to the "post_callback_redirect" field.
+func (m *SocialAuthStateMutation) ResetPostCallbackRedirect() {
+	m.post_callback_redirect = nil
+	delete(m.clearedFields, socialauthstate.FieldPostCallbackRedirect)
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *SocialAuthStateMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *SocialAuthStateMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *SocialAuthStateMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SocialAuthStateMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SocialAuthStateMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SocialAuthState entity.
+// If the SocialAuthState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SocialAuthStateMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SocialAuthStateMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the SocialAuthStateMutation builder.
+func (m *SocialAuthStateMutation) Where(ps ...predicate.SocialAuthState) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SocialAuthStateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SocialAuthStateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SocialAuthState, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SocialAuthStateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SocialAuthStateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SocialAuthState).
+func (m *SocialAuthStateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SocialAuthStateMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.tenant_id != nil {
+		fields = append(fields, socialauthstate.FieldTenantID)
+	}
+	if m.application_id != nil {
+		fields = append(fields, socialauthstate.FieldApplicationID)
+	}
+	if m.environment != nil {
+		fields = append(fields, socialauthstate.FieldEnvironment)
+	}
+	if m.provider != nil {
+		fields = append(fields, socialauthstate.FieldProvider)
+	}
+	if m.redirect_uri != nil {
+		fields = append(fields, socialauthstate.FieldRedirectURI)
+	}
+	if m.post_callback_redirect != nil {
+		fields = append(fields, socialauthstate.FieldPostCallbackRedirect)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, socialauthstate.FieldExpiresAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, socialauthstate.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SocialAuthStateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case socialauthstate.FieldTenantID:
+		return m.TenantID()
+	case socialauthstate.FieldApplicationID:
+		return m.ApplicationID()
+	case socialauthstate.FieldEnvironment:
+		return m.Environment()
+	case socialauthstate.FieldProvider:
+		return m.Provider()
+	case socialauthstate.FieldRedirectURI:
+		return m.RedirectURI()
+	case socialauthstate.FieldPostCallbackRedirect:
+		return m.PostCallbackRedirect()
+	case socialauthstate.FieldExpiresAt:
+		return m.ExpiresAt()
+	case socialauthstate.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SocialAuthStateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case socialauthstate.FieldTenantID:
+		return m.OldTenantID(ctx)
+	case socialauthstate.FieldApplicationID:
+		return m.OldApplicationID(ctx)
+	case socialauthstate.FieldEnvironment:
+		return m.OldEnvironment(ctx)
+	case socialauthstate.FieldProvider:
+		return m.OldProvider(ctx)
+	case socialauthstate.FieldRedirectURI:
+		return m.OldRedirectURI(ctx)
+	case socialauthstate.FieldPostCallbackRedirect:
+		return m.OldPostCallbackRedirect(ctx)
+	case socialauthstate.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case socialauthstate.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SocialAuthState field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SocialAuthStateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case socialauthstate.FieldTenantID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTenantID(v)
+		return nil
+	case socialauthstate.FieldApplicationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationID(v)
+		return nil
+	case socialauthstate.FieldEnvironment:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironment(v)
+		return nil
+	case socialauthstate.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case socialauthstate.FieldRedirectURI:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRedirectURI(v)
+		return nil
+	case socialauthstate.FieldPostCallbackRedirect:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPostCallbackRedirect(v)
+		return nil
+	case socialauthstate.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case socialauthstate.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SocialAuthState field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SocialAuthStateMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SocialAuthStateMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SocialAuthStateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SocialAuthState numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SocialAuthStateMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(socialauthstate.FieldPostCallbackRedirect) {
+		fields = append(fields, socialauthstate.FieldPostCallbackRedirect)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SocialAuthStateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SocialAuthStateMutation) ClearField(name string) error {
+	switch name {
+	case socialauthstate.FieldPostCallbackRedirect:
+		m.ClearPostCallbackRedirect()
+		return nil
+	}
+	return fmt.Errorf("unknown SocialAuthState nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SocialAuthStateMutation) ResetField(name string) error {
+	switch name {
+	case socialauthstate.FieldTenantID:
+		m.ResetTenantID()
+		return nil
+	case socialauthstate.FieldApplicationID:
+		m.ResetApplicationID()
+		return nil
+	case socialauthstate.FieldEnvironment:
+		m.ResetEnvironment()
+		return nil
+	case socialauthstate.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case socialauthstate.FieldRedirectURI:
+		m.ResetRedirectURI()
+		return nil
+	case socialauthstate.FieldPostCallbackRedirect:
+		m.ResetPostCallbackRedirect()
+		return nil
+	case socialauthstate.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case socialauthstate.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SocialAuthState field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SocialAuthStateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SocialAuthStateMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SocialAuthStateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SocialAuthStateMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SocialAuthStateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SocialAuthStateMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SocialAuthStateMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SocialAuthState unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SocialAuthStateMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SocialAuthState edge %s", name)
+}
+
 // TenantMutation represents an operation that mutates the Tenant nodes in the graph.
 type TenantMutation struct {
 	config
@@ -13630,6 +14364,7 @@ type TenantMutation struct {
 	password_policy           *map[string]interface{}
 	security_policy           *map[string]interface{}
 	recovery_policy           *map[string]interface{}
+	social_providers          *map[string]interface{}
 	created_at                *time.Time
 	updated_at                *time.Time
 	clearedFields             map[string]struct{}
@@ -14198,6 +14933,55 @@ func (m *TenantMutation) ResetRecoveryPolicy() {
 	delete(m.clearedFields, tenant.FieldRecoveryPolicy)
 }
 
+// SetSocialProviders sets the "social_providers" field.
+func (m *TenantMutation) SetSocialProviders(value map[string]interface{}) {
+	m.social_providers = &value
+}
+
+// SocialProviders returns the value of the "social_providers" field in the mutation.
+func (m *TenantMutation) SocialProviders() (r map[string]interface{}, exists bool) {
+	v := m.social_providers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSocialProviders returns the old "social_providers" field's value of the Tenant entity.
+// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantMutation) OldSocialProviders(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSocialProviders is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSocialProviders requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSocialProviders: %w", err)
+	}
+	return oldValue.SocialProviders, nil
+}
+
+// ClearSocialProviders clears the value of the "social_providers" field.
+func (m *TenantMutation) ClearSocialProviders() {
+	m.social_providers = nil
+	m.clearedFields[tenant.FieldSocialProviders] = struct{}{}
+}
+
+// SocialProvidersCleared returns if the "social_providers" field was cleared in this mutation.
+func (m *TenantMutation) SocialProvidersCleared() bool {
+	_, ok := m.clearedFields[tenant.FieldSocialProviders]
+	return ok
+}
+
+// ResetSocialProviders resets all changes to the "social_providers" field.
+func (m *TenantMutation) ResetSocialProviders() {
+	m.social_providers = nil
+	delete(m.clearedFields, tenant.FieldSocialProviders)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TenantMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -14628,7 +15412,7 @@ func (m *TenantMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TenantMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.name != nil {
 		fields = append(fields, tenant.FieldName)
 	}
@@ -14658,6 +15442,9 @@ func (m *TenantMutation) Fields() []string {
 	}
 	if m.recovery_policy != nil {
 		fields = append(fields, tenant.FieldRecoveryPolicy)
+	}
+	if m.social_providers != nil {
+		fields = append(fields, tenant.FieldSocialProviders)
 	}
 	if m.created_at != nil {
 		fields = append(fields, tenant.FieldCreatedAt)
@@ -14693,6 +15480,8 @@ func (m *TenantMutation) Field(name string) (ent.Value, bool) {
 		return m.SecurityPolicy()
 	case tenant.FieldRecoveryPolicy:
 		return m.RecoveryPolicy()
+	case tenant.FieldSocialProviders:
+		return m.SocialProviders()
 	case tenant.FieldCreatedAt:
 		return m.CreatedAt()
 	case tenant.FieldUpdatedAt:
@@ -14726,6 +15515,8 @@ func (m *TenantMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldSecurityPolicy(ctx)
 	case tenant.FieldRecoveryPolicy:
 		return m.OldRecoveryPolicy(ctx)
+	case tenant.FieldSocialProviders:
+		return m.OldSocialProviders(ctx)
 	case tenant.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case tenant.FieldUpdatedAt:
@@ -14809,6 +15600,13 @@ func (m *TenantMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRecoveryPolicy(v)
 		return nil
+	case tenant.FieldSocialProviders:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSocialProviders(v)
+		return nil
 	case tenant.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -14871,6 +15669,9 @@ func (m *TenantMutation) ClearedFields() []string {
 	if m.FieldCleared(tenant.FieldRecoveryPolicy) {
 		fields = append(fields, tenant.FieldRecoveryPolicy)
 	}
+	if m.FieldCleared(tenant.FieldSocialProviders) {
+		fields = append(fields, tenant.FieldSocialProviders)
+	}
 	return fields
 }
 
@@ -14902,6 +15703,9 @@ func (m *TenantMutation) ClearField(name string) error {
 		return nil
 	case tenant.FieldRecoveryPolicy:
 		m.ClearRecoveryPolicy()
+		return nil
+	case tenant.FieldSocialProviders:
+		m.ClearSocialProviders()
 		return nil
 	}
 	return fmt.Errorf("unknown Tenant nullable field %s", name)
@@ -14940,6 +15744,9 @@ func (m *TenantMutation) ResetField(name string) error {
 		return nil
 	case tenant.FieldRecoveryPolicy:
 		m.ResetRecoveryPolicy()
+		return nil
+	case tenant.FieldSocialProviders:
+		m.ResetSocialProviders()
 		return nil
 	case tenant.FieldCreatedAt:
 		m.ResetCreatedAt()

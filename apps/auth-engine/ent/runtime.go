@@ -20,6 +20,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/schema"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
@@ -325,6 +326,32 @@ func init() {
 	sessionDescCreatedAt := sessionFields[14].Descriptor()
 	// session.DefaultCreatedAt holds the default value on creation for the created_at field.
 	session.DefaultCreatedAt = sessionDescCreatedAt.Default.(func() time.Time)
+	socialauthstateFields := schema.SocialAuthState{}.Fields()
+	_ = socialauthstateFields
+	// socialauthstateDescTenantID is the schema descriptor for tenant_id field.
+	socialauthstateDescTenantID := socialauthstateFields[1].Descriptor()
+	// socialauthstate.TenantIDValidator is a validator for the "tenant_id" field. It is called by the builders before save.
+	socialauthstate.TenantIDValidator = socialauthstateDescTenantID.Validators[0].(func(string) error)
+	// socialauthstateDescApplicationID is the schema descriptor for application_id field.
+	socialauthstateDescApplicationID := socialauthstateFields[2].Descriptor()
+	// socialauthstate.ApplicationIDValidator is a validator for the "application_id" field. It is called by the builders before save.
+	socialauthstate.ApplicationIDValidator = socialauthstateDescApplicationID.Validators[0].(func(string) error)
+	// socialauthstateDescEnvironment is the schema descriptor for environment field.
+	socialauthstateDescEnvironment := socialauthstateFields[3].Descriptor()
+	// socialauthstate.EnvironmentValidator is a validator for the "environment" field. It is called by the builders before save.
+	socialauthstate.EnvironmentValidator = socialauthstateDescEnvironment.Validators[0].(func(string) error)
+	// socialauthstateDescProvider is the schema descriptor for provider field.
+	socialauthstateDescProvider := socialauthstateFields[4].Descriptor()
+	// socialauthstate.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	socialauthstate.ProviderValidator = socialauthstateDescProvider.Validators[0].(func(string) error)
+	// socialauthstateDescRedirectURI is the schema descriptor for redirect_uri field.
+	socialauthstateDescRedirectURI := socialauthstateFields[5].Descriptor()
+	// socialauthstate.RedirectURIValidator is a validator for the "redirect_uri" field. It is called by the builders before save.
+	socialauthstate.RedirectURIValidator = socialauthstateDescRedirectURI.Validators[0].(func(string) error)
+	// socialauthstateDescCreatedAt is the schema descriptor for created_at field.
+	socialauthstateDescCreatedAt := socialauthstateFields[8].Descriptor()
+	// socialauthstate.DefaultCreatedAt holds the default value on creation for the created_at field.
+	socialauthstate.DefaultCreatedAt = socialauthstateDescCreatedAt.Default.(func() time.Time)
 	tenantFields := schema.Tenant{}.Fields()
 	_ = tenantFields
 	// tenantDescName is the schema descriptor for name field.
@@ -344,11 +371,11 @@ func init() {
 	// tenant.DefaultFirstAdminClaimed holds the default value on creation for the first_admin_claimed field.
 	tenant.DefaultFirstAdminClaimed = tenantDescFirstAdminClaimed.Default.(bool)
 	// tenantDescCreatedAt is the schema descriptor for created_at field.
-	tenantDescCreatedAt := tenantFields[11].Descriptor()
+	tenantDescCreatedAt := tenantFields[12].Descriptor()
 	// tenant.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tenant.DefaultCreatedAt = tenantDescCreatedAt.Default.(func() time.Time)
 	// tenantDescUpdatedAt is the schema descriptor for updated_at field.
-	tenantDescUpdatedAt := tenantFields[12].Descriptor()
+	tenantDescUpdatedAt := tenantFields[13].Descriptor()
 	// tenant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	tenant.DefaultUpdatedAt = tenantDescUpdatedAt.Default.(func() time.Time)
 	// tenant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

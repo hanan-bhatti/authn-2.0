@@ -39,6 +39,8 @@ type Tenant struct {
 	SecurityPolicy map[string]interface{} `json:"security_policy,omitempty"`
 	// JSON blob containing tenant account recovery policy rules
 	RecoveryPolicy map[string]interface{} `json:"recovery_policy,omitempty"`
+	// Per-provider OAuth2 configuration keyed by provider name (google, github, discord, etc.). Each entry holds: enabled bool, client_id string, client_secret_encrypted string (AES-256-GCM). Client secrets are never returned in API responses.
+	SocialProviders map[string]interface{} `json:"social_providers,omitempty"`
 	// Timestamp when the tenant was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when the tenant was last updated
@@ -127,7 +129,7 @@ func (*Tenant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy:
+		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy, tenant.FieldSocialProviders:
 			values[i] = new([]byte)
 		case tenant.FieldDomainVerified, tenant.FieldFirstAdminClaimed:
 			values[i] = new(sql.NullBool)
@@ -223,6 +225,14 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &t.RecoveryPolicy); err != nil {
 					return fmt.Errorf("unmarshal field recovery_policy: %w", err)
+				}
+			}
+		case tenant.FieldSocialProviders:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field social_providers", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &t.SocialProviders); err != nil {
+					return fmt.Errorf("unmarshal field social_providers: %w", err)
 				}
 			}
 		case tenant.FieldCreatedAt:
@@ -334,6 +344,9 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("recovery_policy=")
 	builder.WriteString(fmt.Sprintf("%v", t.RecoveryPolicy))
+	builder.WriteString(", ")
+	builder.WriteString("social_providers=")
+	builder.WriteString(fmt.Sprintf("%v", t.SocialProviders))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(t.CreatedAt.Format(time.ANSIC))

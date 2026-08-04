@@ -118,6 +118,12 @@ func (tc *TenantCreate) SetRecoveryPolicy(m map[string]interface{}) *TenantCreat
 	return tc
 }
 
+// SetSocialProviders sets the "social_providers" field.
+func (tc *TenantCreate) SetSocialProviders(m map[string]interface{}) *TenantCreate {
+	tc.mutation.SetSocialProviders(m)
+	return tc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (tc *TenantCreate) SetCreatedAt(t time.Time) *TenantCreate {
 	tc.mutation.SetCreatedAt(t)
@@ -399,6 +405,10 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.RecoveryPolicy(); ok {
 		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
 		_node.RecoveryPolicy = value
+	}
+	if value, ok := tc.mutation.SocialProviders(); ok {
+		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
+		_node.SocialProviders = value
 	}
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(tenant.FieldCreatedAt, field.TypeTime, value)

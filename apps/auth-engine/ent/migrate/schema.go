@@ -557,6 +557,36 @@ var (
 			},
 		},
 	}
+	// SocialAuthStatesColumns holds the columns for the "social_auth_states" table.
+	SocialAuthStatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "tenant_id", Type: field.TypeString},
+		{Name: "application_id", Type: field.TypeString},
+		{Name: "environment", Type: field.TypeString},
+		{Name: "provider", Type: field.TypeString},
+		{Name: "redirect_uri", Type: field.TypeString},
+		{Name: "post_callback_redirect", Type: field.TypeString, Nullable: true},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// SocialAuthStatesTable holds the schema information for the "social_auth_states" table.
+	SocialAuthStatesTable = &schema.Table{
+		Name:       "social_auth_states",
+		Columns:    SocialAuthStatesColumns,
+		PrimaryKey: []*schema.Column{SocialAuthStatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "socialauthstate_id",
+				Unique:  true,
+				Columns: []*schema.Column{SocialAuthStatesColumns[0]},
+			},
+			{
+				Name:    "socialauthstate_tenant_id_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SocialAuthStatesColumns[1], SocialAuthStatesColumns[7]},
+			},
+		},
+	}
 	// TenantsColumns holds the columns for the "tenants" table.
 	TenantsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -570,6 +600,7 @@ var (
 		{Name: "password_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "security_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "recovery_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "social_providers", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -914,6 +945,7 @@ var (
 		RolesTable,
 		SecurityBlacklistsTable,
 		SessionsTable,
+		SocialAuthStatesTable,
 		TenantsTable,
 		TrustedDevicesTable,
 		TwoFactorMethodsTable,
