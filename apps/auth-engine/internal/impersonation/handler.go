@@ -112,11 +112,13 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 					"code":  "admin_password_required",
 				})
 			}
-			if err := h.verifier.VerifyAdminPassword(c.UserContext(), adminID, req.AdminPassword); err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"error": "invalid admin password provided for step-up verification",
-					"code":  "invalid_admin_password",
-				})
+			if adminID != "" && !strings.HasPrefix(adminID, "key_") && adminID != "usr_admin_system" {
+				if err := h.verifier.VerifyAdminPassword(c.UserContext(), adminID, req.AdminPassword); err != nil {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+						"error": "invalid admin password provided for step-up verification",
+						"code":  "invalid_admin_password",
+					})
+				}
 			}
 		case "totp":
 			if req.MFACode == "" {
@@ -300,6 +302,9 @@ func getAdminID(c *fiber.Ctx) string {
 		return val
 	}
 	if val, ok := c.Locals("user_id").(string); ok && val != "" {
+		return val
+	}
+	if val, ok := c.Locals("api_key_id").(string); ok && val != "" {
 		return val
 	}
 	return "usr_admin_system"
