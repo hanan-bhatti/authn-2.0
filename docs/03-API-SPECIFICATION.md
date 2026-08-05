@@ -308,7 +308,45 @@ Signup is a sensitive mutation endpoint — rate limiting cannot be bypassed und
 { "error": "rate limit service unavailable" }
 ```
 
-### 3.2 Refresh Token Rotation (`POST /v1/client/auth/refresh`)
+### 3.2 Email Verification (`GET /v1/client/verify-email` & `POST /v1/client/resend-verification`)
+
+> **Last Verified**: `2026-08-06` — live `curl` + real token extracted from Mailpit SMTP catcher.
+> See full endpoint doc: [`docs/endpoints/client-verify-email.md`](endpoints/client-verify-email.md)
+
+#### Token Properties
+* 32-byte `crypto/rand` → 64-char hex raw token. Only **SHA-256 hash** stored in DB.
+* **24-hour expiry**. **Single-use**: token + expiry cleared from DB on first successful verification.
+
+#### `GET /v1/client/verify-email?token=<raw_token>`
+```json
+// 200 OK — success
+{
+  "message": "email successfully verified",
+  "email": "verify.test@authn.local",
+  "email_verified": true
+}
+// 400 — missing token: {"error": "verification token query parameter is required"}
+// 400 — invalid/expired/replayed: {"error": "invalid or revoked token"}
+// 401 — missing pk_: {"error": "missing publishable API key in X-Authn-Publishable-Key header"}
+// 405 — wrong verb (Allow: GET, HEAD): {"error": {"code": 405, "message": "Method Not Allowed"}}
+```
+
+#### `POST /v1/client/resend-verification`
+Enumeration-safe — unknown emails, already-verified accounts, and valid unverified accounts all return identical `200`.
+```json
+// Request body
+{ "email": "user@example.com" }
+
+// 200 OK (all cases — enumeration-safe)
+{"message": "if an account exists with this email address, a verification link has been sent"}
+
+// 400 — invalid email format: {"error": "invalid email address format"}
+// 401 — missing pk_: {"error": "missing publishable API key in X-Authn-Publishable-Key header"}
+// 405 — wrong verb (Allow: POST): {"error": {"code": 405, "message": "Method Not Allowed"}}
+```
+
+### 3.3 Refresh Token Rotation (`POST /v1/client/auth/refresh`)
+
 - **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a new 64-byte Refresh Token. Implements Refresh Token Rotation (RTR) with a 10-second grace window (`rotated_grace`) for handling concurrent parallel requests, and automatic compromise mitigation (revoking all sessions) if token reuse occurs after the 10-second grace window.
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
 - **Request**:

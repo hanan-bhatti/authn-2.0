@@ -276,7 +276,95 @@
 					}
 				},
 				{
+					"name": "Verify Email — 200 Success (valid token)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/verify-email?token={{verificationToken}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "verify-email"],
+							"query": [{"key": "token", "value": "{{verificationToken}}"}]
+						},
+						"description": "Validate email verification token. Token is 24h-expiry, single-use (cleared from DB on success).\n\nVerified response (200):\n{\"message\":\"email successfully verified\",\"email\":\"verify.test@authn.local\",\"email_verified\":true}"
+					}
+				},
+				{
+					"name": "Verify Email — 400 Invalid/Replayed Token",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/verify-email?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "verify-email"],
+							"query": [{"key": "token", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
+						},
+						"description": "Garbage token or already-used token returns same 400. No signal which case.\n\nVerified response (400):\n{\"error\":\"invalid or revoked token\"}"
+					}
+				},
+				{
+					"name": "Verify Email — 400 Missing Token Parameter",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/verify-email",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "verify-email"]
+						},
+						"description": "Missing ?token query parameter.\n\nVerified response (400):\n{\"error\":\"verification token query parameter is required\"}"
+					}
+				},
+				{
+					"name": "Resend Verification — 200 Enumeration-Safe (unknown email)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"nobody@doesnotexist.local\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "resend-verification"]
+						},
+						"description": "Unknown email, already-verified, and valid unverified all return identical 200 (enumeration-safe).\n\nVerified response (200):\n{\"message\":\"if an account exists with this email address, a verification link has been sent\"}"
+					}
+				},
+				{
+					"name": "Resend Verification — 400 Invalid Email Format",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"not-an-email\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "resend-verification"]
+						},
+						"description": "Verified response (400):\n{\"error\":\"invalid email address format\"}"
+					}
+				},
+				{
 					"name": "User Login",
+
 					"event": [
 						{
 							"listen": "test",
