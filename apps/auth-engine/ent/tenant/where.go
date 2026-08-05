@@ -455,6 +455,16 @@ func SocialProvidersNotNil() predicate.Tenant {
 	return predicate.Tenant(sql.FieldNotNull(FieldSocialProviders))
 }
 
+// RolePolicyIsNil applies the IsNil predicate on the "role_policy" field.
+func RolePolicyIsNil() predicate.Tenant {
+	return predicate.Tenant(sql.FieldIsNull(FieldRolePolicy))
+}
+
+// RolePolicyNotNil applies the NotNil predicate on the "role_policy" field.
+func RolePolicyNotNil() predicate.Tenant {
+	return predicate.Tenant(sql.FieldNotNull(FieldRolePolicy))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Tenant {
 	return predicate.Tenant(sql.FieldEQ(FieldCreatedAt, v))

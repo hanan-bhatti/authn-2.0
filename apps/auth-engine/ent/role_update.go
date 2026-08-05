@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -90,6 +91,52 @@ func (ru *RoleUpdate) SetNillableIsSystemRole(b *bool) *RoleUpdate {
 	if b != nil {
 		ru.SetIsSystemRole(*b)
 	}
+	return ru
+}
+
+// SetCreatedByUserID sets the "created_by_user_id" field.
+func (ru *RoleUpdate) SetCreatedByUserID(s string) *RoleUpdate {
+	ru.mutation.SetCreatedByUserID(s)
+	return ru
+}
+
+// SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
+func (ru *RoleUpdate) SetNillableCreatedByUserID(s *string) *RoleUpdate {
+	if s != nil {
+		ru.SetCreatedByUserID(*s)
+	}
+	return ru
+}
+
+// ClearCreatedByUserID clears the value of the "created_by_user_id" field.
+func (ru *RoleUpdate) ClearCreatedByUserID() *RoleUpdate {
+	ru.mutation.ClearCreatedByUserID()
+	return ru
+}
+
+// SetUpdatedByUserID sets the "updated_by_user_id" field.
+func (ru *RoleUpdate) SetUpdatedByUserID(s string) *RoleUpdate {
+	ru.mutation.SetUpdatedByUserID(s)
+	return ru
+}
+
+// SetNillableUpdatedByUserID sets the "updated_by_user_id" field if the given value is not nil.
+func (ru *RoleUpdate) SetNillableUpdatedByUserID(s *string) *RoleUpdate {
+	if s != nil {
+		ru.SetUpdatedByUserID(*s)
+	}
+	return ru
+}
+
+// ClearUpdatedByUserID clears the value of the "updated_by_user_id" field.
+func (ru *RoleUpdate) ClearUpdatedByUserID() *RoleUpdate {
+	ru.mutation.ClearUpdatedByUserID()
+	return ru
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (ru *RoleUpdate) SetUpdatedAt(t time.Time) *RoleUpdate {
+	ru.mutation.SetUpdatedAt(t)
 	return ru
 }
 
@@ -219,6 +266,7 @@ func (ru *RoleUpdate) RemoveOrgMembers(o ...*OrgMember) *RoleUpdate {
 
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (ru *RoleUpdate) Save(ctx context.Context) (int, error) {
+	ru.defaults()
 	return withHooks(ctx, ru.sqlSave, ru.mutation, ru.hooks)
 }
 
@@ -241,6 +289,14 @@ func (ru *RoleUpdate) Exec(ctx context.Context) error {
 func (ru *RoleUpdate) ExecX(ctx context.Context) {
 	if err := ru.Exec(ctx); err != nil {
 		panic(err)
+	}
+}
+
+// defaults sets the default values of the builder before save.
+func (ru *RoleUpdate) defaults() {
+	if _, ok := ru.mutation.UpdatedAt(); !ok {
+		v := role.UpdateDefaultUpdatedAt()
+		ru.mutation.SetUpdatedAt(v)
 	}
 }
 
@@ -285,6 +341,21 @@ func (ru *RoleUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := ru.mutation.IsSystemRole(); ok {
 		_spec.SetField(role.FieldIsSystemRole, field.TypeBool, value)
+	}
+	if value, ok := ru.mutation.CreatedByUserID(); ok {
+		_spec.SetField(role.FieldCreatedByUserID, field.TypeString, value)
+	}
+	if ru.mutation.CreatedByUserIDCleared() {
+		_spec.ClearField(role.FieldCreatedByUserID, field.TypeString)
+	}
+	if value, ok := ru.mutation.UpdatedByUserID(); ok {
+		_spec.SetField(role.FieldUpdatedByUserID, field.TypeString, value)
+	}
+	if ru.mutation.UpdatedByUserIDCleared() {
+		_spec.ClearField(role.FieldUpdatedByUserID, field.TypeString)
+	}
+	if value, ok := ru.mutation.UpdatedAt(); ok {
+		_spec.SetField(role.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if ru.mutation.TenantCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -532,6 +603,52 @@ func (ruo *RoleUpdateOne) SetNillableIsSystemRole(b *bool) *RoleUpdateOne {
 	return ruo
 }
 
+// SetCreatedByUserID sets the "created_by_user_id" field.
+func (ruo *RoleUpdateOne) SetCreatedByUserID(s string) *RoleUpdateOne {
+	ruo.mutation.SetCreatedByUserID(s)
+	return ruo
+}
+
+// SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
+func (ruo *RoleUpdateOne) SetNillableCreatedByUserID(s *string) *RoleUpdateOne {
+	if s != nil {
+		ruo.SetCreatedByUserID(*s)
+	}
+	return ruo
+}
+
+// ClearCreatedByUserID clears the value of the "created_by_user_id" field.
+func (ruo *RoleUpdateOne) ClearCreatedByUserID() *RoleUpdateOne {
+	ruo.mutation.ClearCreatedByUserID()
+	return ruo
+}
+
+// SetUpdatedByUserID sets the "updated_by_user_id" field.
+func (ruo *RoleUpdateOne) SetUpdatedByUserID(s string) *RoleUpdateOne {
+	ruo.mutation.SetUpdatedByUserID(s)
+	return ruo
+}
+
+// SetNillableUpdatedByUserID sets the "updated_by_user_id" field if the given value is not nil.
+func (ruo *RoleUpdateOne) SetNillableUpdatedByUserID(s *string) *RoleUpdateOne {
+	if s != nil {
+		ruo.SetUpdatedByUserID(*s)
+	}
+	return ruo
+}
+
+// ClearUpdatedByUserID clears the value of the "updated_by_user_id" field.
+func (ruo *RoleUpdateOne) ClearUpdatedByUserID() *RoleUpdateOne {
+	ruo.mutation.ClearUpdatedByUserID()
+	return ruo
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (ruo *RoleUpdateOne) SetUpdatedAt(t time.Time) *RoleUpdateOne {
+	ruo.mutation.SetUpdatedAt(t)
+	return ruo
+}
+
 // SetTenant sets the "tenant" edge to the Tenant entity.
 func (ruo *RoleUpdateOne) SetTenant(t *Tenant) *RoleUpdateOne {
 	return ruo.SetTenantID(t.ID)
@@ -671,6 +788,7 @@ func (ruo *RoleUpdateOne) Select(field string, fields ...string) *RoleUpdateOne 
 
 // Save executes the query and returns the updated Role entity.
 func (ruo *RoleUpdateOne) Save(ctx context.Context) (*Role, error) {
+	ruo.defaults()
 	return withHooks(ctx, ruo.sqlSave, ruo.mutation, ruo.hooks)
 }
 
@@ -693,6 +811,14 @@ func (ruo *RoleUpdateOne) Exec(ctx context.Context) error {
 func (ruo *RoleUpdateOne) ExecX(ctx context.Context) {
 	if err := ruo.Exec(ctx); err != nil {
 		panic(err)
+	}
+}
+
+// defaults sets the default values of the builder before save.
+func (ruo *RoleUpdateOne) defaults() {
+	if _, ok := ruo.mutation.UpdatedAt(); !ok {
+		v := role.UpdateDefaultUpdatedAt()
+		ruo.mutation.SetUpdatedAt(v)
 	}
 }
 
@@ -754,6 +880,21 @@ func (ruo *RoleUpdateOne) sqlSave(ctx context.Context) (_node *Role, err error) 
 	}
 	if value, ok := ruo.mutation.IsSystemRole(); ok {
 		_spec.SetField(role.FieldIsSystemRole, field.TypeBool, value)
+	}
+	if value, ok := ruo.mutation.CreatedByUserID(); ok {
+		_spec.SetField(role.FieldCreatedByUserID, field.TypeString, value)
+	}
+	if ruo.mutation.CreatedByUserIDCleared() {
+		_spec.ClearField(role.FieldCreatedByUserID, field.TypeString)
+	}
+	if value, ok := ruo.mutation.UpdatedByUserID(); ok {
+		_spec.SetField(role.FieldUpdatedByUserID, field.TypeString, value)
+	}
+	if ruo.mutation.UpdatedByUserIDCleared() {
+		_spec.ClearField(role.FieldUpdatedByUserID, field.TypeString)
+	}
+	if value, ok := ruo.mutation.UpdatedAt(); ok {
+		_spec.SetField(role.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if ruo.mutation.TenantCleared() {
 		edge := &sqlgraph.EdgeSpec{

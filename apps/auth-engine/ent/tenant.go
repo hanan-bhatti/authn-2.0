@@ -41,6 +41,8 @@ type Tenant struct {
 	RecoveryPolicy map[string]interface{} `json:"recovery_policy,omitempty"`
 	// Per-provider OAuth2 configuration keyed by provider name (google, github, discord, etc.). Each entry holds: enabled bool, client_id string, client_secret_encrypted string (AES-256-GCM). Client secrets are never returned in API responses.
 	SocialProviders map[string]interface{} `json:"social_providers,omitempty"`
+	// JSON blob containing tenant role & permission restrictions and assignment policies
+	RolePolicy map[string]interface{} `json:"role_policy,omitempty"`
 	// Timestamp when the tenant was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when the tenant was last updated
@@ -129,7 +131,7 @@ func (*Tenant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy, tenant.FieldSocialProviders:
+		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy, tenant.FieldSocialProviders, tenant.FieldRolePolicy:
 			values[i] = new([]byte)
 		case tenant.FieldDomainVerified, tenant.FieldFirstAdminClaimed:
 			values[i] = new(sql.NullBool)
@@ -233,6 +235,14 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &t.SocialProviders); err != nil {
 					return fmt.Errorf("unmarshal field social_providers: %w", err)
+				}
+			}
+		case tenant.FieldRolePolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field role_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &t.RolePolicy); err != nil {
+					return fmt.Errorf("unmarshal field role_policy: %w", err)
 				}
 			}
 		case tenant.FieldCreatedAt:
@@ -347,6 +357,9 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("social_providers=")
 	builder.WriteString(fmt.Sprintf("%v", t.SocialProviders))
+	builder.WriteString(", ")
+	builder.WriteString("role_policy=")
+	builder.WriteString(fmt.Sprintf("%v", t.RolePolicy))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(t.CreatedAt.Format(time.ANSIC))

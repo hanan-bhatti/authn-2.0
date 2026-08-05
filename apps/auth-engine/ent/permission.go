@@ -25,6 +25,8 @@ type Permission struct {
 	Action string `json:"action,omitempty"`
 	// Optional description explaining what the permission enables
 	Description string `json:"description,omitempty"`
+	// User ID of admin who created this permission
+	CreatedByUserID *string `json:"created_by_user_id,omitempty"`
 	// Creation timestamp
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -58,7 +60,7 @@ func (*Permission) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case permission.FieldID, permission.FieldRoleID, permission.FieldAction, permission.FieldDescription:
+		case permission.FieldID, permission.FieldRoleID, permission.FieldAction, permission.FieldDescription, permission.FieldCreatedByUserID:
 			values[i] = new(sql.NullString)
 		case permission.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -100,6 +102,13 @@ func (pe *Permission) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
 				pe.Description = value.String
+			}
+		case permission.FieldCreatedByUserID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field created_by_user_id", values[i])
+			} else if value.Valid {
+				pe.CreatedByUserID = new(string)
+				*pe.CreatedByUserID = value.String
 			}
 		case permission.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -156,6 +165,11 @@ func (pe *Permission) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(pe.Description)
+	builder.WriteString(", ")
+	if v := pe.CreatedByUserID; v != nil {
+		builder.WriteString("created_by_user_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(pe.CreatedAt.Format(time.ANSIC))

@@ -96,6 +96,13 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/client/sessions/revoke-all` — Revoke all active user sessions
 - `GET /v1/admin/users/:user_id/sessions` — Admin list user sessions
 - `POST /v1/admin/users/:user_id/sessions/revoke-all` — Admin kill-switch to revoke all sessions for a user
+### 2.13 Role-Based Access Control & Fine-Grained Permissions (FR-12)
+- `GET /v1/tenant/roles` — List all roles for tenant with assigned permissions
+- `POST /v1/tenant/roles` — Create custom role with validated permission strings & policy checks
+- `PUT /v1/tenant/roles/:role_id/permissions` — Replace role permissions with audit logging
+- `POST /v1/admin/users/:user_id/roles` — Assign role to user with audit trail
+- `DELETE /v1/admin/users/:user_id/roles/:role_slug` — Revoke role from user with audit trail
+- `GET /v1/client/user/permissions` — Retrieve accumulated roles & permissions for authenticated user
 
 ---
 
@@ -305,14 +312,55 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 
 ### 3.11 `GET /v1/admin/users/:user_id/sessions` & `POST /v1/admin/users/:user_id/sessions/revoke-all`
 - **Description**: Administrative endpoints for security teams to inspect active user sessions or trigger an emergency kill-switch to revoke all sessions for a compromised account.
+### 3.12 `POST /v1/tenant/roles` & `PUT /v1/tenant/roles/:role_id/permissions`
+- **Description**: Creates custom RBAC roles or updates role permission assignments. Enforces 3-step permission validation (format regex `resource:action`, valid action verbs, policy restriction guards) and logs immutable security audit trail entries detailing actor ID, target role, and modified permissions.
 - **Headers**: `Authorization: Bearer sk_<env>_<hash>`
+- **Request (`POST /v1/tenant/roles`)**:
+```json
+{
+  "name": "Content Editor",
+  "slug": "content_editor",
+  "description": "Can create and edit blog posts",
+  "permissions": ["posts:create", "posts:update"]
+}
+```
+- **Response (201 Created)**:
+```json
+{
+  "id": "rol_322dfcbc",
+  "name": "Content Editor",
+  "description": "Can create and edit blog posts",
+  "is_system_role": false,
+  "permissions": ["posts:create", "posts:update"],
+  "created_at": "2026-08-05T05:49:42Z"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `422 Unprocessable Entity` (`ErrInvalidPermissionFormat`): Malformed permission string (e.g. `banana-permission:write`).
+  - `422 Unprocessable Entity` (`ErrRestrictedPermission`): Assigned permission is restricted for that role under active `RolePermissionPolicy` (e.g. assigning `*:write` to `viewer` role).
+  - `409 Conflict` (`ErrRoleExists`): Role with same name already exists in tenant.
+
+### 3.13 `POST /v1/admin/users/:user_id/roles` & `DELETE /v1/admin/users/:user_id/roles/:role_slug`
+- **Description**: Assigns or revokes tenant roles for a target user. Records immutable `AuditLog` entries capturing `assigned_by_user` / `revoked_by_user`, `target_user_id`, `role_slug`, IP address, and User-Agent.
+- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
+- **Request**: `{"role_slug": "content_editor"}`
 - **Response (200 OK)**:
 ```json
 {
-  "message": "all sessions revoked for user",
-  "user_id": "usr_4d5a1533-735",
-  "count": 4
+  "message": "role assigned to user successfully",
+  "user_id": "usr_81652ec6",
+  "role": "content_editor"
 }
 ```
 
-
+### 3.14 `GET /v1/client/user/permissions`
+- **Description**: Evaluates and returns all assigned roles and accumulated fine-grained permission strings for the current authenticated user.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Authorization: Bearer <jwt>`
+- **Response (200 OK)**:
+```json
+{
+  "user_id": "usr_81652ec6",
+  "roles": ["Content Editor"],
+  "permissions": ["posts:create", "posts:update"]
+}
+```

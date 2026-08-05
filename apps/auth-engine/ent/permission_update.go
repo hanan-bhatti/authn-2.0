@@ -76,6 +76,26 @@ func (pu *PermissionUpdate) ClearDescription() *PermissionUpdate {
 	return pu
 }
 
+// SetCreatedByUserID sets the "created_by_user_id" field.
+func (pu *PermissionUpdate) SetCreatedByUserID(s string) *PermissionUpdate {
+	pu.mutation.SetCreatedByUserID(s)
+	return pu
+}
+
+// SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
+func (pu *PermissionUpdate) SetNillableCreatedByUserID(s *string) *PermissionUpdate {
+	if s != nil {
+		pu.SetCreatedByUserID(*s)
+	}
+	return pu
+}
+
+// ClearCreatedByUserID clears the value of the "created_by_user_id" field.
+func (pu *PermissionUpdate) ClearCreatedByUserID() *PermissionUpdate {
+	pu.mutation.ClearCreatedByUserID()
+	return pu
+}
+
 // SetRole sets the "role" edge to the Role entity.
 func (pu *PermissionUpdate) SetRole(r *Role) *PermissionUpdate {
 	return pu.SetRoleID(r.ID)
@@ -157,6 +177,12 @@ func (pu *PermissionUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if pu.mutation.DescriptionCleared() {
 		_spec.ClearField(permission.FieldDescription, field.TypeString)
+	}
+	if value, ok := pu.mutation.CreatedByUserID(); ok {
+		_spec.SetField(permission.FieldCreatedByUserID, field.TypeString, value)
+	}
+	if pu.mutation.CreatedByUserIDCleared() {
+		_spec.ClearField(permission.FieldCreatedByUserID, field.TypeString)
 	}
 	if pu.mutation.RoleCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -252,6 +278,26 @@ func (puo *PermissionUpdateOne) SetNillableDescription(s *string) *PermissionUpd
 // ClearDescription clears the value of the "description" field.
 func (puo *PermissionUpdateOne) ClearDescription() *PermissionUpdateOne {
 	puo.mutation.ClearDescription()
+	return puo
+}
+
+// SetCreatedByUserID sets the "created_by_user_id" field.
+func (puo *PermissionUpdateOne) SetCreatedByUserID(s string) *PermissionUpdateOne {
+	puo.mutation.SetCreatedByUserID(s)
+	return puo
+}
+
+// SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
+func (puo *PermissionUpdateOne) SetNillableCreatedByUserID(s *string) *PermissionUpdateOne {
+	if s != nil {
+		puo.SetCreatedByUserID(*s)
+	}
+	return puo
+}
+
+// ClearCreatedByUserID clears the value of the "created_by_user_id" field.
+func (puo *PermissionUpdateOne) ClearCreatedByUserID() *PermissionUpdateOne {
+	puo.mutation.ClearCreatedByUserID()
 	return puo
 }
 
@@ -366,6 +412,12 @@ func (puo *PermissionUpdateOne) sqlSave(ctx context.Context) (_node *Permission,
 	}
 	if puo.mutation.DescriptionCleared() {
 		_spec.ClearField(permission.FieldDescription, field.TypeString)
+	}
+	if value, ok := puo.mutation.CreatedByUserID(); ok {
+		_spec.SetField(permission.FieldCreatedByUserID, field.TypeString, value)
+	}
+	if puo.mutation.CreatedByUserIDCleared() {
+		_spec.ClearField(permission.FieldCreatedByUserID, field.TypeString)
 	}
 	if puo.mutation.RoleCleared() {
 		edge := &sqlgraph.EdgeSpec{

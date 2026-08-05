@@ -124,6 +124,12 @@ func (tc *TenantCreate) SetSocialProviders(m map[string]interface{}) *TenantCrea
 	return tc
 }
 
+// SetRolePolicy sets the "role_policy" field.
+func (tc *TenantCreate) SetRolePolicy(m map[string]interface{}) *TenantCreate {
+	tc.mutation.SetRolePolicy(m)
+	return tc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (tc *TenantCreate) SetCreatedAt(t time.Time) *TenantCreate {
 	tc.mutation.SetCreatedAt(t)
@@ -409,6 +415,10 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 	if value, ok := tc.mutation.SocialProviders(); ok {
 		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
 		_node.SocialProviders = value
+	}
+	if value, ok := tc.mutation.RolePolicy(); ok {
+		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
+		_node.RolePolicy = value
 	}
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(tenant.FieldCreatedAt, field.TypeTime, value)

@@ -284,6 +284,7 @@ var (
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "action", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "created_by_user_id", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "role_id", Type: field.TypeString},
 	}
@@ -295,7 +296,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "permissions_roles_permissions",
-				Columns:    []*schema.Column{PermissionsColumns[4]},
+				Columns:    []*schema.Column{PermissionsColumns[5]},
 				RefColumns: []*schema.Column{RolesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -304,7 +305,7 @@ var (
 			{
 				Name:    "permission_role_id_action",
 				Unique:  true,
-				Columns: []*schema.Column{PermissionsColumns[4], PermissionsColumns[1]},
+				Columns: []*schema.Column{PermissionsColumns[5], PermissionsColumns[1]},
 			},
 		},
 	}
@@ -454,7 +455,10 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true},
 		{Name: "is_system_role", Type: field.TypeBool, Default: false},
+		{Name: "created_by_user_id", Type: field.TypeString, Nullable: true},
+		{Name: "updated_by_user_id", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "tenant_id", Type: field.TypeString},
 	}
 	// RolesTable holds the schema information for the "roles" table.
@@ -465,7 +469,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "roles_tenants_roles",
-				Columns:    []*schema.Column{RolesColumns[5]},
+				Columns:    []*schema.Column{RolesColumns[8]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -474,7 +478,7 @@ var (
 			{
 				Name:    "role_tenant_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{RolesColumns[5], RolesColumns[1]},
+				Columns: []*schema.Column{RolesColumns[8], RolesColumns[1]},
 			},
 		},
 	}
@@ -601,6 +605,7 @@ var (
 		{Name: "security_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "recovery_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "social_providers", Type: field.TypeJSON, Nullable: true},
+		{Name: "role_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}

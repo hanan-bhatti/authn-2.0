@@ -85,9 +85,24 @@ func IsSystemRole(v bool) predicate.Role {
 	return predicate.Role(sql.FieldEQ(FieldIsSystemRole, v))
 }
 
+// CreatedByUserID applies equality check predicate on the "created_by_user_id" field. It's identical to CreatedByUserIDEQ.
+func CreatedByUserID(v string) predicate.Role {
+	return predicate.Role(sql.FieldEQ(FieldCreatedByUserID, v))
+}
+
+// UpdatedByUserID applies equality check predicate on the "updated_by_user_id" field. It's identical to UpdatedByUserIDEQ.
+func UpdatedByUserID(v string) predicate.Role {
+	return predicate.Role(sql.FieldEQ(FieldUpdatedByUserID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Role {
 	return predicate.Role(sql.FieldEQ(FieldCreatedAt, v))
+}
+
+// UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
+func UpdatedAt(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldEQ(FieldUpdatedAt, v))
 }
 
 // TenantIDEQ applies the EQ predicate on the "tenant_id" field.
@@ -305,6 +320,156 @@ func IsSystemRoleNEQ(v bool) predicate.Role {
 	return predicate.Role(sql.FieldNEQ(FieldIsSystemRole, v))
 }
 
+// CreatedByUserIDEQ applies the EQ predicate on the "created_by_user_id" field.
+func CreatedByUserIDEQ(v string) predicate.Role {
+	return predicate.Role(sql.FieldEQ(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDNEQ applies the NEQ predicate on the "created_by_user_id" field.
+func CreatedByUserIDNEQ(v string) predicate.Role {
+	return predicate.Role(sql.FieldNEQ(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDIn applies the In predicate on the "created_by_user_id" field.
+func CreatedByUserIDIn(vs ...string) predicate.Role {
+	return predicate.Role(sql.FieldIn(FieldCreatedByUserID, vs...))
+}
+
+// CreatedByUserIDNotIn applies the NotIn predicate on the "created_by_user_id" field.
+func CreatedByUserIDNotIn(vs ...string) predicate.Role {
+	return predicate.Role(sql.FieldNotIn(FieldCreatedByUserID, vs...))
+}
+
+// CreatedByUserIDGT applies the GT predicate on the "created_by_user_id" field.
+func CreatedByUserIDGT(v string) predicate.Role {
+	return predicate.Role(sql.FieldGT(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDGTE applies the GTE predicate on the "created_by_user_id" field.
+func CreatedByUserIDGTE(v string) predicate.Role {
+	return predicate.Role(sql.FieldGTE(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDLT applies the LT predicate on the "created_by_user_id" field.
+func CreatedByUserIDLT(v string) predicate.Role {
+	return predicate.Role(sql.FieldLT(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDLTE applies the LTE predicate on the "created_by_user_id" field.
+func CreatedByUserIDLTE(v string) predicate.Role {
+	return predicate.Role(sql.FieldLTE(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDContains applies the Contains predicate on the "created_by_user_id" field.
+func CreatedByUserIDContains(v string) predicate.Role {
+	return predicate.Role(sql.FieldContains(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDHasPrefix applies the HasPrefix predicate on the "created_by_user_id" field.
+func CreatedByUserIDHasPrefix(v string) predicate.Role {
+	return predicate.Role(sql.FieldHasPrefix(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDHasSuffix applies the HasSuffix predicate on the "created_by_user_id" field.
+func CreatedByUserIDHasSuffix(v string) predicate.Role {
+	return predicate.Role(sql.FieldHasSuffix(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDIsNil applies the IsNil predicate on the "created_by_user_id" field.
+func CreatedByUserIDIsNil() predicate.Role {
+	return predicate.Role(sql.FieldIsNull(FieldCreatedByUserID))
+}
+
+// CreatedByUserIDNotNil applies the NotNil predicate on the "created_by_user_id" field.
+func CreatedByUserIDNotNil() predicate.Role {
+	return predicate.Role(sql.FieldNotNull(FieldCreatedByUserID))
+}
+
+// CreatedByUserIDEqualFold applies the EqualFold predicate on the "created_by_user_id" field.
+func CreatedByUserIDEqualFold(v string) predicate.Role {
+	return predicate.Role(sql.FieldEqualFold(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDContainsFold applies the ContainsFold predicate on the "created_by_user_id" field.
+func CreatedByUserIDContainsFold(v string) predicate.Role {
+	return predicate.Role(sql.FieldContainsFold(FieldCreatedByUserID, v))
+}
+
+// UpdatedByUserIDEQ applies the EQ predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDEQ(v string) predicate.Role {
+	return predicate.Role(sql.FieldEQ(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDNEQ applies the NEQ predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDNEQ(v string) predicate.Role {
+	return predicate.Role(sql.FieldNEQ(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDIn applies the In predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDIn(vs ...string) predicate.Role {
+	return predicate.Role(sql.FieldIn(FieldUpdatedByUserID, vs...))
+}
+
+// UpdatedByUserIDNotIn applies the NotIn predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDNotIn(vs ...string) predicate.Role {
+	return predicate.Role(sql.FieldNotIn(FieldUpdatedByUserID, vs...))
+}
+
+// UpdatedByUserIDGT applies the GT predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDGT(v string) predicate.Role {
+	return predicate.Role(sql.FieldGT(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDGTE applies the GTE predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDGTE(v string) predicate.Role {
+	return predicate.Role(sql.FieldGTE(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDLT applies the LT predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDLT(v string) predicate.Role {
+	return predicate.Role(sql.FieldLT(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDLTE applies the LTE predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDLTE(v string) predicate.Role {
+	return predicate.Role(sql.FieldLTE(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDContains applies the Contains predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDContains(v string) predicate.Role {
+	return predicate.Role(sql.FieldContains(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDHasPrefix applies the HasPrefix predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDHasPrefix(v string) predicate.Role {
+	return predicate.Role(sql.FieldHasPrefix(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDHasSuffix applies the HasSuffix predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDHasSuffix(v string) predicate.Role {
+	return predicate.Role(sql.FieldHasSuffix(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDIsNil applies the IsNil predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDIsNil() predicate.Role {
+	return predicate.Role(sql.FieldIsNull(FieldUpdatedByUserID))
+}
+
+// UpdatedByUserIDNotNil applies the NotNil predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDNotNil() predicate.Role {
+	return predicate.Role(sql.FieldNotNull(FieldUpdatedByUserID))
+}
+
+// UpdatedByUserIDEqualFold applies the EqualFold predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDEqualFold(v string) predicate.Role {
+	return predicate.Role(sql.FieldEqualFold(FieldUpdatedByUserID, v))
+}
+
+// UpdatedByUserIDContainsFold applies the ContainsFold predicate on the "updated_by_user_id" field.
+func UpdatedByUserIDContainsFold(v string) predicate.Role {
+	return predicate.Role(sql.FieldContainsFold(FieldUpdatedByUserID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Role {
 	return predicate.Role(sql.FieldEQ(FieldCreatedAt, v))
@@ -343,6 +508,46 @@ func CreatedAtLT(v time.Time) predicate.Role {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.Role {
 	return predicate.Role(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
+func UpdatedAtEQ(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtNEQ applies the NEQ predicate on the "updated_at" field.
+func UpdatedAtNEQ(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldNEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtIn applies the In predicate on the "updated_at" field.
+func UpdatedAtIn(vs ...time.Time) predicate.Role {
+	return predicate.Role(sql.FieldIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtNotIn applies the NotIn predicate on the "updated_at" field.
+func UpdatedAtNotIn(vs ...time.Time) predicate.Role {
+	return predicate.Role(sql.FieldNotIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtGT applies the GT predicate on the "updated_at" field.
+func UpdatedAtGT(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldGT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtGTE applies the GTE predicate on the "updated_at" field.
+func UpdatedAtGTE(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldGTE(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLT applies the LT predicate on the "updated_at" field.
+func UpdatedAtLT(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldLT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
+func UpdatedAtLTE(v time.Time) predicate.Role {
+	return predicate.Role(sql.FieldLTE(FieldUpdatedAt, v))
 }
 
 // HasTenant applies the HasEdge predicate on the "tenant" edge.

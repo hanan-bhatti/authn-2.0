@@ -22,8 +22,14 @@ const (
 	FieldDescription = "description"
 	// FieldIsSystemRole holds the string denoting the is_system_role field in the database.
 	FieldIsSystemRole = "is_system_role"
+	// FieldCreatedByUserID holds the string denoting the created_by_user_id field in the database.
+	FieldCreatedByUserID = "created_by_user_id"
+	// FieldUpdatedByUserID holds the string denoting the updated_by_user_id field in the database.
+	FieldUpdatedByUserID = "updated_by_user_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
+	FieldUpdatedAt = "updated_at"
 	// EdgeTenant holds the string denoting the tenant edge name in mutations.
 	EdgeTenant = "tenant"
 	// EdgePermissions holds the string denoting the permissions edge name in mutations.
@@ -71,7 +77,10 @@ var Columns = []string{
 	FieldName,
 	FieldDescription,
 	FieldIsSystemRole,
+	FieldCreatedByUserID,
+	FieldUpdatedByUserID,
 	FieldCreatedAt,
+	FieldUpdatedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -93,6 +102,10 @@ var (
 	DefaultIsSystemRole bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
+	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
+	DefaultUpdatedAt func() time.Time
+	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
+	UpdateDefaultUpdatedAt func() time.Time
 )
 
 // OrderOption defines the ordering options for the Role queries.
@@ -123,9 +136,24 @@ func ByIsSystemRole(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsSystemRole, opts...).ToFunc()
 }
 
+// ByCreatedByUserID orders the results by the created_by_user_id field.
+func ByCreatedByUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreatedByUserID, opts...).ToFunc()
+}
+
+// ByUpdatedByUserID orders the results by the updated_by_user_id field.
+func ByUpdatedByUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpdatedByUserID, opts...).ToFunc()
+}
+
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// ByUpdatedAt orders the results by the updated_at field.
+func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
 
 // ByTenantField orders the results by tenant field.

@@ -20,6 +20,8 @@ const (
 	FieldAction = "action"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldCreatedByUserID holds the string denoting the created_by_user_id field in the database.
+	FieldCreatedByUserID = "created_by_user_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeRole holds the string denoting the role edge name in mutations.
@@ -41,6 +43,7 @@ var Columns = []string{
 	FieldRoleID,
 	FieldAction,
 	FieldDescription,
+	FieldCreatedByUserID,
 	FieldCreatedAt,
 }
 
@@ -84,6 +87,11 @@ func ByAction(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
+}
+
+// ByCreatedByUserID orders the results by the created_by_user_id field.
+func ByCreatedByUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreatedByUserID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

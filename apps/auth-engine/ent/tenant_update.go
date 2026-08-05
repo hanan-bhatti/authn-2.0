@@ -190,6 +190,18 @@ func (tu *TenantUpdate) ClearSocialProviders() *TenantUpdate {
 	return tu
 }
 
+// SetRolePolicy sets the "role_policy" field.
+func (tu *TenantUpdate) SetRolePolicy(m map[string]interface{}) *TenantUpdate {
+	tu.mutation.SetRolePolicy(m)
+	return tu
+}
+
+// ClearRolePolicy clears the value of the "role_policy" field.
+func (tu *TenantUpdate) ClearRolePolicy() *TenantUpdate {
+	tu.mutation.ClearRolePolicy()
+	return tu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tu *TenantUpdate) SetUpdatedAt(t time.Time) *TenantUpdate {
 	tu.mutation.SetUpdatedAt(t)
@@ -533,6 +545,12 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if tu.mutation.SocialProvidersCleared() {
 		_spec.ClearField(tenant.FieldSocialProviders, field.TypeJSON)
+	}
+	if value, ok := tu.mutation.RolePolicy(); ok {
+		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
+	}
+	if tu.mutation.RolePolicyCleared() {
+		_spec.ClearField(tenant.FieldRolePolicy, field.TypeJSON)
 	}
 	if value, ok := tu.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -983,6 +1001,18 @@ func (tuo *TenantUpdateOne) ClearSocialProviders() *TenantUpdateOne {
 	return tuo
 }
 
+// SetRolePolicy sets the "role_policy" field.
+func (tuo *TenantUpdateOne) SetRolePolicy(m map[string]interface{}) *TenantUpdateOne {
+	tuo.mutation.SetRolePolicy(m)
+	return tuo
+}
+
+// ClearRolePolicy clears the value of the "role_policy" field.
+func (tuo *TenantUpdateOne) ClearRolePolicy() *TenantUpdateOne {
+	tuo.mutation.ClearRolePolicy()
+	return tuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tuo *TenantUpdateOne) SetUpdatedAt(t time.Time) *TenantUpdateOne {
 	tuo.mutation.SetUpdatedAt(t)
@@ -1356,6 +1386,12 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if tuo.mutation.SocialProvidersCleared() {
 		_spec.ClearField(tenant.FieldSocialProviders, field.TypeJSON)
+	}
+	if value, ok := tuo.mutation.RolePolicy(); ok {
+		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
+	}
+	if tuo.mutation.RolePolicyCleared() {
+		_spec.ClearField(tenant.FieldRolePolicy, field.TypeJSON)
 	}
 	if value, ok := tuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)

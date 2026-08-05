@@ -64,6 +64,34 @@ func (rc *RoleCreate) SetNillableIsSystemRole(b *bool) *RoleCreate {
 	return rc
 }
 
+// SetCreatedByUserID sets the "created_by_user_id" field.
+func (rc *RoleCreate) SetCreatedByUserID(s string) *RoleCreate {
+	rc.mutation.SetCreatedByUserID(s)
+	return rc
+}
+
+// SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
+func (rc *RoleCreate) SetNillableCreatedByUserID(s *string) *RoleCreate {
+	if s != nil {
+		rc.SetCreatedByUserID(*s)
+	}
+	return rc
+}
+
+// SetUpdatedByUserID sets the "updated_by_user_id" field.
+func (rc *RoleCreate) SetUpdatedByUserID(s string) *RoleCreate {
+	rc.mutation.SetUpdatedByUserID(s)
+	return rc
+}
+
+// SetNillableUpdatedByUserID sets the "updated_by_user_id" field if the given value is not nil.
+func (rc *RoleCreate) SetNillableUpdatedByUserID(s *string) *RoleCreate {
+	if s != nil {
+		rc.SetUpdatedByUserID(*s)
+	}
+	return rc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (rc *RoleCreate) SetCreatedAt(t time.Time) *RoleCreate {
 	rc.mutation.SetCreatedAt(t)
@@ -74,6 +102,20 @@ func (rc *RoleCreate) SetCreatedAt(t time.Time) *RoleCreate {
 func (rc *RoleCreate) SetNillableCreatedAt(t *time.Time) *RoleCreate {
 	if t != nil {
 		rc.SetCreatedAt(*t)
+	}
+	return rc
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (rc *RoleCreate) SetUpdatedAt(t time.Time) *RoleCreate {
+	rc.mutation.SetUpdatedAt(t)
+	return rc
+}
+
+// SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
+func (rc *RoleCreate) SetNillableUpdatedAt(t *time.Time) *RoleCreate {
+	if t != nil {
+		rc.SetUpdatedAt(*t)
 	}
 	return rc
 }
@@ -177,6 +219,10 @@ func (rc *RoleCreate) defaults() {
 		v := role.DefaultCreatedAt()
 		rc.mutation.SetCreatedAt(v)
 	}
+	if _, ok := rc.mutation.UpdatedAt(); !ok {
+		v := role.DefaultUpdatedAt()
+		rc.mutation.SetUpdatedAt(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -202,6 +248,9 @@ func (rc *RoleCreate) check() error {
 	}
 	if _, ok := rc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Role.created_at"`)}
+	}
+	if _, ok := rc.mutation.UpdatedAt(); !ok {
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Role.updated_at"`)}
 	}
 	if len(rc.mutation.TenantIDs()) == 0 {
 		return &ValidationError{Name: "tenant", err: errors.New(`ent: missing required edge "Role.tenant"`)}
@@ -253,9 +302,21 @@ func (rc *RoleCreate) createSpec() (*Role, *sqlgraph.CreateSpec) {
 		_spec.SetField(role.FieldIsSystemRole, field.TypeBool, value)
 		_node.IsSystemRole = value
 	}
+	if value, ok := rc.mutation.CreatedByUserID(); ok {
+		_spec.SetField(role.FieldCreatedByUserID, field.TypeString, value)
+		_node.CreatedByUserID = &value
+	}
+	if value, ok := rc.mutation.UpdatedByUserID(); ok {
+		_spec.SetField(role.FieldUpdatedByUserID, field.TypeString, value)
+		_node.UpdatedByUserID = &value
+	}
 	if value, ok := rc.mutation.CreatedAt(); ok {
 		_spec.SetField(role.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := rc.mutation.UpdatedAt(); ok {
+		_spec.SetField(role.FieldUpdatedAt, field.TypeTime, value)
+		_node.UpdatedAt = value
 	}
 	if nodes := rc.mutation.TenantIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

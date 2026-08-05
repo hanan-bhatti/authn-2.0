@@ -72,6 +72,9 @@ func (Tenant) Fields() []ent.Field {
 		field.JSON("social_providers", map[string]interface{}{}).
 			Optional().
 			Comment("Per-provider OAuth2 configuration keyed by provider name (google, github, discord, etc.). Each entry holds: enabled bool, client_id string, client_secret_encrypted string (AES-256-GCM). Client secrets are never returned in API responses."),
+		field.JSON("role_policy", map[string]interface{}{}).
+			Optional().
+			Comment("JSON blob containing tenant role & permission restrictions and assignment policies"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

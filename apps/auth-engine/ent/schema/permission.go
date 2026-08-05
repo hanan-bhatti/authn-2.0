@@ -42,6 +42,10 @@ func (Permission) Fields() []ent.Field {
 		field.String("description").
 			Optional().
 			Comment("Optional description explaining what the permission enables"),
+		field.String("created_by_user_id").
+			Optional().
+			Nillable().
+			Comment("User ID of admin who created this permission"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

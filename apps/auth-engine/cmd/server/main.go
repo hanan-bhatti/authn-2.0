@@ -34,6 +34,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -225,6 +226,11 @@ func main() {
 	sessionService := session.NewService(sessionRepo, cfg)
 	sessionHandler := session.NewHandler(sessionService)
 
+	rbacRepo := rbac.NewRepository(factory)
+	rbacAudit := rbac.NewAuditLogger(factory)
+	rbacService := rbac.NewService(rbacRepo, rbacAudit, cfg)
+	rbacHandler := rbac.NewHandler(rbacService)
+
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app, pkMiddleware)
@@ -233,6 +239,7 @@ func main() {
 	socialHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	sessionHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
+	rbacHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

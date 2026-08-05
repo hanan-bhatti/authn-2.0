@@ -45,10 +45,22 @@ func (Role) Fields() []ent.Field {
 		field.Bool("is_system_role").
 			Default(false).
 			Comment("Flag indicating if this is a built-in system role that cannot be deleted"),
+		field.String("created_by_user_id").
+			Optional().
+			Nillable().
+			Comment("User ID of admin who created this role"),
+		field.String("updated_by_user_id").
+			Optional().
+			Nillable().
+			Comment("User ID of admin who last modified this role"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
 			Comment("Creation timestamp"),
+		field.Time("updated_at").
+			Default(time.Now).
+			UpdateDefault(time.Now).
+			Comment("Last updated timestamp"),
 	}
 }
 

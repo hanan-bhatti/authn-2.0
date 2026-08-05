@@ -47,6 +47,20 @@ func (pc *PermissionCreate) SetNillableDescription(s *string) *PermissionCreate 
 	return pc
 }
 
+// SetCreatedByUserID sets the "created_by_user_id" field.
+func (pc *PermissionCreate) SetCreatedByUserID(s string) *PermissionCreate {
+	pc.mutation.SetCreatedByUserID(s)
+	return pc
+}
+
+// SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
+func (pc *PermissionCreate) SetNillableCreatedByUserID(s *string) *PermissionCreate {
+	if s != nil {
+		pc.SetCreatedByUserID(*s)
+	}
+	return pc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (pc *PermissionCreate) SetCreatedAt(t time.Time) *PermissionCreate {
 	pc.mutation.SetCreatedAt(t)
@@ -179,6 +193,10 @@ func (pc *PermissionCreate) createSpec() (*Permission, *sqlgraph.CreateSpec) {
 	if value, ok := pc.mutation.Description(); ok {
 		_spec.SetField(permission.FieldDescription, field.TypeString, value)
 		_node.Description = value
+	}
+	if value, ok := pc.mutation.CreatedByUserID(); ok {
+		_spec.SetField(permission.FieldCreatedByUserID, field.TypeString, value)
+		_node.CreatedByUserID = &value
 	}
 	if value, ok := pc.mutation.CreatedAt(); ok {
 		_spec.SetField(permission.FieldCreatedAt, field.TypeTime, value)

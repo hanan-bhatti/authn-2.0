@@ -80,6 +80,11 @@ func Description(v string) predicate.Permission {
 	return predicate.Permission(sql.FieldEQ(FieldDescription, v))
 }
 
+// CreatedByUserID applies equality check predicate on the "created_by_user_id" field. It's identical to CreatedByUserIDEQ.
+func CreatedByUserID(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldEQ(FieldCreatedByUserID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Permission {
 	return predicate.Permission(sql.FieldEQ(FieldCreatedAt, v))
@@ -288,6 +293,81 @@ func DescriptionEqualFold(v string) predicate.Permission {
 // DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
 func DescriptionContainsFold(v string) predicate.Permission {
 	return predicate.Permission(sql.FieldContainsFold(FieldDescription, v))
+}
+
+// CreatedByUserIDEQ applies the EQ predicate on the "created_by_user_id" field.
+func CreatedByUserIDEQ(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldEQ(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDNEQ applies the NEQ predicate on the "created_by_user_id" field.
+func CreatedByUserIDNEQ(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldNEQ(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDIn applies the In predicate on the "created_by_user_id" field.
+func CreatedByUserIDIn(vs ...string) predicate.Permission {
+	return predicate.Permission(sql.FieldIn(FieldCreatedByUserID, vs...))
+}
+
+// CreatedByUserIDNotIn applies the NotIn predicate on the "created_by_user_id" field.
+func CreatedByUserIDNotIn(vs ...string) predicate.Permission {
+	return predicate.Permission(sql.FieldNotIn(FieldCreatedByUserID, vs...))
+}
+
+// CreatedByUserIDGT applies the GT predicate on the "created_by_user_id" field.
+func CreatedByUserIDGT(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldGT(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDGTE applies the GTE predicate on the "created_by_user_id" field.
+func CreatedByUserIDGTE(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldGTE(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDLT applies the LT predicate on the "created_by_user_id" field.
+func CreatedByUserIDLT(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldLT(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDLTE applies the LTE predicate on the "created_by_user_id" field.
+func CreatedByUserIDLTE(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldLTE(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDContains applies the Contains predicate on the "created_by_user_id" field.
+func CreatedByUserIDContains(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldContains(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDHasPrefix applies the HasPrefix predicate on the "created_by_user_id" field.
+func CreatedByUserIDHasPrefix(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldHasPrefix(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDHasSuffix applies the HasSuffix predicate on the "created_by_user_id" field.
+func CreatedByUserIDHasSuffix(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldHasSuffix(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDIsNil applies the IsNil predicate on the "created_by_user_id" field.
+func CreatedByUserIDIsNil() predicate.Permission {
+	return predicate.Permission(sql.FieldIsNull(FieldCreatedByUserID))
+}
+
+// CreatedByUserIDNotNil applies the NotNil predicate on the "created_by_user_id" field.
+func CreatedByUserIDNotNil() predicate.Permission {
+	return predicate.Permission(sql.FieldNotNull(FieldCreatedByUserID))
+}
+
+// CreatedByUserIDEqualFold applies the EqualFold predicate on the "created_by_user_id" field.
+func CreatedByUserIDEqualFold(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldEqualFold(FieldCreatedByUserID, v))
+}
+
+// CreatedByUserIDContainsFold applies the ContainsFold predicate on the "created_by_user_id" field.
+func CreatedByUserIDContainsFold(v string) predicate.Permission {
+	return predicate.Permission(sql.FieldContainsFold(FieldCreatedByUserID, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

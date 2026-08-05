@@ -27,8 +27,14 @@ type Role struct {
 	Description string `json:"description,omitempty"`
 	// Flag indicating if this is a built-in system role that cannot be deleted
 	IsSystemRole bool `json:"is_system_role,omitempty"`
+	// User ID of admin who created this role
+	CreatedByUserID *string `json:"created_by_user_id,omitempty"`
+	// User ID of admin who last modified this role
+	UpdatedByUserID *string `json:"updated_by_user_id,omitempty"`
 	// Creation timestamp
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// Last updated timestamp
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RoleQuery when eager-loading is set.
 	Edges        RoleEdges `json:"edges"`
@@ -95,9 +101,9 @@ func (*Role) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case role.FieldIsSystemRole:
 			values[i] = new(sql.NullBool)
-		case role.FieldID, role.FieldTenantID, role.FieldName, role.FieldDescription:
+		case role.FieldID, role.FieldTenantID, role.FieldName, role.FieldDescription, role.FieldCreatedByUserID, role.FieldUpdatedByUserID:
 			values[i] = new(sql.NullString)
-		case role.FieldCreatedAt:
+		case role.FieldCreatedAt, role.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -144,11 +150,31 @@ func (r *Role) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				r.IsSystemRole = value.Bool
 			}
+		case role.FieldCreatedByUserID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field created_by_user_id", values[i])
+			} else if value.Valid {
+				r.CreatedByUserID = new(string)
+				*r.CreatedByUserID = value.String
+			}
+		case role.FieldUpdatedByUserID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field updated_by_user_id", values[i])
+			} else if value.Valid {
+				r.UpdatedByUserID = new(string)
+				*r.UpdatedByUserID = value.String
+			}
 		case role.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				r.CreatedAt = value.Time
+			}
+		case role.FieldUpdatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
+			} else if value.Valid {
+				r.UpdatedAt = value.Time
 			}
 		default:
 			r.selectValues.Set(columns[i], values[i])
@@ -218,8 +244,21 @@ func (r *Role) String() string {
 	builder.WriteString("is_system_role=")
 	builder.WriteString(fmt.Sprintf("%v", r.IsSystemRole))
 	builder.WriteString(", ")
+	if v := r.CreatedByUserID; v != nil {
+		builder.WriteString("created_by_user_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := r.UpdatedByUserID; v != nil {
+		builder.WriteString("updated_by_user_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(r.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("updated_at=")
+	builder.WriteString(r.UpdatedAt.Format(time.ANSIC))
 	builder.WriteByte(')')
 	return builder.String()
 }

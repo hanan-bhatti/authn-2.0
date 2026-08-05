@@ -1462,8 +1462,146 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "14 RBAC & Fine-Grained Permissions (FR-12)",
+			"item": [
+				{
+					"name": "List Tenant Roles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "roles"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Lists all tenant roles with assigned permission strings."
+					}
+				},
+				{
+					"name": "Create Custom Role",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Editor\",\n  \"slug\": \"editor\",\n  \"description\": \"Can manage content\",\n  \"permissions\": [\"posts:create\", \"posts:update\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "roles"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Creates a custom role with validated permission format and policy checks."
+					}
+				},
+				{
+					"name": "Create Role — Invalid Format (expect 422)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Invalid Format\",\n  \"slug\": \"invalid_format\",\n  \"permissions\": [\"banana-permission:write\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "roles"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Rejects malformed permission string format."
+					}
+				},
+				{
+					"name": "Create Role — Policy Restriction (expect 422)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Restricted Role\",\n  \"slug\": \"viewer\",\n  \"permissions\": [\"*:write\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "roles"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Rejects restricted permission assignments for role slug."
+					}
+				},
+				{
+					"name": "Assign Role to User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role_slug\": \"editor\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/roles?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_demo123", "roles"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Assigns role to user with immutable audit log recording who assigned it."
+					}
+				},
+				{
+					"name": "Get User Permissions (Client)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/user/permissions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "user", "permissions"]
+						},
+						"description": "Returns accumulated roles and fine-grained permissions for authenticated user."
+					}
+				},
+				{
+					"name": "Revoke Role from User",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/roles/editor?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_demo123", "roles", "editor"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Revokes role from user with audit log recording who revoked it."
+					}
+				}
+			]
 		}
 	]
 }
+
 
 

@@ -98,7 +98,7 @@
 ## 3. Execution Roadmap & Feature Order
 
 ### Phase 1: Backend Core Engines (Current Target)
-- **FR-12: Role-Based Access Control (RBAC) & Fine-Grained Permissions**
+- **FR-12: Role-Based Access Control (RBAC) & Fine-Grained Permissions [Completed & Verified]**
   - Roles (`tenant_admin`, `org_admin`, `editor`, `viewer`) & granular permissions (`users:read`, `orgs:write`).
   - Permission evaluation middleware & role/permission claims in JWT tokens.
 - **FR-13: Outgoing Real-Time Event Webhooks**
