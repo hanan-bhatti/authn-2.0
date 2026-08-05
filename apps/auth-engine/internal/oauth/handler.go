@@ -48,6 +48,7 @@ func (h *Handler) GetJWKS(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed generating public JWKS"})
 	}
 	jwks := jwtpkg.ExportRSAPublicJWKS(&rsaKey.PublicKey, h.service.cfg.AuthnKeyID)
+	c.Set("Cache-Control", "public, max-age=3600")
 	return c.Status(fiber.StatusOK).JSON(jwks)
 }
 

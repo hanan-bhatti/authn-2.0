@@ -194,6 +194,29 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 }
 ```
 
+#### `GET /v1/oauth/jwks` — Public JWKS Key Set
+* **Description**: Exposes public RSA key material (Modulus $N$, Exponent $E$) for JWT token verification.
+* **Authentication**: Unauthenticated (Public).
+* **Rate Limiting**: Exempt.
+* **Headers Returned**: `Cache-Control: public, max-age=3600` (1-hour cache).
+* **🔒 Security Audit**: Verified zero private key exponents (`d`, `p`, `q`, `dp`, `dq`, `qi`) in output.
+* **Known Limitation**: *Currently exports 1 active RSA key. Multi-key rotation history array (30-day rotation with 7-day overlap) is a planned future enhancement.*
+* **Response (200 OK)**:
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "alg": "RS256",
+      "kid": "authn-rsa-key-1",
+      "n": "u1P5z2...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
 ### 3.1 Core Authentication (`POST /v1/client/signup` & `POST /v1/client/login`)
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `X-Authn-Client-Type: native|web`
 - **Request (`POST /v1/client/signup`)**:

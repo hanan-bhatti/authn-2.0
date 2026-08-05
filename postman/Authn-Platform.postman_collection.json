@@ -120,7 +120,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "oauth", "jwks"]
 						},
-						"description": "No auth required. Public RSA JWKS used to verify JWTs."
+						"description": "Unauthenticated public JWKS endpoint. Returns public RSA modulus (n) and exponent (e) for verifying JWT signatures with Cache-Control: public, max-age=3600."
 					}
 				}
 			]
