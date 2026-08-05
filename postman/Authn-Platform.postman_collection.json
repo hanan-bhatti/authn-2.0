@@ -1053,6 +1053,56 @@
 					}
 				},
 				{
+					"name": "Webhooks — Register Endpoint",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"url\": \"https://api.acme.local/webhooks/authn\",\n  \"description\": \"Acme Webhook Handler\",\n  \"events\": [\"user.created\", \"user.login.success\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints"]
+						},
+						"description": "Registers a new webhook endpoint. SSRF validation blocks non-HTTP schemes.\n\nVerified response (201 Created):\n{\n  \"id\": \"whe_5eb5f1be-ed3\",\n  \"secret\": \"whsec_da306471...\"\n}"
+					}
+				},
+				{
+					"name": "Webhooks — Dispatch Test Ping",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/whe_5eb5f1be-ed3/ping",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints", "whe_5eb5f1be-ed3", "ping"]
+						},
+						"description": "Dispatches a test ping event signed with HMAC SHA-256 (X-Authn-Signature)."
+					}
+				},
+				{
+					"name": "Webhooks — Rotate Secret",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/whe_5eb5f1be-ed3/rotate-secret",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints", "whe_5eb5f1be-ed3", "rotate-secret"]
+						},
+						"description": "Rotates HMAC signing secret for an endpoint."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",

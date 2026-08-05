@@ -752,32 +752,36 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `401 Unauthorized` (`mfa_token_expired`): 2FA login challenge token expired (5-minute TTL).
   - `403 Forbidden` (`password_confirmation_failed`): Incorrect password provided when disabling 2FA methods.
 
-### 3.9 Outgoing Real-Time Event Webhooks (`/v1/admin/webhooks/*`)
-- **Description**: Managing real-time outgoing HTTP webhook endpoints, secret rotation, delivery audit logs, and manual pings.
+### 3.13 Outgoing Real-Time Event Webhooks (`/v1/admin/webhooks/*`)
+
+> **Last Verified**: `2026-08-06` — live `curl` attack suite against running server.
+> See full endpoint doc: [`docs/endpoints/admin-webhooks.md`](endpoints/admin-webhooks.md)
+
+- **Description**: Managing real-time outgoing HTTP webhook endpoints, HMAC SHA-256 signing secret rotation (`X-Authn-Signature`), delivery audit logs, and test ping dispatches. Rejects SSRF (`file://` or non-HTTP schemes) with `422 Unprocessable Entity`.
 - **Request (`POST /v1/admin/webhooks/endpoints`)**:
 ```json
 {
-  "url": "https://webhook.site/test-handler",
-  "description": "Production Events Webhook",
-  "events": ["user.created", "session.revoked"]
+  "url": "https://api.acme.local/webhooks/authn",
+  "description": "Acme Webhook Handler",
+  "events": ["user.created", "user.login.success"]
 }
 ```
 - **Response (201 Created)**:
 ```json
 {
-  "id": "whe_cfde8b85-4b0",
-  "url": "https://webhook.site/test-handler",
-  "description": "Production Events Webhook",
-  "secret": "whsec_f3578988dbffcec07b802a6f4c46de11206339ff7a4e0bac",
-  "subscribed_events": ["user.created", "session.revoked"],
+  "id": "whe_5eb5f1be-ed3",
+  "url": "https://api.acme.local/webhooks/authn",
+  "description": "Acme Webhook Handler",
+  "secret": "whsec_da306471c3d10fcad2e4e08aca0ead0743ed56629c82929d",
+  "subscribed_events": ["user.created", "user.login.success"],
   "is_active": true,
   "failure_count": 0,
-  "created_at": "2026-08-05T07:03:06+05:00"
+  "created_at": "2026-08-06T03:21:18Z"
 }
 ```
 - **Edge Cases & Error Codes**:
-  - `422 Unprocessable Entity`: Invalid URL format (must be HTTPS or localhost in dev mode) or empty/invalid event types.
-  - `404 Not Found`: Webhook Endpoint ID does not exist or belongs to another tenant.
+  - `422 Unprocessable Entity`: Invalid URL format (SSRF blocked, scheme must be HTTP/HTTPS) or unsupported event types (`unsupported event type provided: 'user.exploit_system'`).
+  - `404 Not Found`: Webhook Endpoint ID does not exist.
 
 ### 3.10 Admin User Impersonation & Security Guard (`/v1/admin/users/:user_id/impersonate`, `/v1/client/auth/impersonate/exit`)
 - **Description**: Initiating short-lived admin impersonation sessions with mandatory Sudo step-up auth, user notification emails, signed webhooks (`user.impersonated`), and read-only mutation guards.
