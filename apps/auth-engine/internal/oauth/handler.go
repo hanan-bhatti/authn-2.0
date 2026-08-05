@@ -34,8 +34,10 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) GetOIDCDiscovery(c *fiber.Ctx) error {
 	scheme := c.Protocol()
 	host := c.Hostname()
-	issuer := fmt.Sprintf("%s://%s", scheme, host)
-	discovery := h.service.GetDiscoveryMetadata(issuer)
+	requestIssuer := fmt.Sprintf("%s://%s", scheme, host)
+	discovery := h.service.GetDiscoveryMetadata(requestIssuer)
+
+	c.Set("Cache-Control", "public, max-age=3600")
 	return c.Status(fiber.StatusOK).JSON(discovery)
 }
 

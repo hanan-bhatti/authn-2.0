@@ -168,6 +168,32 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 }
 ```
 
+#### `GET /.well-known/openid-configuration` — OIDC Discovery Metadata
+* **Description**: Returns standard OpenID Connect 1.0 discovery metadata payload.
+* **Authentication**: Unauthenticated (Public).
+* **Rate Limiting**: Exempt.
+* **Headers Returned**: `Cache-Control: public, max-age=3600` (1-hour cache).
+* **Issuer Alignment Fix [2026-08-05]**: *Prioritizes `ISSUER_URL` (`s.cfg.Issuer`) when configured to ensure the discovery document `issuer` matches the `iss` claim in ID tokens 100% of the time per OIDC Discovery 1.0 Spec Section 3.*
+* **Known Limitation**: *Advertises `userinfo_endpoint` (`/v1/oauth/userinfo`), but that endpoint currently returns 404 (to be built in Endpoint 8).*
+* **Response (200 OK)**:
+```json
+{
+  "issuer": "http://localhost:8080",
+  "authorization_endpoint": "http://localhost:8080/v1/oauth/authorize",
+  "token_endpoint": "http://localhost:8080/v1/oauth/token",
+  "userinfo_endpoint": "http://localhost:8080/v1/oauth/userinfo",
+  "jwks_uri": "http://localhost:8080/v1/oauth/jwks",
+  "response_types_supported": ["code"],
+  "subject_types_supported": ["public"],
+  "id_token_signing_alg_values_supported": ["RS256"],
+  "scopes_supported": ["openid", "profile", "email"],
+  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "none"],
+  "code_challenge_methods_supported": ["S256", "plain"],
+  "claims_supported": ["iss", "sub", "aud", "exp", "iat", "email", "name", "tenant_id"],
+  "grant_types_supported": ["authorization_code", "refresh_token"]
+}
+```
+
 ### 3.1 Core Authentication (`POST /v1/client/signup` & `POST /v1/client/login`)
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `X-Authn-Client-Type: native|web`
 - **Request (`POST /v1/client/signup`)**:

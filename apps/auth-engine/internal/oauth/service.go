@@ -76,9 +76,13 @@ func (s *Service) ValidateClientApplication(ctx context.Context, clientID string
 }
 
 // GetDiscoveryMetadata returns standard OIDC Discovery configurations.
-func (s *Service) GetDiscoveryMetadata(issuer string) OIDCDiscoveryConfig {
-	if issuer == "" {
+func (s *Service) GetDiscoveryMetadata(requestHostIssuer string) OIDCDiscoveryConfig {
+	issuer := ""
+	if s.cfg != nil && s.cfg.Issuer != "" {
 		issuer = s.cfg.Issuer
+	}
+	if issuer == "" {
+		issuer = requestHostIssuer
 	}
 	if issuer == "" {
 		issuer = "http://localhost:8080"

@@ -107,7 +107,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": [".well-known", "openid-configuration"]
 						},
-						"description": "No auth required. Public OIDC discovery document."
+						"description": "Unauthenticated OIDC Discovery document. Returns issuer, endpoints, supported response types, algorithms, and claims with Cache-Control: public, max-age=3600."
 					}
 				},
 				{
