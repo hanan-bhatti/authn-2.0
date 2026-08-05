@@ -39,6 +39,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/redis/go-redis/v9"
@@ -274,6 +275,10 @@ func main() {
 	samlService := saml.NewService(factory, webhookDispatcher)
 	samlHandler := saml.NewHandler(samlService)
 
+	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher)
+	userHandler := user.NewHandler(userService)
+	clientAuthMiddleware := middleware.RequireClientAuth(cfg.AuthnEncryptionKey)
+
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	app.Get("/v1/ready", ReadinessCheckHandler(factory, redisClient))
@@ -281,6 +286,7 @@ func main() {
 	app.Get("/readyz", ReadinessCheckHandler(factory, redisClient))
 	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.AuthnEncryptionKey))
 	authHandler.RegisterRoutes(app, pkMiddleware)
+	userHandler.RegisterRoutes(app, clientAuthMiddleware, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 	oauthHandler.RegisterRoutes(app, pkMiddleware)
 	socialHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)

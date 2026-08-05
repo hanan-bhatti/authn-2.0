@@ -212,12 +212,40 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 	}
 }
 
+// GetUserInfo handles GET /v1/oauth/userinfo (OIDC Standard UserInfo Endpoint).
+// Requires a valid Bearer access token in Authorization header or authn_access_token cookie.
+func (h *Handler) GetUserInfo(c *fiber.Ctx) error {
+	tokenStr := extractAccessToken(c)
+	if tokenStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "unauthorized: access token required in Authorization header or cookie",
+		})
+	}
+
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.AuthnEncryptionKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": fmt.Sprintf("invalid or expired access token: %v", err),
+		})
+	}
+
+	info, err := h.service.GetUserInfo(c.UserContext(), claims.TenantID, claims.Sub)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(info)
+}
+
 // RegisterRoutes registers OAuth2 and OIDC endpoints.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	app.Get("/.well-known/openid-configuration", h.GetOIDCDiscovery)
 
 	group := app.Group("/v1/oauth")
 	group.Get("/jwks", h.GetJWKS)
+	group.Get("/userinfo", h.GetUserInfo)
 	if pkMiddleware != nil {
 		group.Get("/authorize", pkMiddleware, h.Authorize)
 		group.Post("/token", pkMiddleware, h.TokenExchange)

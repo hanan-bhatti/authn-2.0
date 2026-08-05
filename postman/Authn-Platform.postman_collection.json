@@ -1103,6 +1103,58 @@
 					}
 				},
 				{
+					"name": "OIDC — UserInfo Claims Endpoint (/v1/oauth/userinfo)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/oauth/userinfo",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "oauth", "userinfo"]
+						},
+						"description": "Standard OIDC UserInfo endpoint returning sub, email, email_verified, name, tenant_id, environment, updated_at."
+					}
+				},
+				{
+					"name": "User — Get Profile (/v1/client/user/profile)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/user/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "user", "profile"]
+						},
+						"description": "Fetches authenticated user profile, phone, recovery email status, avatar, locale, and metadata."
+					}
+				},
+				{
+					"name": "User — Set Secondary Recovery Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recovery_email\": \"backup_user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/user/recovery-email",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "user", "recovery-email"]
+						},
+						"description": "Registers a secondary backup recovery email address and dispatches a single-use verification token link."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",

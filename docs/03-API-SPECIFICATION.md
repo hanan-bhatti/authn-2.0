@@ -828,3 +828,25 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `403 Forbidden` (`user_opt_in_required`): Target user has not granted support access opt-in permission.
   - `403 Forbidden` (`insufficient_permissions`): Admin lacks `users:impersonate` RBAC permission.
   - `403 Forbidden` (`impersonation_read_only_restricted`): Impersonation session attempting destructive mutation on `/v1/client/user/password`, `/v1/client/2fa`, or `/v1/client/account`.
+
+### 3.14 User Profile, Secondary Recovery Email & OIDC UserInfo (`/v1/client/user/*` & `/v1/oauth/userinfo`)
+
+> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
+> See full endpoint doc: [`docs/endpoints/client-user-profile.md`](endpoints/client-user-profile.md)
+
+- **Description**: Comprehensive user profile management, password change with step-up verification, primary email change flow, secondary recovery email management, social identity unlinking, and GDPR right-to-erasure account deletion.
+- **Get Profile & OIDC Claims (`GET /v1/client/user/profile` & `GET /v1/oauth/userinfo`)**:
+  - `GET /v1/oauth/userinfo`: Standard OIDC claims (`sub`, `email`, `email_verified`, `name`, `tenant_id`, `environment`, `updated_at`).
+  - `GET /v1/client/user/profile`: Full user profile including `phone_number`, `recovery_email`, `avatar_url`, `locale`, and `metadata`.
+- **Set Secondary Recovery Email (`POST /v1/client/user/recovery-email`)**:
+  - **Request Body**: `{"recovery_email": "backup_user@example.com"}`
+  - **Response (200 OK)**: `{"message": "secondary recovery email verification link sent", "verification_token": "rec_013d370..."}`
+- **Verify Secondary Recovery Email (`GET /v1/client/user/recovery-email/verify?token=rec_...`)**:
+  - Updates `recovery_email_verified: true` in user profile.
+- **Delete Account / GDPR Erasure (`DELETE /v1/client/user/account`)**:
+  - Requires password confirmation. Cascades deletion to sessions, memberships, and identities.
+- **Edge Cases & Error Codes**:
+  - `401 Unauthorized`: Missing or invalid Bearer access token, or incorrect current password during password change / account deletion.
+  - `403 Forbidden` (`cannot_unlink_last_auth`): Attempting to unlink a social provider when no password is set and no other login method exists.
+  - `409 Conflict`: Primary email change request specifies an email already registered to another user in the tenant.
+

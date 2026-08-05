@@ -238,3 +238,36 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 	return userDTO, accessToken, newRawRefreshToken, nil
 }
 
+// UserInfoResponse defines standard OIDC UserInfo response claims payload.
+type UserInfoResponse struct {
+	Sub           string    `json:"sub"`
+	Email         string    `json:"email"`
+	EmailVerified bool      `json:"email_verified"`
+	Name          string    `json:"name,omitempty"`
+	TenantID      string    `json:"tenant_id"`
+	Environment   string    `json:"environment,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+}
+
+// GetUserInfo retrieves identity claims for an authenticated subject ID.
+func (s *Service) GetUserInfo(ctx context.Context, tenantID, userID string) (*UserInfoResponse, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("user_id is required")
+	}
+
+	u, err := s.authRepo.FindUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	return &UserInfoResponse{
+		Sub:           u.ID,
+		Email:         u.Email,
+		EmailVerified: u.EmailVerified,
+		Name:          u.Name,
+		TenantID:      tenantID,
+		Environment:   string(u.Environment),
+		UpdatedAt:     u.UpdatedAt,
+	}, nil
+}
+
