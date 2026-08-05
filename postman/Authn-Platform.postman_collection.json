@@ -381,8 +381,7 @@
 					}
 				},
 				{
-					"name": "User Login",
-
+					"name": "Login — 200 Success (web client)",
 					"event": [
 						{
 							"listen": "test",
@@ -406,18 +405,39 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\"\n}"
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/login",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "login"]
 						},
-						"description": "Authenticate user. Auto-saves access_token to collection variable."
+						"description": "Authenticate user on web. Access token in JSON body, refresh token strictly in HttpOnly cookie.\n\nVerified response (200):\n{\n  \"user\": {\n    \"id\": \"usr_vanilla_007\",\n    \"email\": \"user.vanilla@authn.local\",\n    \"email_verified\": true,\n    \"status\": \"active\",\n    \"created_at\": \"2026-08-05T23:32:04Z\"\n  },\n  \"access_token\": \"eyJhbGciOiJIUzI1...\"\n}"
 					}
 				},
 				{
-					"name": "User Login — Wrong Password (expect 401)",
+					"name": "Login — 200 Success (native client)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Client-Type", "value": "native" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						},
+						"description": "Native/mobile login: refresh token delivered directly in JSON body.\n\nVerified response (200):\n{\n  \"user\": {...},\n  \"access_token\": \"...\",\n  \"refresh_token\": \"c9a9df1fe74055eea42a8711d1725858...\"\n}"
+					}
+				},
+				{
+					"name": "Login — 200 2FA Challenge Required (TOTP)",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -426,17 +446,38 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"WrongPassword!\"\n}"
+							"raw": "{\n  \"email\": \"user.totp@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/login",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "login"]
-						}
+						},
+						"description": "User has active TOTP 2FA. Access token is withheld until second factor verification.\n\nVerified response (200):\n{\n  \"user\": {...},\n  \"mfa_required\": true,\n  \"mfa_token\": \"eyJhbGci...\",\n  \"methods\": [\"totp\"]\n}"
 					}
 				},
 				{
-					"name": "User Login — Missing Key (expect 401)",
+					"name": "Login — 401 Invalid Credentials (Enumeration-Safe)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"WrongPassword!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						},
+						"description": "Wrong password and non-existent email return byte-for-byte identical 401 with constant-time Argon2id execution (~190ms).\n\nVerified response (401):\n{\"error\":\"invalid email or password\"}"
+					}
+				},
+				{
+					"name": "Login — 401 Missing Publishable Key",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -444,14 +485,54 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"SecurePassword123!\"\n}"
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/login",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "login"]
 						},
-						"description": "Edge case: missing X-Authn-Publishable-Key header. Should return 401."
+						"description": "Verified response (401):\n{\"error\":\"missing publishable API key in X-Authn-Publishable-Key header\"}"
+					}
+				},
+				{
+					"name": "Login — 429 Rate Limited",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"WrongPassword!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						},
+						"description": "Rate limit: 5 attempts / 900s per IP. Escalation backoff: 15m -> 1h -> 6h -> 24h.\n\nVerified response (429):\n{\"error\":\"too many attempts, please try again later\",\"retry_after_seconds\":889}"
+					}
+				},
+				{
+					"name": "Login — 503 Redis Outage (Fail-CLOSED)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "login"]
+						},
+						"description": "During Redis outage, login fails closed. X-Authn-Degraded-Mode: true in response header.\n\nVerified response (503):\n{\"error\":\"rate limit service unavailable\"}"
 					}
 				},
 				{

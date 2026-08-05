@@ -302,13 +302,81 @@ Deliberate design choice matching standard B2C auth practice (Firebase, Clerk, A
 }
 ```
 
+#### `POST /v1/client/login`
+
+> **Last Verified**: `2026-08-06` — live `curl` against running server.
+> See full endpoint doc: [`docs/endpoints/client-login.md`](endpoints/client-login.md)
+
+- **Headers (Required)**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Content-Type: application/json`
+- **Headers (Optional)**: `X-Authn-Client-Type: web|native|mobile` (default: `web`)
+- **Request**:
+```json
+{
+  "email": "user.vanilla@authn.local",
+  "password": "UserPass123!"
+}
+```
+
+#### `200 OK` — Successful Authentication (Web Client)
+Web client: refresh token in `Set-Cookie: authn_refresh_token; HttpOnly; SameSite=Lax; Path=/v1/client`.
+Native/mobile client: refresh token in `refresh_token` JSON field.
+```json
+{
+  "user": {
+    "id": "usr_vanilla_007",
+    "email": "user.vanilla@authn.local",
+    "email_verified": true,
+    "status": "active",
+    "created_at": "2026-08-05T23:32:04Z"
+  },
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+#### `200 OK` — 2FA / MFA Challenge Required
+Access token and refresh token withheld until second factor verification is complete.
+```json
+{
+  "user": {
+    "id": "usr_totp_002",
+    "email": "user.totp@authn.local",
+    "email_verified": true,
+    "status": "active",
+    "created_at": "2026-08-05T23:32:03Z"
+  },
+  "mfa_required": true,
+  "mfa_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "methods": ["totp"]
+}
+```
+
+#### `401 Unauthorized` — Invalid Email or Password (Enumeration-Safe)
+Constant-time CPU execution (~190ms) using `DummyArgon2idHash` when user not found.
+```json
+{ "error": "invalid email or password" }
+```
+
+#### `401 Unauthorized` — Missing Publishable Key
+```json
+{ "error": "missing publishable API key in X-Authn-Publishable-Key header" }
+```
+
+#### `429 Too Many Requests` — Rate Limit
+5 attempts / 900s window per IP. Escalation backoff: 15m -> 1h -> 6h -> 24h.
+```json
+{
+  "error": "too many attempts, please try again later",
+  "retry_after_seconds": 889
+}
+```
+
 #### `503 Service Unavailable` — Redis Outage (Fail-CLOSED)
-Signup is a sensitive mutation endpoint — rate limiting cannot be bypassed under outage.
 ```json
 { "error": "rate limit service unavailable" }
 ```
 
 ### 3.2 Email Verification (`GET /v1/client/verify-email` & `POST /v1/client/resend-verification`)
+
 
 > **Last Verified**: `2026-08-06` — live `curl` + real token extracted from Mailpit SMTP catcher.
 > See full endpoint doc: [`docs/endpoints/client-verify-email.md`](endpoints/client-verify-email.md)

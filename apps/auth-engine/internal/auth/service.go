@@ -505,11 +505,17 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 // ValidatePasswordCredentials checks password credentials and issues a login session.
 func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID string, env string, email string, password string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	u, err := s.repo.FindUserByEmail(ctx, tenantID, env, email)
-	if err != nil || u == nil {
-		return nil, "", "", ErrInvalidCredentials
+
+	// Execute constant-time password verification using DummyArgon2idHash if user is missing or has no password hash.
+	// Prevents side-channel timing attacks that allow user enumeration (~160ms CPU cost in both cases).
+	passwordHash := crypto.DummyArgon2idHash
+	if u != nil && u.PasswordHash != "" {
+		passwordHash = u.PasswordHash
 	}
 
-	if u.PasswordHash == "" || !crypto.VerifyPasswordArgon2id(password, u.PasswordHash) {
+	validPassword := crypto.VerifyPasswordArgon2id(password, passwordHash)
+
+	if err != nil || u == nil || !validPassword {
 		return nil, "", "", ErrInvalidCredentials
 	}
 
