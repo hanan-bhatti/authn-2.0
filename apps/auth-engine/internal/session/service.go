@@ -21,6 +21,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -69,10 +70,23 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		return nil, ErrSessionNotFound
 	}
 
+	// Helper to enforce tenant-level TokenReusePolicy on compromise detection
+	revokeOnCompromise := func(tID, uID, sID string) {
+		if s.repo.Factory() != nil && tID != "" {
+			policyRepo := policy.NewRepository(s.repo.Factory())
+			secPol, err := policyRepo.GetSecurityPolicy(ctx, tID)
+			if err == nil && secPol.TokenReusePolicy == "session_revoke" {
+				_ = s.repo.RevokeSession(ctx, sID)
+				return
+			}
+		}
+		_, _ = s.repo.RevokeAllUserSessions(ctx, uID, "")
+	}
+
 	// Case 1: Session is already revoked
 	if sess.Status == session.StatusRevoked {
-		// REUSE DETECTED! Revoke all sessions for user as security measure
-		_, _ = s.repo.RevokeAllUserSessions(ctx, sess.UserID, "")
+		// REUSE DETECTED! Apply tenant TokenReusePolicy (global_revoke vs session_revoke)
+		revokeOnCompromise(tenantID, sess.UserID, sess.ID)
 		return nil, ErrSessionCompromised
 	}
 
@@ -80,7 +94,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 	if sess.Status == session.StatusRotatedGrace {
 		if sess.GraceExpiresAt != nil && time.Now().After(*sess.GraceExpiresAt) {
 			// Grace period EXPIRED -> REUSE DETECTED!
-			_, _ = s.repo.RevokeAllUserSessions(ctx, sess.UserID, "")
+			revokeOnCompromise(tenantID, sess.UserID, sess.ID)
 			return nil, ErrSessionCompromised
 		}
 

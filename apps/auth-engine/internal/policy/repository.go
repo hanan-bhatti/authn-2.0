@@ -138,6 +138,9 @@ func (r *Repository) GetSecurityPolicy(ctx context.Context, tenantID string) (Se
 	if sp.EmailVerificationMode != "hard" && sp.EmailVerificationMode != "soft" {
 		sp.EmailVerificationMode = "soft"
 	}
+	if sp.TokenReusePolicy != "global_revoke" && sp.TokenReusePolicy != "session_revoke" {
+		sp.TokenReusePolicy = "global_revoke"
+	}
 
 	return sp, nil
 }
@@ -148,6 +151,9 @@ func (r *Repository) UpdateSecurityPolicy(ctx context.Context, tenantID string, 
 
 	if sp.EmailVerificationMode != "hard" && sp.EmailVerificationMode != "soft" {
 		sp.EmailVerificationMode = "soft"
+	}
+	if sp.TokenReusePolicy != "global_revoke" && sp.TokenReusePolicy != "session_revoke" {
+		sp.TokenReusePolicy = "global_revoke"
 	}
 
 	var policyMap map[string]interface{}

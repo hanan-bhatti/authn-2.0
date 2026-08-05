@@ -49,6 +49,7 @@ func DefaultPasswordPolicy() PasswordPolicy {
 type SecurityPolicy struct {
 	RequireEmailVerification bool   `json:"require_email_verification"` // Enforce email verification for users
 	EmailVerificationMode    string `json:"email_verification_mode"`    // "hard" (403 block) | "soft" (allow login with warning/token flag)
+	TokenReusePolicy         string `json:"token_reuse_policy"`         // "global_revoke" (default: revokes all user sessions) | "session_revoke" (revokes only family session)
 }
 
 // DefaultSecurityPolicy returns standard default security policy settings.
@@ -56,6 +57,7 @@ func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
 		RequireEmailVerification: false,
 		EmailVerificationMode:    "soft",
+		TokenReusePolicy:         "global_revoke",
 	}
 }
 

@@ -45,6 +45,10 @@ func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
 }
 
+func (r *Repository) Factory() *clientfactory.ClientFactory {
+	return r.factory
+}
+
 // HashRefreshToken returns the SHA-256 hex digest of a raw 64-byte opaque refresh token.
 func HashRefreshToken(rawToken string) string {
 	h := sha256.Sum256([]byte(rawToken))
