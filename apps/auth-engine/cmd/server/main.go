@@ -240,11 +240,12 @@ func main() {
 	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
 	webhookHandler := webhook.NewHandler(webhookService)
 
-	impersonationService := impersonation.NewService(factory, cfg)
+	impersonationService := impersonation.NewService(factory, cfg, webhookDispatcher, emailProvider)
 	impersonationHandler := impersonation.NewHandler(impersonationService, policyRepo, authService)
 
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
+	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.AuthnEncryptionKey))
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 	oauthHandler.RegisterRoutes(app, pkMiddleware)

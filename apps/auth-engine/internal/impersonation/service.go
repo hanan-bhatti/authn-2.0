@@ -20,6 +20,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -51,16 +52,35 @@ type UserInfo struct {
 	EmailVerified bool    `json:"email_verified"`
 }
 
-type Service struct {
-	factory *clientfactory.ClientFactory
-	cfg     *config.EnvConfig
+type WebhookDispatcher interface {
+	Dispatch(tenantID, eventType string, data map[string]interface{})
 }
 
-func NewService(factory *clientfactory.ClientFactory, cfg *config.EnvConfig) *Service {
-	return &Service{
+type EmailProvider interface {
+	Send(ctx context.Context, to string, subject string, htmlBody string, textBody string) error
+}
+
+type Service struct {
+	factory       *clientfactory.ClientFactory
+	cfg           *config.EnvConfig
+	dispatcher    WebhookDispatcher
+	emailProvider EmailProvider
+}
+
+func NewService(factory *clientfactory.ClientFactory, cfg *config.EnvConfig, dispatcher ...interface{}) *Service {
+	svc := &Service{
 		factory: factory,
 		cfg:     cfg,
 	}
+	for _, arg := range dispatcher {
+		if d, ok := arg.(WebhookDispatcher); ok {
+			svc.dispatcher = d
+		}
+		if ep, ok := arg.(EmailProvider); ok {
+			svc.emailProvider = ep
+		}
+	}
+	return svc
 }
 
 // IsUserAdmin checks if a user holds an administrative role.
@@ -153,6 +173,36 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 	}
 
 	sessionID := fmt.Sprintf("ses_imp_%d", time.Now().UnixNano())
+
+	// Dispatch user.impersonated Webhook Event asynchronously
+	if s.dispatcher != nil {
+		s.dispatcher.Dispatch(tenantID, "user.impersonated", map[string]interface{}{
+			"target_user_id":   targetUser.ID,
+			"target_user_email": targetUser.Email,
+			"impersonator_id":  impersonatorID,
+			"duration_minutes": durationMinutes,
+			"reason":           req.Reason,
+			"ticket_id":        req.TicketID,
+			"session_id":       sessionID,
+		})
+	}
+
+	// Dispatch User Transparency Notification Email
+	if pol.EmailNotificationPolicy == "IMMEDIATE" && s.emailProvider != nil {
+		go func(toEmail, userName, reason, ticketID string, mins int) {
+			htmlBody, textBody, err := email.RenderImpersonationEmail(email.ImpersonationEmailData{
+				UserName:        userName,
+				AdminName:       "",
+				Reason:          reason,
+				TicketID:        ticketID,
+				DurationMinutes: mins,
+				AppName:         "Authn Platform",
+			})
+			if err == nil {
+				_ = s.emailProvider.Send(context.Background(), toEmail, "🛡️ Security Notice: Support Access to Your Account", htmlBody, textBody)
+			}
+		}(targetUser.Email, targetUser.Name, req.Reason, req.TicketID, durationMinutes)
+	}
 
 	return &ImpersonationResult{
 		AccessToken: accessToken,

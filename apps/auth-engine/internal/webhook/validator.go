@@ -39,10 +39,12 @@ var AllowedEventTypes = map[string]bool{
 	"session.revoked":      true,
 	"2fa.enabled":          true,
 	"2fa.disabled":         true,
-	"password.changed":     true,
-	"rbac.role.assigned":   true,
-	"rbac.role.revoked":    true,
-	"ping":                 true,
+	"password.changed":           true,
+	"rbac.role.assigned":         true,
+	"rbac.role.revoked":          true,
+	"user.impersonated":          true,
+	"user.impersonation_exited":  true,
+	"ping":                       true,
 }
 
 // ValidateWebhookURL validates that the target URL is well-formed.

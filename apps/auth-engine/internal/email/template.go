@@ -187,3 +187,93 @@ func RenderMagicLinkEmail(data MagicLinkEmailData) (string, string, error) {
 
 	return htmlBuf.String(), textBuf.String(), nil
 }
+
+// ImpersonationEmailData contains data required to render support access notification emails.
+type ImpersonationEmailData struct {
+	UserName        string
+	AdminName       string
+	Reason          string
+	TicketID        string
+	DurationMinutes int
+	AppName         string
+}
+
+const impersonationHTMLTemplate = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Notice: Support Access to Your Account</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 40px 20px; }
+    .container { max-width: 560px; margin: 0 auto; background-color: #1e293b; border-radius: 12px; padding: 40px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .brand { font-size: 20px; font-weight: 700; color: #6366f1; letter-spacing: -0.5px; margin-bottom: 24px; text-transform: uppercase; }
+    h1 { font-size: 20px; font-weight: 600; color: #ffffff; margin-top: 0; margin-bottom: 16px; }
+    p { font-size: 15px; line-height: 1.6; color: #94a3b8; margin-bottom: 20px; }
+    .details { background-color: #0f172a; border-radius: 8px; padding: 20px; margin: 24px 0; border: 1px solid #334155; font-size: 14px; color: #cbd5e1; }
+    .details p { color: #cbd5e1; margin-bottom: 8px; font-size: 14px; }
+    .footer { font-size: 12px; color: #475569; text-align: center; margin-top: 32px; border-top: 1px solid #334155; padding-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand">{{.AppName}}</div>
+    <h1>🛡️ Security Notice: Support Access</h1>
+    <p>Hi {{if .UserName}}{{.UserName}}{{else}}there{{end}},</p>
+    <p>A member of our support team accessed your account for troubleshooting and customer assistance.</p>
+    <div class="details">
+      <p><strong>Support Agent:</strong> {{if .AdminName}}{{.AdminName}}{{else}}Support Representative{{end}}</p>
+      <p><strong>Reason:</strong> {{.Reason}}</p>
+      {{if .TicketID}}<p><strong>Ticket ID:</strong> {{.TicketID}}</p>{{end}}
+      <p><strong>Access Duration:</strong> {{.DurationMinutes}} minutes (Expires automatically)</p>
+    </div>
+    <div class="footer">
+      <p>If you requested assistance from our team, no action is required. If you did not request support, please contact our security team immediately.</p>
+    </div>
+  </div>
+</body>
+</html>`
+
+const impersonationTextTemplate = `Security Notice: Support Access for {{.AppName}}
+
+Hi {{if .UserName}}{{.UserName}}{{else}}there{{end}},
+
+A member of our support team accessed your account for troubleshooting and customer assistance.
+
+Session Details:
+- Support Agent: {{if .AdminName}}{{.AdminName}}{{else}}Support Representative{{end}}
+- Reason: {{.Reason}}
+{{if .TicketID}}- Ticket ID: {{.TicketID}}{{end}}
+- Access Duration: {{.DurationMinutes}} minutes
+
+If you requested assistance, no action is required. If you did not request support, please contact our security team immediately.`
+
+// RenderImpersonationEmail renders HTML and plain text support access notification emails.
+func RenderImpersonationEmail(data ImpersonationEmailData) (string, string, error) {
+	if data.AppName == "" {
+		data.AppName = "Authn Platform"
+	}
+	if data.DurationMinutes == 0 {
+		data.DurationMinutes = 15
+	}
+
+	hTmpl, err := htmlTmpl.New("impersonation_html").Parse(impersonationHTMLTemplate)
+	if err != nil {
+		return "", "", err
+	}
+	var htmlBuf bytes.Buffer
+	if err := hTmpl.Execute(&htmlBuf, data); err != nil {
+		return "", "", err
+	}
+
+	tTmpl, err := textTmpl.New("impersonation_text").Parse(impersonationTextTemplate)
+	if err != nil {
+		return "", "", err
+	}
+	var textBuf bytes.Buffer
+	if err := tTmpl.Execute(&textBuf, data); err != nil {
+		return "", "", err
+	}
+
+	return htmlBuf.String(), textBuf.String(), nil
+}
