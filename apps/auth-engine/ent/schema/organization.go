@@ -66,6 +66,7 @@ func (Organization) Edges() []ent.Edge {
 			Required(),
 		edge.To("members", OrgMember.Type),
 		edge.To("invitations", OrgInvitation.Type),
+		edge.To("saml_connections", SAMLConnection.Type),
 	}
 }
 

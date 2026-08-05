@@ -42,6 +42,9 @@ type RecoveryRequest func(*sql.Selector)
 // Role is the predicate function for role builders.
 type Role func(*sql.Selector)
 
+// SAMLConnection is the predicate function for samlconnection builders.
+type SAMLConnection func(*sql.Selector)
+
 // SecurityBlacklist is the predicate function for securityblacklist builders.
 type SecurityBlacklist func(*sql.Selector)
 

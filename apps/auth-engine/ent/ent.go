@@ -24,6 +24,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
@@ -108,6 +109,7 @@ func checkColumn(table, column string) error {
 			recoverycontact.Table:     recoverycontact.ValidColumn,
 			recoveryrequest.Table:     recoveryrequest.ValidColumn,
 			role.Table:                role.ValidColumn,
+			samlconnection.Table:      samlconnection.ValidColumn,
 			securityblacklist.Table:   securityblacklist.ValidColumn,
 			session.Table:             session.ValidColumn,
 			socialauthstate.Table:     socialauthstate.ValidColumn,

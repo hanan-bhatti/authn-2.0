@@ -13,6 +13,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 )
 
@@ -114,6 +115,21 @@ func (oc *OrganizationCreate) AddInvitations(o ...*OrgInvitation) *OrganizationC
 		ids[i] = o[i].ID
 	}
 	return oc.AddInvitationIDs(ids...)
+}
+
+// AddSamlConnectionIDs adds the "saml_connections" edge to the SAMLConnection entity by IDs.
+func (oc *OrganizationCreate) AddSamlConnectionIDs(ids ...string) *OrganizationCreate {
+	oc.mutation.AddSamlConnectionIDs(ids...)
+	return oc
+}
+
+// AddSamlConnections adds the "saml_connections" edges to the SAMLConnection entity.
+func (oc *OrganizationCreate) AddSamlConnections(s ...*SAMLConnection) *OrganizationCreate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return oc.AddSamlConnectionIDs(ids...)
 }
 
 // Mutation returns the OrganizationMutation object of the builder.
@@ -286,6 +302,22 @@ func (oc *OrganizationCreate) createSpec() (*Organization, *sqlgraph.CreateSpec)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(orginvitation.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := oc.mutation.SamlConnectionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

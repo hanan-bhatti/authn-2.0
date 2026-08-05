@@ -153,6 +153,18 @@ func (f RoleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error)
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RoleMutation", m)
 }
 
+// The SAMLConnectionFunc type is an adapter to allow the use of ordinary
+// function as SAMLConnection mutator.
+type SAMLConnectionFunc func(context.Context, *ent.SAMLConnectionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SAMLConnectionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SAMLConnectionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SAMLConnectionMutation", m)
+}
+
 // The SecurityBlacklistFunc type is an adapter to allow the use of ordinary
 // function as SecurityBlacklist mutator.
 type SecurityBlacklistFunc func(context.Context, *ent.SecurityBlacklistMutation) (ent.Value, error)

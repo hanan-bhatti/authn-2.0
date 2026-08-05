@@ -488,6 +488,40 @@ var (
 			},
 		},
 	}
+	// SamlConnectionsColumns holds the columns for the "saml_connections" table.
+	SamlConnectionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "idp_entity_id", Type: field.TypeString},
+		{Name: "idp_sso_url", Type: field.TypeString},
+		{Name: "idp_certificate", Type: field.TypeString},
+		{Name: "allowed_domains", Type: field.TypeJSON},
+		{Name: "attribute_mapping", Type: field.TypeJSON, Nullable: true},
+		{Name: "enforce_sso", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeString},
+	}
+	// SamlConnectionsTable holds the schema information for the "saml_connections" table.
+	SamlConnectionsTable = &schema.Table{
+		Name:       "saml_connections",
+		Columns:    SamlConnectionsColumns,
+		PrimaryKey: []*schema.Column{SamlConnectionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "saml_connections_organizations_saml_connections",
+				Columns:    []*schema.Column{SamlConnectionsColumns[9]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "samlconnection_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{SamlConnectionsColumns[9]},
+			},
+		},
+	}
 	// SecurityBlacklistsColumns holds the columns for the "security_blacklists" table.
 	SecurityBlacklistsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -955,6 +989,7 @@ var (
 		RecoveryContactsTable,
 		RecoveryRequestsTable,
 		RolesTable,
+		SamlConnectionsTable,
 		SecurityBlacklistsTable,
 		SessionsTable,
 		SocialAuthStatesTable,
@@ -985,6 +1020,7 @@ func init() {
 	RecoveryContactsTable.ForeignKeys[0].RefTable = UsersTable
 	RecoveryRequestsTable.ForeignKeys[0].RefTable = UsersTable
 	RolesTable.ForeignKeys[0].RefTable = TenantsTable
+	SamlConnectionsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
 	TrustedDevicesTable.ForeignKeys[0].RefTable = UsersTable
 	TwoFactorMethodsTable.ForeignKeys[0].RefTable = UsersTable

@@ -14,6 +14,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 )
 
@@ -139,6 +140,21 @@ func (ou *OrganizationUpdate) AddInvitations(o ...*OrgInvitation) *OrganizationU
 	return ou.AddInvitationIDs(ids...)
 }
 
+// AddSamlConnectionIDs adds the "saml_connections" edge to the SAMLConnection entity by IDs.
+func (ou *OrganizationUpdate) AddSamlConnectionIDs(ids ...string) *OrganizationUpdate {
+	ou.mutation.AddSamlConnectionIDs(ids...)
+	return ou
+}
+
+// AddSamlConnections adds the "saml_connections" edges to the SAMLConnection entity.
+func (ou *OrganizationUpdate) AddSamlConnections(s ...*SAMLConnection) *OrganizationUpdate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return ou.AddSamlConnectionIDs(ids...)
+}
+
 // Mutation returns the OrganizationMutation object of the builder.
 func (ou *OrganizationUpdate) Mutation() *OrganizationMutation {
 	return ou.mutation
@@ -190,6 +206,27 @@ func (ou *OrganizationUpdate) RemoveInvitations(o ...*OrgInvitation) *Organizati
 		ids[i] = o[i].ID
 	}
 	return ou.RemoveInvitationIDs(ids...)
+}
+
+// ClearSamlConnections clears all "saml_connections" edges to the SAMLConnection entity.
+func (ou *OrganizationUpdate) ClearSamlConnections() *OrganizationUpdate {
+	ou.mutation.ClearSamlConnections()
+	return ou
+}
+
+// RemoveSamlConnectionIDs removes the "saml_connections" edge to SAMLConnection entities by IDs.
+func (ou *OrganizationUpdate) RemoveSamlConnectionIDs(ids ...string) *OrganizationUpdate {
+	ou.mutation.RemoveSamlConnectionIDs(ids...)
+	return ou
+}
+
+// RemoveSamlConnections removes "saml_connections" edges to SAMLConnection entities.
+func (ou *OrganizationUpdate) RemoveSamlConnections(s ...*SAMLConnection) *OrganizationUpdate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return ou.RemoveSamlConnectionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -391,6 +428,51 @@ func (ou *OrganizationUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if ou.mutation.SamlConnectionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := ou.mutation.RemovedSamlConnectionsIDs(); len(nodes) > 0 && !ou.mutation.SamlConnectionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := ou.mutation.SamlConnectionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if n, err = sqlgraph.UpdateNodes(ctx, ou.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{organization.Label}
@@ -520,6 +602,21 @@ func (ouo *OrganizationUpdateOne) AddInvitations(o ...*OrgInvitation) *Organizat
 	return ouo.AddInvitationIDs(ids...)
 }
 
+// AddSamlConnectionIDs adds the "saml_connections" edge to the SAMLConnection entity by IDs.
+func (ouo *OrganizationUpdateOne) AddSamlConnectionIDs(ids ...string) *OrganizationUpdateOne {
+	ouo.mutation.AddSamlConnectionIDs(ids...)
+	return ouo
+}
+
+// AddSamlConnections adds the "saml_connections" edges to the SAMLConnection entity.
+func (ouo *OrganizationUpdateOne) AddSamlConnections(s ...*SAMLConnection) *OrganizationUpdateOne {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return ouo.AddSamlConnectionIDs(ids...)
+}
+
 // Mutation returns the OrganizationMutation object of the builder.
 func (ouo *OrganizationUpdateOne) Mutation() *OrganizationMutation {
 	return ouo.mutation
@@ -571,6 +668,27 @@ func (ouo *OrganizationUpdateOne) RemoveInvitations(o ...*OrgInvitation) *Organi
 		ids[i] = o[i].ID
 	}
 	return ouo.RemoveInvitationIDs(ids...)
+}
+
+// ClearSamlConnections clears all "saml_connections" edges to the SAMLConnection entity.
+func (ouo *OrganizationUpdateOne) ClearSamlConnections() *OrganizationUpdateOne {
+	ouo.mutation.ClearSamlConnections()
+	return ouo
+}
+
+// RemoveSamlConnectionIDs removes the "saml_connections" edge to SAMLConnection entities by IDs.
+func (ouo *OrganizationUpdateOne) RemoveSamlConnectionIDs(ids ...string) *OrganizationUpdateOne {
+	ouo.mutation.RemoveSamlConnectionIDs(ids...)
+	return ouo
+}
+
+// RemoveSamlConnections removes "saml_connections" edges to SAMLConnection entities.
+func (ouo *OrganizationUpdateOne) RemoveSamlConnections(s ...*SAMLConnection) *OrganizationUpdateOne {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return ouo.RemoveSamlConnectionIDs(ids...)
 }
 
 // Where appends a list predicates to the OrganizationUpdate builder.
@@ -795,6 +913,51 @@ func (ouo *OrganizationUpdateOne) sqlSave(ctx context.Context) (_node *Organizat
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(orginvitation.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if ouo.mutation.SamlConnectionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := ouo.mutation.RemovedSamlConnectionsIDs(); len(nodes) > 0 && !ouo.mutation.SamlConnectionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := ouo.mutation.SamlConnectionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.SamlConnectionsTable,
+			Columns: []string{organization.SamlConnectionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(samlconnection.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

@@ -24,6 +24,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
@@ -59,6 +60,7 @@ const (
 	TypeRecoveryContact     = "RecoveryContact"
 	TypeRecoveryRequest     = "RecoveryRequest"
 	TypeRole                = "Role"
+	TypeSAMLConnection      = "SAMLConnection"
 	TypeSecurityBlacklist   = "SecurityBlacklist"
 	TypeSession             = "Session"
 	TypeSocialAuthState     = "SocialAuthState"
@@ -5558,26 +5560,29 @@ func (m *OrgMemberMutation) ResetEdge(name string) error {
 // OrganizationMutation represents an operation that mutates the Organization nodes in the graph.
 type OrganizationMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *string
-	name               *string
-	slug               *string
-	logo_url           *string
-	metadata           *map[string]interface{}
-	created_at         *time.Time
-	clearedFields      map[string]struct{}
-	tenant             *string
-	clearedtenant      bool
-	members            map[string]struct{}
-	removedmembers     map[string]struct{}
-	clearedmembers     bool
-	invitations        map[string]struct{}
-	removedinvitations map[string]struct{}
-	clearedinvitations bool
-	done               bool
-	oldValue           func(context.Context) (*Organization, error)
-	predicates         []predicate.Organization
+	op                      Op
+	typ                     string
+	id                      *string
+	name                    *string
+	slug                    *string
+	logo_url                *string
+	metadata                *map[string]interface{}
+	created_at              *time.Time
+	clearedFields           map[string]struct{}
+	tenant                  *string
+	clearedtenant           bool
+	members                 map[string]struct{}
+	removedmembers          map[string]struct{}
+	clearedmembers          bool
+	invitations             map[string]struct{}
+	removedinvitations      map[string]struct{}
+	clearedinvitations      bool
+	saml_connections        map[string]struct{}
+	removedsaml_connections map[string]struct{}
+	clearedsaml_connections bool
+	done                    bool
+	oldValue                func(context.Context) (*Organization, error)
+	predicates              []predicate.Organization
 }
 
 var _ ent.Mutation = (*OrganizationMutation)(nil)
@@ -6061,6 +6066,60 @@ func (m *OrganizationMutation) ResetInvitations() {
 	m.removedinvitations = nil
 }
 
+// AddSamlConnectionIDs adds the "saml_connections" edge to the SAMLConnection entity by ids.
+func (m *OrganizationMutation) AddSamlConnectionIDs(ids ...string) {
+	if m.saml_connections == nil {
+		m.saml_connections = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.saml_connections[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSamlConnections clears the "saml_connections" edge to the SAMLConnection entity.
+func (m *OrganizationMutation) ClearSamlConnections() {
+	m.clearedsaml_connections = true
+}
+
+// SamlConnectionsCleared reports if the "saml_connections" edge to the SAMLConnection entity was cleared.
+func (m *OrganizationMutation) SamlConnectionsCleared() bool {
+	return m.clearedsaml_connections
+}
+
+// RemoveSamlConnectionIDs removes the "saml_connections" edge to the SAMLConnection entity by IDs.
+func (m *OrganizationMutation) RemoveSamlConnectionIDs(ids ...string) {
+	if m.removedsaml_connections == nil {
+		m.removedsaml_connections = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.saml_connections, ids[i])
+		m.removedsaml_connections[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSamlConnections returns the removed IDs of the "saml_connections" edge to the SAMLConnection entity.
+func (m *OrganizationMutation) RemovedSamlConnectionsIDs() (ids []string) {
+	for id := range m.removedsaml_connections {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SamlConnectionsIDs returns the "saml_connections" edge IDs in the mutation.
+func (m *OrganizationMutation) SamlConnectionsIDs() (ids []string) {
+	for id := range m.saml_connections {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSamlConnections resets all changes to the "saml_connections" edge.
+func (m *OrganizationMutation) ResetSamlConnections() {
+	m.saml_connections = nil
+	m.clearedsaml_connections = false
+	m.removedsaml_connections = nil
+}
+
 // Where appends a list predicates to the OrganizationMutation builder.
 func (m *OrganizationMutation) Where(ps ...predicate.Organization) {
 	m.predicates = append(m.predicates, ps...)
@@ -6294,7 +6353,7 @@ func (m *OrganizationMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *OrganizationMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.tenant != nil {
 		edges = append(edges, organization.EdgeTenant)
 	}
@@ -6303,6 +6362,9 @@ func (m *OrganizationMutation) AddedEdges() []string {
 	}
 	if m.invitations != nil {
 		edges = append(edges, organization.EdgeInvitations)
+	}
+	if m.saml_connections != nil {
+		edges = append(edges, organization.EdgeSamlConnections)
 	}
 	return edges
 }
@@ -6327,18 +6389,27 @@ func (m *OrganizationMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case organization.EdgeSamlConnections:
+		ids := make([]ent.Value, 0, len(m.saml_connections))
+		for id := range m.saml_connections {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *OrganizationMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removedmembers != nil {
 		edges = append(edges, organization.EdgeMembers)
 	}
 	if m.removedinvitations != nil {
 		edges = append(edges, organization.EdgeInvitations)
+	}
+	if m.removedsaml_connections != nil {
+		edges = append(edges, organization.EdgeSamlConnections)
 	}
 	return edges
 }
@@ -6359,13 +6430,19 @@ func (m *OrganizationMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case organization.EdgeSamlConnections:
+		ids := make([]ent.Value, 0, len(m.removedsaml_connections))
+		for id := range m.removedsaml_connections {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *OrganizationMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.clearedtenant {
 		edges = append(edges, organization.EdgeTenant)
 	}
@@ -6374,6 +6451,9 @@ func (m *OrganizationMutation) ClearedEdges() []string {
 	}
 	if m.clearedinvitations {
 		edges = append(edges, organization.EdgeInvitations)
+	}
+	if m.clearedsaml_connections {
+		edges = append(edges, organization.EdgeSamlConnections)
 	}
 	return edges
 }
@@ -6388,6 +6468,8 @@ func (m *OrganizationMutation) EdgeCleared(name string) bool {
 		return m.clearedmembers
 	case organization.EdgeInvitations:
 		return m.clearedinvitations
+	case organization.EdgeSamlConnections:
+		return m.clearedsaml_connections
 	}
 	return false
 }
@@ -6415,6 +6497,9 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 		return nil
 	case organization.EdgeInvitations:
 		m.ResetInvitations()
+		return nil
+	case organization.EdgeSamlConnections:
+		m.ResetSamlConnections()
 		return nil
 	}
 	return fmt.Errorf("unknown Organization edge %s", name)
@@ -11838,6 +11923,862 @@ func (m *RoleMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Role edge %s", name)
+}
+
+// SAMLConnectionMutation represents an operation that mutates the SAMLConnection nodes in the graph.
+type SAMLConnectionMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *string
+	idp_entity_id         *string
+	idp_sso_url           *string
+	idp_certificate       *string
+	allowed_domains       *[]string
+	appendallowed_domains []string
+	attribute_mapping     *map[string]string
+	enforce_sso           *bool
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	organization          *string
+	clearedorganization   bool
+	done                  bool
+	oldValue              func(context.Context) (*SAMLConnection, error)
+	predicates            []predicate.SAMLConnection
+}
+
+var _ ent.Mutation = (*SAMLConnectionMutation)(nil)
+
+// samlconnectionOption allows management of the mutation configuration using functional options.
+type samlconnectionOption func(*SAMLConnectionMutation)
+
+// newSAMLConnectionMutation creates new mutation for the SAMLConnection entity.
+func newSAMLConnectionMutation(c config, op Op, opts ...samlconnectionOption) *SAMLConnectionMutation {
+	m := &SAMLConnectionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSAMLConnection,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSAMLConnectionID sets the ID field of the mutation.
+func withSAMLConnectionID(id string) samlconnectionOption {
+	return func(m *SAMLConnectionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SAMLConnection
+		)
+		m.oldValue = func(ctx context.Context) (*SAMLConnection, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SAMLConnection.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSAMLConnection sets the old SAMLConnection of the mutation.
+func withSAMLConnection(node *SAMLConnection) samlconnectionOption {
+	return func(m *SAMLConnectionMutation) {
+		m.oldValue = func(context.Context) (*SAMLConnection, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SAMLConnectionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SAMLConnectionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SAMLConnection entities.
+func (m *SAMLConnectionMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SAMLConnectionMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SAMLConnectionMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SAMLConnection.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *SAMLConnectionMutation) SetOrganizationID(s string) {
+	m.organization = &s
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *SAMLConnectionMutation) OrganizationID() (r string, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldOrganizationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *SAMLConnectionMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetIdpEntityID sets the "idp_entity_id" field.
+func (m *SAMLConnectionMutation) SetIdpEntityID(s string) {
+	m.idp_entity_id = &s
+}
+
+// IdpEntityID returns the value of the "idp_entity_id" field in the mutation.
+func (m *SAMLConnectionMutation) IdpEntityID() (r string, exists bool) {
+	v := m.idp_entity_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdpEntityID returns the old "idp_entity_id" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldIdpEntityID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdpEntityID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdpEntityID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdpEntityID: %w", err)
+	}
+	return oldValue.IdpEntityID, nil
+}
+
+// ResetIdpEntityID resets all changes to the "idp_entity_id" field.
+func (m *SAMLConnectionMutation) ResetIdpEntityID() {
+	m.idp_entity_id = nil
+}
+
+// SetIdpSSOURL sets the "idp_sso_url" field.
+func (m *SAMLConnectionMutation) SetIdpSSOURL(s string) {
+	m.idp_sso_url = &s
+}
+
+// IdpSSOURL returns the value of the "idp_sso_url" field in the mutation.
+func (m *SAMLConnectionMutation) IdpSSOURL() (r string, exists bool) {
+	v := m.idp_sso_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdpSSOURL returns the old "idp_sso_url" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldIdpSSOURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdpSSOURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdpSSOURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdpSSOURL: %w", err)
+	}
+	return oldValue.IdpSSOURL, nil
+}
+
+// ResetIdpSSOURL resets all changes to the "idp_sso_url" field.
+func (m *SAMLConnectionMutation) ResetIdpSSOURL() {
+	m.idp_sso_url = nil
+}
+
+// SetIdpCertificate sets the "idp_certificate" field.
+func (m *SAMLConnectionMutation) SetIdpCertificate(s string) {
+	m.idp_certificate = &s
+}
+
+// IdpCertificate returns the value of the "idp_certificate" field in the mutation.
+func (m *SAMLConnectionMutation) IdpCertificate() (r string, exists bool) {
+	v := m.idp_certificate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdpCertificate returns the old "idp_certificate" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldIdpCertificate(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdpCertificate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdpCertificate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdpCertificate: %w", err)
+	}
+	return oldValue.IdpCertificate, nil
+}
+
+// ResetIdpCertificate resets all changes to the "idp_certificate" field.
+func (m *SAMLConnectionMutation) ResetIdpCertificate() {
+	m.idp_certificate = nil
+}
+
+// SetAllowedDomains sets the "allowed_domains" field.
+func (m *SAMLConnectionMutation) SetAllowedDomains(s []string) {
+	m.allowed_domains = &s
+	m.appendallowed_domains = nil
+}
+
+// AllowedDomains returns the value of the "allowed_domains" field in the mutation.
+func (m *SAMLConnectionMutation) AllowedDomains() (r []string, exists bool) {
+	v := m.allowed_domains
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowedDomains returns the old "allowed_domains" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldAllowedDomains(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowedDomains is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowedDomains requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowedDomains: %w", err)
+	}
+	return oldValue.AllowedDomains, nil
+}
+
+// AppendAllowedDomains adds s to the "allowed_domains" field.
+func (m *SAMLConnectionMutation) AppendAllowedDomains(s []string) {
+	m.appendallowed_domains = append(m.appendallowed_domains, s...)
+}
+
+// AppendedAllowedDomains returns the list of values that were appended to the "allowed_domains" field in this mutation.
+func (m *SAMLConnectionMutation) AppendedAllowedDomains() ([]string, bool) {
+	if len(m.appendallowed_domains) == 0 {
+		return nil, false
+	}
+	return m.appendallowed_domains, true
+}
+
+// ResetAllowedDomains resets all changes to the "allowed_domains" field.
+func (m *SAMLConnectionMutation) ResetAllowedDomains() {
+	m.allowed_domains = nil
+	m.appendallowed_domains = nil
+}
+
+// SetAttributeMapping sets the "attribute_mapping" field.
+func (m *SAMLConnectionMutation) SetAttributeMapping(value map[string]string) {
+	m.attribute_mapping = &value
+}
+
+// AttributeMapping returns the value of the "attribute_mapping" field in the mutation.
+func (m *SAMLConnectionMutation) AttributeMapping() (r map[string]string, exists bool) {
+	v := m.attribute_mapping
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttributeMapping returns the old "attribute_mapping" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldAttributeMapping(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttributeMapping is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttributeMapping requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttributeMapping: %w", err)
+	}
+	return oldValue.AttributeMapping, nil
+}
+
+// ClearAttributeMapping clears the value of the "attribute_mapping" field.
+func (m *SAMLConnectionMutation) ClearAttributeMapping() {
+	m.attribute_mapping = nil
+	m.clearedFields[samlconnection.FieldAttributeMapping] = struct{}{}
+}
+
+// AttributeMappingCleared returns if the "attribute_mapping" field was cleared in this mutation.
+func (m *SAMLConnectionMutation) AttributeMappingCleared() bool {
+	_, ok := m.clearedFields[samlconnection.FieldAttributeMapping]
+	return ok
+}
+
+// ResetAttributeMapping resets all changes to the "attribute_mapping" field.
+func (m *SAMLConnectionMutation) ResetAttributeMapping() {
+	m.attribute_mapping = nil
+	delete(m.clearedFields, samlconnection.FieldAttributeMapping)
+}
+
+// SetEnforceSSO sets the "enforce_sso" field.
+func (m *SAMLConnectionMutation) SetEnforceSSO(b bool) {
+	m.enforce_sso = &b
+}
+
+// EnforceSSO returns the value of the "enforce_sso" field in the mutation.
+func (m *SAMLConnectionMutation) EnforceSSO() (r bool, exists bool) {
+	v := m.enforce_sso
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnforceSSO returns the old "enforce_sso" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldEnforceSSO(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnforceSSO is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnforceSSO requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnforceSSO: %w", err)
+	}
+	return oldValue.EnforceSSO, nil
+}
+
+// ResetEnforceSSO resets all changes to the "enforce_sso" field.
+func (m *SAMLConnectionMutation) ResetEnforceSSO() {
+	m.enforce_sso = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SAMLConnectionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SAMLConnectionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SAMLConnectionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SAMLConnectionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SAMLConnectionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SAMLConnectionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *SAMLConnectionMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[samlconnection.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *SAMLConnectionMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *SAMLConnectionMutation) OrganizationIDs() (ids []string) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *SAMLConnectionMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// Where appends a list predicates to the SAMLConnectionMutation builder.
+func (m *SAMLConnectionMutation) Where(ps ...predicate.SAMLConnection) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SAMLConnectionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SAMLConnectionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SAMLConnection, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SAMLConnectionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SAMLConnectionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SAMLConnection).
+func (m *SAMLConnectionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SAMLConnectionMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.organization != nil {
+		fields = append(fields, samlconnection.FieldOrganizationID)
+	}
+	if m.idp_entity_id != nil {
+		fields = append(fields, samlconnection.FieldIdpEntityID)
+	}
+	if m.idp_sso_url != nil {
+		fields = append(fields, samlconnection.FieldIdpSSOURL)
+	}
+	if m.idp_certificate != nil {
+		fields = append(fields, samlconnection.FieldIdpCertificate)
+	}
+	if m.allowed_domains != nil {
+		fields = append(fields, samlconnection.FieldAllowedDomains)
+	}
+	if m.attribute_mapping != nil {
+		fields = append(fields, samlconnection.FieldAttributeMapping)
+	}
+	if m.enforce_sso != nil {
+		fields = append(fields, samlconnection.FieldEnforceSSO)
+	}
+	if m.created_at != nil {
+		fields = append(fields, samlconnection.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, samlconnection.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SAMLConnectionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case samlconnection.FieldOrganizationID:
+		return m.OrganizationID()
+	case samlconnection.FieldIdpEntityID:
+		return m.IdpEntityID()
+	case samlconnection.FieldIdpSSOURL:
+		return m.IdpSSOURL()
+	case samlconnection.FieldIdpCertificate:
+		return m.IdpCertificate()
+	case samlconnection.FieldAllowedDomains:
+		return m.AllowedDomains()
+	case samlconnection.FieldAttributeMapping:
+		return m.AttributeMapping()
+	case samlconnection.FieldEnforceSSO:
+		return m.EnforceSSO()
+	case samlconnection.FieldCreatedAt:
+		return m.CreatedAt()
+	case samlconnection.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SAMLConnectionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case samlconnection.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case samlconnection.FieldIdpEntityID:
+		return m.OldIdpEntityID(ctx)
+	case samlconnection.FieldIdpSSOURL:
+		return m.OldIdpSSOURL(ctx)
+	case samlconnection.FieldIdpCertificate:
+		return m.OldIdpCertificate(ctx)
+	case samlconnection.FieldAllowedDomains:
+		return m.OldAllowedDomains(ctx)
+	case samlconnection.FieldAttributeMapping:
+		return m.OldAttributeMapping(ctx)
+	case samlconnection.FieldEnforceSSO:
+		return m.OldEnforceSSO(ctx)
+	case samlconnection.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case samlconnection.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SAMLConnection field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SAMLConnectionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case samlconnection.FieldOrganizationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case samlconnection.FieldIdpEntityID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdpEntityID(v)
+		return nil
+	case samlconnection.FieldIdpSSOURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdpSSOURL(v)
+		return nil
+	case samlconnection.FieldIdpCertificate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdpCertificate(v)
+		return nil
+	case samlconnection.FieldAllowedDomains:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowedDomains(v)
+		return nil
+	case samlconnection.FieldAttributeMapping:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttributeMapping(v)
+		return nil
+	case samlconnection.FieldEnforceSSO:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnforceSSO(v)
+		return nil
+	case samlconnection.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case samlconnection.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SAMLConnection field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SAMLConnectionMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SAMLConnectionMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SAMLConnectionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SAMLConnection numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SAMLConnectionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(samlconnection.FieldAttributeMapping) {
+		fields = append(fields, samlconnection.FieldAttributeMapping)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SAMLConnectionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SAMLConnectionMutation) ClearField(name string) error {
+	switch name {
+	case samlconnection.FieldAttributeMapping:
+		m.ClearAttributeMapping()
+		return nil
+	}
+	return fmt.Errorf("unknown SAMLConnection nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SAMLConnectionMutation) ResetField(name string) error {
+	switch name {
+	case samlconnection.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case samlconnection.FieldIdpEntityID:
+		m.ResetIdpEntityID()
+		return nil
+	case samlconnection.FieldIdpSSOURL:
+		m.ResetIdpSSOURL()
+		return nil
+	case samlconnection.FieldIdpCertificate:
+		m.ResetIdpCertificate()
+		return nil
+	case samlconnection.FieldAllowedDomains:
+		m.ResetAllowedDomains()
+		return nil
+	case samlconnection.FieldAttributeMapping:
+		m.ResetAttributeMapping()
+		return nil
+	case samlconnection.FieldEnforceSSO:
+		m.ResetEnforceSSO()
+		return nil
+	case samlconnection.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case samlconnection.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SAMLConnection field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SAMLConnectionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.organization != nil {
+		edges = append(edges, samlconnection.EdgeOrganization)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SAMLConnectionMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case samlconnection.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SAMLConnectionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SAMLConnectionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SAMLConnectionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedorganization {
+		edges = append(edges, samlconnection.EdgeOrganization)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SAMLConnectionMutation) EdgeCleared(name string) bool {
+	switch name {
+	case samlconnection.EdgeOrganization:
+		return m.clearedorganization
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SAMLConnectionMutation) ClearEdge(name string) error {
+	switch name {
+	case samlconnection.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown SAMLConnection unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SAMLConnectionMutation) ResetEdge(name string) error {
+	switch name {
+	case samlconnection.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown SAMLConnection edge %s", name)
 }
 
 // SecurityBlacklistMutation represents an operation that mutates the SecurityBlacklist nodes in the graph.

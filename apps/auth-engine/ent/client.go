@@ -27,6 +27,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
@@ -70,6 +71,8 @@ type Client struct {
 	RecoveryRequest *RecoveryRequestClient
 	// Role is the client for interacting with the Role builders.
 	Role *RoleClient
+	// SAMLConnection is the client for interacting with the SAMLConnection builders.
+	SAMLConnection *SAMLConnectionClient
 	// SecurityBlacklist is the client for interacting with the SecurityBlacklist builders.
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
@@ -117,6 +120,7 @@ func (c *Client) init() {
 	c.RecoveryContact = NewRecoveryContactClient(c.config)
 	c.RecoveryRequest = NewRecoveryRequestClient(c.config)
 	c.Role = NewRoleClient(c.config)
+	c.SAMLConnection = NewSAMLConnectionClient(c.config)
 	c.SecurityBlacklist = NewSecurityBlacklistClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.SocialAuthState = NewSocialAuthStateClient(c.config)
@@ -233,6 +237,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RecoveryContact:     NewRecoveryContactClient(cfg),
 		RecoveryRequest:     NewRecoveryRequestClient(cfg),
 		Role:                NewRoleClient(cfg),
+		SAMLConnection:      NewSAMLConnectionClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
 		SocialAuthState:     NewSocialAuthStateClient(cfg),
@@ -276,6 +281,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RecoveryContact:     NewRecoveryContactClient(cfg),
 		RecoveryRequest:     NewRecoveryRequestClient(cfg),
 		Role:                NewRoleClient(cfg),
+		SAMLConnection:      NewSAMLConnectionClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
 		SocialAuthState:     NewSocialAuthStateClient(cfg),
@@ -319,9 +325,10 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
 		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
-		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.SocialAuthState,
-		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
-		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.RecoveryRequest, c.Role, c.SAMLConnection, c.SecurityBlacklist, c.Session,
+		c.SocialAuthState, c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User,
+		c.UserIpSubnetHistory, c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint,
+		c.WebhookEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -333,9 +340,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
 		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
-		c.RecoveryRequest, c.Role, c.SecurityBlacklist, c.Session, c.SocialAuthState,
-		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
-		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.RecoveryRequest, c.Role, c.SAMLConnection, c.SecurityBlacklist, c.Session,
+		c.SocialAuthState, c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User,
+		c.UserIpSubnetHistory, c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint,
+		c.WebhookEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -368,6 +376,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RecoveryRequest.mutate(ctx, m)
 	case *RoleMutation:
 		return c.Role.mutate(ctx, m)
+	case *SAMLConnectionMutation:
+		return c.SAMLConnection.mutate(ctx, m)
 	case *SecurityBlacklistMutation:
 		return c.SecurityBlacklist.mutate(ctx, m)
 	case *SessionMutation:
@@ -1495,6 +1505,22 @@ func (c *OrganizationClient) QueryInvitations(o *Organization) *OrgInvitationQue
 	return query
 }
 
+// QuerySamlConnections queries the saml_connections edge of a Organization.
+func (c *OrganizationClient) QuerySamlConnections(o *Organization) *SAMLConnectionQuery {
+	query := (&SAMLConnectionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := o.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, id),
+			sqlgraph.To(samlconnection.Table, samlconnection.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.SamlConnectionsTable, organization.SamlConnectionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(o.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *OrganizationClient) Hooks() []Hook {
 	return c.hooks.Organization
@@ -2310,6 +2336,155 @@ func (c *RoleClient) mutate(ctx context.Context, m *RoleMutation) (Value, error)
 		return (&RoleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Role mutation op: %q", m.Op())
+	}
+}
+
+// SAMLConnectionClient is a client for the SAMLConnection schema.
+type SAMLConnectionClient struct {
+	config
+}
+
+// NewSAMLConnectionClient returns a client for the SAMLConnection from the given config.
+func NewSAMLConnectionClient(c config) *SAMLConnectionClient {
+	return &SAMLConnectionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `samlconnection.Hooks(f(g(h())))`.
+func (c *SAMLConnectionClient) Use(hooks ...Hook) {
+	c.hooks.SAMLConnection = append(c.hooks.SAMLConnection, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `samlconnection.Intercept(f(g(h())))`.
+func (c *SAMLConnectionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SAMLConnection = append(c.inters.SAMLConnection, interceptors...)
+}
+
+// Create returns a builder for creating a SAMLConnection entity.
+func (c *SAMLConnectionClient) Create() *SAMLConnectionCreate {
+	mutation := newSAMLConnectionMutation(c.config, OpCreate)
+	return &SAMLConnectionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SAMLConnection entities.
+func (c *SAMLConnectionClient) CreateBulk(builders ...*SAMLConnectionCreate) *SAMLConnectionCreateBulk {
+	return &SAMLConnectionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SAMLConnectionClient) MapCreateBulk(slice any, setFunc func(*SAMLConnectionCreate, int)) *SAMLConnectionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SAMLConnectionCreateBulk{err: fmt.Errorf("calling to SAMLConnectionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SAMLConnectionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SAMLConnectionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SAMLConnection.
+func (c *SAMLConnectionClient) Update() *SAMLConnectionUpdate {
+	mutation := newSAMLConnectionMutation(c.config, OpUpdate)
+	return &SAMLConnectionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SAMLConnectionClient) UpdateOne(sc *SAMLConnection) *SAMLConnectionUpdateOne {
+	mutation := newSAMLConnectionMutation(c.config, OpUpdateOne, withSAMLConnection(sc))
+	return &SAMLConnectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SAMLConnectionClient) UpdateOneID(id string) *SAMLConnectionUpdateOne {
+	mutation := newSAMLConnectionMutation(c.config, OpUpdateOne, withSAMLConnectionID(id))
+	return &SAMLConnectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SAMLConnection.
+func (c *SAMLConnectionClient) Delete() *SAMLConnectionDelete {
+	mutation := newSAMLConnectionMutation(c.config, OpDelete)
+	return &SAMLConnectionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SAMLConnectionClient) DeleteOne(sc *SAMLConnection) *SAMLConnectionDeleteOne {
+	return c.DeleteOneID(sc.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SAMLConnectionClient) DeleteOneID(id string) *SAMLConnectionDeleteOne {
+	builder := c.Delete().Where(samlconnection.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SAMLConnectionDeleteOne{builder}
+}
+
+// Query returns a query builder for SAMLConnection.
+func (c *SAMLConnectionClient) Query() *SAMLConnectionQuery {
+	return &SAMLConnectionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSAMLConnection},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SAMLConnection entity by its id.
+func (c *SAMLConnectionClient) Get(ctx context.Context, id string) (*SAMLConnection, error) {
+	return c.Query().Where(samlconnection.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SAMLConnectionClient) GetX(ctx context.Context, id string) *SAMLConnection {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a SAMLConnection.
+func (c *SAMLConnectionClient) QueryOrganization(sc *SAMLConnection) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := sc.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(samlconnection.Table, samlconnection.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, samlconnection.OrganizationTable, samlconnection.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(sc.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SAMLConnectionClient) Hooks() []Hook {
+	return c.hooks.SAMLConnection
+}
+
+// Interceptors returns the client interceptors.
+func (c *SAMLConnectionClient) Interceptors() []Interceptor {
+	return c.inters.SAMLConnection
+}
+
+func (c *SAMLConnectionClient) mutate(ctx context.Context, m *SAMLConnectionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SAMLConnectionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SAMLConnectionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SAMLConnectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SAMLConnectionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SAMLConnection mutation op: %q", m.Op())
 	}
 }
 
@@ -4361,14 +4536,14 @@ func (c *WebhookEventClient) mutate(ctx context.Context, m *WebhookEventMutation
 type (
 	hooks struct {
 		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
-		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role,
+		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role, SAMLConnection,
 		SecurityBlacklist, Session, SocialAuthState, Tenant, TrustedDevice,
 		TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory, UserRole,
 		WebhookEndpoint, WebhookEvent []ent.Hook
 	}
 	inters struct {
 		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
-		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role,
+		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role, SAMLConnection,
 		SecurityBlacklist, Session, SocialAuthState, Tenant, TrustedDevice,
 		TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory, UserRole,
 		WebhookEndpoint, WebhookEvent []ent.Interceptor

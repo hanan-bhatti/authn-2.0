@@ -32,6 +32,8 @@ const (
 	EdgeMembers = "members"
 	// EdgeInvitations holds the string denoting the invitations edge name in mutations.
 	EdgeInvitations = "invitations"
+	// EdgeSamlConnections holds the string denoting the saml_connections edge name in mutations.
+	EdgeSamlConnections = "saml_connections"
 	// Table holds the table name of the organization in the database.
 	Table = "organizations"
 	// TenantTable is the table that holds the tenant relation/edge.
@@ -55,6 +57,13 @@ const (
 	InvitationsInverseTable = "org_invitations"
 	// InvitationsColumn is the table column denoting the invitations relation/edge.
 	InvitationsColumn = "organization_id"
+	// SamlConnectionsTable is the table that holds the saml_connections relation/edge.
+	SamlConnectionsTable = "saml_connections"
+	// SamlConnectionsInverseTable is the table name for the SAMLConnection entity.
+	// It exists in this package in order to avoid circular dependency with the "samlconnection" package.
+	SamlConnectionsInverseTable = "saml_connections"
+	// SamlConnectionsColumn is the table column denoting the saml_connections relation/edge.
+	SamlConnectionsColumn = "organization_id"
 )
 
 // Columns holds all SQL columns for organization fields.
@@ -156,6 +165,20 @@ func ByInvitations(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newInvitationsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// BySamlConnectionsCount orders the results by saml_connections count.
+func BySamlConnectionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSamlConnectionsStep(), opts...)
+	}
+}
+
+// BySamlConnections orders the results by saml_connections terms.
+func BySamlConnections(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSamlConnectionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newTenantStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -175,5 +198,12 @@ func newInvitationsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(InvitationsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, InvitationsTable, InvitationsColumn),
+	)
+}
+func newSamlConnectionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SamlConnectionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SamlConnectionsTable, SamlConnectionsColumn),
 	)
 }

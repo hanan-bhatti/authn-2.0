@@ -16,19 +16,21 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 )
 
 // OrganizationQuery is the builder for querying Organization entities.
 type OrganizationQuery struct {
 	config
-	ctx             *QueryContext
-	order           []organization.OrderOption
-	inters          []Interceptor
-	predicates      []predicate.Organization
-	withTenant      *TenantQuery
-	withMembers     *OrgMemberQuery
-	withInvitations *OrgInvitationQuery
+	ctx                 *QueryContext
+	order               []organization.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.Organization
+	withTenant          *TenantQuery
+	withMembers         *OrgMemberQuery
+	withInvitations     *OrgInvitationQuery
+	withSamlConnections *SAMLConnectionQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -124,6 +126,28 @@ func (oq *OrganizationQuery) QueryInvitations() *OrgInvitationQuery {
 			sqlgraph.From(organization.Table, organization.FieldID, selector),
 			sqlgraph.To(orginvitation.Table, orginvitation.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, organization.InvitationsTable, organization.InvitationsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(oq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySamlConnections chains the current query on the "saml_connections" edge.
+func (oq *OrganizationQuery) QuerySamlConnections() *SAMLConnectionQuery {
+	query := (&SAMLConnectionClient{config: oq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := oq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := oq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, selector),
+			sqlgraph.To(samlconnection.Table, samlconnection.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.SamlConnectionsTable, organization.SamlConnectionsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(oq.driver.Dialect(), step)
 		return fromU, nil
@@ -318,14 +342,15 @@ func (oq *OrganizationQuery) Clone() *OrganizationQuery {
 		return nil
 	}
 	return &OrganizationQuery{
-		config:          oq.config,
-		ctx:             oq.ctx.Clone(),
-		order:           append([]organization.OrderOption{}, oq.order...),
-		inters:          append([]Interceptor{}, oq.inters...),
-		predicates:      append([]predicate.Organization{}, oq.predicates...),
-		withTenant:      oq.withTenant.Clone(),
-		withMembers:     oq.withMembers.Clone(),
-		withInvitations: oq.withInvitations.Clone(),
+		config:              oq.config,
+		ctx:                 oq.ctx.Clone(),
+		order:               append([]organization.OrderOption{}, oq.order...),
+		inters:              append([]Interceptor{}, oq.inters...),
+		predicates:          append([]predicate.Organization{}, oq.predicates...),
+		withTenant:          oq.withTenant.Clone(),
+		withMembers:         oq.withMembers.Clone(),
+		withInvitations:     oq.withInvitations.Clone(),
+		withSamlConnections: oq.withSamlConnections.Clone(),
 		// clone intermediate query.
 		sql:  oq.sql.Clone(),
 		path: oq.path,
@@ -362,6 +387,17 @@ func (oq *OrganizationQuery) WithInvitations(opts ...func(*OrgInvitationQuery)) 
 		opt(query)
 	}
 	oq.withInvitations = query
+	return oq
+}
+
+// WithSamlConnections tells the query-builder to eager-load the nodes that are connected to
+// the "saml_connections" edge. The optional arguments are used to configure the query builder of the edge.
+func (oq *OrganizationQuery) WithSamlConnections(opts ...func(*SAMLConnectionQuery)) *OrganizationQuery {
+	query := (&SAMLConnectionClient{config: oq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	oq.withSamlConnections = query
 	return oq
 }
 
@@ -443,10 +479,11 @@ func (oq *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*Organization{}
 		_spec       = oq.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			oq.withTenant != nil,
 			oq.withMembers != nil,
 			oq.withInvitations != nil,
+			oq.withSamlConnections != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -484,6 +521,13 @@ func (oq *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 		if err := oq.loadInvitations(ctx, query, nodes,
 			func(n *Organization) { n.Edges.Invitations = []*OrgInvitation{} },
 			func(n *Organization, e *OrgInvitation) { n.Edges.Invitations = append(n.Edges.Invitations, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := oq.withSamlConnections; query != nil {
+		if err := oq.loadSamlConnections(ctx, query, nodes,
+			func(n *Organization) { n.Edges.SamlConnections = []*SAMLConnection{} },
+			func(n *Organization, e *SAMLConnection) { n.Edges.SamlConnections = append(n.Edges.SamlConnections, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -564,6 +608,36 @@ func (oq *OrganizationQuery) loadInvitations(ctx context.Context, query *OrgInvi
 	}
 	query.Where(predicate.OrgInvitation(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(organization.InvitationsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OrganizationID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "organization_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (oq *OrganizationQuery) loadSamlConnections(ctx context.Context, query *SAMLConnectionQuery, nodes []*Organization, init func(*Organization), assign func(*Organization, *SAMLConnection)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Organization)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(samlconnection.FieldOrganizationID)
+	}
+	query.Where(predicate.SAMLConnection(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(organization.SamlConnectionsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

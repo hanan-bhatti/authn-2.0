@@ -36,6 +36,8 @@ type Tx struct {
 	RecoveryRequest *RecoveryRequestClient
 	// Role is the client for interacting with the Role builders.
 	Role *RoleClient
+	// SAMLConnection is the client for interacting with the SAMLConnection builders.
+	SAMLConnection *SAMLConnectionClient
 	// SecurityBlacklist is the client for interacting with the SecurityBlacklist builders.
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
@@ -203,6 +205,7 @@ func (tx *Tx) init() {
 	tx.RecoveryContact = NewRecoveryContactClient(tx.config)
 	tx.RecoveryRequest = NewRecoveryRequestClient(tx.config)
 	tx.Role = NewRoleClient(tx.config)
+	tx.SAMLConnection = NewSAMLConnectionClient(tx.config)
 	tx.SecurityBlacklist = NewSecurityBlacklistClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.SocialAuthState = NewSocialAuthStateClient(tx.config)

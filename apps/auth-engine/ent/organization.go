@@ -46,9 +46,11 @@ type OrganizationEdges struct {
 	Members []*OrgMember `json:"members,omitempty"`
 	// Invitations holds the value of the invitations edge.
 	Invitations []*OrgInvitation `json:"invitations,omitempty"`
+	// SamlConnections holds the value of the saml_connections edge.
+	SamlConnections []*SAMLConnection `json:"saml_connections,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // TenantOrErr returns the Tenant value or an error if the edge
@@ -78,6 +80,15 @@ func (e OrganizationEdges) InvitationsOrErr() ([]*OrgInvitation, error) {
 		return e.Invitations, nil
 	}
 	return nil, &NotLoadedError{edge: "invitations"}
+}
+
+// SamlConnectionsOrErr returns the SamlConnections value or an error if the edge
+// was not loaded in eager-loading.
+func (e OrganizationEdges) SamlConnectionsOrErr() ([]*SAMLConnection, error) {
+	if e.loadedTypes[3] {
+		return e.SamlConnections, nil
+	}
+	return nil, &NotLoadedError{edge: "saml_connections"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -176,6 +187,11 @@ func (o *Organization) QueryMembers() *OrgMemberQuery {
 // QueryInvitations queries the "invitations" edge of the Organization entity.
 func (o *Organization) QueryInvitations() *OrgInvitationQuery {
 	return NewOrganizationClient(o.config).QueryInvitations(o)
+}
+
+// QuerySamlConnections queries the "saml_connections" edge of the Organization entity.
+func (o *Organization) QuerySamlConnections() *SAMLConnectionQuery {
+	return NewOrganizationClient(o.config).QuerySamlConnections(o)
 }
 
 // Update returns a builder for updating this Organization.

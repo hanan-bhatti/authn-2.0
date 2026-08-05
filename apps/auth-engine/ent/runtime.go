@@ -17,6 +17,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/schema"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
@@ -304,6 +305,38 @@ func init() {
 	role.DefaultUpdatedAt = roleDescUpdatedAt.Default.(func() time.Time)
 	// role.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	role.UpdateDefaultUpdatedAt = roleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	samlconnectionFields := schema.SAMLConnection{}.Fields()
+	_ = samlconnectionFields
+	// samlconnectionDescOrganizationID is the schema descriptor for organization_id field.
+	samlconnectionDescOrganizationID := samlconnectionFields[1].Descriptor()
+	// samlconnection.OrganizationIDValidator is a validator for the "organization_id" field. It is called by the builders before save.
+	samlconnection.OrganizationIDValidator = samlconnectionDescOrganizationID.Validators[0].(func(string) error)
+	// samlconnectionDescIdpEntityID is the schema descriptor for idp_entity_id field.
+	samlconnectionDescIdpEntityID := samlconnectionFields[2].Descriptor()
+	// samlconnection.IdpEntityIDValidator is a validator for the "idp_entity_id" field. It is called by the builders before save.
+	samlconnection.IdpEntityIDValidator = samlconnectionDescIdpEntityID.Validators[0].(func(string) error)
+	// samlconnectionDescIdpSSOURL is the schema descriptor for idp_sso_url field.
+	samlconnectionDescIdpSSOURL := samlconnectionFields[3].Descriptor()
+	// samlconnection.IdpSSOURLValidator is a validator for the "idp_sso_url" field. It is called by the builders before save.
+	samlconnection.IdpSSOURLValidator = samlconnectionDescIdpSSOURL.Validators[0].(func(string) error)
+	// samlconnectionDescIdpCertificate is the schema descriptor for idp_certificate field.
+	samlconnectionDescIdpCertificate := samlconnectionFields[4].Descriptor()
+	// samlconnection.IdpCertificateValidator is a validator for the "idp_certificate" field. It is called by the builders before save.
+	samlconnection.IdpCertificateValidator = samlconnectionDescIdpCertificate.Validators[0].(func(string) error)
+	// samlconnectionDescEnforceSSO is the schema descriptor for enforce_sso field.
+	samlconnectionDescEnforceSSO := samlconnectionFields[7].Descriptor()
+	// samlconnection.DefaultEnforceSSO holds the default value on creation for the enforce_sso field.
+	samlconnection.DefaultEnforceSSO = samlconnectionDescEnforceSSO.Default.(bool)
+	// samlconnectionDescCreatedAt is the schema descriptor for created_at field.
+	samlconnectionDescCreatedAt := samlconnectionFields[8].Descriptor()
+	// samlconnection.DefaultCreatedAt holds the default value on creation for the created_at field.
+	samlconnection.DefaultCreatedAt = samlconnectionDescCreatedAt.Default.(func() time.Time)
+	// samlconnectionDescUpdatedAt is the schema descriptor for updated_at field.
+	samlconnectionDescUpdatedAt := samlconnectionFields[9].Descriptor()
+	// samlconnection.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	samlconnection.DefaultUpdatedAt = samlconnectionDescUpdatedAt.Default.(func() time.Time)
+	// samlconnection.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	samlconnection.UpdateDefaultUpdatedAt = samlconnectionDescUpdatedAt.UpdateDefault.(func() time.Time)
 	securityblacklistFields := schema.SecurityBlacklist{}.Fields()
 	_ = securityblacklistFields
 	// securityblacklistDescTenantID is the schema descriptor for tenant_id field.
