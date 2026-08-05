@@ -670,24 +670,39 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `422 Unprocessable Entity`: Impersonation duration violates policy bounds (`must be between 1 and 60 minutes`).
 
 ### 3.12 Admin API Keys (`POST /v1/admin/keys/`, `GET /v1/admin/keys/`, `POST /v1/admin/keys/:id/revoke`)
-- **Description**: Allows tenant administrators to issue publishable client keys (`pk_...`) or secret keys (`sk_...`) for server SDKs.
+
+> **Last Verified**: `2026-08-06` — live `curl` attack suite against running server.
+> See full endpoint doc: [`docs/endpoints/admin-api-keys.md`](endpoints/admin-api-keys.md)
+
+- **Description**: Issues publishable client keys (`pk_...`) or secret keys (`sk_...`) for server SDKs. Enforces environment cross-isolation (`test` keys cannot manage `live` keys), stores SHA-256 hashes at rest, and handles instant key revocation.
 - **Request (`POST /v1/admin/keys/`)**:
 ```json
 {
-  "application_id": "app_test123",
-  "key_type": "secret",
-  "name": "Backend SDK Key"
+  "name": "Stripe Webhook Handler",
+  "type": "secret",
+  "environment": "test",
+  "expires_in_days": 30
 }
 ```
-- **Response (201 Created)**:
+- **Response (201 Created — Includes raw_key ONCE)**:
 ```json
 {
-  "id": "key_8a9b0c1d",
-  "key": "sk_test_12345678901234567890123456789012",
-  "key_type": "secret",
-  "environment": "test",
-  "created_at": "2026-08-05T05:00:00Z"
+  "key": {
+    "id": "key_1e3d11488ab3",
+    "application_id": "app_test123",
+    "name": "Stripe Webhook Handler",
+    "type": "secret",
+    "key_prefix": "sk_test_",
+    "environment": "test",
+    "created_at": "2026-08-06T03:16:31Z",
+    "expires_at": "2026-09-05T03:16:31Z"
+  },
+  "raw_key": "sk_test_3a22900c15f9f6cb3250ac9d78edca11a56273bcd40cd1fe32a81e3d11488ab3"
 }
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request`: Environment mismatch (`environment mismatch: test-mode admin key cannot manage live-mode keys and vice versa`) or invalid key type (`invalid key type: expected 'publishable' or 'secret'`).
+  - `401 Unauthorized`: Invalid, expired, or revoked API key.
 ```
 *(Note: Full secret key value is returned ONCE on creation and never stored in plaintext)*
 

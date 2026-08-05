@@ -979,6 +979,56 @@
 					}
 				},
 				{
+					"name": "Admin API Keys — Issue Key",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Stripe Webhook Handler\",\n  \"type\": \"secret\",\n  \"environment\": \"test\",\n  \"expires_in_days\": 30\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/keys",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys"]
+						},
+						"description": "Issues a new publishable or secret API key. Enforces environment isolation.\n\nVerified response (201 Created):\n{\n  \"key\": {\n    \"id\": \"key_1e3d11488ab3\",\n    \"name\": \"Stripe Webhook Handler\",\n    \"type\": \"secret\"\n  },\n  \"raw_key\": \"sk_test_3a22900c...\"\n}"
+					}
+				},
+				{
+					"name": "Admin API Keys — List Keys",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/keys",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys"]
+						},
+						"description": "Lists all active and revoked API keys for the caller's application. Never exposes raw keys or hashes."
+					}
+				},
+				{
+					"name": "Admin API Keys — Revoke Key",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/keys/key_1e3d11488ab3/revoke",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "keys", "key_1e3d11488ab3", "revoke"]
+						},
+						"description": "Revokes an API key instantly by ID.\n\nVerified response (200 OK):\n{\"id\":\"key_1e3d11488ab3\",\"status\":\"revoked\"}"
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
