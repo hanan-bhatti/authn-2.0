@@ -265,6 +265,11 @@ func handleImpersonationError(c *fiber.Ctx, err error) error {
 			"error": "target user has not granted support access permission",
 			"code":  "user_opt_in_required",
 		})
+	case errors.Is(err, ErrInsufficientPermissions):
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "insufficient permissions: caller lacks 'users:impersonate' permission required to initiate impersonation",
+			"code":  "insufficient_permissions",
+		})
 	default:
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
 			"error": err.Error(),

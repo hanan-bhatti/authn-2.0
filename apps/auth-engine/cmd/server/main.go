@@ -240,7 +240,7 @@ func main() {
 	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
 	webhookHandler := webhook.NewHandler(webhookService)
 
-	impersonationService := impersonation.NewService(factory, cfg, webhookDispatcher, emailProvider)
+	impersonationService := impersonation.NewService(factory, cfg, webhookDispatcher, emailProvider, rbacService)
 	impersonationHandler := impersonation.NewHandler(impersonationService, policyRepo, authService)
 
 	// 6. System & Feature Routes

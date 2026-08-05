@@ -50,6 +50,11 @@
 			"key": "webhookEndpointId",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "impersonationToken",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -1737,6 +1742,123 @@
 							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
 						},
 						"description": "Deletes webhook endpoint and cascade deletes associated child delivery logs."
+					}
+				}
+			]
+		},
+		{
+			"name": "16 Admin User Impersonation (FR-14)",
+			"item": [
+				{
+					"name": "Get Impersonation Policy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "impersonation-policy"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Retrieves tenant impersonation policy rules and maximum duration caps."
+					}
+				},
+				{
+					"name": "Update Impersonation Policy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"max_duration_minutes\": 30,\n  \"require_step_up_auth\": true,\n  \"require_user_opt_in\": false,\n  \"restrict_admin_impersonation\": true,\n  \"email_notification_policy\": \"IMMEDIATE\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "impersonation-policy"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Configures tenant impersonation boundaries and mandatory step-up auth requirements."
+					}
+				},
+				{
+					"name": "Initiate Impersonation (Step-Up Required Error Test)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Investigating customer invoice display issue #8841\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_target123/impersonate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_target123", "impersonate"]
+						},
+						"description": "Verifies 400 Bad Request error when admin step-up auth (password/2FA) is omitted."
+					}
+				},
+				{
+					"name": "Initiate Impersonation (Success with Step-Up Password)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Investigating customer invoice display issue #8841\",\n  \"duration_minutes\": 15,\n  \"verification_method\": \"password\",\n  \"admin_password\": \"AdminSecret123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_target123/impersonate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_target123", "impersonate"]
+						},
+						"description": "Executes admin impersonation with mandatory step-up password verification and issues a short-lived Impersonation JWT."
+					}
+				},
+				{
+					"name": "Read-Only Mutation Guard Block Test",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{impersonationToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"old_password\": \"OldPass123!\",\n  \"new_password\": \"NewPass456!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/user/password",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "user", "password"]
+						},
+						"description": "Verifies that destructive account mutations (password reset) are blocked with 403 Forbidden during active impersonation."
+					}
+				},
+				{
+					"name": "Exit Impersonation Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{impersonationToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/impersonate/exit",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "impersonate", "exit"]
+						},
+						"description": "Exits the active impersonation session and invalidates the session context."
 					}
 				}
 			]

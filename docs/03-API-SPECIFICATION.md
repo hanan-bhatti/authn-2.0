@@ -373,3 +373,49 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - **Edge Cases & Error Codes**:
   - `422 Unprocessable Entity`: Invalid URL format (must be HTTPS or localhost in dev mode) or empty/invalid event types.
   - `404 Not Found`: Webhook Endpoint ID does not exist or belongs to another tenant.
+
+### 3.10 Admin User Impersonation & Security Guard (`/v1/admin/users/:user_id/impersonate`, `/v1/client/auth/impersonate/exit`)
+- **Description**: Initiating short-lived admin impersonation sessions with mandatory Sudo step-up auth, user notification emails, signed webhooks (`user.impersonated`), and read-only mutation guards.
+- **Request (`POST /v1/admin/users/:user_id/impersonate`)**:
+```json
+{
+  "reason": "Investigating customer invoice display issue #8841",
+  "duration_minutes": 15,
+  "verification_method": "password",
+  "admin_password": "AdminSecret123!"
+}
+```
+- **Response (200 OK)**:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "impersonated_user": {
+    "id": "usr_target123",
+    "email": "customer@example.com",
+    "name": "Customer Name",
+    "status": "active",
+    "email_verified": true
+  },
+  "impersonator_id": "usr_admin99",
+  "session_id": "ses_imp_178593849102"
+}
+```
+- **Request (`POST /v1/client/auth/impersonate/exit`)**:
+  - Header: `Authorization: Bearer {{impersonationToken}}`
+- **Response (200 OK)**:
+```json
+{
+  "message": "impersonation session exited successfully",
+  "impersonated_id": "usr_target123",
+  "impersonator_id": "usr_admin99"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request` (`admin_step_up_required`): Step-up authentication method (password/2FA) was omitted or required by tenant policy.
+  - `401 Unauthorized` (`invalid_admin_password` / `invalid_admin_2fa_code`): Incorrect step-up credential provided.
+  - `403 Forbidden` (`impersonation_hierarchy_violation`): Admin attempting to impersonate another administrative user (`tenant_admin`, `admin`, `super_admin`).
+  - `403 Forbidden` (`user_opt_in_required`): Target user has not granted support access opt-in permission.
+  - `403 Forbidden` (`insufficient_permissions`): Admin lacks `users:impersonate` RBAC permission.
+  - `403 Forbidden` (`impersonation_read_only_restricted`): Impersonation session attempting destructive mutation on `/v1/client/user/password`, `/v1/client/2fa`, or `/v1/client/account`.

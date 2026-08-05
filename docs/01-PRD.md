@@ -104,8 +104,9 @@
 - **FR-13: Outgoing Real-Time Event Webhooks**
   - Event triggers (`user.signup`, `user.login`, `session.revoked`, `2fa.enabled`, `password.changed`).
   - Worker pool with exponential backoff retries and HMAC-SHA256 signature (`X-Authn-Signature`).
-- **FR-14: Admin User Impersonation ("Log in as User")**
-  - Endpoint `POST /v1/admin/users/:userId/impersonate` generating short-lived (15-min) impersonation JWT with `impersonator_id` claim & audit trail.
+- **FR-14: Admin User Impersonation ("Log in as User") [Completed & Verified]**
+  - Endpoint `POST /v1/admin/users/:userId/impersonate` generating short-lived (1-60 min) impersonation JWT with `impersonator_id` & `is_impersonated: true` claims.
+  - Mandatory admin step-up authentication (Passkey, 2FA, or Password), email transparency notifications, real-time webhooks (`user.impersonated`), and read-only mutation guard (`PreventImpersonatedMutations`).
 - **FR-15: B2B Organizations & Team Member Invitations**
   - Multi-tenant Organization hierarchy (`tnt_...` $\to$ `org_...`), member invites with 7-day signed tokens, and org-scoped roles.
 - **FR-16: Enterprise SAML 2.0 & Native SSO**

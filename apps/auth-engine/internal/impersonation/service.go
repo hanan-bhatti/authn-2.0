@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
@@ -27,21 +28,22 @@ import (
 )
 
 var (
-	ErrImpersonationDisabled = errors.New("impersonation feature is disabled for this tenant")
-	ErrUserNotFound          = errors.New("target user not found")
-	ErrUserNotActive         = errors.New("cannot impersonate suspended or unverified user")
-	ErrCannotImpersonateSelf = errors.New("cannot impersonate self")
+	ErrImpersonationDisabled  = errors.New("impersonation feature is disabled for this tenant")
+	ErrUserNotFound           = errors.New("target user not found")
+	ErrUserNotActive          = errors.New("cannot impersonate suspended or unverified user")
+	ErrCannotImpersonateSelf  = errors.New("cannot impersonate self")
 	ErrCannotImpersonateAdmin = errors.New("cannot impersonate admin users")
-	ErrUserOptInRequired     = errors.New("target user has not granted support access permission")
+	ErrUserOptInRequired      = errors.New("target user has not granted support access permission")
+	ErrInsufficientPermissions = errors.New("caller lacks required 'users:impersonate' permission")
 )
 
 type ImpersonationResult struct {
-	AccessToken     string   `json:"access_token"`
-	TokenType       string   `json:"token_type"`
-	ExpiresIn       int      `json:"expires_in"`
+	AccessToken      string   `json:"access_token"`
+	TokenType        string   `json:"token_type"`
+	ExpiresIn        int      `json:"expires_in"`
 	ImpersonatedUser UserInfo `json:"impersonated_user"`
-	ImpersonatorID  string   `json:"impersonator_id"`
-	SessionID       string   `json:"session_id"`
+	ImpersonatorID   string   `json:"impersonator_id"`
+	SessionID        string   `json:"session_id"`
 }
 
 type UserInfo struct {
@@ -60,11 +62,16 @@ type EmailProvider interface {
 	Send(ctx context.Context, to string, subject string, htmlBody string, textBody string) error
 }
 
+type PermissionChecker interface {
+	HasPermission(ctx context.Context, userID string, requiredPerm string) (bool, error)
+}
+
 type Service struct {
 	factory       *clientfactory.ClientFactory
 	cfg           *config.EnvConfig
 	dispatcher    WebhookDispatcher
 	emailProvider EmailProvider
+	permChecker   PermissionChecker
 }
 
 func NewService(factory *clientfactory.ClientFactory, cfg *config.EnvConfig, dispatcher ...interface{}) *Service {
@@ -78,6 +85,9 @@ func NewService(factory *clientfactory.ClientFactory, cfg *config.EnvConfig, dis
 		}
 		if ep, ok := arg.(EmailProvider); ok {
 			svc.emailProvider = ep
+		}
+		if pc, ok := arg.(PermissionChecker); ok {
+			svc.permChecker = pc
 		}
 	}
 	return svc
@@ -111,6 +121,14 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 
 	if impersonatorID == targetUserID {
 		return nil, ErrCannotImpersonateSelf
+	}
+
+	// Permission Enforcement Check
+	if s.permChecker != nil && impersonatorID != "" && !strings.HasPrefix(impersonatorID, "key_") {
+		allowed, err := s.permChecker.HasPermission(ctx, impersonatorID, "users:impersonate")
+		if err != nil || !allowed {
+			return nil, ErrInsufficientPermissions
+		}
 	}
 
 	if err := policy.ValidateImpersonateRequest(req, pol); err != nil {

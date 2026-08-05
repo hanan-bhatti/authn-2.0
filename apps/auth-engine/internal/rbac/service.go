@@ -157,3 +157,22 @@ func (s *Service) ListRoles(ctx context.Context, tenantID string) ([]*ent.Role, 
 func (s *Service) GetUserRBAC(ctx context.Context, userID string) (roles []string, permissions []string, err error) {
 	return s.repo.GetUserRolesAndPermissions(ctx, userID)
 }
+
+// HasPermission checks if a user holds a required permission or an administrative role.
+func (s *Service) HasPermission(ctx context.Context, userID string, requiredPerm string) (bool, error) {
+	roles, perms, err := s.repo.GetUserRolesAndPermissions(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range roles {
+		if r == "tenant_admin" || r == "admin" || r == "super_admin" {
+			return true, nil
+		}
+	}
+	for _, p := range perms {
+		if p == "*" || p == requiredPerm || p == "users:*" || p == "impersonate:*" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
