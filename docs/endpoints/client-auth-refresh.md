@@ -42,7 +42,10 @@
 
 1. **Active Token Rotation**: Calling `/v1/client/auth/refresh` with an active refresh token invalidates the old token (moving it to `rotated_grace` status for 10 seconds) and issues a new session token pair.
 2. **10-Second Grace Window**: Concurrent requests or network retries replaying the old token within 10 seconds of rotation succeed (`200 OK`) and return the active session token without re-rotating (prevents race condition token loss across browser tabs).
-3. **Automatic Compromise Mitigation**: Replaying a rotated token *after* the 10-second grace window indicates token theft or replay attack. The engine **immediately revokes all active sessions for the user** and returns `401 Unauthorized` with `code: "session_compromised"`.
+3. **Automatic Compromise Mitigation & Configurable Tenant Policy**: Replaying a rotated token *after* the 10-second grace window indicates token theft or replay attack. The engine executes tenant `SecurityPolicy.token_reuse_policy`:
+   * `"global_revoke"` (Default / Enterprise): Immediately **revokes ALL active sessions** for the user across all devices.
+   * `"session_revoke"` (Consumer App): **Revokes ONLY the specific compromised session family** (`ses_id`), allowing un-impacted devices to remain logged in.
+   Returns `401 Unauthorized` with `code: "session_compromised"`.
 
 ---
 

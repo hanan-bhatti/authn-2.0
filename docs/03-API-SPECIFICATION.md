@@ -419,7 +419,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 > **Last Verified**: `2026-08-06` — live `curl` against running server.
 > See full endpoint doc: [`docs/endpoints/client-auth-refresh.md`](endpoints/client-auth-refresh.md)
 
-- **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a newly rotated 64-byte Refresh Token. Enforces a **10-second grace window** for handling concurrent browser requests, and **automatic compromise mitigation** (revoking all user sessions) if token reuse occurs after the 10-second grace window. Parses `refresh_token` from JSON body first, with fallback to `authn_refresh_token` HttpOnly cookie.
+- **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a newly rotated 64-byte Refresh Token. Enforces a **10-second grace window** for handling concurrent browser requests, and **automatic compromise mitigation** (revoking user sessions according to tenant `SecurityPolicy.token_reuse_policy`: `"global_revoke"` vs `"session_revoke"`) if token reuse occurs after the 10-second grace window. Parses `refresh_token` from JSON body first, with fallback to `authn_refresh_token` HttpOnly cookie.
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Content-Type: application/json`
 - **Request**:
 ```json
