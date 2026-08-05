@@ -537,7 +537,12 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `400 Bad Request`: Invalid email format (`invalid email address format`), missing token, or expired/replayed token (`invalid or expired magic link token`).
 
 ### 3.7 Role-Based Access Control (`/v1/tenant/roles`, `/v1/admin/users/:id/roles`, `/v1/client/user/permissions`)
-- **Description**: Creates custom RBAC roles, validates permission strings (`resource:action`), enforces policy guards, logs audit events, and returns user permissions.
+
+> **Last Verified**: `2026-08-06` — live `curl` injection attack suite against running server.
+> See full endpoint doc: [`docs/endpoints/tenant-rbac.md`](endpoints/tenant-rbac.md)
+
+- **Description**: Creates custom RBAC roles, validates permission strings (`resource:action`), enforces policy guards (preventing privilege escalation for viewer/support roles), logs audit events, and evaluates user permissions. Rejects SQLi/XSS payloads in permission strings with `422 Unprocessable Entity`.
+- **Headers**: `X-Authn-Secret-Key: sk_<env>_<hash>` (Admin), `Authorization: Bearer <jwt>` (Client)
 - **Request (`POST /v1/tenant/roles`)**:
 ```json
 {

@@ -757,6 +757,77 @@
 					}
 				},
 				{
+					"name": "RBAC — Create Role",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Content Manager\",\n  \"slug\": \"content_manager\",\n  \"description\": \"Manages articles and media\",\n  \"permissions\": [\"posts:create\", \"posts:read\", \"posts:update\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/roles",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "roles"]
+						},
+						"description": "Creates a new custom RBAC role with validated permission syntax.\n\nVerified response (201 Created):\n{\n  \"id\": \"rol_a87d51ff-021\",\n  \"name\": \"Content Manager\",\n  \"slug\": \"content_manager\"\n}"
+					}
+				},
+				{
+					"name": "RBAC — List Tenant Roles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/roles",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "roles"]
+						},
+						"description": "Lists all roles and permissions configured for the tenant."
+					}
+				},
+				{
+					"name": "RBAC — Assign Role to User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role_slug\": \"content_manager\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_vanilla_007/roles",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_vanilla_007", "roles"]
+						},
+						"description": "Assigns an RBAC role to a target user.\n\nVerified response (200):\n{\"message\":\"role assigned to user successfully\",\"role\":\"content_manager\",\"user_id\":\"usr_vanilla_007\"}"
+					}
+				},
+				{
+					"name": "RBAC — Get User Permissions (Client)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/user/permissions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "user", "permissions"]
+						},
+						"description": "Evaluates active user's roles and permissions.\n\nVerified response (200):\n{\n  \"user_id\": \"usr_vanilla_007\",\n  \"roles\": [\"content_manager\"],\n  \"permissions\": [\"posts:create\", \"posts:delete\", \"posts:read\", \"posts:update\"]\n}"
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
