@@ -487,22 +487,27 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 }
 ```
 
-### 3.4 Social Identity Providers (`/v1/tenant/social-providers` & `/v1/client/auth/social/*`)
-- **Description**: Configure social identity providers and handle OAuth2 authorization code flow.
+### 3.5 Social Identity Providers (`/v1/tenant/social-providers` & `/v1/client/auth/social/*`)
+
+> **Last Verified**: `2026-08-06` — live `curl` against running server.
+> See full endpoint doc: [`docs/endpoints/client-social-oauth.md`](endpoints/client-social-oauth.md)
+
+- **Description**: Configure 8 supported social identity providers (`google`, `github`, `discord`, `microsoft`, `apple`, `facebook`, `x`, `linkedin`) and handle OAuth2 authorization code flows.
 - **Admin Config (`PUT /v1/tenant/social-providers/:provider`)**:
 ```json
 {
   "enabled": true,
-  "client_id": "123456789012-abc.apps.googleusercontent.com",
-  "client_secret": "GOCSPX-validsecret123"
+  "client_id": "demo_google_client_id_123.apps.googleusercontent.com",
+  "client_secret": "demo_google_secret_xyz"
 }
 ```
 - **Authorize Redirect (`GET /v1/client/auth/social/:provider/authorize`)**:
-  - Generates a 32-byte random hex CSRF state token stored with 10-minute TTL, then returns 302 redirect to provider's login page.
+  - Generates a 32-byte random hex CSRF state token stored in Redis with 10-minute TTL, then returns 302 redirect to provider's authorization page.
 - **Callback Handler (`GET /v1/client/auth/social/:provider/callback`)**:
-  - Consumes CSRF state token, exchanges code for provider tokens, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
+  - Consumes single-use CSRF state token, exchanges code for provider tokens, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
 - **Edge Cases & Error Codes**:
-  - `409 Conflict` (`email_exists_social_account`): Email exists as a password account. Prevents credential injection via signup. Directs user to login first then link provider.
+  - `400 Bad Request`: Missing `redirect_uri`, missing `code`/`state`, or expired/invalid CSRF state token.
+  - `409 Conflict` (`email_exists_social_account`): Email exists as a password account. Prevents pre-account takeover injection. Directs user to login first then link provider.
 
 ### 3.5 Role-Based Access Control (`/v1/tenant/roles`, `/v1/admin/users/:id/roles`, `/v1/client/user/permissions`)
 - **Description**: Creates custom RBAC roles, validates permission strings (`resource:action`), enforces policy guards, logs audit events, and returns user permissions.

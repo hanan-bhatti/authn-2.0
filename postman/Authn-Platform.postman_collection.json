@@ -702,6 +702,61 @@
 					}
 				},
 				{
+					"name": "Social OAuth — Configure Provider (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"enabled\": true,\n  \"client_id\": \"demo_google_client_id_123.apps.googleusercontent.com\",\n  \"client_secret\": \"demo_google_secret_xyz\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/social-providers/google",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "social-providers", "google"]
+						},
+						"description": "Configures and enables a social identity provider for the tenant.\n\nVerified response (200):\n{\"message\":\"provider configured successfully\",\"provider\":\"google\"}"
+					}
+				},
+				{
+					"name": "Social OAuth — Authorize Redirect",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/social/google/authorize?redirect_uri=http://localhost:3000/callback",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "social", "google", "authorize"],
+							"query": [{ "key": "redirect_uri", "value": "http://localhost:3000/callback" }]
+						},
+						"description": "Initiates OAuth authorization flow, generates 32-byte CSRF state token in Redis (10m TTL), and returns 302 Redirect to provider.\n\nVerified response (302 Found):\nLocation: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&client_id=...&state=bceb5c5bb75bea309b1aff15df6195a5"
+					}
+				},
+				{
+					"name": "Social OAuth — Callback",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/social/google/callback?code=sample_oauth_code&state=sample_state_token",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "social", "google", "callback"],
+							"query": [
+								{ "key": "code", "value": "sample_oauth_code" },
+								{ "key": "state", "value": "sample_state_token" }
+							]
+						},
+						"description": "Handles provider OAuth authorization code callback. Consumes single-use CSRF state token and exchanges code for user profile and JWT access token."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
