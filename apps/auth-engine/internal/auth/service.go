@@ -488,7 +488,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessToken(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, "", s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, "", sessionID, s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

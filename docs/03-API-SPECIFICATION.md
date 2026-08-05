@@ -507,9 +507,36 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - Consumes single-use CSRF state token, exchanges code for provider tokens, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
 - **Edge Cases & Error Codes**:
   - `400 Bad Request`: Missing `redirect_uri`, missing `code`/`state`, or expired/invalid CSRF state token.
-  - `409 Conflict` (`email_exists_social_account`): Email exists as a password account. Prevents pre-account takeover injection. Directs user to login first then link provider.
+### 3.6 Passwordless Magic Links (`POST /v1/client/auth/magic-link` & `GET|POST /v1/client/auth/magic-link/verify`)
 
-### 3.5 Role-Based Access Control (`/v1/tenant/roles`, `/v1/admin/users/:id/roles`, `/v1/client/user/permissions`)
+> **Last Verified**: `2026-08-06` — live `curl` & Mailpit API verification against running server.
+> See full endpoint doc: [`docs/endpoints/client-magic-link.md`](endpoints/client-magic-link.md)
+
+- **Description**: Passwordless login & auto-provisioning flow. Generates 32-byte cryptographically secure single-use tokens sent via email (15-minute TTL). Verification marks email verified, creates login session, issues JWT with `sid`, and clears token to prevent replay attacks.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Content-Type: application/json`
+- **Request (`POST /v1/client/auth/magic-link`)**:
+```json
+{
+  "email": "user.vanilla@authn.local",
+  "name": "Vanilla User"
+}
+```
+- **Response (200 OK — Sent)**:
+```json
+{
+  "message": "a magic login link has been sent to your email address"
+}
+```
+- **Verification (`POST /v1/client/auth/magic-link/verify`)**:
+```json
+{
+  "token": "266f205526adbded53d5094095f4eb8b3da4969db13b1acc24be28e0088951f6"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request`: Invalid email format (`invalid email address format`), missing token, or expired/replayed token (`invalid or expired magic link token`).
+
+### 3.7 Role-Based Access Control (`/v1/tenant/roles`, `/v1/admin/users/:id/roles`, `/v1/client/user/permissions`)
 - **Description**: Creates custom RBAC roles, validates permission strings (`resource:action`), enforces policy guards, logs audit events, and returns user permissions.
 - **Request (`POST /v1/tenant/roles`)**:
 ```json
