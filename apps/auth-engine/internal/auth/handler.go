@@ -1363,7 +1363,11 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 
 	tenantID := req.TenantID
 	if tenantID == "" {
-		tenantID = "tnt_demo123"
+		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
+			tenantID = t
+		} else {
+			tenantID = "tnt_default"
+		}
 	}
 	env := req.Environment
 	if env == "" {
@@ -1386,6 +1390,12 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error":   "no_recovery_methods_available",
 			"message": "No account recovery methods are configured for this account. Please contact system support for administrative assistance.",
+		})
+	}
+	if errors.Is(err, ErrOriginBlacklisted) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error":   "origin_blacklisted",
+			"message": "origin IP, subnet, or device fingerprint is temporarily blacklisted following a security cancellation",
 		})
 	}
 	if err != nil {

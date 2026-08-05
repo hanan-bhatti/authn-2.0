@@ -828,6 +828,46 @@
 					}
 				},
 				{
+					"name": "Account Recovery — Initiate",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user.vanilla@authn.local\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/initiate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "initiate"]
+						},
+						"description": "Initiates account recovery. Performs timing-safe Argon2id hash for non-existent users.\n\nVerified response (200):\n{\n  \"recovery_request_id\": \"req_3e2f8c17-a80\",\n  \"status\": \"initiated\",\n  \"available_methods\": [\"email_otp\"],\n  \"cancellation_token\": \"539d51ae12546...\"\n}"
+					}
+				},
+				{
+					"name": "Account Recovery — Cancel via Token (Security Cancellation)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cancellation_token\": \"539d51ae12546f05021de68590ff751235001293f7f47709d2b5d70b96c132bc\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/recovery/cancel/token",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "recovery", "cancel", "token"]
+						},
+						"description": "Owner cancels fraudulent recovery request. Immediately terminates request and blacklists attacker IP/subnet in Redis for 7 days (403 Forbidden)."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",

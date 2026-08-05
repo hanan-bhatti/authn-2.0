@@ -568,21 +568,31 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `422 Unprocessable Entity` (`ErrRestrictedPermission`): Assigned permission is restricted for that role under active `RolePermissionPolicy` (e.g. assigning `*:write` to `viewer` role).
   - `409 Conflict` (`ErrRoleExists`): Role with same name already exists in tenant.
 
-### 3.6 Smart Account Recovery (`/v1/client/auth/recovery/*`)
-- **Description**: Initiates account recovery and resolves identity-proof methods in priority order based on tenant `RecoveryPolicy`.
+### 3.8 Smart Account Recovery (`/v1/client/auth/recovery/*`)
+
+> **Last Verified**: `2026-08-06` — live `curl` attack suite against running server.
+> See full endpoint doc: [`docs/endpoints/client-account-recovery.md`](endpoints/client-account-recovery.md)
+
+- **Description**: Initiates account recovery, resolves identity-proof methods in priority order (Guardians, Old Password, Email/Phone OTP, Security Questions), executes timing-safe dummy Argon2id hashes for non-existent users (`200 OK`), restricts old password proof to trusted devices, and arms a 7-day origin IP blacklist upon owner cancellation.
 - **Request (`POST /v1/client/auth/recovery/initiate`)**:
 ```json
 {
-  "tenant_id": "tnt_demo",
-  "environment": "test",
-  "email": "user@example.com"
+  "email": "user.vanilla@authn.local"
 }
 ```
-- **Response (200 OK)**:
+- **Response (200 OK — Valid or Timing-Safe Non-Existent User)**:
 ```json
 {
-  "recovery_request_id": "req_8a9b0c1d2e",
+  "recovery_request_id": "req_3e2f8c17-a80",
   "status": "initiated",
+  "is_trusted_device_origin": false,
+  "available_methods": ["email_otp"],
+  "cancellation_token": "539d51ae12546f05021de68590ff751235001293f7f47709d2b5d70b96c132bc"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `403 Forbidden` (`origin_blacklisted`): Requesting IP, subnet, or device is blacklisted for 7 days following a security cancellation.
+  - `400 Bad Request`: Missing email, untrusted device for old password proof (`old password proof is disallowed from unfamiliar device or network`), or invalid claim token.
   "is_trusted_device_origin": true,
   "available_methods": ["guardians", "email_otp", "old_password"],
   "cancellation_token": "a1b2c3d4e5f6..."
