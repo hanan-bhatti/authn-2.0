@@ -167,11 +167,6 @@ func main() {
 	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
 	apiKeyHandler := apikey.NewHandler(apiKeyService)
 	pkMiddleware := middleware.RequirePublishableKey(apiKeyService)
-	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
-	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
-	// This is the single auth gate for all /v1/tenant/* and /v1/admin/* routes.
-	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.AuthnEncryptionKey)
-
 	policyRepo := policy.NewRepository(factory)
 	policyHandler := policy.NewHandler(policyRepo)
 
@@ -186,6 +181,11 @@ func main() {
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter)
+
+	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
+	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
+	// Checks mandatory 2FA on console admin JWT sessions.
+	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.AuthnEncryptionKey, authRepo)
 
 	ctx := privacy.NewBypassContext(context.Background())
 	if err := authRepo.EnsureTenantExists(ctx, "tnt_default"); err != nil {

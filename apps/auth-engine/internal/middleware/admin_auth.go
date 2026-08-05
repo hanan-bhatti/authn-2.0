@@ -24,6 +24,7 @@
 package middleware
 
 import (
+	"context"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,13 +33,24 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
+// Primary2FAValidator defines the interface for checking if a user has active primary 2FA.
+type Primary2FAValidator interface {
+	CountActivePrimary2FAMethods(ctx context.Context, userID string) (int, error)
+}
+
 // RequireAdminAuth returns a Fiber middleware that gates admin routes behind
 // EITHER a valid sk_... secret key OR a JWT access token with role=tenant_admin.
+// If a Primary2FAValidator is provided, console admin users without active 2FA are rejected.
 //
 // Callers:
 //   - Backend servers / SDKs: Authorization: Bearer sk_test_... or X-Authn-Secret-Key: sk_...
 //   - Authn web console:      Authorization: Bearer eyJ... (JWT from /v1/client/login)
-func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string) fiber.Handler {
+func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, validator ...Primary2FAValidator) fiber.Handler {
+	var v Primary2FAValidator
+	if len(validator) > 0 {
+		v = validator[0]
+	}
+
 	return func(c *fiber.Ctx) error {
 		// Extract the raw credential from the standard locations
 		raw := strings.TrimSpace(c.Get("X-Authn-Secret-Key"))
@@ -88,6 +100,19 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string) fiber
 					"error": "forbidden: tenant_admin role required — regular user JWTs cannot access admin routes",
 				})
 			}
+
+			// Mandatory Admin 2FA enforcement
+			if v != nil {
+				count, err := v.CountActivePrimary2FAMethods(c.UserContext(), claims.Sub)
+				if err == nil && count == 0 {
+					return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+						"error":      "admin 2FA required: administrator accounts must enroll in 2FA (TOTP or Passkey) before accessing admin features",
+						"code":       "admin_2fa_required",
+						"enroll_uri": "/v1/client/2fa/totp/enroll",
+					})
+				}
+			}
+
 			privacyCtx := privacy.NewContext(c.UserContext(), claims.TenantID, "", claims.Environment)
 			c.SetUserContext(privacyCtx)
 			c.Locals("tenant_id", claims.TenantID)

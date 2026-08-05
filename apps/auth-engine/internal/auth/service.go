@@ -36,6 +36,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	emailPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	smsPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sms"
@@ -61,6 +62,7 @@ var (
 	ErrAmbiguous2FAMethod        = errors.New("multiple 2FA methods enabled; 'method' field is required to specify which 2FA method to verify")
 	ErrSMSOTPExpired             = errors.New("SMS OTP verification code has expired or is invalid")
 	ErrTooManySMSRequests        = errors.New("too many OTP requests; please wait before requesting another code")
+	ErrAdmin2FAMandatory         = errors.New("2FA is mandatory for administrator accounts and cannot be disabled")
 )
 
 type SMSOTPState struct {
@@ -821,6 +823,26 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	return u, accessToken, rawRefreshToken, nil
 }
 
+// IsAdminUser checks if a user holds an administrative role (e.g. tenant_admin, admin, super_admin).
+func (s *Service) IsAdminUser(ctx context.Context, userID string) bool {
+	client := s.repo.factory.GetClient(ctx, "", "")
+	userRoles, err := client.UserRole.Query().
+		Where(userrole.UserID(userID)).
+		WithRole().
+		All(ctx)
+	if err == nil {
+		for _, ur := range userRoles {
+			if ur.Edges.Role != nil {
+				slug := ur.Edges.Role.Slug
+				if slug == "tenant_admin" || slug == "admin" || slug == "super_admin" || slug == "org_admin" || slug == "support_admin" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // DisableTOTP re-verifies current password with Argon2id, removes TOTP method, and revokes all active sessions for security.
 func (s *Service) DisableTOTP(ctx context.Context, userID string, password string, userAgent string, ipAddress string) error {
 	u, err := s.repo.FindUserByID(ctx, userID)
@@ -836,6 +858,12 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 	tfm, err := s.repo.GetTOTPMethodForUser(ctx, userID)
 	if err != nil || tfm == nil {
 		return fmt.Errorf("no TOTP method configured")
+	}
+
+	// Security Policy: Admins cannot disable 2FA if it is their only active primary 2FA method
+	activeCount, err := s.repo.CountActivePrimary2FAMethods(ctx, userID)
+	if err == nil && activeCount <= 1 && s.IsAdminUser(ctx, userID) {
+		return ErrAdmin2FAMandatory
 	}
 
 	if err := s.repo.DeleteTwoFactorMethod(ctx, tfm.ID); err != nil {
