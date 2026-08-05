@@ -24,7 +24,6 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -80,7 +79,6 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		SetName(roleName).
 		SetSlug(roleSlug).
 		SetDescription(fmt.Sprintf("Default %s role", roleName)).
-		SetIsSystem(true).
 		Save(ctx)
 }
 
