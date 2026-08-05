@@ -21,8 +21,8 @@ func DynamicCORS() fiber.Handler {
 		AllowOriginsFunc: func(origin string) bool {
 			return true // Mirror origin dynamically for multi-tenant CORS with credentials
 		},
-		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Authn-Publishable-Key, X-Authn-Secret-Key, X-Authn-Api-Key, X-Authn-Tenant-Id, X-Authn-Environment",
-		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Publishable-Key, X-Secret-Key, X-Api-Key, X-Tenant-Id, X-Org-Id, X-Authn-Publishable-Key, X-Authn-Secret-Key, X-Authn-Api-Key, X-Authn-Tenant-Id, X-Authn-Environment",
+		AllowMethods:     "GET, POST, PUT, PATCH, DELETE, OPTIONS",
 		AllowCredentials: true,
 	})
 }
