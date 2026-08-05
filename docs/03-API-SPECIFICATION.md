@@ -1,7 +1,7 @@
 # API Specification (Client & Admin REST/OIDC)
 
 **Document Version**: 2.0.0  
-**Date**: 2026-08-04  
+**Date**: 2026-08-05  
 **Status**: Approved Specification (Production REST & OIDC Reference)  
 **Author**: Authn Core Team  
 
@@ -28,49 +28,49 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 
 ## 2. Comprehensive Endpoint Index
 
-### 2.1 OIDC Discovery & JWKS
+### 2.1 System & Health
+- `GET /v1/health` — Liveness & readiness check for container orchestrators
+
+### 2.2 OIDC Discovery & JWKS
 - `GET /.well-known/openid-configuration` — OIDC Discovery Metadata
 - `GET /v1/oauth/jwks` — Public RSA JWKS key set
 
-### 2.2 OAuth 2.0 / OIDC Flow
+### 2.3 OAuth 2.0 / OIDC Flow
 - `GET /v1/oauth/authorize` — PKCE Authorization Code endpoint
 - `POST /v1/oauth/token` — Token exchange (`authorization_code`, `refresh_token`)
 
-### 2.3 Core Client Authentication
+### 2.4 Core Client Authentication
 - `POST /v1/client/signup` — User registration with email/password
 - `POST /v1/client/login` — User authentication with Argon2id check
 - `GET /v1/client/verify-email` — Single-use email verification link
 - `POST /v1/client/resend-verification` — Resend email verification link
 
-### 2.4 Passwordless Magic Links
-- `POST /v1/client/auth/magic-link` — Request single-use 15-min login link
-- `GET /v1/client/auth/magic-link/verify` — Verify magic link token via GET link
-- `POST /v1/client/auth/magic-link/verify` — Verify magic link token via POST API
+### 2.5 Session Management & Revocation (FR-8)
+- `POST /v1/client/auth/refresh` — Rotate refresh token with 10s grace window & issue new JWT access token
+- `GET /v1/client/sessions` — List active sessions for authenticated user with device parsing & `is_current` flag
+- `POST /v1/client/sessions/revoke` — Revoke a specific session by ID
+- `POST /v1/client/sessions/revoke-others` — Revoke all active user sessions except current
+- `POST /v1/client/sessions/revoke-all` — Revoke all active user sessions
+- `GET /v1/admin/users/:user_id/sessions` — Admin list user sessions
+- `POST /v1/admin/users/:user_id/sessions/revoke-all` — Admin kill-switch to revoke all sessions for a user
 
-### 2.5 2FA - TOTP Authenticator
-- `POST /v1/client/2fa/totp/enroll` — Generate TOTP QR code & secret
-- `POST /v1/client/2fa/totp/confirm` — Confirm TOTP setup with initial code
-- `POST /v1/client/2fa/totp/verify` (or `POST /v1/client/auth/2fa/verify`) — Validate TOTP challenge code
-- `POST /v1/client/2fa/totp/disable` — Disable TOTP with step-up verification
+### 2.6 Social Identity Providers (FR-7)
+- `GET /v1/tenant/social-providers` — List all supported social providers, setup guides & status
+- `GET /v1/tenant/social-providers/:provider` — Get setup guide & configuration for specific provider
+- `PUT /v1/tenant/social-providers/:provider` — Configure provider client ID & encrypted secret with format validation
+- `DELETE /v1/tenant/social-providers/:provider` — Remove provider configuration
+- `GET /v1/client/auth/social/:provider/authorize` — Initiate social auth, generate 10-min CSRF state token & 302 redirect
+- `GET /v1/client/auth/social/:provider/callback` — OAuth2 callback handler (exchanges code, finds/creates user, issues JWT)
 
-### 2.6 2FA - SMS OTP
-- `POST /v1/client/2fa/sms/enroll` — Register phone number for SMS 2FA
-- `POST /v1/client/2fa/sms/confirm` — Confirm phone number with initial SMS code
-- `DELETE /v1/client/2fa/sms/disable` — Disable SMS 2FA with step-up check
+### 2.7 Role-Based Access Control & Fine-Grained Permissions (FR-12)
+- `GET /v1/tenant/roles` — List all roles for tenant with assigned permissions
+- `POST /v1/tenant/roles` — Create custom role with validated permission strings & policy checks
+- `PUT /v1/tenant/roles/:role_id/permissions` — Replace role permissions with audit logging
+- `POST /v1/admin/users/:user_id/roles` — Assign role to user with audit trail
+- `DELETE /v1/admin/users/:user_id/roles/:role_slug` — Revoke role from user with audit trail
+- `GET /v1/client/user/permissions` — Retrieve accumulated roles & permissions for authenticated user
 
-### 2.7 2FA - Backup Recovery Codes
-- `POST /v1/client/2fa/recovery-codes/regenerate` — Generate 8 fresh backup recovery codes
-- `GET /v1/client/2fa/recovery-codes/status` — Get remaining recovery codes count
-
-### 2.8 2FA - WebAuthn / Passkeys (FIDO2)
-- `POST /v1/client/2fa/webauthn/register/begin` — Initiate WebAuthn passkey registration
-- `POST /v1/client/2fa/webauthn/register/finish` — Complete WebAuthn passkey registration
-- `POST /v1/client/2fa/webauthn/login/begin` — Initiate WebAuthn passkey authentication
-- `POST /v1/client/2fa/webauthn/login/finish` — Complete WebAuthn passkey authentication
-- `GET /v1/client/2fa/webauthn/passkeys` — List user's registered passkeys
-- `DELETE /v1/client/2fa/webauthn/passkeys/:id` — Delete registered passkey (preserves last 2FA method)
-
-### 2.9 Smart Account Recovery & Guardians (FR-5)
+### 2.8 Smart Account Recovery & Guardians (FR-5)
 - `POST /v1/client/account/guardians/invite` — Pre-enroll 1-5 guardians & issue zero-knowledge tokens
 - `POST /v1/client/account/guardians/accept` — Accept guardian invitation
 - `GET /v1/client/account/guardians` — List active guardians
@@ -83,170 +83,51 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/client/auth/recovery/cancel` — Cancel recovery via active authenticated session
 - `POST /v1/client/auth/recovery/cancel/token` — Cancel recovery via public signed link token
 
-### 2.11 Social Identity Providers (FR-7)
-- `GET /v1/tenant/social-providers` — List all supported social providers, setup guides & status
-- `GET /v1/tenant/social-providers/:provider` — Get setup guide & configuration for specific provider
-- `PUT /v1/tenant/social-providers/:provider` — Configure provider client ID & encrypted secret with format validation
-- `DELETE /v1/tenant/social-providers/:provider` — Remove provider configuration
-### 2.12 Session Management & Revocation (FR-8)
-- `POST /v1/client/auth/refresh` — Rotate refresh token with 10s grace window & issue new JWT access token
-- `GET /v1/client/sessions` — List active sessions for authenticated user with device parsing & `is_current` flag
-- `POST /v1/client/sessions/revoke` — Revoke a specific session by ID
-- `POST /v1/client/sessions/revoke-others` — Revoke all active user sessions except current
-- `POST /v1/client/sessions/revoke-all` — Revoke all active user sessions
-- `GET /v1/admin/users/:user_id/sessions` — Admin list user sessions
-- `POST /v1/admin/users/:user_id/sessions/revoke-all` — Admin kill-switch to revoke all sessions for a user
-### 2.13 Role-Based Access Control & Fine-Grained Permissions (FR-12)
-- `GET /v1/tenant/roles` — List all roles for tenant with assigned permissions
-- `POST /v1/tenant/roles` — Create custom role with validated permission strings & policy checks
-- `PUT /v1/tenant/roles/:role_id/permissions` — Replace role permissions with audit logging
-- `POST /v1/admin/users/:user_id/roles` — Assign role to user with audit trail
-- `DELETE /v1/admin/users/:user_id/roles/:role_slug` — Revoke role from user with audit trail
-- `GET /v1/client/user/permissions` — Retrieve accumulated roles & permissions for authenticated user
+### 2.9 Admin Tenant Policies & API Keys
+- `GET /v1/tenant/password-policy` — Get tenant password policy
+- `PUT /v1/tenant/password-policy` — Update tenant password complexity rules
+- `GET /v1/tenant/security-policy` — Get tenant security policy
+- `PUT /v1/tenant/security-policy` — Update tenant email verification & security policies
+- `GET /v1/tenant/recovery-policy` — Get tenant recovery policy
+- `PUT /v1/tenant/recovery-policy` — Update tenant recovery policy with 9 validation rules
+- `POST /v1/admin/keys/` — Issue new publishable or secret API key
+- `GET /v1/admin/keys/` — List API keys for application
+- `POST /v1/admin/keys/:key_id/revoke` — Revoke API key
 
 ---
 
 ## 3. Endpoints & Edge Cases Detail
 
-### 3.1 `POST /v1/client/auth/recovery/initiate`
-- **Description**: Initiates account recovery and resolves identity-proof methods in priority order based on tenant `RecoveryPolicy`.
-- **Request**:
+### 3.1 Core Authentication (`POST /v1/client/signup` & `POST /v1/client/login`)
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `X-Authn-Client-Type: native|web`
+- **Request (`POST /v1/client/signup`)**:
 ```json
 {
-  "tenant_id": "tnt_demo",
-  "environment": "test",
-  "email": "user@example.com"
+  "email": "user@example.com",
+  "password": "SecurePassword123!",
+  "name": "Alex Smith"
 }
 ```
-- **Response (200 OK)**:
+- **Response (200 OK or 201 Created)**:
 ```json
 {
-  "recovery_request_id": "req_8a9b0c1d2e",
-  "status": "initiated",
-  "is_trusted_device_origin": true,
-  "available_methods": ["guardians", "email_otp", "old_password"],
-  "cancellation_token": "a1b2c3d4e5f6..."
-}
-```
-- **Edge Cases & Error Codes**:
-  - `400 Bad Request` (`no_recovery_methods_available`): No methods configured or available for account. Directs to support.
-  - `403 Forbidden` (`ErrOriginBlacklisted`): Request origin (IP, subnet, or device fingerprint) is on the 7-day security blacklist following a recent cancellation.
-  - Non-existent user: Timing-safe dummy Argon2id calculation executed; returns generic `email_otp` response to prevent enumeration.
-
-### 3.2 `POST /v1/client/auth/recovery/cancel` & `POST /v1/client/auth/recovery/cancel/token`
-- **Authenticated Cancel Request (`/cancel`)**: Requires active session (`userID`, `sessionID`).
-```json
-{
-  "recovery_request_id": "req_8a9b0c1d2e"
-}
-```
-- **Signed Link Cancel Request (`/cancel/token`)**: Public unauthenticated endpoint.
-```json
-{
-  "cancellation_token": "a1b2c3d4e5f6..."
-}
-```
-- **Response (200 OK)**:
-```json
-{
-  "status": "cancelled",
-  "message": "Recovery request successfully cancelled. Originating request details blacklisted for 7 days. Account flagged for security review."
-}
-```
-- **Actions Triggered**:
-  1. Recovery request status $\to$ `CANCELLED`.
-  2. 7-day blacklist record created for initiating IP, subnet, and client fingerprint.
-  3. `User.SecurityReviewRequired` set to `true`.
-  4. Active user sessions revoked (excluding current session for `/cancel`).
-
-### 3.3 `PUT /v1/tenant/recovery-policy`
-- **Description**: Updates tenant-wide account recovery policy.
-- **Request**:
-```json
-{
-  "guardians_enabled": true,
-  "phone_otp_enabled": true,
-  "email_otp_enabled": true,
-  "old_password_enabled": true,
-  "security_questions_enabled": true,
-  "freeze_window_hours": 48,
-  "claim_token_ttl_minutes": 15,
-  "lockout_schedule": ["24h", "3d", "7d", "14d", "4w", "8w", "12w", "permanent"],
-  "lockout_reset_days": 30,
-  "trusted_device_window_days": 90,
-  "ipv4_subnet_bits": 24,
-  "ipv6_subnet_bits": 48,
-  "max_proof_attempts_per_window": 5,
-  "min_guardians": 1,
-  "max_guardians": 5
-}
-```
-- **Response (200 OK)**: Returns updated `RecoveryPolicy` JSON object.
-- **Edge Cases & Error Codes**:
-  - `400 Bad Request`: Fails if any of the 9 validation rules are violated (e.g. `freeze_window_hours` out of 24-168 bounds, non-monotonic lockout schedule, all method toggles set to false).
-
-### 3.4 `GET /v1/tenant/social-providers` & `GET /v1/tenant/social-providers/:provider`
-- **Description**: List configured and supported social identity providers with dynamic setup instructions (derived from `APP_BASE_URL` runtime configuration) and credentials format validation rules. Secrets are never exposed in API responses.
-- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
-- **Response (200 OK)**:
-```json
-{
-  "providers": [
-    {
-      "provider": "google",
-      "enabled": true,
-      "client_id": "123456789012-abc.apps.googleusercontent.com",
-      "configured": true,
-      "setup": {
-        "callback_url": "http://localhost:8080/v1/client/auth/social/google/callback",
-        "step_by_step": [
-          "Go to console.cloud.google.com → APIs & Services → Credentials",
-          "Click 'Create Credentials' → OAuth 2.0 Client ID",
-          "Set Application type to 'Web application'",
-          "Under 'Authorized redirect URIs' add: http://localhost:8080/v1/client/auth/social/google/callback",
-          "Copy the Client ID and Client Secret into Authn"
-        ],
-        "console_url": "https://console.cloud.google.com/apis/credentials",
-        "client_id_format": "must end with .apps.googleusercontent.com",
-        "client_secret_format": "starts with GOCSPX- (newer apps) or alphanumeric"
-      }
-    }
-  ]
-}
-```
-
-### 3.5 `PUT /v1/tenant/social-providers/:provider`
-- **Description**: Configures OAuth2/OIDC credentials for a social provider. Validates credentials format per provider rules and encrypts `client_secret` at rest with AES-256-GCM.
-- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
-- **Request**:
-```json
-{
-  "enabled": true,
-  "client_id": "123456789012-abc.apps.googleusercontent.com",
-  "client_secret": "GOCSPX-validsecret123"
-}
-```
-- **Response (200 OK)**:
-```json
-{
-  "message": "provider configured successfully",
-  "provider": "google"
+  "user": {
+    "id": "usr_4d5a1533",
+    "email": "user@example.com",
+    "email_verified": false,
+    "name": "Alex Smith",
+    "status": "active"
+  },
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": "111d0dfc1a68..."
 }
 ```
 - **Edge Cases & Error Codes**:
-  - `422 Unprocessable Entity`: Validation failure for provider format rules (e.g. Google client ID not ending with `.apps.googleusercontent.com`, Discord client ID not numeric, Microsoft client ID not UUID v4).
+  - `409 Conflict` (`email_exists`): Email already registered.
+  - `400 Bad Request` (`password_policy_violation`): Password fails active tenant complexity rules.
+  - `401 Unauthorized` (`invalid_credentials`): Incorrect email or password.
 
-### 3.6 `GET /v1/client/auth/social/:provider/authorize`
-- **Description**: Initiates social auth flow. Generates a 32-byte random hex CSRF state token stored with 10-minute TTL, then redirects (302 Found) to provider's OAuth authorization URL.
-- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
-- **Query Params**:
-  - `redirect_uri` (required): Application's post-login redirect callback URL.
-  - `post_callback_redirect` (optional): Deep link URL for mobile/web app post-login destination.
-- **Response (302 Found)**: Redirects browser to provider's authorization page (e.g. `https://accounts.google.com/o/oauth2/v2/auth?...&state=...`).
-- **Edge Cases**:
-  - `400 Bad Request`: Provider not configured or missing `redirect_uri`.
-
-### 3.8 `POST /v1/client/auth/refresh`
+### 3.2 Refresh Token Rotation (`POST /v1/client/auth/refresh`)
 - **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a new 64-byte Refresh Token. Implements Refresh Token Rotation (RTR) with a 10-second grace window (`rotated_grace`) for handling concurrent parallel requests, and automatic compromise mitigation (revoking all sessions) if token reuse occurs after the 10-second grace window.
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
 - **Request**:
@@ -255,7 +136,6 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
   "refresh_token": "91c6044c-b80b-4897-9147-4a9a082c311c..."
 }
 ```
-*(Also reads `authn_refresh_token` HTTP-only cookie if body field is omitted)*
 - **Response (200 OK)**:
 ```json
 {
@@ -271,9 +151,12 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
   - `401 Unauthorized` (`session_revoked`): Session was explicitly revoked.
   - `401 Unauthorized` (`session_compromised`): Token reuse detected outside 10s grace window. Triggers immediate revocation of all user sessions.
 
-### 3.9 `GET /v1/client/sessions`
-- **Description**: Returns all active non-expired sessions for the authenticated user with User-Agent device parsing (`browser`, `os`, `device`, `label`) and `is_current` boolean flag.
-- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Authorization: Bearer <jwt>`
+### 3.3 Session Management (`GET /v1/client/sessions` & `/v1/client/sessions/revoke*`)
+- **Description**: Allows authenticated users to view active sessions with device details (`browser`, `os`, `device`, `label`) and `is_current` flag, or revoke sessions.
+  - `/revoke`: Revokes a specific session by ID (`{"session_id": "ses_..."}`).
+  - `/revoke-others`: Revokes all active sessions for the user except current.
+  - `/revoke-all`: Revokes all active user sessions (logout all devices).
+- **Headers**: `Authorization: Bearer <jwt>`
 - **Response (200 OK)**:
 ```json
 {
@@ -296,25 +179,25 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 }
 ```
 
-### 3.10 `POST /v1/client/sessions/revoke`, `/revoke-others`, `/revoke-all`
-- **Description**: Allows authenticated users to manage their active login sessions.
-  - `/revoke`: Revokes a specific session by ID (`{"session_id": "ses_..."}`).
-  - `/revoke-others`: Revokes all active sessions for the user except current.
-  - `/revoke-all`: Revokes all active sessions for the user (logs out all devices).
-- **Headers**: `Authorization: Bearer <jwt>`
-- **Response (200 OK)**:
+### 3.4 Social Identity Providers (`/v1/tenant/social-providers` & `/v1/client/auth/social/*`)
+- **Description**: Configure social identity providers and handle OAuth2 authorization code flow.
+- **Admin Config (`PUT /v1/tenant/social-providers/:provider`)**:
 ```json
 {
-  "message": "all other sessions revoked",
-  "count": 3
+  "enabled": true,
+  "client_id": "123456789012-abc.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-validsecret123"
 }
 ```
+- **Authorize Redirect (`GET /v1/client/auth/social/:provider/authorize`)**:
+  - Generates a 32-byte random hex CSRF state token stored with 10-minute TTL, then returns 302 redirect to provider's login page.
+- **Callback Handler (`GET /v1/client/auth/social/:provider/callback`)**:
+  - Consumes CSRF state token, exchanges code for provider tokens, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
+- **Edge Cases & Error Codes**:
+  - `409 Conflict` (`email_exists_social_account`): Email exists as a password account. Prevents credential injection via signup. Directs user to login first then link provider.
 
-### 3.11 `GET /v1/admin/users/:user_id/sessions` & `POST /v1/admin/users/:user_id/sessions/revoke-all`
-- **Description**: Administrative endpoints for security teams to inspect active user sessions or trigger an emergency kill-switch to revoke all sessions for a compromised account.
-### 3.12 `POST /v1/tenant/roles` & `PUT /v1/tenant/roles/:role_id/permissions`
-- **Description**: Creates custom RBAC roles or updates role permission assignments. Enforces 3-step permission validation (format regex `resource:action`, valid action verbs, policy restriction guards) and logs immutable security audit trail entries detailing actor ID, target role, and modified permissions.
-- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
+### 3.5 Role-Based Access Control (`/v1/tenant/roles`, `/v1/admin/users/:id/roles`, `/v1/client/user/permissions`)
+- **Description**: Creates custom RBAC roles, validates permission strings (`resource:action`), enforces policy guards, logs audit events, and returns user permissions.
 - **Request (`POST /v1/tenant/roles`)**:
 ```json
 {
@@ -340,27 +223,48 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
   - `422 Unprocessable Entity` (`ErrRestrictedPermission`): Assigned permission is restricted for that role under active `RolePermissionPolicy` (e.g. assigning `*:write` to `viewer` role).
   - `409 Conflict` (`ErrRoleExists`): Role with same name already exists in tenant.
 
-### 3.13 `POST /v1/admin/users/:user_id/roles` & `DELETE /v1/admin/users/:user_id/roles/:role_slug`
-- **Description**: Assigns or revokes tenant roles for a target user. Records immutable `AuditLog` entries capturing `assigned_by_user` / `revoked_by_user`, `target_user_id`, `role_slug`, IP address, and User-Agent.
-- **Headers**: `Authorization: Bearer sk_<env>_<hash>`
-- **Request**: `{"role_slug": "content_editor"}`
+### 3.6 Smart Account Recovery (`/v1/client/auth/recovery/*`)
+- **Description**: Initiates account recovery and resolves identity-proof methods in priority order based on tenant `RecoveryPolicy`.
+- **Request (`POST /v1/client/auth/recovery/initiate`)**:
+```json
+{
+  "tenant_id": "tnt_demo",
+  "environment": "test",
+  "email": "user@example.com"
+}
+```
 - **Response (200 OK)**:
 ```json
 {
-  "message": "role assigned to user successfully",
-  "user_id": "usr_81652ec6",
-  "role": "content_editor"
+  "recovery_request_id": "req_8a9b0c1d2e",
+  "status": "initiated",
+  "is_trusted_device_origin": true,
+  "available_methods": ["guardians", "email_otp", "old_password"],
+  "cancellation_token": "a1b2c3d4e5f6..."
 }
 ```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request` (`no_recovery_methods_available`): No methods configured or available for account. Directs to support.
+  - `403 Forbidden` (`ErrOriginBlacklisted`): Request origin (IP, subnet, or device fingerprint) is on the 7-day security blacklist following a recent cancellation.
 
-### 3.14 `GET /v1/client/user/permissions`
-- **Description**: Evaluates and returns all assigned roles and accumulated fine-grained permission strings for the current authenticated user.
-- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Authorization: Bearer <jwt>`
-- **Response (200 OK)**:
+### 3.7 Admin API Keys (`POST /v1/admin/keys/`, `GET /v1/admin/keys/`, `POST /v1/admin/keys/:id/revoke`)
+- **Description**: Allows tenant administrators to issue publishable client keys (`pk_...`) or secret keys (`sk_...`) for server SDKs.
+- **Request (`POST /v1/admin/keys/`)**:
 ```json
 {
-  "user_id": "usr_81652ec6",
-  "roles": ["Content Editor"],
-  "permissions": ["posts:create", "posts:update"]
+  "application_id": "app_test123",
+  "key_type": "secret",
+  "name": "Backend SDK Key"
 }
 ```
+- **Response (201 Created)**:
+```json
+{
+  "id": "key_8a9b0c1d",
+  "key": "sk_test_12345678901234567890123456789012",
+  "key_type": "secret",
+  "environment": "test",
+  "created_at": "2026-08-05T05:00:00Z"
+}
+```
+*(Note: Full secret key value is returned ONCE on creation and never stored in plaintext)*
