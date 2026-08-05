@@ -122,6 +122,19 @@
 						},
 						"description": "Unauthenticated public JWKS endpoint. Returns public RSA modulus (n) and exponent (e) for verifying JWT signatures with Cache-Control: public, max-age=3600."
 					}
+				},
+				{
+					"name": "SAML SP Metadata XML",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/saml/metadata/org_acme",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "saml", "metadata", "org_acme"]
+						},
+						"description": "Unauthenticated SAML 2.0 SP Metadata XML exporter for an organization. Returns XML EntityDescriptor payload with Cache-Control: public, max-age=3600."
+					}
 				}
 			]
 		},

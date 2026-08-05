@@ -16,10 +16,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
@@ -261,5 +263,62 @@ func TestProcessACS(t *testing.T) {
 	}
 	if orgObj.ID != "org_siemens" {
 		t.Errorf("expected org_id 'org_siemens', got '%s'", orgObj.ID)
+	}
+}
+
+func TestGetSPMetadataHandler(t *testing.T) {
+	svc, factory, cleanup := setupTestSAMLService(t)
+	defer cleanup()
+
+	ctx := privacy.NewBypassContext(context.Background())
+	client := factory.GetClient(ctx, "tnt_test", "")
+	_, _ = client.Organization.Create().SetID("org_test").SetTenantID("tnt_test").SetName("Test Org").SetSlug("test-org").Save(ctx)
+
+	// Create SAML Connection for org_test
+	_, err := svc.CreateSAMLConnection(ctx, "tnt_test", "usr_admin", saml.CreateSAMLRequest{
+		OrganizationID: "org_test",
+		IDPEntityID:    "http://www.okta.com/exk999",
+		IDPSSOURL:      "https://test.okta.com/app/sso/saml",
+		IDPCertificate: sampleCert,
+		AllowedDomains: []string{"test.com"},
+		EnforceSSO:     true,
+	}, "127.0.0.1", "TestAgent")
+	if err != nil {
+		t.Fatalf("failed to create SAML connection: %v", err)
+	}
+
+	handler := saml.NewHandler(svc)
+	app := fiber.New()
+	handler.RegisterRoutes(app, nil, nil)
+
+	// 1. Successful SP Metadata Fetch
+	req := httptest.NewRequest("GET", "/v1/saml/metadata/org_test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("failed executing SP metadata request: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+	if contentType := resp.Header.Get("Content-Type"); contentType != "application/xml" {
+		t.Errorf("expected Content-Type application/xml, got '%s'", contentType)
+	}
+	if cacheControl := resp.Header.Get("Cache-Control"); cacheControl != "public, max-age=3600" {
+		t.Errorf("expected Cache-Control public, max-age=3600, got '%s'", cacheControl)
+	}
+
+	// 2. Non-existent Organization Metadata Fetch (404 Guard)
+	req404 := httptest.NewRequest("GET", "/v1/saml/metadata/nonexistent_org", nil)
+	resp404, _ := app.Test(req404)
+	if resp404.StatusCode != 404 {
+		t.Errorf("expected status 404 for nonexistent org, got %d", resp404.StatusCode)
+	}
+
+	// 3. Non-GET Verb Enforcement
+	reqPost := httptest.NewRequest("POST", "/v1/saml/metadata/org_test", nil)
+	respPost, _ := app.Test(reqPost)
+	if respPost.StatusCode != 405 {
+		t.Errorf("expected status 405 for POST, got %d", respPost.StatusCode)
 	}
 }

@@ -162,15 +162,7 @@ func main() {
 		},
 	})
 
-	// 4. Global Middleware Stack
-	app.Use(recover.New())
-	app.Use(logger.New())
-	app.Use(middleware.DynamicCORS())
-	app.Use(middleware.DegradedModeHeader(false))
-
-	// 5. Initialize Feature Services & Handlers
-	isProd := cfg.Env == "production"
-
+	// 4. Initialize Redis & Degraded Mode Health Tracker
 	var redisClient *redis.Client
 	if cfg.RedisURL != "" {
 		opt, err := redis.ParseURL(cfg.RedisURL)
@@ -182,17 +174,26 @@ func main() {
 		redisClient = redis.NewClient(opt)
 		if err := redisClient.Ping(context.Background()).Err(); err != nil {
 			log.Printf("⚠️ Redis ping notice (%s): %v. Rate limiter running with dev fallback / fail-closed protection.", cfg.RedisURL, err)
-			redisClient = nil
 		} else {
 			log.Printf("⚡ Connected to Redis at %s", cfg.RedisURL)
 		}
 	}
+
+	degradedTracker := middleware.NewDegradedModeTracker(redisClient, 1*time.Second)
+
+	// 5. Global Middleware Stack
+	app.Use(recover.New())
+	app.Use(logger.New())
+	app.Use(middleware.DynamicCORS())
+	app.Use(middleware.DegradedModeHeader(degradedTracker))
 
 	if !cfg.RateLimitEnabled {
 		log.Println("⚠️ LOUD WARNING: Rate limiting is DISABLED via AUTHN_RATELIMIT_ENABLED=false. Security boundaries are un-throttled!")
 	} else {
 		log.Printf("🛡️ Rate Limiter configuration loaded from .env: max_attempts=%d, window_seconds=%d, backoff_schedule=%v, reset_days=%d", cfg.RateLimitMaxAttempts, cfg.RateLimitWindowSeconds, cfg.RateLimitBackoffSchedule, cfg.RateLimitViolationResetDays)
 	}
+
+	isProd := cfg.Env == "production"
 
 	rateLimiter := ratelimit.NewLimiter(
 		redisClient,

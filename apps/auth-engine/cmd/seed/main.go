@@ -26,6 +26,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
@@ -332,12 +333,28 @@ func main() {
 				Exist(ctx)
 			if !isMem {
 				_, _ = client.OrgMember.Create().
-					SetID("mem_editor_acme").
+					SetID("mem_user_acme").
 					SetOrganizationID(orgID).
 					SetUserID(memUser.ID).
-					SetRoleID("role_editor").
+					SetRoleID("role_org_editor").
 					Save(ctx)
 			}
+		}
+
+		// Seed Enterprise SAML Connection for Acme Corp
+		hasSAML, _ := client.SAMLConnection.Query().
+			Where(samlconnection.OrganizationID(orgID)).
+			Exist(ctx)
+		if !hasSAML {
+			_, _ = client.SAMLConnection.Create().
+				SetID("saml_acme_corp").
+				SetOrganizationID(orgID).
+				SetIdpEntityID("https://idp.acme-corp.com/saml/metadata").
+				SetIdpSSOURL("https://idp.acme-corp.com/saml/sso").
+				SetIdpCertificate("-----BEGIN CERTIFICATE-----\nMIICXzCCAcegAwIBAgIU...\n-----END CERTIFICATE-----").
+				SetAllowedDomains([]string{"acme-corp.com"}).
+				SetEnforceSSO(true).
+				Save(ctx)
 		}
 	}
 

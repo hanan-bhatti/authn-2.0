@@ -197,7 +197,17 @@ func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 }
 
 func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
+	tenantID := getTenantID(c)
 	orgID := c.Params("orgId")
+
+	_, err := h.service.GetSAMLConnection(c.UserContext(), tenantID, orgID)
+	if err != nil {
+		if errors.Is(err, ErrSAMLNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "SAML connection configuration not found for organization"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	spEntityID := fmt.Sprintf("https://authn.com/saml/sp/%s", orgID)
 	acsURL := fmt.Sprintf("http://localhost:8080/v1/saml/acs")
 
@@ -210,5 +220,6 @@ func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
 </EntityDescriptor>`, spEntityID, acsURL)
 
 	c.Set("Content-Type", "application/xml")
+	c.Set("Cache-Control", "public, max-age=3600")
 	return c.SendString(xmlMetadata)
 }

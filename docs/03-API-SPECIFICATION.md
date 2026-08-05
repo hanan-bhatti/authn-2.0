@@ -217,6 +217,23 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 }
 ```
 
+#### `GET /v1/saml/metadata/:orgId` — SP SAML Metadata Exporter
+* **Description**: Returns Service Provider (SP) SAML 2.0 XML Metadata (`EntityDescriptor`) for an organization.
+* **Authentication**: Unauthenticated (Public).
+* **Rate Limiting**: Exempt.
+* **Headers Returned**: `Content-Type: application/xml`, `Cache-Control: public, max-age=3600` (1-hour cache).
+* **Database Validation**: Returns `404 Not Found` if `:orgId` does not exist or has no configured SAML connection.
+* **Response (200 OK — Ready)**:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<EntityDescriptor entityID="https://authn.com/saml/sp/org_acme" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
+  <SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>
+    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="http://localhost:8080/v1/saml/acs" index="1"/>
+  </SPSSODescriptor>
+</EntityDescriptor>
+```
+
 ### 3.1 Core Authentication (`POST /v1/client/signup` & `POST /v1/client/login`)
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `X-Authn-Client-Type: native|web`
 - **Request (`POST /v1/client/signup`)**:
