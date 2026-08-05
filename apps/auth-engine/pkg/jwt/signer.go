@@ -32,11 +32,13 @@ type Claims struct {
 	// empty string for all subsequent users. Used by console auth middleware to
 	// gate access to /v1/tenant/* and /v1/admin/* routes without requiring an sk_ key.
 	// Full RBAC (FR-12) will replace this with granular permissions in a later phase.
-	Role        string `json:"role,omitempty"`
-	Iss         string `json:"iss"`
-	Iat         int64  `json:"iat"`
-	Exp         int64  `json:"exp"`
-	Jti         string `json:"jti"`
+	Role           string `json:"role,omitempty"`
+	ImpersonatorID string `json:"impersonator_id,omitempty"`
+	IsImpersonated bool   `json:"is_impersonated,omitempty"`
+	Iss            string `json:"iss"`
+	Iat            int64  `json:"iat"`
+	Exp            int64  `json:"exp"`
+	Jti            string `json:"jti"`
 }
 
 // IssueAccessToken creates and signs a 15-minute JWT access token string.
@@ -77,6 +79,50 @@ func IssueAccessToken(userID string, tenantID string, environment string, email 
 	payloadJSON, err := json.Marshal(claims)
 	if err != nil {
 		return "", fmt.Errorf("failed marshaling jwt claims: %w", err)
+	}
+
+	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	signingInput := encodedHeader + "." + encodedPayload
+
+	h := hmac.New(sha256.New, []byte(signingSecret))
+	h.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	return signingInput + "." + signature, nil
+}
+
+// IssueImpersonationToken creates and signs a short-lived JWT access token for admin impersonation.
+func IssueImpersonationToken(userID string, tenantID string, environment string, email string, name string, role string, impersonatorID string, durationMinutes time.Duration, signingSecret string) (string, error) {
+	now := time.Now().UTC()
+	if durationMinutes <= 0 {
+		durationMinutes = 15 * time.Minute
+	}
+	exp := now.Add(durationMinutes)
+
+	claims := Claims{
+		Sub:            userID,
+		TenantID:       tenantID,
+		Environment:    environment,
+		Email:          email,
+		Name:           name,
+		Role:           role,
+		ImpersonatorID: impersonatorID,
+		IsImpersonated: true,
+		Iss:            "authn-engine",
+		Iat:            now.Unix(),
+		Exp:            exp.Unix(),
+		Jti:            fmt.Sprintf("jti_imp_%d", now.UnixNano()),
+	}
+
+	headerJSON, _ := json.Marshal(map[string]string{
+		"alg": "HS256",
+		"typ": "JWT",
+	})
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed marshaling impersonation jwt claims: %w", err)
 	}
 
 	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)

@@ -257,3 +257,94 @@ func ValidatePassword(p PasswordPolicy, password string) []string {
 
 	return missing
 }
+
+// ImpersonationPolicy defines tenant-level user impersonation governance rules.
+type ImpersonationPolicy struct {
+	Enabled                    bool     `json:"enabled"`                      // Master toggle per tenant (default: true)
+	MaxDurationMinutes         int      `json:"max_duration_minutes"`         // Hard cap on impersonation session TTL (default: 15, range: 1..60)
+	RequireStepUpAuth          bool     `json:"require_step_up_auth"`         // Mandate password/2FA re-verification before token issuance (default: true)
+	RequireTicketID            bool     `json:"require_ticket_id"`            // Mandate support ticket ID in payload (default: false)
+	RequireUserOptIn           bool     `json:"require_user_opt_in"`          // Require user's support_access_enabled flag to be true (default: false)
+	EmailNotificationPolicy    string   `json:"email_notification_policy"`    // "IMMEDIATE" (default) | "POST_SESSION" | "DISABLED"
+	ReadOnlyDefault            bool     `json:"read_only_default"`            // Force impersonation tokens into read-only mode (default: false)
+	RestrictAdminImpersonation bool     `json:"restrict_admin_impersonation"` // Block impersonating users holding admin roles (default: true)
+	AllowedRoles               []string `json:"allowed_roles"`                // List of role slugs permitted to impersonate (default: ["tenant_admin", "support_admin"])
+}
+
+// DefaultImpersonationPolicy returns standard default impersonation policy settings.
+func DefaultImpersonationPolicy() ImpersonationPolicy {
+	return ImpersonationPolicy{
+		Enabled:                    true,
+		MaxDurationMinutes:         15,
+		RequireStepUpAuth:          true,
+		RequireTicketID:            false,
+		RequireUserOptIn:           false,
+		EmailNotificationPolicy:    "IMMEDIATE",
+		ReadOnlyDefault:            false,
+		RestrictAdminImpersonation: true,
+		AllowedRoles:               []string{"tenant_admin", "support_admin"},
+	}
+}
+
+// ValidateImpersonationPolicy checks strict configuration bounds for an ImpersonationPolicy.
+func ValidateImpersonationPolicy(pol ImpersonationPolicy) error {
+	if pol.MaxDurationMinutes < 1 || pol.MaxDurationMinutes > 60 {
+		return errors.New("max_duration_minutes must be between 1 and 60 minutes")
+	}
+	validEmailPolicies := map[string]bool{
+		"IMMEDIATE":    true,
+		"POST_SESSION": true,
+		"DISABLED":     true,
+	}
+	if !validEmailPolicies[pol.EmailNotificationPolicy] {
+		return fmt.Errorf("invalid email_notification_policy '%s': must be IMMEDIATE, POST_SESSION, or DISABLED", pol.EmailNotificationPolicy)
+	}
+	return nil
+}
+
+// ImpersonateRequest defines the incoming payload for initiating an impersonation session.
+type ImpersonateRequest struct {
+	Reason             string `json:"reason"`
+	DurationMinutes    int    `json:"duration_minutes,omitempty"`
+	TicketID           string `json:"ticket_id,omitempty"`
+	VerificationMethod string `json:"verification_method,omitempty"` // "webauthn" | "totp" | "password"
+	MFACode            string `json:"mfa_code,omitempty"`
+	AdminPassword      string `json:"admin_password,omitempty"`
+	CredentialID       string `json:"credential_id,omitempty"`
+}
+
+// ValidateImpersonateRequest validates an incoming impersonation request against tenant bounds.
+func ValidateImpersonateRequest(req ImpersonateRequest, pol ImpersonationPolicy) error {
+	reason := strings.TrimSpace(req.Reason)
+	if len(reason) < 10 {
+		return errors.New("reason is required and must be at least 10 characters")
+	}
+	if len(reason) > 500 {
+		return errors.New("reason must not exceed 500 characters")
+	}
+
+	if pol.RequireTicketID {
+		ticketID := strings.TrimSpace(req.TicketID)
+		if ticketID == "" {
+			return errors.New("ticket_id is required by active tenant impersonation policy")
+		}
+		if len(ticketID) < 3 || len(ticketID) > 100 {
+			return errors.New("ticket_id must be between 3 and 100 characters")
+		}
+	} else if req.TicketID != "" {
+		ticketID := strings.TrimSpace(req.TicketID)
+		if len(ticketID) < 3 || len(ticketID) > 100 {
+			return errors.New("ticket_id must be between 3 and 100 characters")
+		}
+	}
+
+	duration := req.DurationMinutes
+	if duration <= 0 {
+		duration = pol.MaxDurationMinutes
+	}
+	if duration < 1 || duration > pol.MaxDurationMinutes {
+		return fmt.Errorf("requested duration_minutes (%d) must be between 1 and %d minutes", duration, pol.MaxDurationMinutes)
+	}
+
+	return nil
+}
