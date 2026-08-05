@@ -416,30 +416,46 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 
 ### 3.3 Refresh Token Rotation (`POST /v1/client/auth/refresh`)
 
-- **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a new 64-byte Refresh Token. Implements Refresh Token Rotation (RTR) with a 10-second grace window (`rotated_grace`) for handling concurrent parallel requests, and automatic compromise mitigation (revoking all sessions) if token reuse occurs after the 10-second grace window.
-- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
+> **Last Verified**: `2026-08-06` — live `curl` against running server.
+> See full endpoint doc: [`docs/endpoints/client-auth-refresh.md`](endpoints/client-auth-refresh.md)
+
+- **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a newly rotated 64-byte Refresh Token. Enforces a **10-second grace window** for handling concurrent browser requests, and **automatic compromise mitigation** (revoking all user sessions) if token reuse occurs after the 10-second grace window. Parses `refresh_token` from JSON body first, with fallback to `authn_refresh_token` HttpOnly cookie.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Content-Type: application/json`
 - **Request**:
 ```json
 {
-  "refresh_token": "91c6044c-b80b-4897-9147-4a9a082c311c..."
+  "refresh_token": "266cb73e6f9aecffa0dbd527c24baab0e9a4fe03864cedfdd34296aa4c698da2"
 }
 ```
-- **Response (200 OK)**:
+- **Response (200 OK — Rotation)**:
 ```json
 {
-  "access_token": "eyJhbGciOi...",
-  "refresh_token": "a1b2c3d4-...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "512bbc00-1004-4607-9279-752897038b18a14100aa-cf80-4f3a-a18a-30f9176585bc",
   "token_type": "Bearer",
   "expires_in": 900,
-  "session_id": "ses_67f048b7"
+  "session_id": "ses_1e12795c-48f"
 }
 ```
-- **Edge Cases & Error Codes**:
-  - `401 Unauthorized` (`session_expired`): Session reached absolute TTL or idle timeout.
-  - `401 Unauthorized` (`session_revoked`): Session was explicitly revoked.
-  - `401 Unauthorized` (`session_compromised`): Token reuse detected outside 10s grace window. Triggers immediate revocation of all user sessions.
+- **Response (200 OK — Grace Period Concurrent Request)**:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "session_id": "ses_1e12795c-48f"
+}
+```
+- **Error Codes**:
+  - `400 Bad Request`: `{"error": "refresh_token required"}`
+  - `401 Unauthorized` (`invalid_token`): `{"code": "invalid_token", "error": "invalid or expired refresh token"}`
+  - `401 Unauthorized` (`session_expired`): `{"code": "session_expired", "error": "session expired"}`
+  - `401 Unauthorized` (`session_revoked`): `{"code": "session_revoked", "error": "session revoked"}`
+  - `401 Unauthorized` (`session_compromised`): `{"code": "session_compromised", "error": "session reuse detected; all sessions revoked for security"}` (triggers automatic account-wide session revocation)
+  - `405 Method Not Allowed`: `{"error": {"code": 405, "message": "Method Not Allowed"}}`
 
-### 3.3 Session Management (`GET /v1/client/sessions` & `/v1/client/sessions/revoke*`)
+### 3.4 Session Management (`GET /v1/client/sessions` & `/v1/client/sessions/revoke*`)
 - **Description**: Allows authenticated users to view active sessions with device details (`browser`, `os`, `device`, `label`) and `is_current` flag, or revoke sessions.
   - `/revoke`: Revokes a specific session by ID (`{"session_id": "ses_..."}`).
   - `/revoke-others`: Revokes all active sessions for the user except current.

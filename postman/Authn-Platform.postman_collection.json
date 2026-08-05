@@ -532,7 +532,104 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "login"]
 						},
-						"description": "During Redis outage, login fails closed. X-Authn-Degraded-Mode: true in response header.\n\nVerified response (503):\n{\"error\":\"rate limit service unavailable\"}"
+					{
+					"name": "Refresh Token — 200 Success (Rotation)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"266cb73e6f9aecffa0dbd527c24baab0e9a4fe03864cedfdd34296aa4c698da2\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "refresh"]
+						},
+						"description": "Rotate valid refresh token for new access_token JWT + newly rotated refresh_token.\n\nVerified response (200):\n{\n  \"access_token\": \"eyJhbGci...\",\n  \"refresh_token\": \"512bbc00-1004-4607...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 900,\n  \"session_id\": \"ses_1e12795c-48f\"\n}"
+					}
+				},
+				{
+					"name": "Refresh Token — 200 Grace Window (Concurrent Request)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"266cb73e6f9aecffa0dbd527c24baab0e9a4fe03864cedfdd34296aa4c698da2\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "refresh"]
+						},
+						"description": "Replaying recently rotated refresh token within 10s grace window returns current active tokens without re-rotating (prevents tab race condition token loss).\n\nVerified response (200):\n{\n  \"access_token\": \"eyJhbGci...\",\n  \"refresh_token\": \"\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 900,\n  \"session_id\": \"ses_1e12795c-48f\"\n}"
+					}
+				},
+				{
+					"name": "Refresh Token — 400 Missing Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "refresh"]
+						},
+						"description": "Missing refresh_token in body and cookie.\n\nVerified response (400):\n{\"error\":\"refresh_token required\"}"
+					}
+				},
+				{
+					"name": "Refresh Token — 401 Invalid Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"garbage_token_1234567890\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "refresh"]
+						},
+						"description": "Garbage, unknown, or expired token.\n\nVerified response (401):\n{\"code\":\"invalid_token\",\"error\":\"invalid or expired refresh token\"}"
+					}
+				},
+				{
+					"name": "Refresh Token — 401 Session Compromised (Reuse Attack)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"stolen_rotated_token_123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/refresh",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "refresh"]
+						},
+						"description": "Replaying a rotated token after 10s grace period triggers automatic account-wide session revocation.\n\nVerified response (401):\n{\"code\":\"session_compromised\",\"error\":\"session reuse detected; all sessions revoked for security\"}"
 					}
 				},
 				{

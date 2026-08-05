@@ -181,6 +181,9 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 		if errors.Is(err, ErrSessionExpired) {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error(), "code": "session_expired"})
 		}
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid or expired refresh token", "code": "invalid_token"})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
