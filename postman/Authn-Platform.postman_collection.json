@@ -868,6 +868,66 @@
 					}
 				},
 				{
+					"name": "Organization — Create",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Acme Corporation\",\n  \"slug\": \"acme-corp-101\",\n  \"logo_url\": \"https://acme.local/logo.png\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations"]
+						},
+						"description": "Creates a new B2B Organization workspace.\n\nVerified response (201 Created):\n{\n  \"id\": \"org_9038723e-062\",\n  \"name\": \"Acme Corporation\",\n  \"slug\": \"acme-corp-101\"\n}"
+					}
+				},
+				{
+					"name": "Organization — Create Team Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"invited.dev@authn.local\",\n  \"role_id\": \"editor\",\n  \"expires_hrs\": 48\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations/org_9038723e-062/invitations",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations", "org_9038723e-062", "invitations"]
+						},
+						"description": "Creates a 32-byte cryptographic team member invitation."
+					}
+				},
+				{
+					"name": "Organization — Accept Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invitation_token\": \"a6449b0d2c322041d58c6f769dac4d7ee90fc5dd5ea9ca67dfaab7c9a182bfb0\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/invitations/accept",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "invitations", "accept"]
+						},
+						"description": "Accepts team invitation token. Single-use enforcement prevents token replay attacks."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",

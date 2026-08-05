@@ -22,6 +22,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -322,6 +323,7 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 
 	// Delete associated members & invitations first
 	_, _ = client.OrgMember.Delete().Where(orgmember.OrganizationID(orgID)).Exec(ctx)
+	_, _ = client.OrgInvitation.Delete().Where(orginvitation.OrganizationID(orgID)).Exec(ctx)
 	// Execute Organization deletion
 	if err := client.Organization.DeleteOne(o).Exec(ctx); err != nil {
 		return fmt.Errorf("failed to delete organization: %w", err)

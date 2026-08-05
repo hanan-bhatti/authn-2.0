@@ -607,7 +607,36 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `400 Bad Request` (`no_recovery_methods_available`): No methods configured or available for account. Directs to support.
   - `403 Forbidden` (`ErrOriginBlacklisted`): Request origin (IP, subnet, or device fingerprint) is on the 7-day security blacklist following a recent cancellation.
 
-### 3.7 Admin API Keys (`POST /v1/admin/keys/`, `GET /v1/admin/keys/`, `POST /v1/admin/keys/:id/revoke`)
+### 3.9 B2B Organizations & Team Invitations (`/v1/client/organizations/*` & `/v1/tenant/organizations/*`)
+
+> **Last Verified**: `2026-08-06` — live `curl` attack suite against running server.
+> See full endpoint doc: [`docs/endpoints/client-organizations.md`](endpoints/client-organizations.md)
+
+- **Description**: Manages B2B organization workspaces, member roles (`org_admin`, `editor`, `viewer`), and 32-byte cryptographic invitation tokens (7-day TTL). Enforces single-use token consumption and cascading cleanup of member/invitation records upon org deletion.
+- **Request (`POST /v1/client/organizations`)**:
+```json
+{
+  "name": "Acme Corporation",
+  "slug": "acme-corp-101",
+  "logo_url": "https://acme.local/logo.png"
+}
+```
+- **Response (201 Created)**:
+```json
+{
+  "id": "org_9038723e-062",
+  "tenant_id": "tnt_default",
+  "name": "Acme Corporation",
+  "slug": "acme-corp-101",
+  "logo_url": "https://acme.local/logo.png",
+  "created_at": "2026-08-06T03:05:29.432Z"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request`: Invalid slug format (`organization slug must be 2-50 lowercase alphanumeric characters or hyphens`), duplicate slug in tenant (`organization slug already exists in this tenant`), or replayed invitation token (`invitation has already been accepted`).
+  - `404 Not Found`: Organization or invitation token not found.
+
+### 3.10 Admin API Keys (`POST /v1/admin/keys/`, `GET /v1/admin/keys/`, `POST /v1/admin/keys/:id/revoke`)
 - **Description**: Allows tenant administrators to issue publishable client keys (`pk_...`) or secret keys (`sk_...`) for server SDKs.
 - **Request (`POST /v1/admin/keys/`)**:
 ```json

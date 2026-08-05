@@ -59,6 +59,7 @@ var (
 	ErrDomainNotAllowed     = errors.New("email domain is not permitted by tenant organization policy")
 	ErrMaxMembersExceeded   = errors.New("organization has reached the maximum allowed member count")
 	ErrMaxOrgsExceeded      = errors.New("tenant has reached the maximum allowed organizations limit")
+	ErrInvalidInvitationToken = errors.New("invitation_token is required")
 )
 
 // CreateOrgRequest represents the request payload to create a new organization.
@@ -209,7 +210,7 @@ type AcceptInvitationRequest struct {
 func (r *AcceptInvitationRequest) Validate() error {
 	r.InvitationToken = strings.TrimSpace(r.InvitationToken)
 	if r.InvitationToken == "" {
-		return errors.New("invitation_token is required")
+		return ErrInvalidInvitationToken
 	}
 	return nil
 }
