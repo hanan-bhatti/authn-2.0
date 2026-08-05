@@ -13,6 +13,8 @@ package auth
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -78,17 +80,23 @@ type Handler struct {
 	recoveryService *RecoveryService
 	policyRepo      *policy.Repository
 	rateLimiter     *ratelimit.Limiter
+	resendLimiter   *ratelimit.Limiter
 }
 
 // NewHandler constructs a new Auth Handler instance.
-func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ratelimit.Limiter) *Handler {
+func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ratelimit.Limiter, resendLimiter ...*ratelimit.Limiter) *Handler {
 	telemetry := NewTelemetryService(service.repo, "super_secret_kms_key_32bytes_authn!", policyRepo)
+	var rLimiter *ratelimit.Limiter
+	if len(resendLimiter) > 0 {
+		rLimiter = resendLimiter[0]
+	}
 	return &Handler{
 		service:         service,
 		guardianService: NewGuardianService(service.repo, policyRepo),
 		recoveryService: NewRecoveryService(service.repo, telemetry, policyRepo),
 		policyRepo:      policyRepo,
 		rateLimiter:     rateLimiter,
+		resendLimiter:   rLimiter,
 	}
 }
 
@@ -580,6 +588,34 @@ func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 
 	if !isValidEmail(req.Email) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+	}
+
+	if h.resendLimiter != nil {
+		emailClean := strings.ToLower(strings.TrimSpace(req.Email))
+		hStr := sha256.Sum256([]byte(fmt.Sprintf("%s:%s", req.TenantID, emailClean)))
+		emailHash := hex.EncodeToString(hStr[:])[:16]
+		key := fmt.Sprintf("%s:resend_email:%s", req.TenantID, emailHash)
+
+		allowed, retryAfter, err := h.resendLimiter.Check(c.UserContext(), key)
+		if err != nil {
+			if errors.Is(err, ratelimit.ErrRedisUnavailable) {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+					"error": "rate limit service unavailable",
+				})
+			}
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "internal rate limiter error",
+			})
+		}
+		if !allowed {
+			if retryAfter > 0 {
+				c.Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
+			}
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error":               "too many verification email requests for this address, please try again later",
+				"retry_after_seconds": int(retryAfter.Seconds()),
+			})
+		}
 	}
 
 	if err := h.service.ResendVerificationEmail(c.UserContext(), req.TenantID, req.Environment, req.Email); err != nil {

@@ -206,6 +206,17 @@ func main() {
 		cfg.RateLimitViolationResetDays,
 	)
 
+	resendLimiter := ratelimit.NewLimiter(
+		redisClient,
+		isProd,
+		true, // failClosed
+		cfg.ResendRateLimitEnabled,
+		cfg.ResendRateLimitMaxAttempts,
+		cfg.ResendRateLimitWindowSeconds,
+		cfg.RateLimitBackoffSchedule,
+		cfg.RateLimitViolationResetDays,
+	)
+
 	apiKeyRepo := apikey.NewRepository(factory)
 	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
 	apiKeyHandler := apikey.NewHandler(apiKeyService)
@@ -223,7 +234,7 @@ func main() {
 
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider)
-	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter)
+	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter)
 
 	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
 	// OR a JWT with role=tenant_admin (Authn web console browser sessions).

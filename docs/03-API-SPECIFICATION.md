@@ -332,7 +332,7 @@ Signup is a sensitive mutation endpoint — rate limiting cannot be bypassed und
 ```
 
 #### `POST /v1/client/resend-verification`
-Enumeration-safe — unknown emails, already-verified accounts, and valid unverified accounts all return identical `200`.
+Enumeration-safe — unknown emails, already-verified accounts, and valid unverified accounts all return identical `200`. Dedicated per-email rate limiting (default: 3 requests / 3600s window) configurable via `AUTHN_RESEND_RATELIMIT_*`.
 ```json
 // Request body
 { "email": "user@example.com" }
@@ -343,6 +343,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 // 400 — invalid email format: {"error": "invalid email address format"}
 // 401 — missing pk_: {"error": "missing publishable API key in X-Authn-Publishable-Key header"}
 // 405 — wrong verb (Allow: POST): {"error": {"code": 405, "message": "Method Not Allowed"}}
+// 429 — per-email rate limit: {"error": "too many verification email requests for this address, please try again later", "retry_after_seconds": 900}
 ```
 
 ### 3.3 Refresh Token Rotation (`POST /v1/client/auth/refresh`)

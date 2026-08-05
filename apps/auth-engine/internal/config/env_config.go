@@ -41,12 +41,17 @@ type EnvConfig struct {
 	Issuer             string // OpenID Connect Issuer URL
 	JWTSigningKeyPath  string // Path to RSA/ECDSA private key for ID token signing
 
-	// Multi-Dimensional Rate Limiting
+	// Multi-Dimensional Rate Limiting (IP-based, global)
 	RateLimitEnabled            bool
 	RateLimitMaxAttempts        int
 	RateLimitWindowSeconds      int
 	RateLimitBackoffSchedule    []time.Duration
 	RateLimitViolationResetDays int
+
+	// Per-Email Resend Verification Rate Limiting
+	ResendRateLimitEnabled        bool
+	ResendRateLimitMaxAttempts    int
+	ResendRateLimitWindowSeconds  int
 
 	// Email & Communication Provider Settings
 	EmailDriver         string // "smtp" | "resend" | "sendgrid" | "postmark" | "aws_ses" | "noop"
@@ -152,6 +157,9 @@ func LoadAndValidateConfig() (*EnvConfig, error) {
 		RateLimitWindowSeconds:      getEnvAsIntOrDefault("AUTHN_RATELIMIT_WINDOW_SECONDS", 900),
 		RateLimitBackoffSchedule:    parseBackoffSchedule(getEnvOrDefault("AUTHN_RATELIMIT_BACKOFF_SCHEDULE", "15m,1h,6h,24h"), defaultSchedule),
 		RateLimitViolationResetDays: getEnvAsIntOrDefault("AUTHN_RATELIMIT_VIOLATION_RESET_DAYS", 7),
+		ResendRateLimitEnabled:       getEnvAsBoolOrDefault("AUTHN_RESEND_RATELIMIT_ENABLED", true),
+		ResendRateLimitMaxAttempts:   getEnvAsIntOrDefault("AUTHN_RESEND_RATELIMIT_MAX_ATTEMPTS", 3),
+		ResendRateLimitWindowSeconds: getEnvAsIntOrDefault("AUTHN_RESEND_RATELIMIT_WINDOW_SECONDS", 3600),
 		EmailDriver:                 getEnvOrDefault("EMAIL_DRIVER", "smtp"),
 		SMTPHost:                    getEnvOrDefault("SMTP_HOST", "localhost"),
 		SMTPPort:                    getEnvOrDefault("SMTP_PORT", "1025"),

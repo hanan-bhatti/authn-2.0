@@ -359,7 +359,25 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "resend-verification"]
 						},
-						"description": "Verified response (400):\n{\"error\":\"invalid email address format\"}"
+					},
+				{
+					"name": "Resend Verification — 429 Per-Email Rate Limited",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"target.peremail@authn.local\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "resend-verification"]
+						},
+						"description": "Triggered after 3 resend attempts for the same email address in 1 hour. Includes Retry-After header. Enumeration-safe.\n\nVerified response (429):\n{\"error\":\"too many verification email requests for this address, please try again later\",\"retry_after_seconds\":900}"
 					}
 				},
 				{

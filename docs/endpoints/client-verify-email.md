@@ -106,7 +106,8 @@ Allow: GET, HEAD
 
 ### Authentication & Access Control
 * **Header Required**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
-* **Rate Limiting**: Shares the global 5 attempts / 900s sliding window per IP.
+* **IP Rate Limiting**: Shares global 5 attempts / 900s sliding window per IP.
+* **Per-Email Rate Limiting**: Enforces a dedicated per-email sliding-window limit (default: 3 attempts / 3600s window). Configurable via `AUTHN_RESEND_RATELIMIT_*` env variables. Enumeration-safe: rate limit evaluates input string before DB query.
 
 ### Request Body
 ```json
@@ -181,6 +182,25 @@ Allow: POST
 {"error": {"code": 405, "message": "Method Not Allowed"}}
 ```
 
+#### `429 Too Many Requests` — Per-Email Rate Limit Exceeded
+Triggered when more than `AUTHN_RESEND_RATELIMIT_MAX_ATTEMPTS` (default 3) resend requests are sent to the same email address within `AUTHN_RESEND_RATELIMIT_WINDOW_SECONDS` (default 3600s / 1 hour). Also triggered if the global IP limit is reached.
+
+```bash
+$ curl -i -X POST -H "Content-Type: application/json" \
+  -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
+  -d '{"email":"target.peremail@authn.local"}' \
+  http://localhost:8080/v1/client/resend-verification
+
+HTTP/1.1 429 Too Many Requests
+Retry-After: 900
+```
+```json
+{
+  "error": "too many verification email requests for this address, please try again later",
+  "retry_after_seconds": 900
+}
+```
+
 ---
 
 ## Security Properties (Verified)
@@ -192,18 +212,28 @@ Allow: POST
 | Token storage | SHA-256 hash only — raw token never persisted | Verified (source audit) |
 | Token cleared on use | `ClearEmailVerificationToken()` + `ClearEmailVerificationExpiresAt()` called in `MarkUserEmailVerified` | Verified |
 | Resend enumeration safety | All cases (unknown / verified / unverified) return identical `200` | Verified |
+| Per-email rate limiting | Enforces limit per hashed `tenantID:email` before DB lookup | Verified (env configurable) |
 | Method enforcement | `GET verify-email` 405 on POST; `POST resend-verification` 405 on GET | Verified |
 | Auth gate | Both endpoints require valid `X-Authn-Publishable-Key` | Verified |
-| Rate limiting | Both endpoints under global 5 req / 900s per IP sliding window | Verified (shared `mws` stack) |
+| Rate limiting | IP-based (5 req/900s) + Per-Email (3 req/3600s) multi-dimensional check | Verified |
 | Fail-CLOSED | Under Redis outage, `503` returned — rate limit bypass blocked | Inherits from shared middleware |
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `AUTHN_RESEND_RATELIMIT_ENABLED` | `true` | Enables per-email rate limiting on verification resends |
+| `AUTHN_RESEND_RATELIMIT_MAX_ATTEMPTS` | `3` | Maximum resend attempts per email address within window |
+| `AUTHN_RESEND_RATELIMIT_WINDOW_SECONDS` | `3600` | Sliding window duration in seconds (3600s = 1 hour) |
 
 ---
 
 ## Known Limitations / Design Notes
 
-* **No per-email resend rate limit**: The rate limiter is IP-based only. 5 resends / 15 min per IP, but no per-user or per-email cap. A distributed attacker rotating IPs could still spam a target inbox. Acceptable for current deployment scale.
 * **Resend always overwrites the previous token**: Calling resend generates a new token and overwrites the old one in the DB. Previous links are immediately invalidated. Intentional — prevents accumulation of live tokens.
-* **No audit log on silently-skipped resend**: For already-verified accounts the service silently returns `nil`. No log entry is written. This is acceptable since the caller cannot learn the verified state from the response.
+* **No audit log on silently-skipped resend**: For already-verified accounts the service silently returns `nil`. No log entry is written. Acceptable since external callers cannot learn verified state from response.
 
 ---
 
