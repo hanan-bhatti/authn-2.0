@@ -28,6 +28,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -55,8 +56,9 @@ func (r *Repository) GetUserByID(ctx context.Context, userID string) (*ent.User,
 
 // EnsureTenantExists checks if a tenant exists and creates a default record if missing.
 func (r *Repository) EnsureTenantExists(ctx context.Context, tenantID string) error {
-	client := r.factory.GetClient(ctx, tenantID, "test")
-	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(ctx)
+	sysCtx := privacy.NewBypassContext(ctx)
+	client := r.factory.GetClient(sysCtx, tenantID, "test")
+	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(sysCtx)
 	if err != nil {
 		return fmt.Errorf("failed checking tenant existence: %w", err)
 	}
@@ -65,7 +67,7 @@ func (r *Repository) EnsureTenantExists(ctx context.Context, tenantID string) er
 			SetID(tenantID).
 			SetName("Default Workspace").
 			SetSlug(tenantID).
-			Save(ctx)
+			Save(sysCtx)
 		if err != nil && !ent.IsConstraintError(err) {
 			return fmt.Errorf("failed auto-creating tenant %s: %w", tenantID, err)
 		}
@@ -343,8 +345,9 @@ func (r *Repository) FindUserByID(ctx context.Context, userID string) (*ent.User
 
 // EnsureDefaultApplicationExists checks if an Application exists and creates a default record if missing.
 func (r *Repository) EnsureDefaultApplicationExists(ctx context.Context, appID string, tenantID string, redirectURIs []string) error {
-	client := r.factory.GetClient(ctx, tenantID, "test")
-	exists, err := client.Application.Query().Where(application.ID(appID)).Exist(ctx)
+	sysCtx := privacy.NewBypassContext(ctx)
+	client := r.factory.GetClient(sysCtx, tenantID, "test")
+	exists, err := client.Application.Query().Where(application.ID(appID)).Exist(sysCtx)
 	if err != nil {
 		return fmt.Errorf("failed checking application existence: %w", err)
 	}
@@ -355,7 +358,7 @@ func (r *Repository) EnsureDefaultApplicationExists(ctx context.Context, appID s
 			SetName("Default Client App").
 			SetEnvironment(application.EnvironmentTest).
 			SetExactRedirectUris(redirectURIs).
-			Save(ctx)
+			Save(sysCtx)
 		if err != nil && !ent.IsConstraintError(err) {
 			return fmt.Errorf("failed auto-creating application %s: %w", appID, err)
 		}

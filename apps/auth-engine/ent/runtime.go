@@ -286,16 +286,20 @@ func init() {
 	roleDescName := roleFields[2].Descriptor()
 	// role.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	role.NameValidator = roleDescName.Validators[0].(func(string) error)
+	// roleDescSlug is the schema descriptor for slug field.
+	roleDescSlug := roleFields[3].Descriptor()
+	// role.SlugValidator is a validator for the "slug" field. It is called by the builders before save.
+	role.SlugValidator = roleDescSlug.Validators[0].(func(string) error)
 	// roleDescIsSystemRole is the schema descriptor for is_system_role field.
-	roleDescIsSystemRole := roleFields[4].Descriptor()
+	roleDescIsSystemRole := roleFields[5].Descriptor()
 	// role.DefaultIsSystemRole holds the default value on creation for the is_system_role field.
 	role.DefaultIsSystemRole = roleDescIsSystemRole.Default.(bool)
 	// roleDescCreatedAt is the schema descriptor for created_at field.
-	roleDescCreatedAt := roleFields[7].Descriptor()
+	roleDescCreatedAt := roleFields[8].Descriptor()
 	// role.DefaultCreatedAt holds the default value on creation for the created_at field.
 	role.DefaultCreatedAt = roleDescCreatedAt.Default.(func() time.Time)
 	// roleDescUpdatedAt is the schema descriptor for updated_at field.
-	roleDescUpdatedAt := roleFields[8].Descriptor()
+	roleDescUpdatedAt := roleFields[9].Descriptor()
 	// role.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	role.DefaultUpdatedAt = roleDescUpdatedAt.Default.(func() time.Time)
 	// role.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

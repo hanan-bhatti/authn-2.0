@@ -38,7 +38,10 @@ func (Role) Fields() []ent.Field {
 			Comment("Owning Tenant ID"),
 		field.String("name").
 			NotEmpty().
-			Comment("Role name (e.g. admin, editor, viewer)"),
+			Comment("Role human-readable name (e.g. Support Agent)"),
+		field.String("slug").
+			NotEmpty().
+			Comment("URL/API-friendly slug identifier (e.g. support_agent). Unique per tenant."),
 		field.String("description").
 			Optional().
 			Comment("Optional role description"),
@@ -82,5 +85,6 @@ func (Role) Edges() []ent.Edge {
 func (Role) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("tenant_id", "name").Unique(),
+		index.Fields("tenant_id", "slug").Unique(),
 	}
 }

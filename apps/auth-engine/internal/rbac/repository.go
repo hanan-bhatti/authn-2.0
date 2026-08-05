@@ -26,7 +26,7 @@ import (
 
 var (
 	ErrRoleNotFound     = errors.New("role not found")
-	ErrRoleExists       = errors.New("role with this name already exists in tenant")
+	ErrRoleExists       = errors.New("role with this name or slug already exists in tenant")
 	ErrSystemRoleDelete = errors.New("built-in system roles cannot be deleted")
 	ErrUserRoleExists   = errors.New("user already possesses this role")
 )
@@ -47,12 +47,27 @@ func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, descr
 	if roleName == "" {
 		roleName = slug
 	}
+	roleSlug := slug
+	if roleSlug == "" {
+		// Auto-derive slug from name: lowercase + underscores
+		roleSlug = strings.ToLower(strings.ReplaceAll(roleName, " ", "_"))
+	}
 
-	exists, err := client.Role.Query().Where(role.TenantID(tenantID), role.Name(roleName)).Exist(ctx)
+	// Check name uniqueness
+	nameExists, err := client.Role.Query().Where(role.TenantID(tenantID), role.Name(roleName)).Exist(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if exists {
+	if nameExists {
+		return nil, ErrRoleExists
+	}
+
+	// Check slug uniqueness
+	slugExists, err := client.Role.Query().Where(role.TenantID(tenantID), role.Slug(roleSlug)).Exist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if slugExists {
 		return nil, ErrRoleExists
 	}
 
@@ -61,6 +76,7 @@ func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, descr
 		SetID(roleID).
 		SetTenantID(tenantID).
 		SetName(roleName).
+		SetSlug(roleSlug).
 		SetIsSystemRole(isSystem)
 
 	if description != "" {
@@ -83,16 +99,13 @@ func (r *Repository) GetRoleByID(ctx context.Context, roleID string) (*ent.Role,
 	return roleObj, err
 }
 
-// GetRoleBySlug retrieves a role by tenant ID and slug/name.
+// GetRoleBySlug retrieves a role by tenant ID and its slug field (exact match).
 func (r *Repository) GetRoleBySlug(ctx context.Context, tenantID, slug string) (*ent.Role, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	roleObj, err := client.Role.Query().
 		Where(
 			role.TenantID(tenantID),
-			role.Or(
-				role.NameEqualFold(slug),
-				role.NameEqualFold(strings.ReplaceAll(slug, "_", " ")),
-			),
+			role.Slug(slug),
 		).
 		WithPermissions().
 		Only(ctx)
@@ -220,7 +233,8 @@ func (r *Repository) GetUserRolesAndPermissions(ctx context.Context, userID stri
 
 	for _, ur := range userRoles {
 		if ur.Edges.Role != nil {
-			rolesMap[ur.Edges.Role.Name] = true
+			// Return the slug (machine-readable) as the role identifier, not the display name
+			rolesMap[ur.Edges.Role.Slug] = true
 			for _, p := range ur.Edges.Role.Edges.Permissions {
 				permsMap[p.Action] = true
 			}

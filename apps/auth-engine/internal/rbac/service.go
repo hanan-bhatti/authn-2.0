@@ -80,7 +80,7 @@ func (s *Service) UpdateRolePermissions(ctx context.Context, tenantID, roleID st
 		return err
 	}
 
-	if err := ValidatePermissionsAgainstPolicy(roleObj.Name, perms, s.policy); err != nil {
+	if err := ValidatePermissionsAgainstPolicy(roleObj.Slug, perms, s.policy); err != nil {
 		return err
 	}
 
@@ -95,6 +95,7 @@ func (s *Service) UpdateRolePermissions(ctx context.Context, tenantID, roleID st
 
 	_ = s.audit.LogRBACEvent(ctx, tenantID, "admin", actorID, "rbac.role.permissions_updated", "role", roleID, map[string]interface{}{
 		"role_name":       roleObj.Name,
+		"role_slug":       roleObj.Slug,
 		"old_permissions": oldPerms,
 		"new_permissions": perms,
 	}, ip, ua)
@@ -116,7 +117,8 @@ func (s *Service) AssignUserRole(ctx context.Context, tenantID, targetUserID, ro
 
 	_ = s.audit.LogRBACEvent(ctx, tenantID, "admin", actorID, "rbac.user_role.assigned", "user", targetUserID, map[string]interface{}{
 		"target_user_id":   targetUserID,
-		"assigned_role":    roleObj.Name,
+		"assigned_role":    roleObj.Slug,
+		"role_name":        roleObj.Name,
 		"role_id":          roleObj.ID,
 		"assigned_by_user": actorID,
 	}, ip, ua)
@@ -137,8 +139,9 @@ func (s *Service) RevokeUserRole(ctx context.Context, tenantID, targetUserID, ro
 
 	_ = s.audit.LogRBACEvent(ctx, tenantID, "admin", actorID, "rbac.user_role.revoked", "user", targetUserID, map[string]interface{}{
 		"target_user_id":  targetUserID,
-		"revoked_role":   roleObj.Name,
-		"role_id":        roleObj.ID,
+		"revoked_role":    roleObj.Slug,
+		"role_name":       roleObj.Name,
+		"role_id":         roleObj.ID,
 		"revoked_by_user": actorID,
 	}, ip, ua)
 

@@ -60,7 +60,7 @@ func (r *Repository) CreateEndpoint(ctx context.Context, tenantID, rawURL, descr
 func (r *Repository) GetEndpointByID(ctx context.Context, tenantID, endpointID string) (*ent.WebhookEndpoint, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	ep, err := client.WebhookEndpoint.Query().
-		Where(webhookendpoint.ID(endpointID)).
+		Where(webhookendpoint.ID(endpointID), webhookendpoint.TenantID(tenantID)).
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -107,8 +107,13 @@ func (r *Repository) GetActiveEndpointsForEvent(ctx context.Context, tenantID, e
 
 // UpdateEndpoint modifies an existing webhook endpoint.
 func (r *Repository) UpdateEndpoint(ctx context.Context, tenantID, endpointID, rawURL, description string, events []string, isActive *bool) (*ent.WebhookEndpoint, error) {
-	client := r.factory.GetClient(ctx, tenantID, "")
+	// 1. Verify endpoint exists and belongs to tenant
+	_, err := r.GetEndpointByID(ctx, tenantID, endpointID)
+	if err != nil {
+		return nil, err
+	}
 
+	client := r.factory.GetClient(ctx, tenantID, "")
 	builder := client.WebhookEndpoint.UpdateOneID(endpointID)
 	if rawURL != "" {
 		builder.SetURL(rawURL)
@@ -135,6 +140,12 @@ func (r *Repository) UpdateEndpoint(ctx context.Context, tenantID, endpointID, r
 
 // RotateEndpointSecret updates the secret key for a webhook endpoint.
 func (r *Repository) RotateEndpointSecret(ctx context.Context, tenantID, endpointID, encryptedSecret, secretHash string) (*ent.WebhookEndpoint, error) {
+	// 1. Verify endpoint exists and belongs to tenant
+	_, err := r.GetEndpointByID(ctx, tenantID, endpointID)
+	if err != nil {
+		return nil, err
+	}
+
 	client := r.factory.GetClient(ctx, tenantID, "")
 	ep, err := client.WebhookEndpoint.UpdateOneID(endpointID).
 		SetSecretKeyEncrypted(encryptedSecret).
@@ -151,15 +162,20 @@ func (r *Repository) RotateEndpointSecret(ctx context.Context, tenantID, endpoin
 
 // DeleteEndpoint removes a webhook endpoint and automatically cleans up child events using Ent ORM under normal request context.
 func (r *Repository) DeleteEndpoint(ctx context.Context, tenantID, endpointID string) error {
-	client := r.factory.GetClient(ctx, tenantID, "")
+	// 1. Verify endpoint exists and belongs to tenant
+	_, err := r.GetEndpointByID(ctx, tenantID, endpointID)
+	if err != nil {
+		return err
+	}
 
+	client := r.factory.GetClient(ctx, tenantID, "")
 	tx, err := client.Tx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// 1. Delete associated child delivery logs using Ent ORM
+	// 2. Delete associated child delivery logs using Ent ORM
 	_, err = tx.WebhookEvent.Delete().
 		Where(webhookevent.WebhookEndpointID(endpointID)).
 		Exec(ctx)
@@ -167,7 +183,7 @@ func (r *Repository) DeleteEndpoint(ctx context.Context, tenantID, endpointID st
 		return fmt.Errorf("failed deleting webhook delivery logs: %w", err)
 	}
 
-	// 2. Delete parent webhook endpoint using Ent ORM
+	// 3. Delete parent webhook endpoint using Ent ORM
 	err = tx.WebhookEndpoint.DeleteOneID(endpointID).Exec(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {

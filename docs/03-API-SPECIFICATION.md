@@ -36,7 +36,7 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `GET /v1/oauth/jwks` — Public RSA JWKS key set
 
 ### 2.3 OAuth 2.0 / OIDC Flow
-- `GET /v1/oauth/authorize` — PKCE Authorization Code endpoint
+- `GET /v1/oauth/authorize` — PKCE Authorization Code endpointhyyy4r21 DF
 - `POST /v1/oauth/token` — Token exchange (`authorization_code`, `refresh_token`)
 
 ### 2.4 Core Client Authentication
@@ -373,4 +373,3 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - **Edge Cases & Error Codes**:
   - `422 Unprocessable Entity`: Invalid URL format (must be HTTPS or localhost in dev mode) or empty/invalid event types.
   - `404 Not Found`: Webhook Endpoint ID does not exist or belongs to another tenant.
-

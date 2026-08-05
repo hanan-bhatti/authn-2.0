@@ -36,6 +36,12 @@ func (rc *RoleCreate) SetName(s string) *RoleCreate {
 	return rc
 }
 
+// SetSlug sets the "slug" field.
+func (rc *RoleCreate) SetSlug(s string) *RoleCreate {
+	rc.mutation.SetSlug(s)
+	return rc
+}
+
 // SetDescription sets the "description" field.
 func (rc *RoleCreate) SetDescription(s string) *RoleCreate {
 	rc.mutation.SetDescription(s)
@@ -243,6 +249,14 @@ func (rc *RoleCreate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Role.name": %w`, err)}
 		}
 	}
+	if _, ok := rc.mutation.Slug(); !ok {
+		return &ValidationError{Name: "slug", err: errors.New(`ent: missing required field "Role.slug"`)}
+	}
+	if v, ok := rc.mutation.Slug(); ok {
+		if err := role.SlugValidator(v); err != nil {
+			return &ValidationError{Name: "slug", err: fmt.Errorf(`ent: validator failed for field "Role.slug": %w`, err)}
+		}
+	}
 	if _, ok := rc.mutation.IsSystemRole(); !ok {
 		return &ValidationError{Name: "is_system_role", err: errors.New(`ent: missing required field "Role.is_system_role"`)}
 	}
@@ -293,6 +307,10 @@ func (rc *RoleCreate) createSpec() (*Role, *sqlgraph.CreateSpec) {
 	if value, ok := rc.mutation.Name(); ok {
 		_spec.SetField(role.FieldName, field.TypeString, value)
 		_node.Name = value
+	}
+	if value, ok := rc.mutation.Slug(); ok {
+		_spec.SetField(role.FieldSlug, field.TypeString, value)
+		_node.Slug = value
 	}
 	if value, ok := rc.mutation.Description(); ok {
 		_spec.SetField(role.FieldDescription, field.TypeString, value)

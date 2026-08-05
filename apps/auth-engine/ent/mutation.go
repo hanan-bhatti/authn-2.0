@@ -10718,6 +10718,7 @@ type RoleMutation struct {
 	typ                string
 	id                 *string
 	name               *string
+	slug               *string
 	description        *string
 	is_system_role     *bool
 	created_by_user_id *string
@@ -10915,6 +10916,42 @@ func (m *RoleMutation) OldName(ctx context.Context) (v string, err error) {
 // ResetName resets all changes to the "name" field.
 func (m *RoleMutation) ResetName() {
 	m.name = nil
+}
+
+// SetSlug sets the "slug" field.
+func (m *RoleMutation) SetSlug(s string) {
+	m.slug = &s
+}
+
+// Slug returns the value of the "slug" field in the mutation.
+func (m *RoleMutation) Slug() (r string, exists bool) {
+	v := m.slug
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlug returns the old "slug" field's value of the Role entity.
+// If the Role object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RoleMutation) OldSlug(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlug is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlug requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlug: %w", err)
+	}
+	return oldValue.Slug, nil
+}
+
+// ResetSlug resets all changes to the "slug" field.
+func (m *RoleMutation) ResetSlug() {
+	m.slug = nil
 }
 
 // SetDescription sets the "description" field.
@@ -11395,12 +11432,15 @@ func (m *RoleMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RoleMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.tenant != nil {
 		fields = append(fields, role.FieldTenantID)
 	}
 	if m.name != nil {
 		fields = append(fields, role.FieldName)
+	}
+	if m.slug != nil {
+		fields = append(fields, role.FieldSlug)
 	}
 	if m.description != nil {
 		fields = append(fields, role.FieldDescription)
@@ -11432,6 +11472,8 @@ func (m *RoleMutation) Field(name string) (ent.Value, bool) {
 		return m.TenantID()
 	case role.FieldName:
 		return m.Name()
+	case role.FieldSlug:
+		return m.Slug()
 	case role.FieldDescription:
 		return m.Description()
 	case role.FieldIsSystemRole:
@@ -11457,6 +11499,8 @@ func (m *RoleMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTenantID(ctx)
 	case role.FieldName:
 		return m.OldName(ctx)
+	case role.FieldSlug:
+		return m.OldSlug(ctx)
 	case role.FieldDescription:
 		return m.OldDescription(ctx)
 	case role.FieldIsSystemRole:
@@ -11491,6 +11535,13 @@ func (m *RoleMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
+		return nil
+	case role.FieldSlug:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlug(v)
 		return nil
 	case role.FieldDescription:
 		v, ok := value.(string)
@@ -11609,6 +11660,9 @@ func (m *RoleMutation) ResetField(name string) error {
 		return nil
 	case role.FieldName:
 		m.ResetName()
+		return nil
+	case role.FieldSlug:
+		m.ResetSlug()
 		return nil
 	case role.FieldDescription:
 		m.ResetDescription()

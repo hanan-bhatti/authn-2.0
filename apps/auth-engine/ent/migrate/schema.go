@@ -453,6 +453,7 @@ var (
 	RolesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "name", Type: field.TypeString},
+		{Name: "slug", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true},
 		{Name: "is_system_role", Type: field.TypeBool, Default: false},
 		{Name: "created_by_user_id", Type: field.TypeString, Nullable: true},
@@ -469,7 +470,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "roles_tenants_roles",
-				Columns:    []*schema.Column{RolesColumns[8]},
+				Columns:    []*schema.Column{RolesColumns[9]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -478,7 +479,12 @@ var (
 			{
 				Name:    "role_tenant_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{RolesColumns[8], RolesColumns[1]},
+				Columns: []*schema.Column{RolesColumns[9], RolesColumns[1]},
+			},
+			{
+				Name:    "role_tenant_id_slug",
+				Unique:  true,
+				Columns: []*schema.Column{RolesColumns[9], RolesColumns[2]},
 			},
 		},
 	}

@@ -60,6 +60,20 @@ func (ru *RoleUpdate) SetNillableName(s *string) *RoleUpdate {
 	return ru
 }
 
+// SetSlug sets the "slug" field.
+func (ru *RoleUpdate) SetSlug(s string) *RoleUpdate {
+	ru.mutation.SetSlug(s)
+	return ru
+}
+
+// SetNillableSlug sets the "slug" field if the given value is not nil.
+func (ru *RoleUpdate) SetNillableSlug(s *string) *RoleUpdate {
+	if s != nil {
+		ru.SetSlug(*s)
+	}
+	return ru
+}
+
 // SetDescription sets the "description" field.
 func (ru *RoleUpdate) SetDescription(s string) *RoleUpdate {
 	ru.mutation.SetDescription(s)
@@ -312,6 +326,11 @@ func (ru *RoleUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Role.name": %w`, err)}
 		}
 	}
+	if v, ok := ru.mutation.Slug(); ok {
+		if err := role.SlugValidator(v); err != nil {
+			return &ValidationError{Name: "slug", err: fmt.Errorf(`ent: validator failed for field "Role.slug": %w`, err)}
+		}
+	}
 	if ru.mutation.TenantCleared() && len(ru.mutation.TenantIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Role.tenant"`)
 	}
@@ -332,6 +351,9 @@ func (ru *RoleUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := ru.mutation.Name(); ok {
 		_spec.SetField(role.FieldName, field.TypeString, value)
+	}
+	if value, ok := ru.mutation.Slug(); ok {
+		_spec.SetField(role.FieldSlug, field.TypeString, value)
 	}
 	if value, ok := ru.mutation.Description(); ok {
 		_spec.SetField(role.FieldDescription, field.TypeString, value)
@@ -565,6 +587,20 @@ func (ruo *RoleUpdateOne) SetName(s string) *RoleUpdateOne {
 func (ruo *RoleUpdateOne) SetNillableName(s *string) *RoleUpdateOne {
 	if s != nil {
 		ruo.SetName(*s)
+	}
+	return ruo
+}
+
+// SetSlug sets the "slug" field.
+func (ruo *RoleUpdateOne) SetSlug(s string) *RoleUpdateOne {
+	ruo.mutation.SetSlug(s)
+	return ruo
+}
+
+// SetNillableSlug sets the "slug" field if the given value is not nil.
+func (ruo *RoleUpdateOne) SetNillableSlug(s *string) *RoleUpdateOne {
+	if s != nil {
+		ruo.SetSlug(*s)
 	}
 	return ruo
 }
@@ -834,6 +870,11 @@ func (ruo *RoleUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Role.name": %w`, err)}
 		}
 	}
+	if v, ok := ruo.mutation.Slug(); ok {
+		if err := role.SlugValidator(v); err != nil {
+			return &ValidationError{Name: "slug", err: fmt.Errorf(`ent: validator failed for field "Role.slug": %w`, err)}
+		}
+	}
 	if ruo.mutation.TenantCleared() && len(ruo.mutation.TenantIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Role.tenant"`)
 	}
@@ -871,6 +912,9 @@ func (ruo *RoleUpdateOne) sqlSave(ctx context.Context) (_node *Role, err error) 
 	}
 	if value, ok := ruo.mutation.Name(); ok {
 		_spec.SetField(role.FieldName, field.TypeString, value)
+	}
+	if value, ok := ruo.mutation.Slug(); ok {
+		_spec.SetField(role.FieldSlug, field.TypeString, value)
 	}
 	if value, ok := ruo.mutation.Description(); ok {
 		_spec.SetField(role.FieldDescription, field.TypeString, value)

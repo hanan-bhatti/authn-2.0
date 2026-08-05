@@ -21,8 +21,10 @@ type Role struct {
 	ID string `json:"id,omitempty"`
 	// Owning Tenant ID
 	TenantID string `json:"tenant_id,omitempty"`
-	// Role name (e.g. admin, editor, viewer)
+	// Role human-readable name (e.g. Support Agent)
 	Name string `json:"name,omitempty"`
+	// URL/API-friendly slug identifier (e.g. support_agent). Unique per tenant.
+	Slug string `json:"slug,omitempty"`
 	// Optional role description
 	Description string `json:"description,omitempty"`
 	// Flag indicating if this is a built-in system role that cannot be deleted
@@ -101,7 +103,7 @@ func (*Role) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case role.FieldIsSystemRole:
 			values[i] = new(sql.NullBool)
-		case role.FieldID, role.FieldTenantID, role.FieldName, role.FieldDescription, role.FieldCreatedByUserID, role.FieldUpdatedByUserID:
+		case role.FieldID, role.FieldTenantID, role.FieldName, role.FieldSlug, role.FieldDescription, role.FieldCreatedByUserID, role.FieldUpdatedByUserID:
 			values[i] = new(sql.NullString)
 		case role.FieldCreatedAt, role.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -137,6 +139,12 @@ func (r *Role) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				r.Name = value.String
+			}
+		case role.FieldSlug:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field slug", values[i])
+			} else if value.Valid {
+				r.Slug = value.String
 			}
 		case role.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -237,6 +245,9 @@ func (r *Role) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(r.Name)
+	builder.WriteString(", ")
+	builder.WriteString("slug=")
+	builder.WriteString(r.Slug)
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(r.Description)
