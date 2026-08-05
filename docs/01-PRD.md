@@ -109,8 +109,8 @@
   - Mandatory admin step-up authentication (Passkey, 2FA, or Password), email transparency notifications, real-time webhooks (`user.impersonated`), and read-only mutation guard (`PreventImpersonatedMutations`).
 - **FR-15: B2B Organizations & Team Member Invitations [Completed & Verified]**
   - Multi-tenant Organization hierarchy (`tnt_...` $\to$ `org_...`), member invites with 7-day cryptographically signed tokens, org-scoped roles, audit logs, real-time webhooks, and live test proof (`org-proof.html`).
-- **FR-16: Enterprise SAML 2.0 & Native SSO**
-  - Native SAML 2.0 Identity Provider (IdP) & Service Provider (SP) integration for Okta, Azure AD / Entra ID, and Ping.
+- **FR-16: Enterprise SAML 2.0 & Native SSO [Completed & Verified]**
+  - Native SAML 2.0 Identity Provider (IdP) & Service Provider (SP) integration for Okta, Azure AD / Entra ID, Ping, JIT user provisioning, domain SSO enforcement, XML ACS assertion processing, audit logs, and real-time webhooks.
 
 ### Phase 2: Client SDKs
 - **JS SDK (`packages/js`)**: Core JavaScript/TypeScript client library.

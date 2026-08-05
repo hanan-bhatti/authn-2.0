@@ -1983,6 +1983,63 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "Enterprise SAML 2.0 & Native SSO (FR-16)",
+			"item": [
+				{
+					"name": "Configure Organization SAML",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"idp_entity_id\": \"http://www.okta.com/exk123\",\n  \"idp_sso_url\": \"https://siemens.okta.com/app/sso/saml\",\n  \"idp_certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIDXTCC...\\n-----END CERTIFICATE-----\",\n  \"allowed_domains\": [\"siemens.com\", \"siemens.de\"],\n  \"enforce_sso\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}/saml",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations", "{{orgId}}", "saml"]
+						},
+						"description": "Configures SAML 2.0 Identity Provider settings and domain SSO enforcement for an organization."
+					}
+				},
+				{
+					"name": "Domain SSO Lookup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"domain\": \"siemens.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/domain-lookup",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "domain-lookup"]
+						},
+						"description": "Inspects email domain to check if active SAML SSO exists and whether enforce_sso is enabled."
+					}
+				},
+				{
+					"name": "Get SP XML Metadata",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/v1/saml/metadata/{{orgId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "saml", "metadata", "{{orgId}}"]
+						},
+						"description": "Generates Service Provider XML metadata document for Okta / Azure AD import."
+					}
+				}
+			]
 		}
 	]
 }
