@@ -105,7 +105,7 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 
 	prof, err := h.svc.UpdateProfile(c.UserContext(), userID, req)
 	if err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.Status(http.StatusOK).JSON(prof)

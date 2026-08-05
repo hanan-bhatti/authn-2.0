@@ -36,6 +36,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/validator"
 )
 
 type Service struct {
@@ -99,13 +100,25 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdatePr
 	updater := client.User.UpdateOneID(userID)
 
 	if req.Name != nil {
-		updater.SetName(*req.Name)
+		cleanName, err := validator.SanitizeString(*req.Name, 1, 100)
+		if err != nil {
+			return nil, fmt.Errorf("invalid name: %w", err)
+		}
+		updater.SetName(cleanName)
 	}
 	if req.AvatarURL != nil {
-		updater.SetAvatarURL(*req.AvatarURL)
+		cleanURL, err := validator.ValidateImageURL(*req.AvatarURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid avatar URL: %w", err)
+		}
+		updater.SetAvatarURL(cleanURL)
 	}
 	if req.Locale != nil {
-		updater.SetLocale(*req.Locale)
+		cleanLocale, err := validator.SanitizeString(*req.Locale, 2, 20)
+		if err != nil {
+			return nil, fmt.Errorf("invalid locale: %w", err)
+		}
+		updater.SetLocale(cleanLocale)
 	}
 
 	meta := u.Metadata
@@ -185,10 +198,10 @@ func (s *Service) ChangePassword(ctx context.Context, tenantID, env, userID stri
 
 // RequestEmailChange sends a single-use token to the new email address for verification.
 func (s *Service) RequestEmailChange(ctx context.Context, tenantID, env, userID, newEmail string) (string, error) {
-	newEmail = strings.TrimSpace(strings.ToLower(newEmail))
-	if newEmail == "" {
-		return "", fmt.Errorf("invalid email address")
+	if err := validator.ValidateEmail(newEmail); err != nil {
+		return "", err
 	}
+	newEmail = strings.TrimSpace(strings.ToLower(newEmail))
 
 	sysCtx := privacy.NewBypassContext(ctx)
 	client := s.authRepo.GetClientFactory().GetClient(sysCtx, tenantID, env)
@@ -289,10 +302,10 @@ func (s *Service) VerifyEmailChange(ctx context.Context, tokenStr string) error 
 
 // SetRecoveryEmail initiates secondary recovery email registration.
 func (s *Service) SetRecoveryEmail(ctx context.Context, tenantID, env, userID, recoveryEmail string) (string, error) {
-	recoveryEmail = strings.TrimSpace(strings.ToLower(recoveryEmail))
-	if recoveryEmail == "" {
-		return "", fmt.Errorf("invalid recovery email address")
+	if err := validator.ValidateEmail(recoveryEmail); err != nil {
+		return "", err
 	}
+	recoveryEmail = strings.TrimSpace(strings.ToLower(recoveryEmail))
 
 	sysCtx := privacy.NewBypassContext(ctx)
 	client := s.authRepo.GetClientFactory().GetClient(sysCtx, tenantID, env)
