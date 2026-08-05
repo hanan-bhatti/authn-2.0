@@ -107,8 +107,8 @@
 - **FR-14: Admin User Impersonation ("Log in as User") [Completed & Verified]**
   - Endpoint `POST /v1/admin/users/:userId/impersonate` generating short-lived (1-60 min) impersonation JWT with `impersonator_id` & `is_impersonated: true` claims.
   - Mandatory admin step-up authentication (Passkey, 2FA, or Password), email transparency notifications, real-time webhooks (`user.impersonated`), and read-only mutation guard (`PreventImpersonatedMutations`).
-- **FR-15: B2B Organizations & Team Member Invitations**
-  - Multi-tenant Organization hierarchy (`tnt_...` $\to$ `org_...`), member invites with 7-day signed tokens, and org-scoped roles.
+- **FR-15: B2B Organizations & Team Member Invitations [Completed & Verified]**
+  - Multi-tenant Organization hierarchy (`tnt_...` $\to$ `org_...`), member invites with 7-day cryptographically signed tokens, org-scoped roles, audit logs, real-time webhooks, and live test proof (`org-proof.html`).
 - **FR-16: Enterprise SAML 2.0 & Native SSO**
   - Native SAML 2.0 Identity Provider (IdP) & Service Provider (SP) integration for Okta, Azure AD / Entra ID, and Ping.
 

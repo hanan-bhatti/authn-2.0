@@ -55,6 +55,16 @@
 			"key": "impersonationToken",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "orgId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "invitationToken",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -1859,6 +1869,117 @@
 							"path": ["v1", "client", "auth", "impersonate", "exit"]
 						},
 						"description": "Exits the active impersonation session and invalidates the session context."
+					}
+				}
+			]
+		},
+		{
+			"name": "B2B Organizations & Team Invitations (FR-15)",
+			"item": [
+				{
+					"name": "Create B2B Organization",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Acme Global Workspace\",\n  \"slug\": \"acme-global\",\n  \"logo_url\": \"https://acme.com/logo.png\",\n  \"metadata\": {\n    \"plan_tier\": \"enterprise\",\n    \"billing_email\": \"billing@acme.com\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations"]
+						},
+						"description": "Creates a new B2B Organization workspace and auto-assigns creator as org_admin."
+					}
+				},
+				{
+					"name": "List User Organizations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations"]
+						},
+						"description": "Lists all organizations accessible to the caller."
+					}
+				},
+				{
+					"name": "Get Organization Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations", "{{orgId}}"]
+						},
+						"description": "Fetches organization details by ID."
+					}
+				},
+				{
+					"name": "List Organization Members",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}/members",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations", "{{orgId}}", "members"]
+						},
+						"description": "Lists all members of an organization with role assignments."
+					}
+				},
+				{
+					"name": "Send Team Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"sarah@example.com\",\n  \"role_id\": \"editor\",\n  \"expires_hrs\": 168\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}/invitations",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "organizations", "{{orgId}}", "invitations"]
+						},
+						"description": "Generates a 32-byte cryptographically random single-use invitation token with 7-day expiry."
+					}
+				},
+				{
+					"name": "Accept Team Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invitation_token\": \"{{invitationToken}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/invitations/accept?user_id=usr_sarah_123",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "invitations", "accept"],
+							"query": [{ "key": "user_id", "value": "usr_sarah_123" }]
+						},
+						"description": "Redeems invitation token, adds user to organization with assigned role, and updates token status to accepted."
 					}
 				}
 			]
