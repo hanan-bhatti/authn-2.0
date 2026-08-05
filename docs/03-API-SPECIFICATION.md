@@ -234,34 +234,79 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 </EntityDescriptor>
 ```
 
-### 3.1 Core Authentication (`POST /v1/client/signup` & `POST /v1/client/login`)
-- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `X-Authn-Client-Type: native|web`
-- **Request (`POST /v1/client/signup`)**:
+### 3.1 Core Authentication (`POST /v1/client/signup`)
+
+> **Last Verified**: `2026-08-06` — live `curl` against running server.
+> See full endpoint doc: [`docs/endpoints/client-signup.md`](endpoints/client-signup.md)
+
+- **Headers (Required)**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Content-Type: application/json`
+- **Headers (Optional)**: `X-Authn-Client-Type: web|native|mobile` (default: `web`)
+- **Request**:
 ```json
 {
-  "email": "user@example.com",
-  "password": "SecurePassword123!",
-  "name": "Alex Smith"
+  "email": "fresh.signup@authn.local",
+  "password": "ValidPass123!",
+  "name": "Fresh User"
 }
 ```
-- **Response (200 OK or 201 Created)**:
+
+#### `201 Created` — Successful Registration
+Web client: refresh token in `Set-Cookie: authn_refresh_token; HttpOnly; SameSite=Lax; Path=/v1/client`.
+Native/mobile client: refresh token in `refresh_token` JSON field.
 ```json
 {
   "user": {
-    "id": "usr_4d5a1533",
-    "email": "user@example.com",
+    "id": "usr_08e90da4-9e3",
+    "email": "fresh.signup@authn.local",
     "email_verified": false,
-    "name": "Alex Smith",
-    "status": "active"
+    "name": "Fresh User",
+    "status": "active",
+    "created_at": "2026-08-06T00:26:27Z"
   },
-  "access_token": "eyJhbGciOi...",
-  "refresh_token": "111d0dfc1a68..."
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
-- **Edge Cases & Error Codes**:
-  - `409 Conflict` (`email_exists`): Email already registered.
-  - `400 Bad Request` (`password_policy_violation`): Password fails active tenant complexity rules.
-  - `401 Unauthorized` (`invalid_credentials`): Incorrect email or password.
+
+#### `400 Bad Request` — Missing Fields / Email Format / Password Policy
+```json
+{ "error": "email and password are required" }
+{ "error": "invalid email address format" }
+{
+  "error": "password does not meet policy requirements",
+  "missing_criteria": ["min_length"]
+}
+```
+
+#### `401 Unauthorized` — Missing Publishable Key
+```json
+{ "error": "missing publishable API key in X-Authn-Publishable-Key header" }
+```
+
+#### `405 Method Not Allowed` — Wrong HTTP Verb
+```json
+{ "error": { "code": 405, "message": "Method Not Allowed" } }
+```
+
+#### `409 Conflict` — Email Already Registered
+Deliberate design choice matching standard B2C auth practice (Firebase, Clerk, Auth0). Not a security gap.
+```json
+{ "error": "user with this email already exists" }
+```
+
+#### `429 Too Many Requests` — Rate Limit
+5 attempts / 900s window per IP + endpoint. Includes `Retry-After` header.
+```json
+{
+  "error": "too many attempts, please try again later",
+  "retry_after_seconds": 889
+}
+```
+
+#### `503 Service Unavailable` — Redis Outage (Fail-CLOSED)
+Signup is a sensitive mutation endpoint — rate limiting cannot be bypassed under outage.
+```json
+{ "error": "rate limit service unavailable" }
+```
 
 ### 3.2 Refresh Token Rotation (`POST /v1/client/auth/refresh`)
 - **Description**: Exchanges a valid opaque refresh token for a new 15-minute Access Token JWT and a new 64-byte Refresh Token. Implements Refresh Token Rotation (RTR) with a 10-second grace window (`rotated_grace`) for handling concurrent parallel requests, and automatic compromise mitigation (revoking all sessions) if token reuse occurs after the 10-second grace window.
