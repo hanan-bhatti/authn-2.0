@@ -24,6 +24,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 )
 
 // generateSecureToken creates a cryptographically random 32-byte hex token string.
@@ -213,6 +214,36 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		}
 		return nil, ErrInvitationExpired
 	}
+
+	// Resolve or auto-provision target User in tenant database to ensure Foreign Key integrity
+	var targetUser *ent.User
+	if userID != "" {
+		targetUser, _ = client.User.Query().
+			Where(user.TenantID(tenantID), user.ID(userID)).
+			Only(ctx)
+	}
+	if targetUser == nil {
+		targetUser, _ = client.User.Query().
+			Where(user.TenantID(tenantID), user.Email(inv.Email)).
+			Only(ctx)
+	}
+	if targetUser == nil {
+		newUserID := userID
+		if newUserID == "" || newUserID == "usr_accepted_guest" {
+			newUserID = fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+		}
+		createdUser, err := client.User.Create().
+			SetID(newUserID).
+			SetTenantID(tenantID).
+			SetEmail(inv.Email).
+			SetEmailVerified(true).
+			Save(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to provision user for invitation: %w", err)
+		}
+		targetUser = createdUser
+	}
+	userID = targetUser.ID
 
 	// Check if already a member
 	alreadyMember, err := client.OrgMember.Query().
