@@ -28,6 +28,8 @@ type WebhookEndpoint struct {
 	Description string `json:"description,omitempty"`
 	// AES-256-GCM encrypted secret key used for HMAC-SHA256 event payload signing
 	SecretKeyEncrypted string `json:"-"`
+	// SHA-256 digest of secret key to guarantee uniqueness and prevent collisions
+	SecretKeyHash string `json:"secret_key_hash,omitempty"`
 	// Subscribed event type array (e.g. user.created, session.revoked, 2fa.enabled)
 	SubscribedEvents []string `json:"subscribed_events,omitempty"`
 	// Flag indicating if the webhook endpoint is active
@@ -86,7 +88,7 @@ func (*WebhookEndpoint) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case webhookendpoint.FieldFailureCount:
 			values[i] = new(sql.NullInt64)
-		case webhookendpoint.FieldID, webhookendpoint.FieldTenantID, webhookendpoint.FieldURL, webhookendpoint.FieldDescription, webhookendpoint.FieldSecretKeyEncrypted:
+		case webhookendpoint.FieldID, webhookendpoint.FieldTenantID, webhookendpoint.FieldURL, webhookendpoint.FieldDescription, webhookendpoint.FieldSecretKeyEncrypted, webhookendpoint.FieldSecretKeyHash:
 			values[i] = new(sql.NullString)
 		case webhookendpoint.FieldLastTriggeredAt, webhookendpoint.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -134,6 +136,12 @@ func (we *WebhookEndpoint) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field secret_key_encrypted", values[i])
 			} else if value.Valid {
 				we.SecretKeyEncrypted = value.String
+			}
+		case webhookendpoint.FieldSecretKeyHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field secret_key_hash", values[i])
+			} else if value.Valid {
+				we.SecretKeyHash = value.String
 			}
 		case webhookendpoint.FieldSubscribedEvents:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -224,6 +232,9 @@ func (we *WebhookEndpoint) String() string {
 	builder.WriteString(we.Description)
 	builder.WriteString(", ")
 	builder.WriteString("secret_key_encrypted=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("secret_key_hash=")
+	builder.WriteString(we.SecretKeyHash)
 	builder.WriteString(", ")
 	builder.WriteString("subscribed_events=")
 	builder.WriteString(fmt.Sprintf("%v", we.SubscribedEvents))

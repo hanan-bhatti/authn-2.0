@@ -54,6 +54,20 @@ func (wec *WebhookEndpointCreate) SetSecretKeyEncrypted(s string) *WebhookEndpoi
 	return wec
 }
 
+// SetSecretKeyHash sets the "secret_key_hash" field.
+func (wec *WebhookEndpointCreate) SetSecretKeyHash(s string) *WebhookEndpointCreate {
+	wec.mutation.SetSecretKeyHash(s)
+	return wec
+}
+
+// SetNillableSecretKeyHash sets the "secret_key_hash" field if the given value is not nil.
+func (wec *WebhookEndpointCreate) SetNillableSecretKeyHash(s *string) *WebhookEndpointCreate {
+	if s != nil {
+		wec.SetSecretKeyHash(*s)
+	}
+	return wec
+}
+
 // SetSubscribedEvents sets the "subscribed_events" field.
 func (wec *WebhookEndpointCreate) SetSubscribedEvents(s []string) *WebhookEndpointCreate {
 	wec.mutation.SetSubscribedEvents(s)
@@ -278,6 +292,10 @@ func (wec *WebhookEndpointCreate) createSpec() (*WebhookEndpoint, *sqlgraph.Crea
 	if value, ok := wec.mutation.SecretKeyEncrypted(); ok {
 		_spec.SetField(webhookendpoint.FieldSecretKeyEncrypted, field.TypeString, value)
 		_node.SecretKeyEncrypted = value
+	}
+	if value, ok := wec.mutation.SecretKeyHash(); ok {
+		_spec.SetField(webhookendpoint.FieldSecretKeyHash, field.TypeString, value)
+		_node.SecretKeyHash = value
 	}
 	if value, ok := wec.mutation.SubscribedEvents(); ok {
 		_spec.SetField(webhookendpoint.FieldSubscribedEvents, field.TypeJSON, value)

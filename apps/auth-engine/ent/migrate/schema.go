@@ -868,6 +868,7 @@ var (
 		{Name: "url", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true},
 		{Name: "secret_key_encrypted", Type: field.TypeString},
+		{Name: "secret_key_hash", Type: field.TypeString, Unique: true, Nullable: true},
 		{Name: "subscribed_events", Type: field.TypeJSON},
 		{Name: "is_active", Type: field.TypeBool, Default: true},
 		{Name: "failure_count", Type: field.TypeInt, Default: 0},
@@ -883,7 +884,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "webhook_endpoints_tenants_webhook_endpoints",
-				Columns:    []*schema.Column{WebhookEndpointsColumns[9]},
+				Columns:    []*schema.Column{WebhookEndpointsColumns[10]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -892,7 +893,7 @@ var (
 			{
 				Name:    "webhookendpoint_tenant_id_is_active",
 				Unique:  false,
-				Columns: []*schema.Column{WebhookEndpointsColumns[9], WebhookEndpointsColumns[5]},
+				Columns: []*schema.Column{WebhookEndpointsColumns[10], WebhookEndpointsColumns[6]},
 			},
 		},
 	}

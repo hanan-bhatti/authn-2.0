@@ -545,15 +545,15 @@ func init() {
 	// webhookendpoint.SecretKeyEncryptedValidator is a validator for the "secret_key_encrypted" field. It is called by the builders before save.
 	webhookendpoint.SecretKeyEncryptedValidator = webhookendpointDescSecretKeyEncrypted.Validators[0].(func(string) error)
 	// webhookendpointDescIsActive is the schema descriptor for is_active field.
-	webhookendpointDescIsActive := webhookendpointFields[6].Descriptor()
+	webhookendpointDescIsActive := webhookendpointFields[7].Descriptor()
 	// webhookendpoint.DefaultIsActive holds the default value on creation for the is_active field.
 	webhookendpoint.DefaultIsActive = webhookendpointDescIsActive.Default.(bool)
 	// webhookendpointDescFailureCount is the schema descriptor for failure_count field.
-	webhookendpointDescFailureCount := webhookendpointFields[7].Descriptor()
+	webhookendpointDescFailureCount := webhookendpointFields[8].Descriptor()
 	// webhookendpoint.DefaultFailureCount holds the default value on creation for the failure_count field.
 	webhookendpoint.DefaultFailureCount = webhookendpointDescFailureCount.Default.(int)
 	// webhookendpointDescCreatedAt is the schema descriptor for created_at field.
-	webhookendpointDescCreatedAt := webhookendpointFields[9].Descriptor()
+	webhookendpointDescCreatedAt := webhookendpointFields[10].Descriptor()
 	// webhookendpoint.DefaultCreatedAt holds the default value on creation for the created_at field.
 	webhookendpoint.DefaultCreatedAt = webhookendpointDescCreatedAt.Default.(func() time.Time)
 	webhookeventFields := schema.WebhookEvent{}.Fields()

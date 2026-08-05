@@ -93,6 +93,26 @@ func (weu *WebhookEndpointUpdate) SetNillableSecretKeyEncrypted(s *string) *Webh
 	return weu
 }
 
+// SetSecretKeyHash sets the "secret_key_hash" field.
+func (weu *WebhookEndpointUpdate) SetSecretKeyHash(s string) *WebhookEndpointUpdate {
+	weu.mutation.SetSecretKeyHash(s)
+	return weu
+}
+
+// SetNillableSecretKeyHash sets the "secret_key_hash" field if the given value is not nil.
+func (weu *WebhookEndpointUpdate) SetNillableSecretKeyHash(s *string) *WebhookEndpointUpdate {
+	if s != nil {
+		weu.SetSecretKeyHash(*s)
+	}
+	return weu
+}
+
+// ClearSecretKeyHash clears the value of the "secret_key_hash" field.
+func (weu *WebhookEndpointUpdate) ClearSecretKeyHash() *WebhookEndpointUpdate {
+	weu.mutation.ClearSecretKeyHash()
+	return weu
+}
+
 // SetSubscribedEvents sets the "subscribed_events" field.
 func (weu *WebhookEndpointUpdate) SetSubscribedEvents(s []string) *WebhookEndpointUpdate {
 	weu.mutation.SetSubscribedEvents(s)
@@ -286,6 +306,12 @@ func (weu *WebhookEndpointUpdate) sqlSave(ctx context.Context) (n int, err error
 	if value, ok := weu.mutation.SecretKeyEncrypted(); ok {
 		_spec.SetField(webhookendpoint.FieldSecretKeyEncrypted, field.TypeString, value)
 	}
+	if value, ok := weu.mutation.SecretKeyHash(); ok {
+		_spec.SetField(webhookendpoint.FieldSecretKeyHash, field.TypeString, value)
+	}
+	if weu.mutation.SecretKeyHashCleared() {
+		_spec.ClearField(webhookendpoint.FieldSecretKeyHash, field.TypeString)
+	}
 	if value, ok := weu.mutation.SubscribedEvents(); ok {
 		_spec.SetField(webhookendpoint.FieldSubscribedEvents, field.TypeJSON, value)
 	}
@@ -462,6 +488,26 @@ func (weuo *WebhookEndpointUpdateOne) SetNillableSecretKeyEncrypted(s *string) *
 	if s != nil {
 		weuo.SetSecretKeyEncrypted(*s)
 	}
+	return weuo
+}
+
+// SetSecretKeyHash sets the "secret_key_hash" field.
+func (weuo *WebhookEndpointUpdateOne) SetSecretKeyHash(s string) *WebhookEndpointUpdateOne {
+	weuo.mutation.SetSecretKeyHash(s)
+	return weuo
+}
+
+// SetNillableSecretKeyHash sets the "secret_key_hash" field if the given value is not nil.
+func (weuo *WebhookEndpointUpdateOne) SetNillableSecretKeyHash(s *string) *WebhookEndpointUpdateOne {
+	if s != nil {
+		weuo.SetSecretKeyHash(*s)
+	}
+	return weuo
+}
+
+// ClearSecretKeyHash clears the value of the "secret_key_hash" field.
+func (weuo *WebhookEndpointUpdateOne) ClearSecretKeyHash() *WebhookEndpointUpdateOne {
+	weuo.mutation.ClearSecretKeyHash()
 	return weuo
 }
 
@@ -687,6 +733,12 @@ func (weuo *WebhookEndpointUpdateOne) sqlSave(ctx context.Context) (_node *Webho
 	}
 	if value, ok := weuo.mutation.SecretKeyEncrypted(); ok {
 		_spec.SetField(webhookendpoint.FieldSecretKeyEncrypted, field.TypeString, value)
+	}
+	if value, ok := weuo.mutation.SecretKeyHash(); ok {
+		_spec.SetField(webhookendpoint.FieldSecretKeyHash, field.TypeString, value)
+	}
+	if weuo.mutation.SecretKeyHashCleared() {
+		_spec.ClearField(webhookendpoint.FieldSecretKeyHash, field.TypeString)
 	}
 	if value, ok := weuo.mutation.SubscribedEvents(); ok {
 		_spec.SetField(webhookendpoint.FieldSubscribedEvents, field.TypeJSON, value)

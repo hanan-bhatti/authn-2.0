@@ -49,6 +49,10 @@ func (WebhookEndpoint) Fields() []ent.Field {
 			Sensitive().
 			NotEmpty().
 			Comment("AES-256-GCM encrypted secret key used for HMAC-SHA256 event payload signing"),
+		field.String("secret_key_hash").
+			Optional().
+			Unique().
+			Comment("SHA-256 digest of secret key to guarantee uniqueness and prevent collisions"),
 		field.Strings("subscribed_events").
 			Comment("Subscribed event type array (e.g. user.created, session.revoked, 2fa.enabled)"),
 		field.Bool("is_active").

@@ -45,6 +45,11 @@
 			"key": "cancellationToken",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "webhookEndpointId",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -1596,6 +1601,142 @@
 							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
 						},
 						"description": "Revokes role from user with audit log recording who revoked it."
+					}
+				}
+			]
+		},
+		{
+			"name": "15 Real-Time Outgoing Webhooks (FR-13)",
+			"item": [
+				{
+					"name": "Register Webhook Endpoint",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var json = pm.response.json();",
+									"    if (json.id) pm.collectionVariables.set('webhookEndpointId', json.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"description\": \"Production Events Webhook\",\n  \"events\": [\"user.created\", \"session.revoked\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Registers a new outgoing webhook endpoint and generates an encrypted HMAC signing secret."
+					}
+				},
+				{
+					"name": "List Webhook Endpoints",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Lists all registered webhook endpoints for tenant."
+					}
+				},
+				{
+					"name": "Get Webhook Endpoint by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Fetches a specific webhook endpoint by ID."
+					}
+				},
+				{
+					"name": "Send Test Ping Webhook Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}/ping?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}", "ping"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Dispatches an immediate test ping event to verify HMAC signature processing."
+					}
+				},
+				{
+					"name": "Rotate Webhook Signing Secret",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}/rotate-secret?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}", "rotate-secret"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Rotates endpoint HMAC signing secret key."
+					}
+				},
+				{
+					"name": "List Webhook Delivery Logs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/deliveries?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "deliveries"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Lists webhook delivery audit logs and status codes."
+					}
+				},
+				{
+					"name": "Delete Webhook Endpoint",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}?tenant_id=tnt_default",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}"],
+							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+						},
+						"description": "Deletes webhook endpoint and cascade deletes associated child delivery logs."
 					}
 				}
 			]

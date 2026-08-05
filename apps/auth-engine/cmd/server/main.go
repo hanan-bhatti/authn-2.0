@@ -37,6 +37,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/redis/go-redis/v9"
 )
@@ -231,6 +232,13 @@ func main() {
 	rbacService := rbac.NewService(rbacRepo, rbacAudit, cfg)
 	rbacHandler := rbac.NewHandler(rbacService)
 
+	webhookRepo := webhook.NewRepository(factory)
+	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.AuthnEncryptionKey, 5)
+	webhookDispatcher.Start()
+	defer webhookDispatcher.Stop()
+	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
+	webhookHandler := webhook.NewHandler(webhookService)
+
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app, pkMiddleware)
@@ -240,6 +248,7 @@ func main() {
 	sessionHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 	rbacHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
+	webhookHandler.RegisterRoutes(app, adminMiddleware)
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

@@ -104,3 +104,11 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string) fiber
 		})
 	}
 }
+
+// GetTenantID extracts resolved tenant_id from Fiber context locals, defaulting to "tnt_default".
+func GetTenantID(c *fiber.Ctx) string {
+	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
+		return val
+	}
+	return "tnt_default"
+}

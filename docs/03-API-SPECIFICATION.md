@@ -77,6 +77,8 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `DELETE /v1/client/account/guardians/:id` — Revoke guardian & trigger Re-Key/Re-Split
 - `POST /v1/client/auth/recovery/initiate` — Initiate recovery & resolve dynamic methods
 - `POST /v1/client/auth/recovery/proof/guardian` — Submit Shamir share proof ($k$-of-$N$)
+- `POST /v1/client/auth/recovery/proof/phone-otp` — Submit phone OTP identity proof
+- `POST /v1/client/auth/recovery/proof/email-otp` — Submit email OTP identity proof
 - `POST /v1/client/auth/recovery/proof/old-password` — Submit old password proof
 - `POST /v1/client/auth/recovery/proof/security-questions` — Submit security questions proof
 - `POST /v1/client/auth/recovery/claim` — Execute final password reset & 2FA wipe with 15-min claim token
@@ -93,6 +95,32 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/admin/keys/` — Issue new publishable or secret API key
 - `GET /v1/admin/keys/` — List API keys for application
 - `POST /v1/admin/keys/:key_id/revoke` — Revoke API key
+
+### 2.10 2FA Method Management & Verification (FR-4)
+- `POST /v1/client/2fa/totp/enroll` — Generate secret & QR code URI for TOTP setup
+- `POST /v1/client/2fa/totp/confirm` — Confirm TOTP setup with 6-digit code & activate
+- `POST /v1/client/2fa/totp/verify` — Verify TOTP code during active session
+- `POST /v1/client/2fa/totp/disable` — Disable TOTP 2FA (requires password confirmation)
+- `POST /v1/client/2fa/webauthn/register/begin` — Initiate WebAuthn passkey registration options
+- `POST /v1/client/2fa/webauthn/register/finish` — Finalize passkey registration with attestation
+- `POST /v1/client/2fa/webauthn/login/begin` — Initiate WebAuthn passkey login options
+- `POST /v1/client/2fa/webauthn/login/finish` — Finalize passkey login with assertion & issue JWT
+- `GET /v1/client/2fa/webauthn/credentials` — List user's registered WebAuthn passkeys
+- `DELETE /v1/client/2fa/webauthn/credentials/:id` — Delete a WebAuthn passkey (requires password)
+- `POST /v1/client/2fa/sms/enroll` — Initiate SMS 2FA enrollment & send verification OTP
+- `POST /v1/client/2fa/sms/confirm` — Confirm SMS 2FA with 6-digit OTP & activate
+- `DELETE /v1/client/2fa/sms/disable` — Disable SMS 2FA (requires password)
+- `POST /v1/client/auth/2fa/verify` — Unified login 2FA verification endpoint (`totp`, `webauthn`, `sms`, `backup_code`)
+
+### 2.11 Outgoing Real-Time Event Webhooks (FR-13)
+- `POST /v1/admin/webhooks/endpoints` — Register new webhook endpoint
+- `GET /v1/admin/webhooks/endpoints` — List all webhook endpoints for tenant
+- `GET /v1/admin/webhooks/endpoints/:id` — Get webhook endpoint details by ID
+- `PUT /v1/admin/webhooks/endpoints/:id` — Update URL, description, or subscribed events
+- `DELETE /v1/admin/webhooks/endpoints/:id` — Delete webhook endpoint and cascade delete delivery logs
+- `POST /v1/admin/webhooks/endpoints/:id/ping` — Dispatch test ping webhook event
+- `POST /v1/admin/webhooks/endpoints/:id/rotate-secret` — Rotate signing secret key
+- `GET /v1/admin/webhooks/deliveries` — List webhook delivery audit logs
 
 ---
 
@@ -243,6 +271,11 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
   "cancellation_token": "a1b2c3d4e5f6..."
 }
 ```
+- **Identity Proof Submissions**:
+  - `POST /v1/client/auth/recovery/proof/phone-otp`: Submit SMS/WhatsApp OTP code (`{"recovery_request_id": "req_...", "phone_number": "+15551234567", "otp_code": "123456"}`). Returns `200 OK` (`{"status": "proof_verified", "message": "Phone OTP verified successfully"}`).
+  - `POST /v1/client/auth/recovery/proof/email-otp`: Submit Email OTP code (`{"recovery_request_id": "req_...", "email": "user@example.com", "otp_code": "123456"}`). Returns `200 OK` (`{"status": "proof_verified", "message": "Email OTP verified successfully"}`).
+  - `POST /v1/client/auth/recovery/proof/guardian`: Submit Shamir share string (`{"recovery_request_id": "req_...", "share_payload": "..."}`). Returns `{"threshold_reached": true, "status": "proof_verified"}`.
+  - `POST /v1/client/auth/recovery/proof/old-password`: Submit old password (`{"recovery_request_id": "req_...", "password": "..."}`). Returns `{"status": "proof_verified"}`.
 - **Edge Cases & Error Codes**:
   - `400 Bad Request` (`no_recovery_methods_available`): No methods configured or available for account. Directs to support.
   - `403 Forbidden` (`ErrOriginBlacklisted`): Request origin (IP, subnet, or device fingerprint) is on the 7-day security blacklist following a recent cancellation.
@@ -268,3 +301,76 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 }
 ```
 *(Note: Full secret key value is returned ONCE on creation and never stored in plaintext)*
+
+### 3.8 2FA Method Management & Verification (`/v1/client/2fa/*` & `/v1/client/auth/2fa/verify`)
+- **Description**: Comprehensive setup, verification, listing, and disabling for TOTP, WebAuthn Passkeys, SMS 2FA, and unified login challenge verification.
+- **TOTP Setup (`POST /v1/client/2fa/totp/enroll` & `/confirm`)**:
+  - `POST /v1/client/2fa/totp/enroll`: Generates RFC 6238 TOTP secret. Returns `{"secret": "JBSWY3DPEHPK3PXP", "uri": "otpauth://totp/Authn:user@example.com?secret=..."}`.
+  - `POST /v1/client/2fa/totp/confirm`: Body `{"code": "123456"}`. Activates TOTP and returns single-use backup recovery codes.
+- **WebAuthn / Passkeys (`/v1/client/2fa/webauthn/*`)**:
+  - Registration: `POST /v1/client/2fa/webauthn/register/begin` returns WebAuthn creation options. `POST /v1/client/2fa/webauthn/register/finish` validates attestation response and stores credential public key.
+  - Login: `POST /v1/client/2fa/webauthn/login/begin` returns assertion options. `POST /v1/client/2fa/webauthn/login/finish` validates signature assertion and issues JWT session.
+  - List & Delete: `GET /v1/client/2fa/webauthn/credentials` lists registered passkeys; `DELETE /v1/client/2fa/webauthn/credentials/:id` deletes passkey requiring password confirmation.
+- **SMS 2FA (`/v1/client/2fa/sms/*`)**:
+  - `POST /v1/client/2fa/sms/enroll`: Body `{"phone_number": "+15551234567"}`. Sends 6-digit OTP via configured SMS driver.
+  - `POST /v1/client/2fa/sms/confirm`: Body `{"code": "123456"}`. Activates SMS 2FA.
+  - `DELETE /v1/client/2fa/sms/disable`: Body `{"password": "..."}`. Disables SMS 2FA requiring password confirmation.
+- **Unified Login 2FA Verification (`POST /v1/client/auth/2fa/verify`)**:
+  - **Request Body**:
+```json
+{
+  "mfa_token": "mfa_8a9b0c1d2e",
+  "method": "totp",
+  "code": "123456"
+}
+```
+  - **Supported `method` values**: `"totp"`, `"webauthn"`, `"sms"`, `"backup_code"`.
+  - **Response (200 OK)**:
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1Ni...",
+  "refresh_token": "ref_9a8b7c6d5e...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "user": {
+    "id": "usr_1a2b3c",
+    "email": "user@example.com",
+    "email_verified": false
+  },
+  "policy_warning": {
+    "requires_email_verification": true
+  }
+}
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request` (`invalid_code`): Code is expired or invalid.
+  - `401 Unauthorized` (`mfa_token_expired`): 2FA login challenge token expired (5-minute TTL).
+  - `403 Forbidden` (`password_confirmation_failed`): Incorrect password provided when disabling 2FA methods.
+
+### 3.9 Outgoing Real-Time Event Webhooks (`/v1/admin/webhooks/*`)
+- **Description**: Managing real-time outgoing HTTP webhook endpoints, secret rotation, delivery audit logs, and manual pings.
+- **Request (`POST /v1/admin/webhooks/endpoints`)**:
+```json
+{
+  "url": "https://webhook.site/test-handler",
+  "description": "Production Events Webhook",
+  "events": ["user.created", "session.revoked"]
+}
+```
+- **Response (201 Created)**:
+```json
+{
+  "id": "whe_cfde8b85-4b0",
+  "url": "https://webhook.site/test-handler",
+  "description": "Production Events Webhook",
+  "secret": "whsec_f3578988dbffcec07b802a6f4c46de11206339ff7a4e0bac",
+  "subscribed_events": ["user.created", "session.revoked"],
+  "is_active": true,
+  "failure_count": 0,
+  "created_at": "2026-08-05T07:03:06+05:00"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `422 Unprocessable Entity`: Invalid URL format (must be HTTPS or localhost in dev mode) or empty/invalid event types.
+  - `404 Not Found`: Webhook Endpoint ID does not exist or belongs to another tenant.
+

@@ -22,6 +22,8 @@ const (
 	FieldDescription = "description"
 	// FieldSecretKeyEncrypted holds the string denoting the secret_key_encrypted field in the database.
 	FieldSecretKeyEncrypted = "secret_key_encrypted"
+	// FieldSecretKeyHash holds the string denoting the secret_key_hash field in the database.
+	FieldSecretKeyHash = "secret_key_hash"
 	// FieldSubscribedEvents holds the string denoting the subscribed_events field in the database.
 	FieldSubscribedEvents = "subscribed_events"
 	// FieldIsActive holds the string denoting the is_active field in the database.
@@ -61,6 +63,7 @@ var Columns = []string{
 	FieldURL,
 	FieldDescription,
 	FieldSecretKeyEncrypted,
+	FieldSecretKeyHash,
 	FieldSubscribedEvents,
 	FieldIsActive,
 	FieldFailureCount,
@@ -119,6 +122,11 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // BySecretKeyEncrypted orders the results by the secret_key_encrypted field.
 func BySecretKeyEncrypted(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSecretKeyEncrypted, opts...).ToFunc()
+}
+
+// BySecretKeyHash orders the results by the secret_key_hash field.
+func BySecretKeyHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSecretKeyHash, opts...).ToFunc()
 }
 
 // ByIsActive orders the results by the is_active field.

@@ -70,3 +70,4 @@ DerivedData/
 .DS_Store
 Thumbs.db
 authn.db
+apps/auth-engine/server

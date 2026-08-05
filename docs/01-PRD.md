@@ -95,7 +95,7 @@
 - Refresh token rotation on every exchange with a 10-second grace window to allow concurrent network requests.
 - Active session listing by device, browser, IP, and location with single-click remote session revocation.
 
-## 3. Execution Roadmap & Feature Order
+## 4. Execution Roadmap & Feature Order
 
 ### Phase 1: Backend Core Engines (Current Target)
 - **FR-12: Role-Based Access Control (RBAC) & Fine-Grained Permissions [Completed & Verified]**
@@ -126,7 +126,7 @@
 
 ---
 
-## 4. Non-Functional Requirements (NFR)
+## 5. Non-Functional Requirements (NFR)
 
 - **Latency**: Sub-10ms P95 latency for token validation and session checks (including Redis Lua-scripted rate limits).
 - **Security**: RFC 9106 Argon2id password hashing ($t=3, m=64\text{MB}, p=4$), automated 30-day JWKS key rotation with 7-day grace window, zero-knowledge secret handling, 7-day security cancellation blacklisting.

@@ -268,6 +268,32 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+
+    WebhookEndpoint {
+        string id PK
+        string tenant_id FK
+        string url
+        string description
+        string secret_key_enc
+        string secret_key_hash UK
+        json subscribed_events
+        boolean is_active
+        int failure_count
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    WebhookEvent {
+        string id PK
+        string webhook_endpoint_id FK
+        string event_type
+        json payload
+        int status_code
+        string response_body
+        string error_message
+        enum status "pending | success | failed | retrying"
+        timestamp created_at
+    }
 ```
 
 ---
@@ -296,6 +322,9 @@ Stores HMAC-SHA256 signed device cookies (`authn_td_token`) and IPv4 (`/24`) / I
 ### 3.7 `TwoFactorMethod`
 Stores user 2FA method configurations (`totp`, `sms_otp`, `backup_codes`, `webauthn`). TOTP secrets and WebAuthn credential data are stored AES-256-GCM encrypted.
 
+### 3.8 `WebhookEndpoint` & `WebhookEvent` (FR-13 Real-Time Webhooks)
+`WebhookEndpoint` stores HTTPS destination URLs, subscribed event patterns (`user.created`, `session.revoked`, `2fa.enabled`, `*`), and AES-256-GCM encrypted HMAC signing secrets (`whsec_...`) with a unique SHA-256 hash index (`secret_key_hash`) preventing secret collisions across endpoints. `WebhookEvent` stores delivery audit logs, HTTP status codes, payload snapshots, and delivery error messages.
+
 ---
 
 ## 4. Indexing & Query Optimization Strategy
@@ -313,3 +342,6 @@ Stores user 2FA method configurations (`totp`, `sms_otp`, `backup_codes`, `webau
 | `TrustedDevice` | `(user_id, device_token_hash, status)` | Fast trusted device verification |
 | `UserIpSubnetHistory` | `(user_id, subnet, last_seen_at)` | IP subnet familiarity evaluation |
 | `RecoveryContact` | `(user_id, status)` | Active guardian retrieval |
+| `WebhookEndpoint` | `(tenant_id, is_active)` | Active webhook endpoint resolution during event dispatch |
+| `WebhookEndpoint` | `secret_key_hash` | Unique index guaranteeing 0 secret collisions |
+| `WebhookEvent` | `(webhook_endpoint_id, created_at)` | Delivery audit log listing & retry scheduling |

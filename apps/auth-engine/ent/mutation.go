@@ -23037,6 +23037,7 @@ type WebhookEndpointMutation struct {
 	url                     *string
 	description             *string
 	secret_key_encrypted    *string
+	secret_key_hash         *string
 	subscribed_events       *[]string
 	appendsubscribed_events []string
 	is_active               *bool
@@ -23314,6 +23315,55 @@ func (m *WebhookEndpointMutation) OldSecretKeyEncrypted(ctx context.Context) (v 
 // ResetSecretKeyEncrypted resets all changes to the "secret_key_encrypted" field.
 func (m *WebhookEndpointMutation) ResetSecretKeyEncrypted() {
 	m.secret_key_encrypted = nil
+}
+
+// SetSecretKeyHash sets the "secret_key_hash" field.
+func (m *WebhookEndpointMutation) SetSecretKeyHash(s string) {
+	m.secret_key_hash = &s
+}
+
+// SecretKeyHash returns the value of the "secret_key_hash" field in the mutation.
+func (m *WebhookEndpointMutation) SecretKeyHash() (r string, exists bool) {
+	v := m.secret_key_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSecretKeyHash returns the old "secret_key_hash" field's value of the WebhookEndpoint entity.
+// If the WebhookEndpoint object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookEndpointMutation) OldSecretKeyHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSecretKeyHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSecretKeyHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSecretKeyHash: %w", err)
+	}
+	return oldValue.SecretKeyHash, nil
+}
+
+// ClearSecretKeyHash clears the value of the "secret_key_hash" field.
+func (m *WebhookEndpointMutation) ClearSecretKeyHash() {
+	m.secret_key_hash = nil
+	m.clearedFields[webhookendpoint.FieldSecretKeyHash] = struct{}{}
+}
+
+// SecretKeyHashCleared returns if the "secret_key_hash" field was cleared in this mutation.
+func (m *WebhookEndpointMutation) SecretKeyHashCleared() bool {
+	_, ok := m.clearedFields[webhookendpoint.FieldSecretKeyHash]
+	return ok
+}
+
+// ResetSecretKeyHash resets all changes to the "secret_key_hash" field.
+func (m *WebhookEndpointMutation) ResetSecretKeyHash() {
+	m.secret_key_hash = nil
+	delete(m.clearedFields, webhookendpoint.FieldSecretKeyHash)
 }
 
 // SetSubscribedEvents sets the "subscribed_events" field.
@@ -23659,7 +23709,7 @@ func (m *WebhookEndpointMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WebhookEndpointMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.tenant != nil {
 		fields = append(fields, webhookendpoint.FieldTenantID)
 	}
@@ -23671,6 +23721,9 @@ func (m *WebhookEndpointMutation) Fields() []string {
 	}
 	if m.secret_key_encrypted != nil {
 		fields = append(fields, webhookendpoint.FieldSecretKeyEncrypted)
+	}
+	if m.secret_key_hash != nil {
+		fields = append(fields, webhookendpoint.FieldSecretKeyHash)
 	}
 	if m.subscribed_events != nil {
 		fields = append(fields, webhookendpoint.FieldSubscribedEvents)
@@ -23703,6 +23756,8 @@ func (m *WebhookEndpointMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case webhookendpoint.FieldSecretKeyEncrypted:
 		return m.SecretKeyEncrypted()
+	case webhookendpoint.FieldSecretKeyHash:
+		return m.SecretKeyHash()
 	case webhookendpoint.FieldSubscribedEvents:
 		return m.SubscribedEvents()
 	case webhookendpoint.FieldIsActive:
@@ -23730,6 +23785,8 @@ func (m *WebhookEndpointMutation) OldField(ctx context.Context, name string) (en
 		return m.OldDescription(ctx)
 	case webhookendpoint.FieldSecretKeyEncrypted:
 		return m.OldSecretKeyEncrypted(ctx)
+	case webhookendpoint.FieldSecretKeyHash:
+		return m.OldSecretKeyHash(ctx)
 	case webhookendpoint.FieldSubscribedEvents:
 		return m.OldSubscribedEvents(ctx)
 	case webhookendpoint.FieldIsActive:
@@ -23776,6 +23833,13 @@ func (m *WebhookEndpointMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSecretKeyEncrypted(v)
+		return nil
+	case webhookendpoint.FieldSecretKeyHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSecretKeyHash(v)
 		return nil
 	case webhookendpoint.FieldSubscribedEvents:
 		v, ok := value.([]string)
@@ -23860,6 +23924,9 @@ func (m *WebhookEndpointMutation) ClearedFields() []string {
 	if m.FieldCleared(webhookendpoint.FieldDescription) {
 		fields = append(fields, webhookendpoint.FieldDescription)
 	}
+	if m.FieldCleared(webhookendpoint.FieldSecretKeyHash) {
+		fields = append(fields, webhookendpoint.FieldSecretKeyHash)
+	}
 	if m.FieldCleared(webhookendpoint.FieldLastTriggeredAt) {
 		fields = append(fields, webhookendpoint.FieldLastTriggeredAt)
 	}
@@ -23879,6 +23946,9 @@ func (m *WebhookEndpointMutation) ClearField(name string) error {
 	switch name {
 	case webhookendpoint.FieldDescription:
 		m.ClearDescription()
+		return nil
+	case webhookendpoint.FieldSecretKeyHash:
+		m.ClearSecretKeyHash()
 		return nil
 	case webhookendpoint.FieldLastTriggeredAt:
 		m.ClearLastTriggeredAt()
@@ -23902,6 +23972,9 @@ func (m *WebhookEndpointMutation) ResetField(name string) error {
 		return nil
 	case webhookendpoint.FieldSecretKeyEncrypted:
 		m.ResetSecretKeyEncrypted()
+		return nil
+	case webhookendpoint.FieldSecretKeyHash:
+		m.ResetSecretKeyHash()
 		return nil
 	case webhookendpoint.FieldSubscribedEvents:
 		m.ResetSubscribedEvents()

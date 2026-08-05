@@ -85,6 +85,11 @@ func SecretKeyEncrypted(v string) predicate.WebhookEndpoint {
 	return predicate.WebhookEndpoint(sql.FieldEQ(FieldSecretKeyEncrypted, v))
 }
 
+// SecretKeyHash applies equality check predicate on the "secret_key_hash" field. It's identical to SecretKeyHashEQ.
+func SecretKeyHash(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldEQ(FieldSecretKeyHash, v))
+}
+
 // IsActive applies equality check predicate on the "is_active" field. It's identical to IsActiveEQ.
 func IsActive(v bool) predicate.WebhookEndpoint {
 	return predicate.WebhookEndpoint(sql.FieldEQ(FieldIsActive, v))
@@ -373,6 +378,81 @@ func SecretKeyEncryptedEqualFold(v string) predicate.WebhookEndpoint {
 // SecretKeyEncryptedContainsFold applies the ContainsFold predicate on the "secret_key_encrypted" field.
 func SecretKeyEncryptedContainsFold(v string) predicate.WebhookEndpoint {
 	return predicate.WebhookEndpoint(sql.FieldContainsFold(FieldSecretKeyEncrypted, v))
+}
+
+// SecretKeyHashEQ applies the EQ predicate on the "secret_key_hash" field.
+func SecretKeyHashEQ(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldEQ(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashNEQ applies the NEQ predicate on the "secret_key_hash" field.
+func SecretKeyHashNEQ(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldNEQ(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashIn applies the In predicate on the "secret_key_hash" field.
+func SecretKeyHashIn(vs ...string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldIn(FieldSecretKeyHash, vs...))
+}
+
+// SecretKeyHashNotIn applies the NotIn predicate on the "secret_key_hash" field.
+func SecretKeyHashNotIn(vs ...string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldNotIn(FieldSecretKeyHash, vs...))
+}
+
+// SecretKeyHashGT applies the GT predicate on the "secret_key_hash" field.
+func SecretKeyHashGT(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldGT(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashGTE applies the GTE predicate on the "secret_key_hash" field.
+func SecretKeyHashGTE(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldGTE(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashLT applies the LT predicate on the "secret_key_hash" field.
+func SecretKeyHashLT(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldLT(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashLTE applies the LTE predicate on the "secret_key_hash" field.
+func SecretKeyHashLTE(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldLTE(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashContains applies the Contains predicate on the "secret_key_hash" field.
+func SecretKeyHashContains(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldContains(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashHasPrefix applies the HasPrefix predicate on the "secret_key_hash" field.
+func SecretKeyHashHasPrefix(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldHasPrefix(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashHasSuffix applies the HasSuffix predicate on the "secret_key_hash" field.
+func SecretKeyHashHasSuffix(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldHasSuffix(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashIsNil applies the IsNil predicate on the "secret_key_hash" field.
+func SecretKeyHashIsNil() predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldIsNull(FieldSecretKeyHash))
+}
+
+// SecretKeyHashNotNil applies the NotNil predicate on the "secret_key_hash" field.
+func SecretKeyHashNotNil() predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldNotNull(FieldSecretKeyHash))
+}
+
+// SecretKeyHashEqualFold applies the EqualFold predicate on the "secret_key_hash" field.
+func SecretKeyHashEqualFold(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldEqualFold(FieldSecretKeyHash, v))
+}
+
+// SecretKeyHashContainsFold applies the ContainsFold predicate on the "secret_key_hash" field.
+func SecretKeyHashContainsFold(v string) predicate.WebhookEndpoint {
+	return predicate.WebhookEndpoint(sql.FieldContainsFold(FieldSecretKeyHash, v))
 }
 
 // IsActiveEQ applies the EQ predicate on the "is_active" field.
