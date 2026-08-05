@@ -928,6 +928,57 @@
 					}
 				},
 				{
+					"name": "Impersonation — Get Policy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "impersonation-policy"]
+						},
+						"description": "Retrieves tenant impersonation guardrail policy configuration."
+					}
+				},
+				{
+					"name": "Impersonation — Initiate Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Investigating customer issue\",\n  \"ticket_id\": \"SUPP-9921\",\n  \"duration_minutes\": 15\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/users/usr_vanilla_007/impersonate",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "users", "usr_vanilla_007", "impersonate"]
+						},
+						"description": "Initiates an admin impersonation session for a target user.\n\nVerified response (200 OK):\n{\n  \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"expires_in\": 900,\n  \"impersonated_user\": {\n    \"id\": \"usr_vanilla_007\"\n  }\n}"
+					}
+				},
+				{
+					"name": "Impersonation — Exit Session",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/impersonate/exit",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "impersonate", "exit"]
+						},
+						"description": "Exits active impersonation session.\n\nVerified response (200 OK):\n{\"impersonated_id\":\"usr_vanilla_007\",\"impersonator_id\":\"key_test_sk_demo123_v3\",\"message\":\"impersonation session exited successfully\"}"
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",

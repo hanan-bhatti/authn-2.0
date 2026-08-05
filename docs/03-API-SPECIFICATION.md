@@ -636,7 +636,40 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `400 Bad Request`: Invalid slug format (`organization slug must be 2-50 lowercase alphanumeric characters or hyphens`), duplicate slug in tenant (`organization slug already exists in this tenant`), or replayed invitation token (`invitation has already been accepted`).
   - `404 Not Found`: Organization or invitation token not found.
 
-### 3.10 Admin API Keys (`POST /v1/admin/keys/`, `GET /v1/admin/keys/`, `POST /v1/admin/keys/:id/revoke`)
+### 3.11 Admin User Impersonation (`/v1/admin/users/:id/impersonate`, `/v1/tenant/impersonation-policy`, `/v1/client/auth/impersonate/exit`)
+
+> **Last Verified**: `2026-08-06` — live `curl` attack suite against running server.
+> See full endpoint doc: [`docs/endpoints/tenant-impersonation.md`](endpoints/tenant-impersonation.md)
+
+- **Description**: Allows support & tenant administrators to impersonate end users with configurable step-up re-authentication, support ticket tracking, user opt-in enforcement, and short-lived JWT issuance (`is_impersonated: true`).
+- **Request (`POST /v1/admin/users/:user_id/impersonate`)**:
+```json
+{
+  "reason": "Investigating billing ticket",
+  "ticket_id": "SUPP-9921",
+  "duration_minutes": 15
+}
+```
+- **Response (200 OK)**:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "impersonated_user": {
+    "id": "usr_vanilla_007",
+    "email": "user.vanilla@authn.local",
+    "status": "active"
+  },
+  "impersonator_id": "key_test_sk_demo123_v3"
+}
+```
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request` (`admin_step_up_required`): Admin step-up re-authentication is required before impersonating.
+  - `403 Forbidden` (`user_opt_in_required`): Target user has not granted support access permission (`support_access_enabled: false`).
+  - `422 Unprocessable Entity`: Impersonation duration violates policy bounds (`must be between 1 and 60 minutes`).
+
+### 3.12 Admin API Keys (`POST /v1/admin/keys/`, `GET /v1/admin/keys/`, `POST /v1/admin/keys/:id/revoke`)
 - **Description**: Allows tenant administrators to issue publishable client keys (`pk_...`) or secret keys (`sk_...`) for server SDKs.
 - **Request (`POST /v1/admin/keys/`)**:
 ```json
