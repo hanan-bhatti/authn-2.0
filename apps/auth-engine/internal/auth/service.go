@@ -753,6 +753,23 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 	}, nil
 }
 
+// VerifyAdminPassword verifies a user's Argon2id password for step-up authentication.
+func (s *Service) VerifyAdminPassword(ctx context.Context, userID string, password string) error {
+	u, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return ErrInvalidCredentials
+	}
+	if u.PasswordHash == "" || !crypto.VerifyPasswordArgon2id(password, u.PasswordHash) {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
+// VerifyAdminTOTP verifies a user's 6-digit TOTP code for step-up authentication.
+func (s *Service) VerifyAdminTOTP(ctx context.Context, userID string, code string) error {
+	return s.VerifyTOTP(ctx, userID, code)
+}
+
 // VerifyTOTP validates a 6-digit code against a user's active TOTP secret with +-1 time step skew window tolerance.
 func (s *Service) VerifyTOTP(ctx context.Context, userID string, code string) error {
 	tfm, err := s.repo.GetActiveTOTPMethodForUser(ctx, userID)

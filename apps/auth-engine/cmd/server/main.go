@@ -29,6 +29,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/impersonation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
@@ -239,6 +240,9 @@ func main() {
 	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
 	webhookHandler := webhook.NewHandler(webhookService)
 
+	impersonationService := impersonation.NewService(factory, cfg)
+	impersonationHandler := impersonation.NewHandler(impersonationService, policyRepo, authService)
+
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	authHandler.RegisterRoutes(app, pkMiddleware)
@@ -249,6 +253,7 @@ func main() {
 	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
 	rbacHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
 	webhookHandler.RegisterRoutes(app, adminMiddleware)
+	impersonationHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
 
 	// 6. Graceful Shutdown Listener
 	stop := make(chan os.Signal, 1)

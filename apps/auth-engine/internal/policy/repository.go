@@ -245,3 +245,65 @@ func (r *Repository) UpdateRecoveryPolicy(ctx context.Context, tenantID string, 
 
 	return rp, nil
 }
+
+// GetImpersonationPolicy retrieves the tenant's impersonation policy, defaulting if unconfigured.
+func (r *Repository) GetImpersonationPolicy(ctx context.Context, tenantID string) (ImpersonationPolicy, error) {
+	client := r.factory.GetClient(ctx, tenantID, "test")
+	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+	if err != nil || t == nil || t.SecurityPolicy == nil {
+		return DefaultImpersonationPolicy(), nil
+	}
+
+	raw, ok := t.SecurityPolicy["impersonation_policy"]
+	if !ok || raw == nil {
+		return DefaultImpersonationPolicy(), nil
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return DefaultImpersonationPolicy(), nil
+	}
+
+	var ip ImpersonationPolicy
+	if err := json.Unmarshal(data, &ip); err != nil {
+		return DefaultImpersonationPolicy(), nil
+	}
+
+	if err := ValidateImpersonationPolicy(ip); err != nil {
+		return DefaultImpersonationPolicy(), nil
+	}
+
+	return ip, nil
+}
+
+// UpdateImpersonationPolicy validates and persists a tenant's impersonation policy.
+func (r *Repository) UpdateImpersonationPolicy(ctx context.Context, tenantID string, ip ImpersonationPolicy) (ImpersonationPolicy, error) {
+	if err := ValidateImpersonationPolicy(ip); err != nil {
+		return ip, fmt.Errorf("invalid impersonation policy: %w", err)
+	}
+
+	client := r.factory.GetClient(ctx, tenantID, "test")
+	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+	if err != nil {
+		return ip, fmt.Errorf("failed fetching tenant: %w", err)
+	}
+
+	secMap := t.SecurityPolicy
+	if secMap == nil {
+		secMap = make(map[string]interface{})
+	}
+
+	var policyMap map[string]interface{}
+	data, _ := json.Marshal(ip)
+	_ = json.Unmarshal(data, &policyMap)
+	secMap["impersonation_policy"] = policyMap
+
+	_, err = client.Tenant.UpdateOneID(tenantID).
+		SetSecurityPolicy(secMap).
+		Save(ctx)
+	if err != nil {
+		return ip, fmt.Errorf("failed updating tenant impersonation policy: %w", err)
+	}
+
+	return ip, nil
+}
