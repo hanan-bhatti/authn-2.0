@@ -127,13 +127,14 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 
 ## 3. Endpoints & Edge Cases Detail
 
-### 3.0 System Health & Readiness (`GET /v1/health` & `GET /v1/ready`)
+### 3.0 System Health & Security Policies (`GET /healthz`, `GET /readyz`, `GET/PUT /v1/tenant/security-policy`)
 
-#### `GET /v1/health` — Engine Liveness Probe
-* **Description**: Returns engine liveness status and system timestamp.
+> **Last Verified**: `2026-08-06` — live `curl` verification against running server.
+> See full endpoint doc: [`docs/endpoints/system-health.md`](endpoints/system-health.md)
+
+#### `GET /healthz` (alias `GET /v1/health`) — Engine Liveness Probe
+* **Description**: Returns engine liveness status and system timestamp. Shallow probe (no DB/Redis ping) to prevent database outages from triggering container restart loops.
 * **Authentication**: Unauthenticated (Public).
-* **Rate Limiting**: Exempt.
-* **CORRECTION NOTICE [2026-08-05]**: *Previously, documentation implied `/v1/health` pinged database resources. `/v1/health` is strictly a shallow liveness probe (no DB/Redis ping) to prevent database outages from triggering container restart loops. For dependency health, call `/v1/ready`.*
 * **Response (200 OK)**:
 ```json
 {

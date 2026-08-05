@@ -277,6 +277,8 @@ func main() {
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	app.Get("/v1/ready", ReadinessCheckHandler(factory, redisClient))
+	app.Get("/healthz", HealthCheckHandler)
+	app.Get("/readyz", ReadinessCheckHandler(factory, redisClient))
 	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.AuthnEncryptionKey))
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT

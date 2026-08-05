@@ -1029,6 +1029,30 @@
 					}
 				},
 				{
+					"name": "System — Liveness Probe (/healthz)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/healthz",
+							"host": ["{{baseUrl}}"],
+							"path": ["healthz"]
+						},
+						"description": "Shallow engine liveness probe. Returns 200 OK and timestamp."
+					}
+				},
+				{
+					"name": "System — Readiness Probe (/readyz)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/readyz",
+							"host": ["{{baseUrl}}"],
+							"path": ["readyz"]
+						},
+						"description": "Deep readiness probe. Verifies database and Redis connectivity."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
