@@ -29,7 +29,8 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 ## 2. Comprehensive Endpoint Index
 
 ### 2.1 System & Health
-- `GET /v1/health` — Liveness & readiness check for container orchestrators
+- `GET /v1/health` — Engine Liveness Probe (process liveness only; unauthenticated, exempt from rate-limiting)
+- `GET /v1/ready` — Engine Readiness Probe (checks DB & Redis connectivity with 2s timeout; 200 ready / 503 not_ready)
 
 ### 2.2 OIDC Discovery & JWKS
 - `GET /.well-known/openid-configuration` — OIDC Discovery Metadata
@@ -125,6 +126,47 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 ---
 
 ## 3. Endpoints & Edge Cases Detail
+
+### 3.0 System Health & Readiness (`GET /v1/health` & `GET /v1/ready`)
+
+#### `GET /v1/health` — Engine Liveness Probe
+* **Description**: Returns engine liveness status and system timestamp.
+* **Authentication**: Unauthenticated (Public).
+* **Rate Limiting**: Exempt.
+* **CORRECTION NOTICE [2026-08-05]**: *Previously, documentation implied `/v1/health` pinged database resources. `/v1/health` is strictly a shallow liveness probe (no DB/Redis ping) to prevent database outages from triggering container restart loops. For dependency health, call `/v1/ready`.*
+* **Response (200 OK)**:
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "timestamp": "2026-08-05T18:11:31Z"
+}
+```
+
+#### `GET /v1/ready` — Engine Readiness Probe
+* **Description**: Pings Database and Redis with a strict 2-second timeout per check.
+* **Authentication**: Unauthenticated (Public).
+* **Rate Limiting**: Exempt.
+* **Response (200 OK — Ready)**:
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": "ok",
+    "redis": "ok"
+  }
+}
+```
+* **Response (503 Service Unavailable — Not Ready)**:
+```json
+{
+  "status": "not_ready",
+  "checks": {
+    "database": "ok",
+    "redis": "down"
+  }
+}
+```
 
 ### 3.1 Core Authentication (`POST /v1/client/signup` & `POST /v1/client/login`)
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `X-Authn-Client-Type: native|web`

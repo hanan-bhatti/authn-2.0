@@ -123,7 +123,7 @@ func loadDotEnv() {
 				val = strings.TrimSpace(val[:idx])
 			}
 			val = strings.Trim(val, `"'`)
-			if os.Getenv(key) == "" {
+			if _, exists := os.LookupEnv(key); !exists {
 				os.Setenv(key, val)
 			}
 		}
@@ -139,14 +139,14 @@ func LoadAndValidateConfig() (*EnvConfig, error) {
 
 	cfg := &EnvConfig{
 		Port:                        getEnvOrDefault("PORT", "8080"),
-		Env:                         getEnvOrDefault("ENV", "development"),
+		Env:                         getEnvOrDefault("APP_ENV", getEnvOrDefault("ENV", "development")),
 		DatabaseURL:                 os.Getenv("DATABASE_URL"),
-		RedisURL:                    getEnvOrDefault("AUTHN_REDIS_URL", getEnvOrDefault("REDIS_URL", "redis://localhost:6379")),
+		RedisURL:                    os.Getenv("AUTHN_REDIS_URL"),
 		AuthnEncryptionKey:          os.Getenv("AUTHN_ENCRYPTION_KEY"),
 		AuthnAPIKeyPepper:           os.Getenv("AUTHN_API_KEY_PEPPER"),
 		AuthnKeyID:                  getEnvOrDefault("AUTHN_KEY_ID", "key_v1"),
 		Issuer:                      getEnvOrDefault("ISSUER_URL", "http://localhost:8080"),
-		JWTSigningKeyPath:           getEnvOrDefault("AUTHN_RSA_KEY_PATH", getEnvOrDefault("JWT_SIGNING_KEY_PATH", ".keys/rsa_private.pem")),
+		JWTSigningKeyPath:           os.Getenv("AUTHN_RSA_KEY_PATH"),
 		RateLimitEnabled:            getEnvAsBoolOrDefault("AUTHN_RATELIMIT_ENABLED", true),
 		RateLimitMaxAttempts:        getEnvAsIntOrDefault("AUTHN_RATELIMIT_MAX_ATTEMPTS", 5),
 		RateLimitWindowSeconds:      getEnvAsIntOrDefault("AUTHN_RATELIMIT_WINDOW_SECONDS", 900),
@@ -181,19 +181,41 @@ func LoadAndValidateConfig() (*EnvConfig, error) {
 		WebAuthnRPDisplayName:       getEnvOrDefault("WEBAUTHN_RP_DISPLAY_NAME", "Authn Platform"),
 	}
 
+	if cfg.RedisURL == "" {
+		cfg.RedisURL = getEnvOrDefault("REDIS_URL", "redis://localhost:6379")
+	}
+	if cfg.JWTSigningKeyPath == "" {
+		cfg.JWTSigningKeyPath = getEnvOrDefault("JWT_SIGNING_KEY_PATH", ".keys/rsa_private.pem")
+	}
+
 	// Validate required variables in production / live mode
 	var validationErrors []string
 
-	if cfg.DatabaseURL == "" {
-		validationErrors = append(validationErrors, "DATABASE_URL is required but not set")
-	}
-
 	if cfg.Env == "production" {
+		if os.Getenv("DATABASE_URL") == "" {
+			validationErrors = append(validationErrors, "DATABASE_URL is required in production but not set")
+		}
+		if os.Getenv("REDIS_URL") == "" && os.Getenv("AUTHN_REDIS_URL") == "" {
+			validationErrors = append(validationErrors, "REDIS_URL (or AUTHN_REDIS_URL) is required in production but not set")
+		}
 		if cfg.AuthnEncryptionKey == "" || len(cfg.AuthnEncryptionKey) < 32 {
 			validationErrors = append(validationErrors, "AUTHN_ENCRYPTION_KEY must be set and at least 32 characters in production")
 		}
 		if cfg.AuthnAPIKeyPepper == "" || len(cfg.AuthnAPIKeyPepper) < 32 {
 			validationErrors = append(validationErrors, "AUTHN_API_KEY_PEPPER must be set and at least 32 characters in production")
+		}
+		if os.Getenv("AUTHN_RSA_KEY_PATH") == "" && os.Getenv("JWT_SIGNING_KEY_PATH") == "" {
+			validationErrors = append(validationErrors, "AUTHN_RSA_KEY_PATH (or JWT_SIGNING_KEY_PATH) is required in production but not set")
+		}
+	} else {
+		if cfg.DatabaseURL == "" {
+			cfg.DatabaseURL = "file:authn.db?cache=shared&_fk=1"
+		}
+		if cfg.AuthnEncryptionKey == "" {
+			cfg.AuthnEncryptionKey = "dev_encryption_key_32_bytes_long_12345"
+		}
+		if cfg.AuthnAPIKeyPepper == "" {
+			cfg.AuthnAPIKeyPepper = "dev_pepper_key_32_bytes_long_123456"
 		}
 	}
 

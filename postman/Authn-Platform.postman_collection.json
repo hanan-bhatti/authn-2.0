@@ -72,7 +72,7 @@
 			"name": "01 System & Health",
 			"item": [
 				{
-					"name": "Engine Health Check",
+					"name": "Engine Health Check (Liveness Probe)",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -81,7 +81,20 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "health"]
 						},
-						"description": "No auth required. Returns engine status."
+						"description": "Unauthenticated liveness probe. Returns engine process status and system timestamp without pinging database/cache dependencies."
+					}
+				},
+				{
+					"name": "Engine Readiness Check (Readiness Probe)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/ready",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "ready"]
+						},
+						"description": "Unauthenticated readiness probe. Pings Database and Redis with 2s timeout. Returns 200 OK (ready) or 503 Service Unavailable (not_ready)."
 					}
 				},
 				{

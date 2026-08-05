@@ -78,6 +78,15 @@ func (f *ClientFactory) GetClient(ctx context.Context, tenantID string, environm
 	return f.defaultClient
 }
 
+// Ping checks database connectivity on default client with context timeout.
+func (f *ClientFactory) Ping(ctx context.Context) error {
+	if f == nil || f.defaultClient == nil {
+		return fmt.Errorf("database client uninitialized")
+	}
+	_, err := f.defaultClient.Tenant.Query().Limit(1).IDs(ctx)
+	return err
+}
+
 // Close gracefully closes all active database connection pools.
 //
 // Parameters: None

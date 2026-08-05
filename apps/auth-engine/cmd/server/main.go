@@ -35,7 +35,6 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/org"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
@@ -52,14 +51,12 @@ type HealthResponse struct {
 	Timestamp string `json:"timestamp" example:"2026-08-01T16:55:00Z"`
 }
 
-// HealthCheckHandler handles engine health check requests.
-//
-// @Summary Engine Health Check
-// @Description Returns current operational health status of the Authn Go engine.
-// @Tags System
-// @Produce json
-// @Success 200 {object} HealthResponse
-// @Router /v1/health [get]
+type ReadinessResponse struct {
+	Status string            `json:"status"`
+	Checks map[string]string `json:"checks"`
+}
+
+// HealthCheckHandler handles engine health check requests (liveness probe).
 func HealthCheckHandler(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(HealthResponse{
 		Status:    "healthy",
@@ -68,12 +65,54 @@ func HealthCheckHandler(c *fiber.Ctx) error {
 	})
 }
 
+// ReadinessCheckHandler handles engine readiness check requests (dependency connectivity probe).
+func ReadinessCheckHandler(factory *clientfactory.ClientFactory, redisClient *redis.Client) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
+		defer cancel()
+
+		dbStatus := "ok"
+		if factory == nil || factory.Ping(ctx) != nil {
+			dbStatus = "down"
+		}
+
+		redisStatus := "ok"
+		if redisClient == nil || redisClient.Ping(ctx).Err() != nil {
+			redisStatus = "down"
+		}
+
+		checks := map[string]string{
+			"database": dbStatus,
+			"redis":    redisStatus,
+		}
+
+		if dbStatus != "ok" || redisStatus != "ok" {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(ReadinessResponse{
+				Status: "not_ready",
+				Checks: checks,
+			})
+		}
+
+		return c.Status(fiber.StatusOK).JSON(ReadinessResponse{
+			Status: "ready",
+			Checks: checks,
+		})
+	}
+}
+
 func main() {
 	log.Println("🚀 Authn Platform — Enterprise Identity Engine v1.0.0 starting...")
 
 	// 1. Pre-flight Environment Validation
 	cfg, err := config.LoadAndValidateConfig()
 	if err != nil {
+		rawEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+		if rawEnv == "" {
+			rawEnv = strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
+		}
+		if rawEnv == "production" {
+			log.Fatalf("❌ FATAL: Production pre-flight environment validation failed:\n%v", err)
+		}
 		log.Printf("⚠️ Development fallback mode: %v", err)
 		cfg = &config.EnvConfig{
 			Port:               "8080",
@@ -190,34 +229,6 @@ func main() {
 	// Checks mandatory 2FA on console admin JWT sessions.
 	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.AuthnEncryptionKey, authRepo)
 
-	ctx := privacy.NewBypassContext(context.Background())
-	if err := authRepo.EnsureTenantExists(ctx, "tnt_default"); err != nil {
-		log.Printf("⚠️ Default tenant initialization notice: %v", err)
-	}
-	if err := authRepo.EnsureDefaultApplicationExists(ctx, "app_test123", "tnt_default", []string{"http://localhost:3000/callback"}); err != nil {
-		log.Printf("⚠️ Default application seeding notice: %v", err)
-	}
-	// Seed Tenant A (Default) Publishable Key & Secret Key
-	defaultPK := "pk_test_demo12345678901234567890123456789012"
-	defaultSK := "sk_test_demo12345678901234567890123456789012"
-	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_test_demo123", "app_test123", defaultPK, cfg.AuthnAPIKeyPepper); err == nil {
-		log.Printf("🔑 Seeded Tenant A publishable key for verification: %s", defaultPK)
-	}
-	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_test_sk_demo123_v3", "app_test123", defaultSK, cfg.AuthnAPIKeyPepper); err == nil {
-		log.Printf("🔑 Seeded Tenant A secret key for verification: %s", defaultSK)
-	} else {
-		log.Printf("⚠️ Secret key seeding error: %v", err)
-	}
-
-	// Seed Tenant B, Application B, & Key B for cross-tenant HTTP isolation verification
-	if err := authRepo.EnsureTenantExists(ctx, "tnt_tenantB"); err == nil {
-		_ = authRepo.EnsureDefaultApplicationExists(ctx, "app_tenantB", "tnt_tenantB", []string{"http://localhost:3000/callback"})
-		tenantBPK := "pk_test_tenantB_9999999999999999999999999999"
-		tenantBSK := "sk_test_tenantB_9999999999999999999999999999"
-		_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_tenantB_123", "app_tenantB", tenantBPK, cfg.AuthnAPIKeyPepper)
-		_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_tenantB_sk_123_v2", "app_tenantB", tenantBSK, cfg.AuthnAPIKeyPepper)
-	}
-
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
 	oauthHandler := oauth.NewHandler(oauthService)
@@ -253,6 +264,7 @@ func main() {
 
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
+	app.Get("/v1/ready", ReadinessCheckHandler(factory, redisClient))
 	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.AuthnEncryptionKey))
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
