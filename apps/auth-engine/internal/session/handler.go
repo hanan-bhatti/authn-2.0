@@ -65,14 +65,19 @@ func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 		sessionID = val.(string)
 	}
 
-	// If userID is missing, try parsing Authorization Bearer <jwt>
-	if userID == "" {
+	// If userID or sessionID is missing, try parsing Authorization Bearer <jwt>
+	if userID == "" || sessionID == "" {
 		authHeader := c.Get("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.AuthnEncryptionKey)
 			if err == nil && claims != nil {
-				userID = claims.Sub
+				if userID == "" {
+					userID = claims.Sub
+				}
+				if sessionID == "" {
+					sessionID = claims.SessionID
+				}
 			}
 		}
 	}
@@ -98,8 +103,8 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 	var req struct {
 		SessionID string `json:"session_id"`
 	}
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	if err := c.BodyParser(&req); err != nil || req.SessionID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id is required"})
 	}
 
 	userID, _ := h.getUserIDAndSessionID(c)
@@ -109,6 +114,12 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 
 	err := h.svc.RevokeSession(c.UserContext(), userID, req.SessionID)
 	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+		}
+		if strings.Contains(err.Error(), "unauthorized") {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "unauthorized: session does not belong to user"})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 

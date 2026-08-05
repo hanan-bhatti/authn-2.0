@@ -456,11 +456,15 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `405 Method Not Allowed`: `{"error": {"code": 405, "message": "Method Not Allowed"}}`
 
 ### 3.4 Session Management (`GET /v1/client/sessions` & `/v1/client/sessions/revoke*`)
-- **Description**: Allows authenticated users to view active sessions with device details (`browser`, `os`, `device`, `label`) and `is_current` flag, or revoke sessions.
-  - `/revoke`: Revokes a specific session by ID (`{"session_id": "ses_..."}`).
+
+> **Last Verified**: `2026-08-06` — live `curl` against running server.
+> See full endpoint doc: [`docs/endpoints/client-sessions.md`](endpoints/client-sessions.md)
+
+- **Description**: Allows authenticated users to view active sessions with parsed device details (`browser`, `os`, `device`, `label`) and `is_current` flag, or revoke sessions. Strict IDOR ownership validation (`sess.UserID == caller.UserID`) rejects cross-user revocation with `403 Forbidden`.
+  - `/revoke`: Revokes a specific session by ID (`{"session_id": "ses_..."}`). Returns `400` if missing, `404` if not found, `403` if IDOR attempt.
   - `/revoke-others`: Revokes all active sessions for the user except current.
   - `/revoke-all`: Revokes all active user sessions (logout all devices).
-- **Headers**: `Authorization: Bearer <jwt>`
+- **Headers**: `Authorization: Bearer <jwt>`, `X-Authn-Publishable-Key: pk_<env>_<hash>`
 - **Response (200 OK)**:
 ```json
 {

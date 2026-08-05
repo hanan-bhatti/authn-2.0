@@ -633,6 +633,75 @@
 					}
 				},
 				{
+					"name": "List Active Sessions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions"]
+						},
+						"description": "Returns active user sessions with parsed device information and is_current flag.\n\nVerified response (200):\n{\n  \"sessions\": [\n    {\n      \"id\": \"ses_06599d51-82f\",\n      \"device\": { \"browser\": \"Chrome\", \"os\": \"Windows\", \"device\": \"Desktop\", \"label\": \"Chrome on Windows\" },\n      \"ip_address\": \"127.0.0.1\",\n      \"created_at\": \"2026-08-06T02:27:13Z\",\n      \"is_current\": true\n    }\n  ]\n}"
+					}
+				},
+				{
+					"name": "Revoke Session (By ID)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"ses_06599d51-82f\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions/revoke",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions", "revoke"]
+						},
+						"description": "Revokes a specific session belonging to the caller. Rejects cross-user IDOR attacks with 403 Forbidden.\n\nVerified response (200):\n{\"message\":\"session revoked\",\"session_id\":\"ses_06599d51-82f\"}"
+					}
+				},
+				{
+					"name": "Revoke Other Sessions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions/revoke-others",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions", "revoke-others"]
+						},
+						"description": "Revokes all user sessions except the active caller's session.\n\nVerified response (200):\n{\"count\":2,\"message\":\"all other sessions revoked\"}"
+					}
+				},
+				{
+					"name": "Revoke All Sessions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/sessions/revoke-all",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "sessions", "revoke-all"]
+						},
+						"description": "Revokes all active user sessions across all devices.\n\nVerified response (200):\n{\"count\":3,\"message\":\"all sessions revoked\"}"
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",

@@ -567,7 +567,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, "", s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, "", sessionID, s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

@@ -143,7 +143,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 	}
 
 	// Issue new Access Token JWT
-	accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, "", s.cfg.AuthnEncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, "", newSess.ID, s.cfg.AuthnEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
 	}

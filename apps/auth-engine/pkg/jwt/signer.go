@@ -23,16 +23,13 @@ import (
 
 // Claims represents the standard JWT access token payload structure.
 type Claims struct {
-	Sub         string `json:"sub"`
-	TenantID    string `json:"tenant_id"`
-	Environment string `json:"environment"`
-	Email       string `json:"email"`
-	Name        string `json:"name,omitempty"`
-	// Role is set at signup time: "tenant_admin" for the first user in a tenant,
-	// empty string for all subsequent users. Used by console auth middleware to
-	// gate access to /v1/tenant/* and /v1/admin/* routes without requiring an sk_ key.
-	// Full RBAC (FR-12) will replace this with granular permissions in a later phase.
+	Sub            string `json:"sub"`
+	TenantID       string `json:"tenant_id"`
+	Environment    string `json:"environment"`
+	Email          string `json:"email"`
+	Name           string `json:"name,omitempty"`
 	Role           string `json:"role,omitempty"`
+	SessionID      string `json:"sid,omitempty"`
 	ImpersonatorID string `json:"impersonator_id,omitempty"`
 	IsImpersonated bool   `json:"is_impersonated,omitempty"`
 	Iss            string `json:"iss"`
@@ -66,6 +63,46 @@ func IssueAccessToken(userID string, tenantID string, environment string, email 
 		Email:       email,
 		Name:        name,
 		Role:        role,
+		Iss:         "authn-engine",
+		Iat:         now.Unix(),
+		Exp:         exp.Unix(),
+		Jti:         fmt.Sprintf("jti_%d", now.UnixNano()),
+	}
+
+	headerJSON, _ := json.Marshal(map[string]string{
+		"alg": "HS256",
+		"typ": "JWT",
+	})
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed marshaling jwt claims: %w", err)
+	}
+
+	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	signingInput := encodedHeader + "." + encodedPayload
+
+	h := hmac.New(sha256.New, []byte(signingSecret))
+	h.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	return signingInput + "." + signature, nil
+}
+
+// IssueAccessTokenWithSession creates and signs a 15-minute JWT access token with an explicit session ID (sid).
+func IssueAccessTokenWithSession(userID string, tenantID string, environment string, email string, name string, role string, sessionID string, signingSecret string) (string, error) {
+	now := time.Now().UTC()
+	exp := now.Add(15 * time.Minute)
+
+	claims := Claims{
+		Sub:         userID,
+		TenantID:    tenantID,
+		Environment: environment,
+		Email:       email,
+		Name:        name,
+		Role:        role,
+		SessionID:   sessionID,
 		Iss:         "authn-engine",
 		Iat:         now.Unix(),
 		Exp:         exp.Unix(),
