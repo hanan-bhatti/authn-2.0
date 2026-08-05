@@ -10,6 +10,7 @@
 - [fr12] ✅ DONE — RBAC engine fully implemented and verified (23/23 tests pass, commit 0b002b8)
 - [fr13] ✅ DONE — Webhooks with tenant isolation, HMAC signing, async dispatch (security-proof.html verified)
 - [security] ✅ DONE — Mandatory Admin 2FA policy implemented & verified (RequireAdminAuth middleware guard + Disable2FA lock)
+- [fr14] ✅ DONE — Admin User Impersonation fully implemented & verified (mandatory step-up, user notifications, webhooks, read-only mutation guard)
 
 ## RBAC Design Decisions (FR-12)
 - [rbac] Role slug is a real DB column with unique (tenant_id, slug) index — NOT a name alias
