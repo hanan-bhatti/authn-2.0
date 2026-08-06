@@ -288,7 +288,7 @@ func main() {
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	userHandler.RegisterRoutes(app, clientAuthMiddleware, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
-	oauthHandler.RegisterRoutes(app, pkMiddleware)
+	oauthHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	socialHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	sessionHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT

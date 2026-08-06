@@ -43,13 +43,22 @@ func (h *Handler) GetOIDCDiscovery(c *fiber.Ctx) error {
 
 // GetJWKS handles GET /v1/oauth/jwks.
 func (h *Handler) GetJWKS(c *fiber.Ctx) error {
-	rsaKey, err := jwtpkg.GetOrGenerateRSAPrivateKey(h.service.cfg.JWTSigningKeyPath)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed generating public JWKS"})
-	}
-	jwks := jwtpkg.ExportRSAPublicJWKS(&rsaKey.PublicKey, h.service.cfg.AuthnKeyID)
+	jwks := h.service.GetPublicJWKS()
 	c.Set("Cache-Control", "public, max-age=3600")
 	return c.Status(fiber.StatusOK).JSON(jwks)
+}
+
+// RotateJWKS handles POST /v1/admin/jwks/rotate (admin-scoped manual key rotation).
+func (h *Handler) RotateJWKS(c *fiber.Ctx) error {
+	newKey, err := h.service.RotateJWKSKey()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "JWKS key successfully rotated",
+		"new_active_key_id": newKey.ID,
+		"jwks": h.service.GetPublicJWKS(),
+	})
 }
 
 // extractAccessToken attempts to find an active access token from cookies or Authorization Bearer header.
@@ -92,6 +101,12 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	codeChallenge := c.Query("code_challenge")
 	codeChallengeMethod := c.Query("code_challenge_method", "S256")
 	scope := c.Query("scope", "openid profile email")
+
+	if strings.EqualFold(codeChallengeMethod, "plain") {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid_request: code_challenge_method 'plain' is unsupported; PKCE S256 is required",
+		})
+	}
 
 	if responseType != "code" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported_response_type: expected response_type=code"})
@@ -240,7 +255,7 @@ func (h *Handler) GetUserInfo(c *fiber.Ctx) error {
 }
 
 // RegisterRoutes registers OAuth2 and OIDC endpoints.
-func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
+func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adminMiddleware ...fiber.Handler) {
 	app.Get("/.well-known/openid-configuration", h.GetOIDCDiscovery)
 
 	group := app.Group("/v1/oauth")
@@ -252,5 +267,12 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	} else {
 		group.Get("/authorize", h.Authorize)
 		group.Post("/token", h.TokenExchange)
+	}
+
+	if len(adminMiddleware) > 0 && adminMiddleware[0] != nil {
+		adminGroup := app.Group("/v1/admin", adminMiddleware[0])
+		adminGroup.Post("/jwks/rotate", h.RotateJWKS)
+	} else {
+		app.Post("/v1/admin/jwks/rotate", h.RotateJWKS)
 	}
 }

@@ -62,10 +62,10 @@ Returned when requesting with non-GET verbs (`POST`, `PUT`, `DELETE`, `PATCH`, `
 ## Design Notes & Security Audits
 * **🔒 Zero Private Key Exposure**: Formally audited for cryptographic safety. The JSON response strictly exposes public parameters `n` (Modulus) and `e` (Exponent). Zero private key exponents (`d`, `p`, `q`, `dp`, `dq`, `qi`) are present.
 * **`kid` Alignment**: The `kid` returned in the JWKS array strictly matches the `kid` embedded in the JOSE header of issued JWT tokens (`"kid": "authn-rsa-key-1"`).
-* **Known Limitation — Single Active Key**: The endpoint currently exposes 1 active RSA key. Multi-key rotation history arrays (30-day rotation with 7-day overlap grace periods) are a planned future enhancement.
+* **Multi-Key Rotation & 7-Day Overlap Grace Period**: Implements RFC 7517 multi-key retention. Upon triggering key rotation (`POST /v1/admin/jwks/rotate`), the previous active key is moved to the grace period array and retained in JWKS alongside the new active key, ensuring tokens issued prior to rotation verify seamlessly.
 
 ---
 
 ## Verification & Pentest History
-* **Last Verified Date**: `2026-08-05`
-* **Verification Method**: Manual live HTTP pentest + Automated Go Integration Test (`TestJWKSEndpoint`).
+* **Last Verified Date**: `2026-08-06`
+* **Verification Method**: Manual live HTTP pentest (`POST /v1/admin/jwks/rotate`, `GET /v1/oauth/jwks`) + Go Unit & Integration Tests (`TestJWKSKeyRotationAndVerification`).

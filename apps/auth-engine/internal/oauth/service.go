@@ -17,6 +17,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
@@ -30,16 +31,40 @@ type Service struct {
 	authRepo    *auth.Repository
 	authService *auth.Service
 	cfg         *config.EnvConfig
+	keyManager  *jwtpkg.KeyManager
 }
 
 // NewService constructs a new OAuth2 Service instance.
 func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.Service, cfg *config.EnvConfig) *Service {
+	keyID := "authn-rsa-key-v1"
+	if cfg != nil && cfg.AuthnKeyID != "" {
+		keyID = cfg.AuthnKeyID
+	}
+	km, _ := jwtpkg.NewKeyManager(keyID)
+
 	return &Service{
 		repo:        repo,
 		authRepo:    authRepo,
 		authService: authService,
 		cfg:         cfg,
+		keyManager:  km,
 	}
+}
+
+// GetPublicJWKS returns all active and grace period keys as an RFC 7517 JWKS payload.
+func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
+	if s.keyManager != nil {
+		return s.keyManager.GetPublicJWKS()
+	}
+	return jwtpkg.GetPublicJWKS(s.cfg.AuthnKeyID)
+}
+
+// RotateJWKSKey triggers manual key rotation: active key moves to grace period, new active key generated.
+func (s *Service) RotateJWKSKey(newKeyID ...string) (*jwtpkg.KeyEntry, error) {
+	if s.keyManager != nil {
+		return s.keyManager.RotateKey(newKeyID...)
+	}
+	return nil, fmt.Errorf("key manager uninitialized")
 }
 
 // ValidateClientApplication verifies that clientID is registered in database and redirectURI is strictly authorized.
@@ -99,7 +124,7 @@ func (s *Service) GetDiscoveryMetadata(requestHostIssuer string) OIDCDiscoveryCo
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
 		ScopesSupported:                   []string{"openid", "profile", "email"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post", "none"},
-		CodeChallengeMethodsSupported:     []string{"S256", "plain"},
+		CodeChallengeMethodsSupported:     []string{"S256"},
 		ClaimsSupported:                   []string{"iss", "sub", "aud", "exp", "iat", "email", "name", "tenant_id"},
 		GrantTypesSupported:               []string{"authorization_code", "refresh_token"},
 	}
@@ -107,6 +132,9 @@ func (s *Service) GetDiscoveryMetadata(requestHostIssuer string) OIDCDiscoveryCo
 
 // IssueAuthorizationCode generates a 10-minute ephemeral authorization code for PKCE flows.
 func (s *Service) IssueAuthorizationCode(ctx context.Context, clientID string, userID string, tenantID string, redirectURI string, codeChallenge string, method string, scope string) (string, error) {
+	if strings.EqualFold(method, "plain") {
+		return "", fmt.Errorf("invalid_request: code_challenge_method 'plain' is unsupported; PKCE S256 is required")
+	}
 	bytes := make([]byte, 24)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("failed generating random code: %w", err)

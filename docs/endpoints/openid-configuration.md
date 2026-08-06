@@ -52,8 +52,7 @@ Returned with `Cache-Control: public, max-age=3600` header to allow client SDKs 
     "none"
   ],
   "code_challenge_methods_supported": [
-    "S256",
-    "plain"
+    "S256"
   ],
   "claims_supported": [
     "iss",
@@ -91,12 +90,13 @@ Returned when requesting with non-GET verbs (`POST`, `PUT`, `DELETE`, `PATCH`, `
 
 ---
 
-## Design Notes & Known Limitations
+## Design Notes & Security Compliance
 * **Issuer Alignment**: The `issuer` field strictly prefers `ISSUER_URL` (`s.cfg.Issuer`) when configured in environment variables, guaranteeing exact string alignment with the `iss` claim in issued JWT ID Tokens per OIDC Discovery 1.0 Spec Section 3.
-* **Advertised Userinfo Endpoint Gap**: The document advertises `userinfo_endpoint` (`http://localhost:8080/v1/oauth/userinfo`), but calling `GET /v1/oauth/userinfo` currently returns `404 Not Found` (known capability gap to be built in Endpoint 8).
+* **PKCE Enforcement**: Advertises `S256` only (`code_challenge_methods_supported: ["S256"]`). Requests sending `code_challenge_method=plain` are strictly rejected at `/v1/oauth/authorize` with `400 Bad Request`.
+* **UserInfo Endpoint**: Full OIDC UserInfo endpoint is active at `/v1/oauth/userinfo`.
 
 ---
 
 ## Verification & Pentest History
-* **Last Verified Date**: `2026-08-05`
+* **Last Verified Date**: `2026-08-06`
 * **Verification Method**: Manual live HTTP pentest + Automated Go Integration Test (`TestOIDCDiscoveryEndpoint`).
