@@ -13,6 +13,7 @@ package oauth
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -126,8 +127,16 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	state := c.Query("state")
 	if redirectURI != "" {
-		redirectURL := fmt.Sprintf("%s?code=%s", redirectURI, codeStr)
+		sep := "?"
+		if strings.Contains(redirectURI, "?") {
+			sep = "&"
+		}
+		redirectURL := fmt.Sprintf("%s%scode=%s", redirectURI, sep, codeStr)
+		if state != "" {
+			redirectURL += fmt.Sprintf("&state=%s", url.QueryEscape(state))
+		}
 		return c.Redirect(redirectURL, fiber.StatusFound)
 	}
 
@@ -272,7 +281,44 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adm
 	if len(adminMiddleware) > 0 && adminMiddleware[0] != nil {
 		adminGroup := app.Group("/v1/admin", adminMiddleware[0])
 		adminGroup.Post("/jwks/rotate", h.RotateJWKS)
+
+		tenantAdminGroup := app.Group("/v1/tenant", adminMiddleware[0])
+		tenantAdminGroup.Post("/applications", h.CreateApplication)
 	} else {
 		app.Post("/v1/admin/jwks/rotate", h.RotateJWKS)
+		app.Post("/v1/tenant/applications", h.CreateApplication)
 	}
+}
+
+type createApplicationRequest struct {
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	ExactRedirectURIs []string `json:"exact_redirect_uris"`
+}
+
+func (h *Handler) CreateApplication(c *fiber.Ctx) error {
+	tenantID, _ := c.Locals("tenant_id").(string)
+	if tenantID == "" {
+		tenantID = "tnt_default"
+	}
+
+	var req createApplicationRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if req.ID == "" || req.Name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and name are required"})
+	}
+
+	if err := h.service.CreateClientApplication(c.UserContext(), req.ID, tenantID, req.Name, req.ExactRedirectURIs); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message":             "application registered successfully",
+		"id":                  req.ID,
+		"name":                req.Name,
+		"exact_redirect_uris": req.ExactRedirectURIs,
+	})
 }

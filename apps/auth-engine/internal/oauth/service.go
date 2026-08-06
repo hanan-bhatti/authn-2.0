@@ -59,6 +59,15 @@ func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
 	return jwtpkg.GetPublicJWKS(s.cfg.AuthnKeyID)
 }
 
+// CreateClientApplication registers an Application client record with authorized redirect URIs.
+func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, name string, redirectURIs []string) error {
+	if s.authRepo == nil {
+		return fmt.Errorf("auth repository uninitialized")
+	}
+	_, err := s.authRepo.CreateApplication(ctx, id, tenantID, name, redirectURIs)
+	return err
+}
+
 // RotateJWKSKey triggers manual key rotation: active key moves to grace period, new active key generated.
 func (s *Service) RotateJWKSKey(newKeyID ...string) (*jwtpkg.KeyEntry, error) {
 	if s.keyManager != nil {

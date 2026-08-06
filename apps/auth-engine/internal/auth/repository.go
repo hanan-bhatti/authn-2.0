@@ -382,6 +382,17 @@ func (r *Repository) FindApplicationByID(ctx context.Context, appID string) (*en
 	return app, nil
 }
 
+// CreateApplication creates a client Application record.
+func (r *Repository) CreateApplication(ctx context.Context, id, tenantID, name string, redirectURIs []string) (*ent.Application, error) {
+	client := r.factory.GetClient(ctx, tenantID, "")
+	return client.Application.Create().
+		SetID(id).
+		SetTenantID(tenantID).
+		SetName(name).
+		SetExactRedirectUris(redirectURIs).
+		Save(ctx)
+}
+
 // SetUserEmailVerificationToken saves the hashed single-use verification token and expiration.
 func (r *Repository) SetUserEmailVerificationToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error {
 	client := r.factory.GetClient(ctx, "", "")

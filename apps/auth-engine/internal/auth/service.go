@@ -519,6 +519,10 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 		return nil, "", "", ErrInvalidCredentials
 	}
 
+	if u.Status != "active" {
+		return nil, "", "", fmt.Errorf("account is locked or suspended (status: %s)", u.Status)
+	}
+
 	// Check if user has active 2FA methods (TOTP, Passkeys, or Recovery Codes)
 	var allowedMethods []string
 

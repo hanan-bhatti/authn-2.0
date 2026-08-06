@@ -871,4 +871,19 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 
 - **Description**: Email domain inspection prior to password entry for enterprise SSO routing, complete enumeration safety for non-existent domains, and enforcement gating against password login when `enforce_sso: true`.
 
+### 3.18 Cross-Domain Resume-to-Destination (`GET /v1/oauth/authorize`, `POST /v1/saml/acs`, `GET /v1/client/auth/social/:provider/authorize`)
+
+> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
+> See full endpoint doc: [`docs/endpoints/cross-domain-resume.md`](endpoints/cross-domain-resume.md)
+
+- **Description**: Cross-origin post-authentication redirection to client applications (e.g. `http://localhost:3000/callback`), maintaining authorization code and caller state parameters intact.
+
+### 3.19 FR-5 Phase 6: Consolidated Lockout Engine (`POST /v1/client/login`)
+
+> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
+> See full endpoint doc: [`docs/endpoints/lockout-engine.md`](endpoints/lockout-engine.md)
+
+- **Description**: Multi-dimensional lockout enforcement after 5 failed password attempts, rejecting attempt #6 with the **CORRECT** password with `HTTP 429 Too Many Requests` and `Retry-After: 900`.
+
+
 

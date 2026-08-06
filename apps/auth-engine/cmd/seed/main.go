@@ -371,5 +371,5 @@ func main() {
 	for _, spec := range userSpecs {
 		fmt.Printf("• %-28s | Password: %-13s | State: %s\n", spec.Email, spec.Password, spec.SpecialState)
 	}
-	fmt.Println("================================================================================\n")
+	fmt.Println("================================================================================")
 }
