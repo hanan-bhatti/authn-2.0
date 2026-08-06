@@ -39,11 +39,19 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adm
 	clientGroup := app.Group("/v1/client", pkMiddleware)
 	clientGroup.Post("/auth/domain-lookup", h.LookupDomainSSO)
 
-	// Organization SAML Management Endpoints
+	// Organization SAML Management Endpoints (Client Publishable Key & Admin Secret Key)
 	clientGroup.Post("/organizations/:orgId/saml", h.CreateSAMLConnection)
 	clientGroup.Get("/organizations/:orgId/saml", h.GetSAMLConnection)
 	clientGroup.Patch("/organizations/:orgId/saml", h.UpdateSAMLConnection)
 	clientGroup.Delete("/organizations/:orgId/saml", h.DeleteSAMLConnection)
+
+	if adminMiddleware != nil {
+		adminGroup := app.Group("/v1/tenant", adminMiddleware)
+		adminGroup.Post("/organizations/:orgId/saml", h.CreateSAMLConnection)
+		adminGroup.Get("/organizations/:orgId/saml", h.GetSAMLConnection)
+		adminGroup.Patch("/organizations/:orgId/saml", h.UpdateSAMLConnection)
+		adminGroup.Delete("/organizations/:orgId/saml", h.DeleteSAMLConnection)
+	}
 }
 
 func getTenantID(c *fiber.Ctx) string {

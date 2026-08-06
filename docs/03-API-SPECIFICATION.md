@@ -850,3 +850,25 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `403 Forbidden` (`cannot_unlink_last_auth`): Attempting to unlink a social provider when no password is set and no other login method exists.
   - `409 Conflict`: Primary email change request specifies an email already registered to another user in the tenant.
 
+### 3.15 MFA Enrollment & Verification Suite (`/v1/client/2fa/*`)
+
+> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server using `pyotp` RFC 6238 generation.
+> See full endpoint doc: [`docs/endpoints/mfa-enrollment-verification.md`](endpoints/mfa-enrollment-verification.md)
+
+- **Description**: Managing TOTP enrollment/confirmation, recovery code status & step-up regeneration, password step-up disabling, WebAuthn passkey registration & IDOR-protected revocation, and SMS OTP dispatch.
+
+### 3.16 SAML 2.0 IdP Configuration CRUD (`/v1/tenant/organizations/:orgId/saml`)
+
+> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
+> See full endpoint doc: [`docs/endpoints/saml-idp-config.md`](endpoints/saml-idp-config.md)
+
+- **Description**: Admin management of SAML SSO settings (`POST/GET/PATCH/DELETE`), XML Service Provider metadata generation, and instant metadata cache invalidation upon deletion.
+
+### 3.17 Domain Lookup & SSO Enforcement (`POST /v1/client/auth/domain-lookup`)
+
+> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
+> See full endpoint doc: [`docs/endpoints/domain-lookup.md`](endpoints/domain-lookup.md)
+
+- **Description**: Email domain inspection prior to password entry for enterprise SSO routing, complete enumeration safety for non-existent domains, and enforcement gating against password login when `enforce_sso: true`.
+
+

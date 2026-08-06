@@ -1155,6 +1155,46 @@
 					}
 				},
 				{
+					"name": "Domain Lookup — Check SSO Enforcement (/v1/client/auth/domain-lookup)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"domain\": \"acme.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/domain-lookup",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "domain-lookup"]
+						},
+						"description": "Inspects email domain to check if active SAML SSO exists and if enforce_sso is enabled prior to login."
+					}
+				},
+				{
+					"name": "SAML Admin — Create IdP Config (/v1/tenant/organizations/:orgId/saml)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"idp_entity_id\": \"https://idp.acme.com/saml\",\n  \"idp_sso_url\": \"https://idp.acme.com/sso\",\n  \"idp_certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIE...\\n-----END CERTIFICATE-----\",\n  \"allowed_domains\": [\"acme.com\"],\n  \"enforce_sso\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/organizations/org_12345/saml",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "organizations", "org_12345", "saml"]
+						},
+						"description": "Creates SAML 2.0 IdP configuration for an organization (admin secret key required)."
+					}
+				},
+				{
 					"name": "Verify Email Token",
 					"request": {
 						"method": "GET",
