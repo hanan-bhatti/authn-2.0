@@ -210,8 +210,11 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		env = string(u.Environment)
 	}
 
-	// Issue Access Token (OAuth users are regular end-users, role is always empty)
-	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, "", s.cfg.AuthnEncryptionKey)
+	// Issue Access Token. The role claim is resolved from the user's recorded
+	// roles: an OAuth authorization-code exchange may well be a tenant admin
+	// signing into the console, so hardcoding "" here silently stripped their
+	// console privilege.
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.AuthnEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}

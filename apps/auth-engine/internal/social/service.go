@@ -18,6 +18,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -140,7 +141,6 @@ func (s *Service) HandleCallback(
 		userID = fetchedUser.ID
 		email = fetchedUser.Email
 		name = fetchedUser.Name
-		role = ""
 	} else {
 		// Check email collision
 		existingUser, err := s.repo.FindUserByEmailForSocial(ctx, state.TenantID, state.Environment, providerUser.Email)
@@ -153,7 +153,6 @@ func (s *Service) HandleCallback(
 			userID = existingUser.ID
 			email = existingUser.Email
 			name = existingUser.Name
-			role = ""
 		} else {
 			// Brand new user — SIGNUP path
 			newUser, err := s.repo.CreateSocialUser(ctx, state.TenantID, state.Environment, providerUser.Email, providerUser.Name, providerUser.AvatarURL, providerUser.EmailVerified)
@@ -163,9 +162,14 @@ func (s *Service) HandleCallback(
 			userID = newUser.ID
 			email = newUser.Email
 			name = newUser.Name
-			role = ""
 		}
 	}
+
+	// Resolve the console role claim from recorded roles. A social login can be
+	// a tenant admin returning through Google/GitHub, so hardcoding "" here
+	// stripped their console privilege. A brand-new user has no roles yet and
+	// resolves to "" naturally.
+	role = rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 
 	jwtToken, err := jwtpkg.IssueAccessToken(userID, state.TenantID, string(state.Environment), email, name, role, s.cfg.AuthnEncryptionKey)
 	if err != nil {

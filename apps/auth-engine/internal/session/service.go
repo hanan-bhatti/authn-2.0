@@ -22,6 +22,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -107,7 +108,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					return nil, fmt.Errorf("failed to load session user: %w", err)
 				}
 
-				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, "", s.cfg.AuthnEncryptionKey)
+				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), s.cfg.AuthnEncryptionKey)
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
@@ -143,7 +144,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 	}
 
 	// Issue new Access Token JWT
-	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, "", newSess.ID, s.cfg.AuthnEncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.AuthnEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
 	}
@@ -227,4 +228,11 @@ func (s *Service) RevokeAllSessions(ctx context.Context, userID string) (int, er
 func (s *Service) getUserByID(ctx context.Context, userID string) (*ent.User, error) {
 	client := s.repo.factory.GetClient(ctx, "", "")
 	return client.User.Get(ctx, userID)
+}
+
+// resolveRoleClaim derives the JWT role claim from the user's recorded roles so
+// that a refreshed or rotated session preserves console privilege instead of
+// silently downgrading a tenant admin to a regular end-user.
+func (s *Service) resolveRoleClaim(ctx context.Context, userID string) string {
+	return rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 }

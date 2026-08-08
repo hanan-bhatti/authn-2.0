@@ -39,6 +39,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	emailPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	smsPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sms"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -488,7 +489,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, "", sessionID, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -571,7 +572,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, "", sessionID, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -642,7 +643,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Issue new 15-minute access token
 		tenantID := string(u.TenantID)
 		env := string(u.Environment)
-		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, "", s.config.AuthnEncryptionKey)
+		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -662,7 +663,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 					if err == nil && u != nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, "", s.config.AuthnEncryptionKey)
+						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -838,7 +839,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, "", s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -848,6 +849,17 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), u.ID, "user.signed_in_2fa", ipAddress, userAgent, "")
 
 	return u, accessToken, rawRefreshToken, nil
+}
+
+// ResolveRoleClaim returns the console role slug to embed in a user's JWT
+// `role` claim, or "" if the user holds no console-admin role.
+//
+// Thin wrapper over rbac.ResolveConsoleRoleClaim, which is the single source of
+// truth shared with the OAuth, social and session token paths. Deliberately
+// narrower than IsAdminUser, which answers the broader "is this user privileged
+// in any way" question used to protect admins from impersonation.
+func (s *Service) ResolveRoleClaim(ctx context.Context, userID string) string {
+	return rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 }
 
 // IsAdminUser checks if a user holds an administrative role (e.g. tenant_admin, admin, super_admin).
@@ -1556,7 +1568,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, "", s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
