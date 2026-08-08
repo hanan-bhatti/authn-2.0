@@ -88,7 +88,12 @@ func (s *Service) authzRequireOrgAdmin(ctx context.Context, client *ent.Client, 
 		return nil, ErrForbidden
 	}
 
-	// org_admin slug OR permission action containing "orgs:*" or "members:*" OR "*"
+	// Org admin rights come from the org_admin slug, or from a role holding a
+	// namespace-level grant over the org surface. This deliberately requires a
+	// whole-namespace grant ("orgs:*") rather than reusing the request-gate
+	// matcher against a representative permission: a role granted only
+	// "orgs:write" is meant to update org fields, and treating that as org-admin
+	// would also hand it member removal and org deletion.
 	if roleRecord.Slug == "org_admin" {
 		return membership, nil
 	}

@@ -159,18 +159,22 @@ func (s *Service) GetUserRBAC(ctx context.Context, userID string) (roles []strin
 }
 
 // HasPermission checks if a user holds a required permission or an administrative role.
+//
+// Matching is delegated to PermissionMatches so that this path and the
+// RequirePermission middleware cannot diverge. This previously granted every
+// permission to any holder of "users:*" or "impersonate:*" — those literals were
+// compared against the held permission rather than requiredPerm, making them a
+// universal grant (audit H1).
 func (s *Service) HasPermission(ctx context.Context, userID string, requiredPerm string) (bool, error) {
 	roles, perms, err := s.repo.GetUserRolesAndPermissions(ctx, userID)
 	if err != nil {
 		return false, err
 	}
-	for _, r := range roles {
-		if r == "tenant_admin" || r == "admin" || r == "super_admin" {
-			return true, nil
-		}
+	if HasPrivilegedRole(roles) {
+		return true, nil
 	}
 	for _, p := range perms {
-		if p == "*" || p == requiredPerm || p == "users:*" || p == "impersonate:*" {
+		if PermissionMatches(p, requiredPerm) {
 			return true, nil
 		}
 	}

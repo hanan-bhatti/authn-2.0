@@ -13,7 +13,6 @@ package rbac
 
 import (
 	"fmt"
-	"strings"
 )
 
 // RolePermissionPolicy defines configurable safety guards for role assignments.
@@ -49,27 +48,11 @@ func ValidatePermissionsAgainstPolicy(roleSlug string, perms []string, policy *R
 
 	for _, perm := range perms {
 		for _, restricted := range restrictedList {
-			if isPermissionMatch(perm, restricted) {
+			if PermissionsOverlap(perm, restricted) {
 				return fmt.Errorf("%w: permission '%s' is restricted for role '%s'", ErrRestrictedPermission, perm, roleSlug)
 			}
 		}
 	}
 
 	return nil
-}
-
-// isPermissionMatch checks if perm matches restricted pattern (supports wildcard '*').
-func isPermissionMatch(perm, restricted string) bool {
-	if restricted == "*" || perm == restricted {
-		return true
-	}
-	if strings.HasSuffix(restricted, ":*") {
-		prefix := strings.TrimSuffix(restricted, "*")
-		return strings.HasPrefix(perm, prefix)
-	}
-	if strings.HasPrefix(restricted, "*:") {
-		suffix := strings.TrimPrefix(restricted, "*")
-		return strings.HasSuffix(perm, suffix)
-	}
-	return false
 }

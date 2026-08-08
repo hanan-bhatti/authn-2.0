@@ -12,8 +12,6 @@
 package rbac
 
 import (
-	"strings"
-
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -48,16 +46,14 @@ func RequirePermission(svc *Service, requiredPerm string) fiber.Handler {
 			})
 		}
 
-		// Super-admin role bypass
-		for _, r := range roles {
-			if r == "tenant_admin" || r == "admin" || r == "super_admin" {
-				return c.Next()
-			}
+		// Tenant-level administrative role bypass
+		if HasPrivilegedRole(roles) {
+			return c.Next()
 		}
 
 		// Permission matching (exact match or wildcard)
 		for _, perm := range permissions {
-			if hasPermission(perm, requiredPerm) {
+			if PermissionMatches(perm, requiredPerm) {
 				return c.Next()
 			}
 		}
@@ -87,7 +83,7 @@ func RequireRole(svc *Service, requiredRole string) fiber.Handler {
 		}
 
 		for _, r := range roles {
-			if r == requiredRole || r == "tenant_admin" || r == "super_admin" {
+			if r == requiredRole || IsPrivilegedRole(r) {
 				return c.Next()
 			}
 		}
@@ -97,20 +93,4 @@ func RequireRole(svc *Service, requiredRole string) fiber.Handler {
 			"required_role": requiredRole,
 		})
 	}
-}
-
-// hasPermission checks if granted permission string covers the required permission.
-func hasPermission(granted, required string) bool {
-	if granted == "*" || granted == required {
-		return true
-	}
-	if strings.HasSuffix(granted, ":*") {
-		prefix := strings.TrimSuffix(granted, "*")
-		return strings.HasPrefix(required, prefix)
-	}
-	if strings.HasPrefix(granted, "*:") {
-		suffix := strings.TrimPrefix(granted, "*")
-		return strings.HasSuffix(required, suffix)
-	}
-	return false
 }
