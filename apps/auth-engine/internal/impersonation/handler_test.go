@@ -57,8 +57,8 @@ func TestImpersonationHTTPHandlers(t *testing.T) {
 	tnt, err := client.Tenant.Create().SetID("tnt_imph").SetName("Impersonation Handler Tenant").SetSlug("tnt-imph").Save(sysCtx)
 	require.NoError(t, err)
 
-	cfg := &config.EnvConfig{
-		AuthnEncryptionKey: "test_encryption_key_32_bytes_12345",
+	cfg := &config.Config{
+		EncryptionKey: "test_encryption_key_32_bytes_12345",
 	}
 
 	policyRepo := policy.NewRepository(factory)
@@ -168,7 +168,7 @@ func TestImpersonationHTTPHandlers(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, respHierarchy.StatusCode)
 
 	// 8. Exit Impersonation -> 200 OK
-	impToken, err := jwtpkg.IssueImpersonationToken(targetUser.ID, tnt.ID, "test", targetUser.Email, targetUser.Name, "", adminUser.ID, 15*time.Minute, cfg.AuthnEncryptionKey)
+	impToken, err := jwtpkg.IssueImpersonationToken(targetUser.ID, tnt.ID, "test", targetUser.Email, targetUser.Name, "", adminUser.ID, 15*time.Minute, cfg.EncryptionKey)
 	require.NoError(t, err)
 
 	reqExit := httptest.NewRequest("POST", "/v1/client/auth/impersonate/exit", nil)

@@ -78,7 +78,7 @@ func (h *Handler) getActorID(c *fiber.Ctx) string {
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		tokenStr := authHeader[7:]
 		if h.svc != nil && h.svc.cfg != nil {
-			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.AuthnEncryptionKey)
+			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.EncryptionKey)
 			if err == nil && claims != nil && claims.Sub != "" {
 				return claims.Sub
 			}

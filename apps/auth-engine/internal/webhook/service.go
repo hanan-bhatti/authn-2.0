@@ -24,10 +24,10 @@ import (
 type Service struct {
 	repo       *Repository
 	dispatcher *Dispatcher
-	cfg        *config.EnvConfig
+	cfg        *config.Config
 }
 
-func NewService(repo *Repository, dispatcher *Dispatcher, cfg *config.EnvConfig) *Service {
+func NewService(repo *Repository, dispatcher *Dispatcher, cfg *config.Config) *Service {
 	return &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
@@ -108,7 +108,7 @@ func (s *Service) CreateEndpoint(ctx context.Context, tenantID string, req Creat
 	}
 
 	// Encrypt secret key at rest with AES-256-GCM
-	encryptedSecret, err := crypto.EncryptAES256GCM(rawSecret, s.cfg.AuthnEncryptionKey)
+	encryptedSecret, err := crypto.EncryptAES256GCM(rawSecret, s.cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt webhook secret: %w", err)
 	}
@@ -201,7 +201,7 @@ func (s *Service) RotateSecret(ctx context.Context, tenantID, endpointID string)
 		return nil, ErrSecretCollision
 	}
 
-	encryptedSecret, err := crypto.EncryptAES256GCM(rawSecret, s.cfg.AuthnEncryptionKey)
+	encryptedSecret, err := crypto.EncryptAES256GCM(rawSecret, s.cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt new webhook secret: %w", err)
 	}

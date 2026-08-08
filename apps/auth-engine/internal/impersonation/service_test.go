@@ -34,8 +34,8 @@ func TestImpersonationService(t *testing.T) {
 	tnt, err := client.Tenant.Create().SetID("tnt_imp").SetName("Impersonation Tenant").SetSlug("tnt-imp").Save(sysCtx)
 	require.NoError(t, err)
 
-	cfg := &config.EnvConfig{
-		AuthnEncryptionKey: "test_encryption_key_32_bytes_12345",
+	cfg := &config.Config{
+		EncryptionKey: "test_encryption_key_32_bytes_12345",
 	}
 	svc := impersonation.NewService(factory, cfg)
 
@@ -70,7 +70,7 @@ func TestImpersonationService(t *testing.T) {
 	assert.Equal(t, 600, res1.ExpiresIn) // 10 minutes
 
 	// Verify claims on issued JWT
-	claims, err := jwtpkg.VerifyAccessToken(res1.AccessToken, cfg.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(res1.AccessToken, cfg.EncryptionKey)
 	require.NoError(t, err)
 	assert.Equal(t, targetUser.ID, claims.Sub)
 	assert.Equal(t, adminUser.ID, claims.ImpersonatorID)

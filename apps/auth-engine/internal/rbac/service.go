@@ -21,11 +21,11 @@ import (
 type Service struct {
 	repo   *Repository
 	audit  *AuditLogger
-	cfg    *config.EnvConfig
+	cfg    *config.Config
 	policy *RolePermissionPolicy
 }
 
-func NewService(repo *Repository, audit *AuditLogger, cfg *config.EnvConfig) *Service {
+func NewService(repo *Repository, audit *AuditLogger, cfg *config.Config) *Service {
 	return &Service{
 		repo:   repo,
 		audit:  audit,

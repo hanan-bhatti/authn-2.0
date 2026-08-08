@@ -26,7 +26,7 @@ import (
 func main() {
 	log.Println("⚡ Authn Platform — Ent Schema Migration CLI")
 
-	cfg, err := config.LoadAndValidateConfig()
+	cfg, err := config.Load()
 	driver := "postgres"
 	dbURL := ""
 	if err == nil && cfg != nil && cfg.DatabaseURL != "" {

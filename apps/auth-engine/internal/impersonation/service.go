@@ -68,13 +68,13 @@ type PermissionChecker interface {
 
 type Service struct {
 	factory       *clientfactory.ClientFactory
-	cfg           *config.EnvConfig
+	cfg           *config.Config
 	dispatcher    WebhookDispatcher
 	emailProvider EmailProvider
 	permChecker   PermissionChecker
 }
 
-func NewService(factory *clientfactory.ClientFactory, cfg *config.EnvConfig, dispatcher ...interface{}) *Service {
+func NewService(factory *clientfactory.ClientFactory, cfg *config.Config, dispatcher ...interface{}) *Service {
 	svc := &Service{
 		factory: factory,
 		cfg:     cfg,
@@ -179,7 +179,7 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 		"", // Target user role
 		impersonatorID,
 		dur,
-		s.cfg.AuthnEncryptionKey,
+		s.cfg.EncryptionKey,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing impersonation token: %w", err)

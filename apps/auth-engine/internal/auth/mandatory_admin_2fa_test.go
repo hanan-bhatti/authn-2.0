@@ -39,9 +39,9 @@ func TestMandatoryAdmin2FA(t *testing.T) {
 	tnt, err := client.Tenant.Create().SetID("tnt_m2fa").SetName("Mandatory 2FA Tenant").SetSlug("tnt-m2fa").Save(sysCtx)
 	require.NoError(t, err)
 
-	cfg := &config.EnvConfig{
-		AuthnEncryptionKey: "test_encryption_key_32_bytes_12345",
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+	cfg := &config.Config{
+		EncryptionKey: "test_encryption_key_32_bytes_12345",
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
 	}
 	emailProv := email.NewNoopProvider()
 	repo := auth.NewRepository(factory)

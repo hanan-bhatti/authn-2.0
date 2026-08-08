@@ -194,7 +194,7 @@ func setupRedirectTestService(t *testing.T) (*Service, context.Context) {
 	}
 
 	repo := NewRepository(factory, "0123456789abcdef0123456789abcdef")
-	svc := NewService(repo, &config.EnvConfig{})
+	svc := NewService(repo, &config.Config{})
 
 	return svc, sysCtx
 }

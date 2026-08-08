@@ -13,7 +13,9 @@ import (
 
 func TestLimiter_InMemorySlidingWindow(t *testing.T) {
 	schedule := []time.Duration{15 * time.Minute, 1 * time.Hour, 6 * time.Hour, 24 * time.Hour}
-	limiter := NewLimiter(nil, false, true, true, 5, 60, schedule, 7)
+	// FailClosed is off, so a limiter with no Redis falls back to the
+	// per-process in-memory window instead of rejecting every request.
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 60 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: schedule, ViolationReset: 7 * 24 * time.Hour})
 	ctx := context.Background()
 	key := "test_ratelimit_key"
 
@@ -40,8 +42,9 @@ func TestLimiter_InMemorySlidingWindow(t *testing.T) {
 
 func TestLimiter_FailClosedProduction(t *testing.T) {
 	schedule := []time.Duration{15 * time.Minute, 1 * time.Hour, 6 * time.Hour, 24 * time.Hour}
-	// Production mode without Redis connection must fail-closed
-	limiter := NewLimiter(nil, true, true, true, 5, 60, schedule, 7)
+	// With FailClosed on and no Redis reachable, every request is denied rather
+	// than silently passing through unlimited.
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: true, MaxAttempts: 5, Window: 60 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: schedule, ViolationReset: 7 * 24 * time.Hour})
 	ctx := context.Background()
 
 	allowed, _, err := limiter.Check(ctx, "test_prod_key")
@@ -61,7 +64,7 @@ func TestLimiter_RedisExponentialBackoff(t *testing.T) {
 	}
 
 	schedule := []time.Duration{15 * time.Minute, 1 * time.Hour, 6 * time.Hour, 24 * time.Hour}
-	limiter := NewLimiter(client, false, true, true, 2, 60, schedule, 7)
+	limiter := NewLimiter(Options{Redis: client, Enabled: true, FailClosed: true, MaxAttempts: 2, Window: 60 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: schedule, ViolationReset: 7 * 24 * time.Hour})
 
 	testKey := "test_backoff_key_unit"
 	attemptKey := "ratelimit:attempt:" + testKey
@@ -209,7 +212,7 @@ func TestExtractAccountIdentifier(t *testing.T) {
 // live-verified bypass: exhaust the limit, then rotate the User-Agent and
 // confirm the request is still blocked.
 func TestMiddleware_UserAgentRotationCannotBypass(t *testing.T) {
-	limiter := NewLimiter(nil, false, false, true, 5, 900, nil, 7)
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
 	app := fiber.New()
 	app.Use(limiter.Middleware())
@@ -250,7 +253,7 @@ func TestMiddleware_UserAgentRotationCannotBypass(t *testing.T) {
 // TestMiddleware_AccountBucketSurvivesIPRotation covers the other new
 // dimension: a single target account cannot be hammered from rotating IPs.
 func TestMiddleware_AccountBucketSurvivesIPRotation(t *testing.T) {
-	limiter := NewLimiter(nil, false, false, true, 5, 900, nil, 7)
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
 	// ProxyHeader makes c.IP() read X-Forwarded-For; without it Fiber returns the
 	// same remote address for every app.Test request and the per-IP bucket alone
@@ -295,7 +298,7 @@ func TestMiddleware_AccountBucketSurvivesIPRotation(t *testing.T) {
 // the same 5-attempt budget, one user's typos would lock out every colleague
 // behind the same NAT egress.
 func TestMiddleware_SharedNATNotCollateralBlocked(t *testing.T) {
-	limiter := NewLimiter(nil, false, false, true, 5, 900, nil, 7)
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
 	app := fiber.New(fiber.Config{ProxyHeader: fiber.HeaderXForwardedFor})
 	app.Use(limiter.Middleware())
@@ -337,7 +340,7 @@ func TestMiddleware_SharedNATNotCollateralBlocked(t *testing.T) {
 // budget did not loosen endpoints that carry no account identifier — there is no
 // account bucket to fall back on there, so the IP dimension must stay strict.
 func TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit(t *testing.T) {
-	limiter := NewLimiter(nil, false, false, true, 5, 900, nil, 7)
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
 	app := fiber.New()
 	app.Use(limiter.Middleware())
@@ -378,7 +381,7 @@ func TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit(t *testing.T) {
 // The challenge token is now the account dimension, so the budget follows the
 // login attempt rather than the network path.
 func TestMiddleware_MFAChallengeBucketSurvivesIPRotation(t *testing.T) {
-	limiter := NewLimiter(nil, false, false, true, 5, 900, nil, 7)
+	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
 	app := fiber.New(fiber.Config{ProxyHeader: fiber.HeaderXForwardedFor})
 	app.Use(limiter.Middleware())

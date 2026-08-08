@@ -39,13 +39,13 @@ func main() {
 	os.Unsetenv("AUTHN_RATELIMIT_BACKOFF_SCHEDULE")
 	os.Unsetenv("AUTHN_RATELIMIT_VIOLATION_RESET_DAYS")
 
-	cfg, err := config.LoadAndValidateConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed loading config: %v", err)
 	}
 	fmt.Printf("Default RateLimitEnabled:            %v\n", cfg.RateLimitEnabled)
 	fmt.Printf("Default RateLimitMaxAttempts:        %d\n", cfg.RateLimitMaxAttempts)
-	fmt.Printf("Default RateLimitWindowSeconds:      %d\n", cfg.RateLimitWindowSeconds)
+	fmt.Printf("Default RateLimitWindow:             %s\n", cfg.RateLimitWindow)
 	fmt.Printf("Default RateLimitBackoffSchedule:    %v\n", cfg.RateLimitBackoffSchedule)
 	fmt.Printf("Default RateLimitViolationResetDays: %d\n", cfg.RateLimitViolationResetDays)
 
@@ -73,22 +73,22 @@ func main() {
 	runDockerRedisCli("del", attemptKey, blockKey, violKey)
 
 	// Create Limiter with max_attempts=2
-	limiter := ratelimit.NewLimiter(
-		client,
-		false, // isProduction
-		true,  // failClosed
-		true,  // enabled
-		2,     // maxAttempts = 2
-		900,   // windowSeconds = 900
-		[]time.Duration{15 * time.Minute, 1 * time.Hour, 6 * time.Hour, 24 * time.Hour},
-		7,     // resetDays = 7
-	)
+	limiter := ratelimit.NewLimiter(ratelimit.Options{
+		Redis:              client,
+		Enabled:            true,
+		FailClosed:         true,
+		MaxAttempts:        2,
+		Window:             900 * time.Second,
+		IPBudgetMultiplier: 10,
+		BackoffSchedule:    []time.Duration{15 * time.Minute, 1 * time.Hour, 6 * time.Hour, 24 * time.Hour},
+		ViolationReset:     7 * 24 * time.Hour,
+	})
 
 	// ---------------------------------------------------------------------
 	// 5b & 5c: Attempt 1 & 2 allowed, Attempt 3 (1st violation) triggers 15m block
 	// ---------------------------------------------------------------------
 	fmt.Println("\n--- [5b & 5c] Testing max_attempts=2 and 1st Violation (15m TTL) ---")
-	
+
 	allowed, retryAfter, err := limiter.Check(ctx, testKey)
 	fmt.Printf("Attempt 1: allowed=%v, retryAfter=%v, err=%v\n", allowed, retryAfter, err)
 
@@ -178,7 +178,11 @@ func main() {
 	fmt.Println("\n--- [5f] REAL Outage Test: docker stop authn-redis -> 503 Service Unavailable ---")
 
 	// Production rate limiter with Redis client
-	prodLimiter := ratelimit.NewLimiter(client, true, true, true, 5, 900, nil, 7)
+	prodLimiter := ratelimit.NewLimiter(ratelimit.Options{
+		Redis: client, Enabled: true, FailClosed: true, MaxAttempts: 5,
+		Window: 900 * time.Second, IPBudgetMultiplier: 10,
+		ViolationReset: 7 * 24 * time.Hour,
+	})
 
 	fmt.Println("Stopping authn-redis container via `docker stop authn-redis`...")
 	outCmd := exec.Command("docker", "stop", "authn-redis")

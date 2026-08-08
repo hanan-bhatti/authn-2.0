@@ -18,6 +18,7 @@ import (
 	"mime"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,7 +26,7 @@ import (
 // SMTPConfig holds setup parameters for the SMTP driver.
 type SMTPConfig struct {
 	Host     string
-	Port     string
+	Port     int
 	Username string
 	Password string
 	From     string
@@ -37,22 +38,18 @@ type SMTPProvider struct {
 }
 
 // NewSMTPProvider constructs a new SMTPProvider instance.
+//
+// Host, port and sender address are supplied by the configuration layer, which
+// owns every default; this constructor does not substitute values of its own.
 func NewSMTPProvider(cfg SMTPConfig) *SMTPProvider {
-	if cfg.Port == "" {
-		cfg.Port = "1025"
-	}
-	if cfg.Host == "" {
-		cfg.Host = "localhost"
-	}
-	if cfg.From == "" {
-		cfg.From = "noreply@authn.local"
-	}
 	return &SMTPProvider{cfg: cfg}
 }
 
 // Send formats a MIME multipart email and delivers it over SMTP.
+//
+// Returns an error when the SMTP server is unreachable or rejects the message.
 func (p *SMTPProvider) Send(ctx context.Context, to string, subject string, htmlBody string, textBody string) error {
-	addr := net.JoinHostPort(p.cfg.Host, p.cfg.Port)
+	addr := net.JoinHostPort(p.cfg.Host, strconv.Itoa(p.cfg.Port))
 
 	boundary := fmt.Sprintf("bnd_%d", time.Now().UnixNano())
 

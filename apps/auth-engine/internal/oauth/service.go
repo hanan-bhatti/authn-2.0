@@ -30,15 +30,15 @@ type Service struct {
 	repo        *Repository
 	authRepo    *auth.Repository
 	authService *auth.Service
-	cfg         *config.EnvConfig
+	cfg         *config.Config
 	keyManager  *jwtpkg.KeyManager
 }
 
 // NewService constructs a new OAuth2 Service instance.
-func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.Service, cfg *config.EnvConfig) *Service {
+func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.Service, cfg *config.Config) *Service {
 	keyID := "authn-rsa-key-v1"
-	if cfg != nil && cfg.AuthnKeyID != "" {
-		keyID = cfg.AuthnKeyID
+	if cfg != nil && cfg.JWTKeyID != "" {
+		keyID = cfg.JWTKeyID
 	}
 	km, _ := jwtpkg.NewKeyManager(keyID)
 
@@ -56,7 +56,7 @@ func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
 	if s.keyManager != nil {
 		return s.keyManager.GetPublicJWKS()
 	}
-	return jwtpkg.GetPublicJWKS(s.cfg.AuthnKeyID)
+	return jwtpkg.GetPublicJWKS(s.cfg.JWTKeyID)
 }
 
 // CreateClientApplication registers an Application client record with authorized redirect URIs.
@@ -214,7 +214,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	// roles: an OAuth authorization-code exchange may well be a tenant admin
 	// signing into the console, so hardcoding "" here silently stripped their
 	// console privilege.
-	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.AuthnEncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -239,7 +239,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		AuthTime:      now.Unix(),
 	}
 
-	idTokenStr, err := jwtpkg.SignIDTokenRS256(rsaPrivKey, idClaims, s.cfg.AuthnKeyID)
+	idTokenStr, err := jwtpkg.SignIDTokenRS256(rsaPrivKey, idClaims, s.cfg.JWTKeyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed signing ID token with RS256: %w", err)
 	}

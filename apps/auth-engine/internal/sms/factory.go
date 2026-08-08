@@ -19,7 +19,7 @@ import (
 )
 
 // NewSMSProvider instantiates the appropriate SMSProvider driver based on cfg.SMSDriver.
-func NewSMSProvider(cfg *config.EnvConfig) (SMSProvider, error) {
+func NewSMSProvider(cfg *config.Config) (SMSProvider, error) {
 	if cfg == nil {
 		return NewNoopProvider(), nil
 	}

@@ -458,7 +458,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 			}
 			// Single source of truth: extract allowed 2FA methods directly from signed MFA token claims
 			methods := []string{"totp"}
-			if mfaClaims, cErr := jwtpkg.VerifyMFAChallengeToken(accessToken, h.service.config.AuthnEncryptionKey); cErr == nil && len(mfaClaims.Methods) > 0 {
+			if mfaClaims, cErr := jwtpkg.VerifyMFAChallengeToken(accessToken, h.service.config.EncryptionKey); cErr == nil && len(mfaClaims.Methods) > 0 {
 				methods = mfaClaims.Methods
 			}
 			return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -810,7 +810,7 @@ func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -836,7 +836,7 @@ func (h *Handler) ConfirmTOTP(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -921,7 +921,7 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token or two_factor_token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -946,7 +946,7 @@ func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -987,7 +987,7 @@ func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1022,7 +1022,7 @@ func (h *Handler) GetRecoveryCodesStatus(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1066,7 +1066,7 @@ func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1092,7 +1092,7 @@ func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1235,7 +1235,7 @@ func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1259,7 +1259,7 @@ func (h *Handler) DeleteWebAuthnPasskey(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1309,7 +1309,7 @@ func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1339,7 +1339,7 @@ func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1367,7 +1367,7 @@ func (h *Handler) DisableSMS(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.
@@ -1402,7 +1402,7 @@ func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
 			"Authentication required. Please step-up re-authenticate to manage recovery contacts.")
 	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
 			"Authentication required. Please step-up re-authenticate to manage recovery contacts.")
@@ -1455,7 +1455,7 @@ func (h *Handler) ListGuardians(c *fiber.Ctx) error {
 	if tokenStr == "" {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
@@ -1479,7 +1479,7 @@ func (h *Handler) RevokeGuardian(c *fiber.Ctx) error {
 	if tokenStr == "" {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
@@ -1679,7 +1679,7 @@ func (h *Handler) CancelRecoveryAuth(c *fiber.Ctx) error {
 	if tokenStr == "" {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
 		// The JWT parse error describes why the token failed (expired, bad
 		// signature, wrong alg) — detail an unauthenticated caller must not get.

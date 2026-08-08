@@ -19,7 +19,7 @@ import (
 )
 
 // NewEmailProvider instantiates the appropriate EmailProvider driver based on cfg.EmailDriver.
-func NewEmailProvider(cfg *config.EnvConfig) (EmailProvider, error) {
+func NewEmailProvider(cfg *config.Config) (EmailProvider, error) {
 	if cfg == nil {
 		return NewNoopProvider(), nil
 	}

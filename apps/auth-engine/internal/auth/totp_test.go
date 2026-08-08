@@ -52,9 +52,9 @@ func TestCrypto_AES256GCM_Encryption(t *testing.T) {
 }
 
 func TestTOTP_Enrollment_PendingState(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
+	cfg := &config.Config{
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_totp_enroll_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
@@ -87,9 +87,9 @@ func TestTOTP_Enrollment_PendingState(t *testing.T) {
 }
 
 func TestTOTP_FullLifecycle_And_SkewTolerance(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
+	cfg := &config.Config{
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_totp_lifecycle_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
@@ -154,9 +154,9 @@ func TestTOTP_FullLifecycle_And_SkewTolerance(t *testing.T) {
 }
 
 func TestTOTP_LoginIntegration_And_ChallengeFlow(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
+	cfg := &config.Config{
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_totp_login_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
@@ -198,9 +198,9 @@ func TestTOTP_LoginIntegration_And_ChallengeFlow(t *testing.T) {
 }
 
 func TestTOTP_Disable_ReVerification_And_SessionRevocation(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
+	cfg := &config.Config{
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_totp_disable_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
@@ -244,9 +244,9 @@ func TestTOTP_Disable_ReVerification_And_SessionRevocation(t *testing.T) {
 }
 
 func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
+	cfg := &config.Config{
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_totp_http_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)

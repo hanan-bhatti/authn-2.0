@@ -88,7 +88,7 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: authentication session required")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.EncryptionKey)
 	if err != nil {
 		// The parse failure itself ("token signature is invalid", "token is
 		// expired by 3s") is diagnostic detail for an unauthenticated caller and
@@ -262,7 +262,7 @@ func (h *Handler) GetUserInfo(c *fiber.Ctx) error {
 			"unauthorized: access token required in Authorization header or cookie")
 	}
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.AuthnEncryptionKey)
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.EncryptionKey)
 	if err != nil {
 		return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired access token")
 	}

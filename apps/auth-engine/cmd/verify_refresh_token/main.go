@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -34,22 +35,22 @@ const (
 	publishableKey = "pk_test_demo12345678901234567890123456789012"
 	testEmail      = "refresh_verify_user@example.com"
 	testPassword   = "SuperSecret123!"
-	serverPort     = "8099"
+	serverPort     = 8099
 	serverURL      = "http://localhost:8099"
 )
 
 func main() {
 	log.Println("🚀 Initializing test Auth Engine server for Refresh Token & Grace Window verification...")
 
-	cfg := &config.EnvConfig{
-		Port:               serverPort,
-		Env:                "test",
-		DatabaseURL:        "file:mem_refresh_verify?mode=memory&cache=shared&_fk=1",
-		AuthnEncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
-		AuthnAPIKeyPepper:  "super_secret_32_byte_api_key_pepper_authn_2026!",
-		JWTSigningKeyPath:  "./keys/rsa_private.pem",
-		EmailDriver:        "noop",
-		RateLimitEnabled:   false,
+	cfg := &config.Config{
+		Port:              serverPort,
+		Env:               "test",
+		DatabaseURL:       "file:mem_refresh_verify?mode=memory&cache=shared&_fk=1",
+		EncryptionKey:     "super_secret_32_byte_kms_encryption_key_authn_2026!",
+		APIKeyPepper:      "super_secret_32_byte_api_key_pepper_authn_2026!",
+		JWTSigningKeyPath: "./keys/rsa_private.pem",
+		EmailDriver:       "noop",
+		RateLimitEnabled:  false,
 	}
 
 	factory, err := clientfactory.NewClientFactory("sqlite3", cfg.DatabaseURL)
@@ -60,7 +61,7 @@ func main() {
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
 	apiKeyRepo := apikey.NewRepository(factory)
-	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
+	apiKeyService := apikey.NewService(apiKeyRepo, cfg.APIKeyPepper)
 	pkMiddleware := middleware.RequirePublishableKey(apiKeyService)
 
 	policyRepo := policy.NewRepository(factory)
@@ -80,10 +81,10 @@ func main() {
 	ctx := privacy.NewBypassContext(context.Background())
 	_ = authRepo.EnsureTenantExists(ctx, "tnt_default")
 	_ = authRepo.EnsureDefaultApplicationExists(ctx, "app_test123", "tnt_default", []string{"http://localhost:3000/callback"})
-	_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_test_demo123", "app_test123", publishableKey, cfg.AuthnAPIKeyPepper)
+	_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_test_demo123", "app_test123", publishableKey, cfg.APIKeyPepper)
 
 	go func() {
-		if err := app.Listen(":" + serverPort); err != nil {
+		if err := app.Listen(fmt.Sprintf(":%d", serverPort)); err != nil {
 			log.Fatalf("❌ Server error: %v", err)
 		}
 	}()

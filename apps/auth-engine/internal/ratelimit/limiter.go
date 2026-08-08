@@ -59,41 +59,59 @@ type inMemoryCounter struct {
 // Limiter manages rate limits across Redis and in-memory fallbacks.
 type Limiter struct {
 	redisClient        *redis.Client
-	isProduction       bool
 	failClosed         bool
 	enabled            bool
 	maxAttempts        int
-	windowSeconds      int
+	window             time.Duration
+	ipBudgetMultiplier int
 	backoffSchedule    []time.Duration
-	violationResetDays int
+	violationReset     time.Duration
 	mu                 sync.Mutex
 	memStore           map[string]*inMemoryCounter
 }
 
-// NewLimiter constructs a new Rate Limiter instance with full configurability.
-func NewLimiter(redisClient *redis.Client, isProduction bool, failClosed bool, enabled bool, maxAttempts int, windowSeconds int, schedule []time.Duration, resetDays int) *Limiter {
-	if len(schedule) == 0 {
-		schedule = []time.Duration{15 * time.Minute, 1 * time.Hour, 6 * time.Hour, 24 * time.Hour}
-	}
-	if maxAttempts <= 0 {
-		maxAttempts = 5
-	}
-	if windowSeconds <= 0 {
-		windowSeconds = 900
-	}
-	if resetDays <= 0 {
-		resetDays = 7
-	}
+// Options configures a Limiter.
+//
+// Every value is supplied by the caller from validated configuration; the
+// constructor substitutes no defaults of its own, so there is exactly one place
+// in the codebase that decides what a sensible limit is.
+type Options struct {
+	// Redis backs the shared sliding window. When nil, the limiter falls back
+	// to a per-process in-memory counter, which cannot coordinate across
+	// instances and is only appropriate for single-instance or test use.
+	Redis *redis.Client
+	// Enabled turns limiting on. Disable only in tests.
+	Enabled bool
+	// FailClosed rejects requests when Redis is unreachable rather than letting
+	// them through unchecked. Safer, at the cost of availability during an
+	// outage of the limiter's own dependency.
+	FailClosed bool
+	// MaxAttempts is the allowance per window for one account.
+	MaxAttempts int
+	// Window is the period over which attempts are counted.
+	Window time.Duration
+	// IPBudgetMultiplier widens the per-IP allowance relative to the
+	// per-account one, so a shared office or carrier address is not locked out
+	// by a single user's mistakes.
+	IPBudgetMultiplier int
+	// BackoffSchedule is the escalating lockout for repeat offenders.
+	BackoffSchedule []time.Duration
+	// ViolationReset is how long a clean record must last before an offender's
+	// escalation level returns to zero.
+	ViolationReset time.Duration
+}
 
+// NewLimiter constructs a rate limiter from validated options.
+func NewLimiter(opts Options) *Limiter {
 	return &Limiter{
-		redisClient:        redisClient,
-		isProduction:       isProduction,
-		failClosed:         failClosed,
-		enabled:            enabled,
-		maxAttempts:        maxAttempts,
-		windowSeconds:      windowSeconds,
-		backoffSchedule:    schedule,
-		violationResetDays: resetDays,
+		redisClient:        opts.Redis,
+		failClosed:         opts.FailClosed,
+		enabled:            opts.Enabled,
+		maxAttempts:        opts.MaxAttempts,
+		window:             opts.Window,
+		ipBudgetMultiplier: opts.IPBudgetMultiplier,
+		backoffSchedule:    opts.BackoffSchedule,
+		violationReset:     opts.ViolationReset,
 		memStore:           make(map[string]*inMemoryCounter),
 	}
 }
@@ -130,13 +148,13 @@ func (l *Limiter) CheckWithLimit(ctx context.Context, key string, maxAttempts in
 
 		// 2. Evaluate sliding window Lua script
 		nowUnix := time.Now().Unix()
-		res, err := l.redisClient.Eval(ctx, slidingWindowLua, []string{attemptKey}, nowUnix, l.windowSeconds, maxAttempts).Result()
+		res, err := l.redisClient.Eval(ctx, slidingWindowLua, []string{attemptKey}, nowUnix, int(l.window.Seconds()), maxAttempts).Result()
 		if err != nil {
-			if l.failClosed || l.isProduction {
+			if l.failClosed {
 				return false, 0, fmt.Errorf("%w: %v", ErrRedisUnavailable, err)
 			}
 			// In dev mode without Redis, fallback to in-memory check
-			allowed := l.checkInMemory(key, maxAttempts, time.Duration(l.windowSeconds)*time.Second)
+			allowed := l.checkInMemory(key, maxAttempts, l.window)
 			return allowed, 0, nil
 		}
 
@@ -152,7 +170,7 @@ func (l *Limiter) CheckWithLimit(ctx context.Context, key string, maxAttempts in
 		}
 
 		// Refresh violation counter TTL to resetDays (default 7 days)
-		resetTTL := time.Duration(l.violationResetDays) * 24 * time.Hour
+		resetTTL := l.violationReset
 		_ = l.redisClient.Expire(ctx, violKey, resetTTL)
 
 		// Determine backoff duration based on violation count (1st: 15m, 2nd: 1h, 3rd: 6h, 4th+: 24h cap)
@@ -172,10 +190,10 @@ func (l *Limiter) CheckWithLimit(ctx context.Context, key string, maxAttempts in
 	}
 
 	// Dev mode in-memory fallback (no escalation, simple sliding window)
-	if l.failClosed && l.isProduction {
+	if l.failClosed {
 		return false, 0, ErrRedisUnavailable
 	}
-	allowed := l.checkInMemory(key, maxAttempts, time.Duration(l.windowSeconds)*time.Second)
+	allowed := l.checkInMemory(key, maxAttempts, l.window)
 	return allowed, 0, nil
 }
 
@@ -334,7 +352,7 @@ func (l *Limiter) Middleware() fiber.Handler {
 		if account != "" {
 			dims = append(dims,
 				dimension{key: BuildKey(tenantID, "", account, c.Path()), limit: l.maxAttempts},
-				dimension{key: BuildKey(tenantID, ip, "", c.Path()), limit: l.maxAttempts * ipBudgetMultiplier},
+				dimension{key: BuildKey(tenantID, ip, "", c.Path()), limit: l.maxAttempts * l.ipBudgetMultiplier},
 			)
 		} else {
 			dims = append(dims, dimension{key: BuildKey(tenantID, ip, "", c.Path()), limit: l.maxAttempts})

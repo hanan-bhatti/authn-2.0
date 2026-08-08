@@ -85,7 +85,7 @@ func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 		authHeader := c.Get("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.AuthnEncryptionKey)
+			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.EncryptionKey)
 			if err == nil && claims != nil {
 				if userID == "" {
 					userID = claims.Sub

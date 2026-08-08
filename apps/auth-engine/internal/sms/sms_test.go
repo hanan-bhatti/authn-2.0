@@ -39,7 +39,7 @@ func TestNewSMSProvider_Factory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.EnvConfig{
+			cfg := &config.Config{
 				SMSDriver: tt.driver,
 			}
 			p, err := sms.NewSMSProvider(cfg)

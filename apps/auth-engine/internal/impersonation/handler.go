@@ -179,7 +179,7 @@ func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token missing")
 	}
 
-	signingSecret := h.svc.cfg.AuthnEncryptionKey
+	signingSecret := h.svc.cfg.EncryptionKey
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 	if err != nil {
 		return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired session token")

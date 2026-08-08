@@ -29,9 +29,9 @@ import (
 )
 
 func setupSMSTestEnv(t *testing.T) (*auth.Service, *auth.Repository, func()) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:     "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey:    "super_secret_32_byte_kms_encryption_key_authn_2026!",
+	cfg := &config.Config{
+		APIKeyPepper:     "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey:    "super_secret_32_byte_kms_encryption_key_authn_2026!",
 		WebAuthnRPDisplayName: "Authn Test",
 		WebAuthnRPID:          "localhost",
 		WebAuthnRPOrigins:     []string{"http://localhost:3000"},

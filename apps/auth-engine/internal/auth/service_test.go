@@ -35,8 +35,8 @@ func TestCrypto_Argon2idPasswordHashing(t *testing.T) {
 }
 
 func TestAuthService_ValidateApiKey_Invalid(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper: "test_pepper_key_32_bytes_long_12345",
+	cfg := &config.Config{
+		APIKeyPepper: "test_pepper_key_32_bytes_long_12345",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_auth_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
@@ -51,9 +51,9 @@ func TestAuthService_ValidateApiKey_Invalid(t *testing.T) {
 }
 
 func TestAuthService_SignUpAndLogin(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnAPIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
-		AuthnEncryptionKey: "test_encryption_key_32_bytes_12345",
+	cfg := &config.Config{
+		APIKeyPepper:  "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey: "test_encryption_key_32_bytes_12345",
 	}
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:ent_signup_test?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)

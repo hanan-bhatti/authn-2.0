@@ -55,13 +55,13 @@ func main() {
 	}
 
 	// 2. Load Configuration
-	cfg, err := config.LoadAndValidateConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		log.Printf("⚠️ Config warning: %v. Using local dev configuration defaults.", err)
-		cfg = &config.EnvConfig{
+		cfg = &config.Config{
 			DatabaseURL:        "file:authn.db?cache=shared&_fk=1",
-			AuthnAPIKeyPepper:  "dev_pepper_key_32_bytes_long_123456",
-			AuthnEncryptionKey: "dev_encryption_key_32_bytes_long_12345",
+			APIKeyPepper:  "dev_pepper_key_32_bytes_long_123456",
+			EncryptionKey: "dev_encryption_key_32_bytes_long_12345",
 		}
 	}
 
@@ -97,8 +97,8 @@ func main() {
 	pkKey := "pk_test_demo12345678901234567890123456789012"
 	skKey := "sk_test_demo12345678901234567890123456789012"
 
-	_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_pk_demo123", appID, pkKey, cfg.AuthnAPIKeyPepper)
-	_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_sk_demo123", appID, skKey, cfg.AuthnAPIKeyPepper)
+	_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_pk_demo123", appID, pkKey, cfg.APIKeyPepper)
+	_ = apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_sk_demo123", appID, skKey, cfg.APIKeyPepper)
 
 	// 6. Seed System Roles
 	rolesToSeed := []struct {

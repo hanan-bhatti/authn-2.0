@@ -1,9 +1,13 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/middleware/cors.go
- * Tier: Internal Middleware Layer
+ * Tier: HTTP Middleware Layer
  *
- * Description: Dynamic CORS middleware enforcing tenant origin whitelisting.
+ * Cross-Origin Resource Sharing policy.
+ *
+ * A browser will not let a page on one origin read a response from another
+ * unless the server opts in with CORS headers. This middleware decides which
+ * origins are granted that permission.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -11,18 +15,55 @@
 package middleware
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 )
 
-// DynamicCORS returns a configured Fiber CORS middleware allowing multi-tenant requests.
-func DynamicCORS() fiber.Handler {
+// CORS returns a Fiber middleware enforcing the configured cross-origin policy.
+//
+// Origins come from CORS_ALLOWED_ORIGINS and are matched exactly, so only a
+// listed origin is echoed back in Access-Control-Allow-Origin and a request
+// from anywhere else is blocked by the browser.
+//
+// The alternative — reflecting whatever Origin header arrives — combined with
+// credentials would let any site a signed-in user visits call this API with
+// their cookies attached and read the replies. config.Validate refuses that
+// combination at startup, and this middleware never reflects an unlisted origin.
+func CORS(cfg *config.Config) fiber.Handler {
+	allowed := make(map[string]struct{}, len(cfg.CORSAllowedOrigins))
+	wildcard := false
+	for _, origin := range cfg.CORSAllowedOrigins {
+		if origin == "*" {
+			wildcard = true
+			continue
+		}
+		allowed[normalizeOrigin(origin)] = struct{}{}
+	}
+
 	return cors.New(cors.Config{
 		AllowOriginsFunc: func(origin string) bool {
-			return true // Mirror origin dynamically for multi-tenant CORS with credentials
+			// A wildcard only reaches this point when credentials are disabled,
+			// because Validate rejects the pairing before the server starts.
+			if wildcard {
+				return true
+			}
+			_, ok := allowed[normalizeOrigin(origin)]
+			return ok
 		},
-		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Publishable-Key, X-Secret-Key, X-Api-Key, X-Tenant-Id, X-Org-Id, X-Authn-Publishable-Key, X-Authn-Secret-Key, X-Authn-Api-Key, X-Authn-Tenant-Id, X-Authn-Environment",
-		AllowMethods:     "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-		AllowCredentials: true,
+		AllowMethods:     strings.Join(cfg.CORSAllowedMethods, ","),
+		AllowHeaders:     strings.Join(cfg.CORSAllowedHeaders, ","),
+		AllowCredentials: cfg.CORSAllowCredentials,
+		MaxAge:           int(cfg.CORSMaxAge.Seconds()),
 	})
+}
+
+// normalizeOrigin lowercases an origin and drops any trailing slash, so that
+// "https://App.Example.com/" and "https://app.example.com" compare equal.
+// Origin comparison is otherwise exact: no wildcards, no suffix matching.
+func normalizeOrigin(origin string) string {
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(origin), "/"))
 }

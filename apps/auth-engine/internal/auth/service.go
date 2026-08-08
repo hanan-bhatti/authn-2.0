@@ -140,7 +140,7 @@ func (u *WebAuthnUserAdapter) WebAuthnCredentials() []webauthn.Credential {
 // Service handles domain business logic for authentication.
 type Service struct {
 	repo             *Repository
-	config           *config.EnvConfig
+	config           *config.Config
 	emailProvider    emailPkg.EmailProvider
 	smsProvider      smsPkg.SMSProvider
 	webauthn         *webauthn.WebAuthn
@@ -150,7 +150,7 @@ type Service struct {
 }
 
 // NewService creates a new authentication domain service instance.
-func NewService(repo *Repository, cfg *config.EnvConfig, emailProvider emailPkg.EmailProvider, smsProviders ...smsPkg.SMSProvider) *Service {
+func NewService(repo *Repository, cfg *config.Config, emailProvider emailPkg.EmailProvider, smsProviders ...smsPkg.SMSProvider) *Service {
 	if emailProvider == nil {
 		emailProvider = emailPkg.NewNoopProvider()
 	}
@@ -203,7 +203,7 @@ func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKe
 		return nil, ErrInvalidApiKey
 	}
 
-	h := hmac.New(sha256.New, []byte(s.config.AuthnAPIKeyPepper))
+	h := hmac.New(sha256.New, []byte(s.config.APIKeyPepper))
 	h.Write([]byte(rawKey))
 	keyHash := hex.EncodeToString(h.Sum(nil))
 
@@ -293,7 +293,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 
 	// Issue 15-minute JWT Access Token (role embedded for console auth)
-	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, role, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, role, s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -489,7 +489,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -548,7 +548,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	if len(allowedMethods) > 0 {
-		mfaToken, err := jwt.IssueMFAChallengeToken(u.ID, tenantID, env, allowedMethods, s.config.AuthnEncryptionKey)
+		mfaToken, err := jwt.IssueMFAChallengeToken(u.ID, tenantID, env, allowedMethods, s.config.EncryptionKey)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing 2FA challenge token: %w", err)
 		}
@@ -572,7 +572,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -643,7 +643,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Issue new 15-minute access token
 		tenantID := string(u.TenantID)
 		env := string(u.Environment)
-		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
+		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -663,7 +663,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 					if err == nil && u != nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
+						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -699,7 +699,7 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID string) (*TOTPEnrollRes
 		return nil, fmt.Errorf("failed generating TOTP key: %w", err)
 	}
 
-	encryptedSecret, err := crypto.EncryptAES256GCM(key.Secret(), s.config.AuthnEncryptionKey)
+	encryptedSecret, err := crypto.EncryptAES256GCM(key.Secret(), s.config.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed encrypting TOTP secret: %w", err)
 	}
@@ -723,7 +723,7 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 		return nil, ErrNoPendingTOTP
 	}
 
-	secret, err := crypto.DecryptAES256GCM(tfm.SecretEncrypted, s.config.AuthnEncryptionKey)
+	secret, err := crypto.DecryptAES256GCM(tfm.SecretEncrypted, s.config.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed decrypting TOTP secret: %w", err)
 	}
@@ -788,7 +788,7 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID string, code string) er
 		return fmt.Errorf("no active TOTP method configured")
 	}
 
-	secret, err := crypto.DecryptAES256GCM(tfm.SecretEncrypted, s.config.AuthnEncryptionKey)
+	secret, err := crypto.DecryptAES256GCM(tfm.SecretEncrypted, s.config.EncryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed decrypting TOTP secret: %w", err)
 	}
@@ -809,7 +809,7 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID string, code string) er
 
 // VerifyTOTPChallenge verifies a 2FA challenge code during login using an mfa_token and optional targetMethod.
 func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code string, targetMethod string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
-	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.AuthnEncryptionKey)
+	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", ErrInvalidToken
 	}
@@ -839,7 +839,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -988,7 +988,7 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 		ExpiresAt:   time.Now().Add(5 * time.Minute),
 	})
 
-	encryptedPhone, err := crypto.EncryptAES256GCM(phoneNumber, s.config.AuthnEncryptionKey)
+	encryptedPhone, err := crypto.EncryptAES256GCM(phoneNumber, s.config.EncryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed encrypting phone number: %w", err)
 	}
@@ -1462,7 +1462,7 @@ func (s *Service) BeginWebAuthnLogin(ctx context.Context, mfaToken string) (*pro
 		return nil, "", "", fmt.Errorf("webauthn service is not configured")
 	}
 
-	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.AuthnEncryptionKey)
+	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", ErrInvalidToken
 	}
@@ -1500,7 +1500,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("webauthn service is not configured")
 	}
 
-	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.AuthnEncryptionKey)
+	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", ErrInvalidToken
 	}
@@ -1568,7 +1568,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.AuthnEncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

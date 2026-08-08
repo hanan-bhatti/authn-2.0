@@ -29,11 +29,11 @@ import (
 // Service handles domain logic for session management.
 type Service struct {
 	repo *Repository
-	cfg  *config.EnvConfig
+	cfg  *config.Config
 }
 
 // NewService constructs a new Session Service.
-func NewService(repo *Repository, cfg *config.EnvConfig) *Service {
+func NewService(repo *Repository, cfg *config.Config) *Service {
 	return &Service{repo: repo, cfg: cfg}
 }
 
@@ -108,7 +108,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					return nil, fmt.Errorf("failed to load session user: %w", err)
 				}
 
-				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), s.cfg.AuthnEncryptionKey)
+				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), s.cfg.EncryptionKey)
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
@@ -144,7 +144,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 	}
 
 	// Issue new Access Token JWT
-	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.AuthnEncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
 	}

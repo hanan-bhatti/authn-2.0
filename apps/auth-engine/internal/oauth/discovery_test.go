@@ -24,7 +24,7 @@ import (
 )
 
 func TestOIDCDiscoveryEndpoint(t *testing.T) {
-	cfg := &config.EnvConfig{
+	cfg := &config.Config{
 		Issuer: "http://localhost:8080",
 	}
 
@@ -85,8 +85,8 @@ func TestOIDCDiscoveryEndpoint(t *testing.T) {
 }
 
 func TestJWKSEndpoint(t *testing.T) {
-	cfg := &config.EnvConfig{
-		AuthnKeyID: "authn-rsa-test-key",
+	cfg := &config.Config{
+		JWTKeyID: "authn-rsa-test-key",
 	}
 
 	repo := oauth.NewRepository()

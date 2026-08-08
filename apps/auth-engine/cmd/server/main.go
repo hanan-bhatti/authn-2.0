@@ -14,7 +14,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -43,6 +42,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/database"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -137,47 +137,45 @@ func statusToCode(status int) httperr.Code {
 	}
 }
 
+// proxyHeader returns the header Fiber should read the client IP from, or ""
+// to use the connection's peer address.
+//
+// Returning "" is the safe default: X-Forwarded-For is trivially forged, so
+// trusting it without a proxy in front lets a caller present a new source
+// address on every request and slip past per-IP rate limits.
+func proxyHeader(cfg *config.Config) string {
+	if cfg.TrustProxyHeaders {
+		return fiber.HeaderXForwardedFor
+	}
+	return ""
+}
+
 func main() {
 	log.Println("🚀 Authn Platform — Enterprise Identity Engine v1.0.0 starting...")
 
-	// 1. Pre-flight Environment Validation
-	cfg, err := config.LoadAndValidateConfig()
+	// 1. Load and validate configuration.
+	//
+	// A configuration error is fatal in every environment. Falling back to
+	// built-in defaults would start the server in a state nobody chose, using
+	// secrets committed to source — the exact situation the validation exists
+	// to prevent. The error names every variable at fault.
+	cfg, err := config.Load()
 	if err != nil {
-		rawEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-		if rawEnv == "" {
-			rawEnv = strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
-		}
-		if rawEnv == "production" {
-			log.Fatalf("❌ FATAL: Production pre-flight environment validation failed:\n%v", err)
-		}
-		log.Printf("⚠️ Development fallback mode: %v", err)
-		cfg = &config.EnvConfig{
-			Port:               "8080",
-			Env:                "development",
-			DatabaseURL:        "file:authn.db?cache=shared&_fk=1",
-			AuthnAPIKeyPepper:  "dev_pepper_key_32_bytes_long_123456",
-			AuthnEncryptionKey: "dev_encryption_key_32_bytes_long_12345",
-			AuthnKeyID:         "key_v1",
-			Issuer:             "http://localhost:8080",
-		}
+		log.Fatalf("configuration error:\n%v", err)
 	}
+	log.Printf("configuration loaded: env=%s listen=%s database=%s",
+		cfg.Env, cfg.Address(), database.DescribeURL(cfg.DatabaseURL))
 
-	// 2. Initialize Ent ORM ClientFactory
-	driver := "sqlite3"
-	if cfg.DatabaseURL != "" && (strings.HasPrefix(cfg.DatabaseURL, "postgres://") || strings.HasPrefix(cfg.DatabaseURL, "postgresql://")) {
-		driver = "postgres"
-	}
-	factory, err := clientfactory.NewClientFactory(driver, cfg.DatabaseURL)
+	// 2. Open the database. The URL's scheme selects the engine and driver, so
+	// PostgreSQL, MySQL and SQLite all work with no code change here.
+	factory, err := clientfactory.NewFromURL(cfg.DatabaseURL, clientfactory.PoolOptions{
+		MaxOpenConns:    cfg.DatabaseMaxOpenConns,
+		MaxIdleConns:    cfg.DatabaseMaxIdleConns,
+		ConnMaxLifetime: cfg.DatabaseConnMaxLifetime,
+		AutoMigrate:     cfg.DatabaseAutoMigrate,
+	})
 	if err != nil {
-		if driver == "postgres" && cfg.Env != "production" {
-			log.Printf("⚠️ Postgres connection notice (%s): %v. Falling back to SQLite development database.", cfg.DatabaseURL, err)
-			driver = "sqlite3"
-			cfg.DatabaseURL = "file:authn.db?cache=shared&_fk=1"
-			factory, err = clientfactory.NewClientFactory(driver, cfg.DatabaseURL)
-		}
-		if err != nil {
-			log.Fatalf("❌ Failed initializing database client factory: %v", err)
-		}
+		log.Fatalf("database initialization failed: %v", err)
 	}
 	defer factory.Close()
 
@@ -185,6 +183,18 @@ func main() {
 	app := fiber.New(fiber.Config{
 		AppName:               "Authn Engine v1.0.0",
 		DisableStartupMessage: false,
+		// Timeouts bound how long a single connection may occupy a worker.
+		// Without them a slow or stalled client holds a connection open
+		// indefinitely, and enough of those exhaust the server.
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
+		BodyLimit:    cfg.BodyLimit,
+		// ProxyHeader makes c.IP() read the forwarded client address. It is
+		// enabled only when a trusted proxy sits in front, because a client can
+		// forge the header and would otherwise mint a fresh IP per request to
+		// escape every per-IP rate limit.
+		ProxyHeader: proxyHeader(cfg),
 		// Last-resort handler for errors that reach Fiber unhandled: panics
 		// recovered by recover.New, router 404s, body-limit and parser failures.
 		//
@@ -243,41 +253,46 @@ func main() {
 	// 5. Global Middleware Stack
 	app.Use(recover.New())
 	app.Use(logger.New())
-	app.Use(middleware.DynamicCORS())
+	app.Use(middleware.CORS(cfg))
 	app.Use(middleware.DegradedModeHeader(degradedTracker))
 
 	if !cfg.RateLimitEnabled {
-		log.Println("⚠️ LOUD WARNING: Rate limiting is DISABLED via AUTHN_RATELIMIT_ENABLED=false. Security boundaries are un-throttled!")
+		log.Println("WARNING: rate limiting is disabled (RATELIMIT_ENABLED=false); authentication endpoints are un-throttled")
 	} else {
-		log.Printf("🛡️ Rate Limiter configuration loaded from .env: max_attempts=%d, window_seconds=%d, backoff_schedule=%v, reset_days=%d", cfg.RateLimitMaxAttempts, cfg.RateLimitWindowSeconds, cfg.RateLimitBackoffSchedule, cfg.RateLimitViolationResetDays)
+		log.Printf("rate limiter: max_attempts=%d window=%s ip_multiplier=%d backoff=%v",
+			cfg.RateLimitMaxAttempts, cfg.RateLimitWindow,
+			cfg.RateLimitIPBudgetMultiplier, cfg.RateLimitBackoffSchedule)
 	}
 
-	isProd := cfg.Env == "production"
+	violationReset := time.Duration(cfg.RateLimitViolationResetDays) * 24 * time.Hour
 
-	rateLimiter := ratelimit.NewLimiter(
-		redisClient,
-		isProd,
-		true, // failClosed
-		cfg.RateLimitEnabled,
-		cfg.RateLimitMaxAttempts,
-		cfg.RateLimitWindowSeconds,
-		cfg.RateLimitBackoffSchedule,
-		cfg.RateLimitViolationResetDays,
-	)
+	// Guards credential-checking endpoints: login, token refresh, 2FA verification.
+	rateLimiter := ratelimit.NewLimiter(ratelimit.Options{
+		Redis:              redisClient,
+		Enabled:            cfg.RateLimitEnabled,
+		FailClosed:         cfg.RateLimitFailClosed,
+		MaxAttempts:        cfg.RateLimitMaxAttempts,
+		Window:             cfg.RateLimitWindow,
+		IPBudgetMultiplier: cfg.RateLimitIPBudgetMultiplier,
+		BackoffSchedule:    cfg.RateLimitBackoffSchedule,
+		ViolationReset:     violationReset,
+	})
 
-	resendLimiter := ratelimit.NewLimiter(
-		redisClient,
-		isProd,
-		true, // failClosed
-		cfg.ResendRateLimitEnabled,
-		cfg.ResendRateLimitMaxAttempts,
-		cfg.ResendRateLimitWindowSeconds,
-		cfg.RateLimitBackoffSchedule,
-		cfg.RateLimitViolationResetDays,
-	)
+	// Guards verification-email resends, which cost money and can be used to
+	// spam a third party's inbox, so it carries a tighter budget of its own.
+	resendLimiter := ratelimit.NewLimiter(ratelimit.Options{
+		Redis:              redisClient,
+		Enabled:            cfg.ResendRateLimitEnabled,
+		FailClosed:         cfg.RateLimitFailClosed,
+		MaxAttempts:        cfg.ResendRateLimitMaxAttempts,
+		Window:             cfg.ResendRateLimitWindow,
+		IPBudgetMultiplier: cfg.RateLimitIPBudgetMultiplier,
+		BackoffSchedule:    cfg.RateLimitBackoffSchedule,
+		ViolationReset:     violationReset,
+	})
 
 	apiKeyRepo := apikey.NewRepository(factory)
-	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
+	apiKeyService := apikey.NewService(apiKeyRepo, cfg.APIKeyPepper)
 	apiKeyHandler := apikey.NewHandler(apiKeyService)
 	pkMiddleware := middleware.RequirePublishableKey(apiKeyService)
 	policyRepo := policy.NewRepository(factory)
@@ -298,13 +313,13 @@ func main() {
 	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
 	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
 	// Checks mandatory 2FA on console admin JWT sessions.
-	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.AuthnEncryptionKey, authRepo)
+	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.EncryptionKey, authRepo)
 
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
 	oauthHandler := oauth.NewHandler(oauthService)
 
-	socialRepo := social.NewRepository(factory, cfg.AuthnEncryptionKey)
+	socialRepo := social.NewRepository(factory, cfg.EncryptionKey)
 	socialService := social.NewService(socialRepo, cfg)
 	socialHandler := social.NewHandler(socialService)
 
@@ -318,7 +333,7 @@ func main() {
 	rbacHandler := rbac.NewHandler(rbacService)
 
 	webhookRepo := webhook.NewRepository(factory)
-	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.AuthnEncryptionKey, 5)
+	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.EncryptionKey, 5)
 	webhookDispatcher.Start()
 	defer webhookDispatcher.Stop()
 	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
@@ -335,14 +350,14 @@ func main() {
 
 	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher)
 	userHandler := user.NewHandler(userService)
-	clientAuthMiddleware := middleware.RequireClientAuth(cfg.AuthnEncryptionKey)
+	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey)
 
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler)
 	app.Get("/v1/ready", ReadinessCheckHandler(factory, redisClient))
 	app.Get("/healthz", HealthCheckHandler)
 	app.Get("/readyz", ReadinessCheckHandler(factory, redisClient))
-	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.AuthnEncryptionKey))
+	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.EncryptionKey))
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	userHandler.RegisterRoutes(app, clientAuthMiddleware, pkMiddleware)
 	policyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
@@ -361,10 +376,10 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		addr := fmt.Sprintf(":%s", cfg.Port)
-		log.Printf("⚡ Authn Engine HTTP server listening on %s", addr)
+		addr := cfg.Address()
+		log.Printf("HTTP server listening on %s", addr)
 		if err := app.Listen(addr); err != nil {
-			log.Fatalf("❌ Server error: %v", err)
+			log.Fatalf("server error: %v", err)
 		}
 	}()
 

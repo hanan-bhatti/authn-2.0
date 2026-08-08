@@ -58,16 +58,16 @@ func main() {
 		log.Fatalf("❌ Failed creating tenant: %v", err)
 	}
 
-	cfg := &config.EnvConfig{
-		AuthnEncryptionKey: "test_encryption_key_32_bytes_12345",
-		AuthnAPIKeyPepper:  "test_pepper_key_1234567890",
+	cfg := &config.Config{
+		EncryptionKey: "test_encryption_key_32_bytes_12345",
+		APIKeyPepper:  "test_pepper_key_1234567890",
 	}
 
 	authRepo := auth.NewRepository(factory)
 	emailProvider := email.NewNoopProvider()
 	authService := auth.NewService(authRepo, cfg, emailProvider)
 	apiKeyRepo := apikey.NewRepository(factory)
-	apiKeyService := apikey.NewService(apiKeyRepo, cfg.AuthnAPIKeyPepper)
+	apiKeyService := apikey.NewService(apiKeyRepo, cfg.APIKeyPepper)
 	policyRepo := policy.NewRepository(factory)
 
 	impersonationService := impersonation.NewService(factory, cfg, nil, emailProvider)
@@ -114,15 +114,15 @@ func main() {
 	}
 
 	// Issue Admin Console JWT Token
-	adminJWT, err := jwtpkg.IssueAccessToken(adminUser.ID, tnt.ID, "test", adminUser.Email, adminUser.Name, "tenant_admin", cfg.AuthnEncryptionKey)
+	adminJWT, err := jwtpkg.IssueAccessToken(adminUser.ID, tnt.ID, "test", adminUser.Email, adminUser.Name, "tenant_admin", cfg.EncryptionKey)
 	if err != nil {
 		log.Fatalf("❌ Failed issuing admin JWT: %v", err)
 	}
 
 	// Setup Fiber App with Middleware
 	app := fiber.New()
-	adminMw := middleware.RequireAdminAuth(apiKeyService, cfg.AuthnEncryptionKey, authRepo)
-	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.AuthnEncryptionKey))
+	adminMw := middleware.RequireAdminAuth(apiKeyService, cfg.EncryptionKey, authRepo)
+	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.EncryptionKey))
 
 	// Register test client mutation route
 	app.Put("/v1/client/user/password", func(c *fiber.Ctx) error {
