@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
@@ -48,16 +49,14 @@ func RequireClientAuth(signingSecret string) fiber.Handler {
 		tokenStr := extractAccessToken(c)
 
 		if strings.TrimSpace(tokenStr) == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "authentication required: provide Authorization: Bearer <access_token>",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"authentication required: provide Authorization: Bearer <access_token>")
 		}
 
 		claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "invalid or expired access token",
-			})
+			return httperr.Unauthorized(c, httperr.CodeInvalidToken,
+				"invalid or expired access token")
 		}
 
 		privacyCtx := privacy.NewContext(c.UserContext(), claims.TenantID, "", claims.Environment)

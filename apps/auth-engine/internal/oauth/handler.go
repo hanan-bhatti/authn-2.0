@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -53,7 +54,7 @@ func (h *Handler) GetJWKS(c *fiber.Ctx) error {
 func (h *Handler) RotateJWKS(c *fiber.Ctx) error {
 	newKey, err := h.service.RotateJWKSKey()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "oauth.rotate_jwks", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "JWKS key successfully rotated",
@@ -84,16 +85,15 @@ func extractAccessToken(c *fiber.Ctx) string {
 func (h *Handler) Authorize(c *fiber.Ctx) error {
 	tokenStr := extractAccessToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unauthorized: authentication session required",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: authentication session required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": fmt.Sprintf("unauthorized session: %v", err),
-		})
+		// The parse failure itself ("token signature is invalid", "token is
+		// expired by 3s") is diagnostic detail for an unauthenticated caller and
+		// no longer reaches the body.
+		return httperr.Unauthorized(c, httperr.CodeInvalidToken, "unauthorized session: access token is invalid or expired")
 	}
 
 	clientID := c.Query("client_id")
@@ -104,18 +104,23 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	scope := c.Query("scope", "openid profile email")
 
 	if strings.EqualFold(codeChallengeMethod, "plain") {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid_request: code_challenge_method 'plain' is unsupported; PKCE S256 is required",
-		})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"invalid_request: code_challenge_method 'plain' is unsupported; PKCE S256 is required")
 	}
 
 	if responseType != "code" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported_response_type: expected response_type=code"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "unsupported_response_type: expected response_type=code")
 	}
 
 	// 1. Validate registered client Application and authorized redirect URI
 	if err := h.service.ValidateClientApplication(c.UserContext(), clientID, redirectURI); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		// ValidateClientApplication mixes authored rejections with a wrapped
+		// database error ("failed querying client application: %w"), so the
+		// concrete reason is collapsed into one sanitized message rather than
+		// echoed. The caller learns which parameters are at fault, not what the
+		// storage layer said.
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"invalid_request: client_id is not registered or redirect_uri is not authorized for this client")
 	}
 
 	// 2. User ID comes strictly from verified session claims (claims.Sub)
@@ -124,20 +129,26 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 
 	codeStr, err := h.service.IssueAuthorizationCode(c.UserContext(), clientID, userID, tenantID, redirectURI, codeChallenge, codeChallengeMethod, scope)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "oauth.issue_authorization_code", err)
 	}
 
 	state := c.Query("state")
 	if redirectURI != "" {
-		sep := "?"
-		if strings.Contains(redirectURI, "?") {
-			sep = "&"
+		// Built through net/url rather than string concatenation: the previous
+		// "?"/"&" sniff mis-placed the parameters whenever the registered
+		// redirect_uri carried a fragment, appending them inside the fragment
+		// where no server ever sees them.
+		u, err := url.Parse(redirectURI)
+		if err != nil {
+			return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid_request: redirect_uri is not a valid URL")
 		}
-		redirectURL := fmt.Sprintf("%s%scode=%s", redirectURI, sep, codeStr)
+		q := u.Query()
+		q.Set("code", codeStr)
 		if state != "" {
-			redirectURL += fmt.Sprintf("&state=%s", url.QueryEscape(state))
+			q.Set("state", state)
 		}
-		return c.Redirect(redirectURL, fiber.StatusFound)
+		u.RawQuery = q.Encode()
+		return c.Redirect(u.String(), fiber.StatusFound)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -161,18 +172,23 @@ type TokenExchangeRequest struct {
 func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 	var req TokenExchangeRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	switch req.GrantType {
 	case "authorization_code":
 		if req.Code == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid_request: code is required"})
+			return httperr.BadRequest(c, httperr.CodeMissingParameter, "invalid_request: code is required")
 		}
 
 		res, err := h.service.ExchangeCodeForTokens(c.UserContext(), req.Code, req.ClientID, req.RedirectURI, req.CodeVerifier)
 		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+			// ExchangeCodeForTokens wraps storage and key-management failures
+			// ("failed retrieving user for authorization code: %w"), so the
+			// reason is collapsed to a single sanitized grant rejection. Status
+			// stays 400 exactly as before.
+			return httperr.BadRequest(c, httperr.CodeValidationFailed,
+				"invalid_grant: authorization code, client_id, redirect_uri, or PKCE code_verifier is invalid or expired")
 		}
 		return c.Status(fiber.StatusOK).JSON(res)
 
@@ -186,9 +202,8 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 			rawToken = c.Cookies("refresh_token")
 		}
 		if rawToken == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "invalid_request: refresh token is required in request body or authn_refresh_token cookie",
-			})
+			return httperr.BadRequest(c, httperr.CodeMissingParameter,
+				"invalid_request: refresh token is required in request body or authn_refresh_token cookie")
 		}
 
 		userAgent := c.Get("User-Agent")
@@ -196,7 +211,10 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 
 		userDTO, accessToken, newRawRefreshToken, err := h.service.RotateRefreshTokenSession(c.UserContext(), rawToken, userAgent, ipAddress)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+			// Reuse-detection and revocation detail stays server-side; the
+			// caller only learns the token is no longer usable.
+			return httperr.Unauthorized(c, httperr.CodeInvalidToken,
+				"refresh token is invalid, expired, or has been revoked")
 		}
 
 		// Set updated HttpOnly cookie if new token was issued
@@ -230,9 +248,8 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(res)
 
 	default:
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "unsupported_grant_type: expected grant_type=authorization_code or grant_type=refresh_token",
-		})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"unsupported_grant_type: expected grant_type=authorization_code or grant_type=refresh_token")
 	}
 }
 
@@ -241,23 +258,20 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 func (h *Handler) GetUserInfo(c *fiber.Ctx) error {
 	tokenStr := extractAccessToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unauthorized: access token required in Authorization header or cookie",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"unauthorized: access token required in Authorization header or cookie")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.cfg.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": fmt.Sprintf("invalid or expired access token: %v", err),
-		})
+		return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired access token")
 	}
 
 	info, err := h.service.GetUserInfo(c.UserContext(), claims.TenantID, claims.Sub)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		// GetUserInfo already collapses both the query failure and the missing
+		// row into "user not found", so 404 is preserved.
+		return httperr.NotFound(c, httperr.CodeNotFound, "user not found")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(info)
@@ -304,15 +318,15 @@ func (h *Handler) CreateApplication(c *fiber.Ctx) error {
 
 	var req createApplicationRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	if req.ID == "" || req.Name == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and name are required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "id and name are required")
 	}
 
 	if err := h.service.CreateClientApplication(c.UserContext(), req.ID, tenantID, req.Name, req.ExactRedirectURIs); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "oauth.create_application", err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{

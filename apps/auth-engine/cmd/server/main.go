@@ -29,14 +29,15 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/impersonation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/org"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
@@ -101,6 +102,41 @@ func ReadinessCheckHandler(factory *clientfactory.ClientFactory, redisClient *re
 	}
 }
 
+// statusToCode maps an HTTP status reaching the global ErrorHandler onto a
+// machine-readable error code. Only 4xx statuses land here — 5xx is routed
+// through httperr.SendInternal.
+//
+// The statuses Fiber raises itself (404 from the router, 405, 413, 415) have no
+// constant in httperr because no handler produces them; they are spelled out as
+// literals rather than collapsed into an existing constant, so a client never
+// sees "invalid_request_body" for what was actually a routing miss.
+func statusToCode(status int) httperr.Code {
+	switch status {
+	case fiber.StatusBadRequest:
+		return httperr.CodeInvalidRequestBody
+	case fiber.StatusUnauthorized:
+		return httperr.CodeUnauthorized
+	case fiber.StatusForbidden:
+		return httperr.CodeForbidden
+	case fiber.StatusNotFound:
+		return httperr.CodeNotFound
+	case fiber.StatusConflict:
+		return httperr.CodeConflict
+	case fiber.StatusUnprocessableEntity:
+		return httperr.CodeValidationFailed
+	case fiber.StatusTooManyRequests:
+		return httperr.CodeRateLimited
+	case fiber.StatusMethodNotAllowed:
+		return "method_not_allowed"
+	case fiber.StatusRequestEntityTooLarge:
+		return "payload_too_large"
+	case fiber.StatusUnsupportedMediaType:
+		return "unsupported_media_type"
+	default:
+		return "bad_request"
+	}
+}
+
 func main() {
 	log.Println("🚀 Authn Platform — Enterprise Identity Engine v1.0.0 starting...")
 
@@ -149,17 +185,39 @@ func main() {
 	app := fiber.New(fiber.Config{
 		AppName:               "Authn Engine v1.0.0",
 		DisableStartupMessage: false,
+		// Last-resort handler for errors that reach Fiber unhandled: panics
+		// recovered by recover.New, router 404s, body-limit and parser failures.
+		//
+		// This used to emit a NESTED body with an INTEGER code —
+		// {"error": {"code": 500, "message": err.Error()}} — the only nested
+		// envelope in the engine, and one that returned raw Go error text to
+		// unauthenticated callers (audit finding M9). A panic inside a handler
+		// surfaced its message, and Ent/SQL errors surfaced table and column
+		// names. It is now the canonical flat {error, code} envelope, and the
+		// error text is logged server-side instead of returned.
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
 				code = e.Code
 			}
-			return c.Status(code).JSON(fiber.Map{
-				"error": fiber.Map{
-					"code":    code,
-					"message": err.Error(),
-				},
-			})
+
+			// 5xx means something genuinely broke and the text is ours, not the
+			// caller's — log it and return the generic body. SendInternal does
+			// both, and forces the status to 500, which is already correct here.
+			if code >= fiber.StatusInternalServerError {
+				return httperr.SendInternal(c, "fiber.unhandled", err)
+			}
+
+			// 4xx is a client-shaped failure. *fiber.Error messages at this level
+			// are Fiber's own static strings ("Not Found", "Method Not Allowed",
+			// "Request Entity Too Large"), so they are safe to return — but only
+			// for the *fiber.Error case. Any other error type reaching here with
+			// a 4xx status is not a vetted string, so it gets the generic text.
+			msg := "request could not be processed"
+			if e, ok := err.(*fiber.Error); ok {
+				msg = e.Message
+			}
+			return httperr.Send(c, code, statusToCode(code), msg)
 		},
 	})
 
@@ -292,9 +350,9 @@ func main() {
 	socialHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	sessionHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 	apiKeyHandler.RegisterRoutes(app, adminMiddleware) // sk_ OR console JWT
-	rbacHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
+	rbacHandler.RegisterRoutes(app, adminMiddleware, clientAuthMiddleware, pkMiddleware)
 	webhookHandler.RegisterRoutes(app, adminMiddleware)
-	impersonationHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
+	impersonationHandler.RegisterRoutes(app, adminMiddleware, clientAuthMiddleware, pkMiddleware)
 	orgHandler.RegisterRoutes(app, clientAuthMiddleware, pkMiddleware, adminMiddleware)
 	samlHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 

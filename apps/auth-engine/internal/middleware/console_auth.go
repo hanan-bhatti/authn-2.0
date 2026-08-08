@@ -25,8 +25,9 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
 // RequireConsoleAuth returns a Fiber middleware that accepts a JWT access token
@@ -50,24 +51,21 @@ func RequireConsoleAuth(signingSecret string) fiber.Handler {
 		}
 
 		if strings.TrimSpace(tokenStr) == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "console session required: provide Authorization: Bearer <jwt> or authn_access_token cookie",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"console session required: provide Authorization: Bearer <jwt> or authn_access_token cookie")
 		}
 
 		// 2. Verify signature and expiration
 		claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "invalid or expired console session token",
-			})
+			return httperr.Unauthorized(c, httperr.CodeInvalidToken,
+				"invalid or expired console session token")
 		}
 
 		// 3. Enforce tenant_admin role — regular end-users are rejected here
 		if claims.Role != "tenant_admin" {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "forbidden: tenant_admin role required to access this resource",
-			})
+			return httperr.Forbidden(c, httperr.CodeTenantAdminRequired,
+				"forbidden: tenant_admin role required to access this resource")
 		}
 
 		// 4. Inject PrivacyContext so all ORM queries are tenant-scoped

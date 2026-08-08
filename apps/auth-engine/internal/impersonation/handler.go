@@ -15,11 +15,35 @@ package impersonation
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
+)
+
+// Impersonation-specific error codes. These predate the shared httperr code set
+// and are part of the published wire contract for FR-14, so they are preserved
+// verbatim rather than folded into the generic codes.
+const (
+	codeUserIDRequired          httperr.Code = "user_id_required"
+	codeAdminPasswordRequired   httperr.Code = "admin_password_required"
+	codeInvalidAdminPassword    httperr.Code = "invalid_admin_password"
+	codeMFACodeRequired         httperr.Code = "mfa_code_required"
+	codeInvalidAdmin2FACode     httperr.Code = "invalid_admin_2fa_code"
+	codeCredentialIDRequired    httperr.Code = "credential_id_required"
+	codeAdminStepUpRequired     httperr.Code = "admin_step_up_required"
+	codeNotImpersonationSession httperr.Code = "not_an_impersonation_session"
+	codePolicyValidationFailed  httperr.Code = "policy_validation_failed"
+	codeImpersonationDisabled   httperr.Code = "impersonation_disabled_by_policy"
+	codeTargetUserNotFound      httperr.Code = "target_user_not_found"
+	codeUserNotActive           httperr.Code = "user_not_active"
+	codeCannotImpersonateSelf   httperr.Code = "cannot_impersonate_self"
+	codeHierarchyViolation      httperr.Code = "impersonation_hierarchy_violation"
+	codeUserOptInRequired       httperr.Code = "user_opt_in_required"
+	codeValidationError         httperr.Code = "validation_error"
 )
 
 type PolicyRepository interface {
@@ -47,7 +71,7 @@ func NewHandler(svc *Service, policyRepo PolicyRepository, verifier StepUpVerifi
 }
 
 // RegisterRoutes registers impersonation endpoints on Fiber application.
-func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMiddleware fiber.Handler) {
+func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMiddleware, pkMiddleware fiber.Handler) {
 	// Admin impersonation execution route
 	adminGroup := app.Group("/v1/admin")
 	if adminMiddleware != nil {
@@ -63,8 +87,16 @@ func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMidd
 	tenantGroup.Get("/impersonation-policy", h.GetImpersonationPolicy)
 	tenantGroup.Put("/impersonation-policy", h.UpdateImpersonationPolicy)
 
-	// Client-side exit impersonation session route
+	// Client-side exit impersonation session route. Requires a publishable key
+	// AND a real user session: main.go previously passed pkMiddleware into the
+	// clientAuthMiddleware slot, leaving this gated only by a publishable key,
+	// which establishes no user identity. ExitImpersonation re-verifies the
+	// bearer token itself so it was not exploitable, but the wiring did not
+	// provide the guarantee it appeared to.
 	clientGroup := app.Group("/v1/client")
+	if pkMiddleware != nil {
+		clientGroup.Use(pkMiddleware)
+	}
 	if clientAuthMiddleware != nil {
 		clientGroup.Use(clientAuthMiddleware)
 	}
@@ -79,18 +111,12 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 	adminID := getAdminID(c)
 
 	if targetUserID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "user_id parameter is required",
-			"code":  "user_id_required",
-		})
+		return httperr.BadRequest(c, codeUserIDRequired, "user_id parameter is required")
 	}
 
 	var req policy.ImpersonateRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request JSON body",
-			"code":  "invalid_request_body",
-		})
+		return httperr.BadRequest(c, httperr.CodeInvalidRequestBody, "invalid request JSON body")
 	}
 
 	pol := policy.DefaultImpersonationPolicy()
@@ -107,45 +133,33 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 		switch method {
 		case "password":
 			if req.AdminPassword == "" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error": "admin_password is required for password step-up verification",
-					"code":  "admin_password_required",
-				})
+				return httperr.BadRequest(c, codeAdminPasswordRequired,
+					"admin_password is required for password step-up verification")
 			}
 			if adminID != "" && !strings.HasPrefix(adminID, "key_") && adminID != "usr_admin_system" {
 				if err := h.verifier.VerifyAdminPassword(c.UserContext(), adminID, req.AdminPassword); err != nil {
-					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-						"error": "invalid admin password provided for step-up verification",
-						"code":  "invalid_admin_password",
-					})
+					return httperr.Unauthorized(c, codeInvalidAdminPassword,
+						"invalid admin password provided for step-up verification")
 				}
 			}
 		case "totp":
 			if req.MFACode == "" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error": "mfa_code is required for 2FA step-up verification",
-					"code":  "mfa_code_required",
-				})
+				return httperr.BadRequest(c, codeMFACodeRequired,
+					"mfa_code is required for 2FA step-up verification")
 			}
 			if err := h.verifier.VerifyAdminTOTP(c.UserContext(), adminID, req.MFACode); err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"error": "invalid 2FA code provided for step-up verification",
-					"code":  "invalid_admin_2fa_code",
-				})
+				return httperr.Unauthorized(c, codeInvalidAdmin2FACode,
+					"invalid 2FA code provided for step-up verification")
 			}
 		case "webauthn", "passkey":
 			// WebAuthn step-up handled via signed assertion in payload
 			if req.CredentialID == "" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error": "credential_id is required for passkey step-up verification",
-					"code":  "credential_id_required",
-				})
+				return httperr.BadRequest(c, codeCredentialIDRequired,
+					"credential_id is required for passkey step-up verification")
 			}
 		default:
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "admin step-up verification is required before initiating impersonation: specify verification_method ('password', 'totp', or 'passkey')",
-				"code":  "admin_step_up_required",
-			})
+			return httperr.BadRequest(c, codeAdminStepUpRequired,
+				"admin step-up verification is required before initiating impersonation: specify verification_method ('password', 'totp', or 'passkey')")
 		}
 	}
 
@@ -162,26 +176,17 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unauthorized: session token missing",
-			"code":  "unauthorized",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token missing")
 	}
 
 	signingSecret := h.svc.cfg.AuthnEncryptionKey
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "invalid or expired session token",
-			"code":  "invalid_token",
-		})
+		return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired session token")
 	}
 
 	if !claims.IsImpersonated {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "active session is not an impersonation session",
-			"code":  "not_an_impersonation_session",
-		})
+		return httperr.BadRequest(c, codeNotImpersonationSession, "active session is not an impersonation session")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -209,25 +214,23 @@ func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	var pol policy.ImpersonationPolicy
 	if err := c.BodyParser(&pol); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request JSON body",
-			"code":  "invalid_request_body",
-		})
+		return httperr.BadRequest(c, httperr.CodeInvalidRequestBody, "invalid request JSON body")
 	}
 
 	if err := policy.ValidateImpersonationPolicy(pol); err != nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
-			"error": err.Error(),
-			"code":  "policy_validation_failed",
-		})
+		// The validator echoes the rejected email_notification_policy value back
+		// in its message; the response states the rules instead of the input.
+		log.Printf("[error] %s %s impersonation.validate_policy: %v", c.Method(), c.Path(), err)
+		return httperr.UnprocessableEntity(c, codePolicyValidationFailed,
+			"impersonation policy rejected: max_duration_minutes must be between 1 and 60, and email_notification_policy must be IMMEDIATE, POST_SESSION, or DISABLED")
 	}
 
 	if h.policyRepo != nil {
 		updated, err := h.policyRepo.UpdateImpersonationPolicy(c.UserContext(), tenantID, pol)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed updating impersonation policy",
-			})
+			// Previously returned a body with no `code` field at all — the one
+			// site in this file that was off-envelope.
+			return httperr.SendInternal(c, "impersonation.update_policy", err)
 		}
 		return c.Status(fiber.StatusOK).JSON(updated)
 	}
@@ -238,45 +241,30 @@ func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 func handleImpersonationError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, ErrImpersonationDisabled):
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "impersonation feature is disabled by tenant policy",
-			"code":  "impersonation_disabled_by_policy",
-		})
+		return httperr.Forbidden(c, codeImpersonationDisabled,
+			"impersonation feature is disabled by tenant policy")
 	case errors.Is(err, ErrUserNotFound):
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "target user not found",
-			"code":  "target_user_not_found",
-		})
+		return httperr.NotFound(c, codeTargetUserNotFound, "target user not found")
 	case errors.Is(err, ErrUserNotActive):
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "cannot impersonate suspended or unverified user",
-			"code":  "user_not_active",
-		})
+		return httperr.BadRequest(c, codeUserNotActive,
+			"cannot impersonate suspended or unverified user")
 	case errors.Is(err, ErrCannotImpersonateSelf):
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "admin cannot impersonate self",
-			"code":  "cannot_impersonate_self",
-		})
+		return httperr.BadRequest(c, codeCannotImpersonateSelf, "admin cannot impersonate self")
 	case errors.Is(err, ErrCannotImpersonateAdmin):
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "cannot impersonate admin users",
-			"code":  "impersonation_hierarchy_violation",
-		})
+		return httperr.Forbidden(c, codeHierarchyViolation, "cannot impersonate admin users")
 	case errors.Is(err, ErrUserOptInRequired):
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "target user has not granted support access permission",
-			"code":  "user_opt_in_required",
-		})
+		return httperr.Forbidden(c, codeUserOptInRequired,
+			"target user has not granted support access permission")
 	case errors.Is(err, ErrInsufficientPermissions):
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "insufficient permissions: caller lacks 'users:impersonate' permission required to initiate impersonation",
-			"code":  "insufficient_permissions",
-		})
+		return httperr.Forbidden(c, httperr.CodeInsufficientScope,
+			"insufficient permissions: caller lacks 'users:impersonate' permission required to initiate impersonation")
 	default:
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
-			"error": err.Error(),
-			"code":  "validation_error",
-		})
+		// Catch-all for request validation. It also catches the service's
+		// wrapped token-issuing failure, which used to surface JWT signing
+		// internals to the caller under a 422.
+		log.Printf("[error] %s %s impersonation.execute: %v", c.Method(), c.Path(), err)
+		return httperr.UnprocessableEntity(c, codeValidationError,
+			"impersonation request rejected: verify reason (10-500 characters), ticket_id, and duration against the active tenant policy")
 	}
 }
 

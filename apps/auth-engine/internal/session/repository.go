@@ -35,6 +35,10 @@ var (
 	ErrSessionRevoked     = errors.New("session has been revoked")
 	ErrSessionExpired     = errors.New("session has expired")
 	ErrSessionCompromised = errors.New("session reuse detected; all sessions revoked for security")
+	// ErrSessionNotOwned is returned when a caller tries to act on a session
+	// belonging to another user. Previously this was an anonymous errors.New in
+	// the service, so the handler had to match on error text to pick its status.
+	ErrSessionNotOwned = errors.New("unauthorized: session does not belong to user")
 )
 
 type Repository struct {

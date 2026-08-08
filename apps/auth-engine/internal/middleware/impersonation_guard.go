@@ -12,9 +12,11 @@
 package middleware
 
 import (
+	"log"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -98,6 +100,40 @@ func matchesDestructiveRoute(method, path string) bool {
 	return false
 }
 
+// tokenFailureReason maps a VerifyAccessToken error onto a small, fixed set of
+// log labels.
+//
+// It deliberately does NOT return err.Error(). Two of the verifier's error paths
+// wrap a lower-level error (base64 decode, json.Unmarshal) whose text can quote a
+// fragment of the decoded token payload — json.SyntaxError, for example, renders
+// the offending character. Emitting a stable label instead guarantees that no
+// token material can ever reach the log through this path, no matter what the
+// wrapped error contains, and it keeps the field aggregatable.
+//
+// Anything unrecognised collapses to "verification_failed" rather than falling
+// through to the raw error, so adding a new error string upstream cannot silently
+// start leaking token bytes here.
+func tokenFailureReason(err error) string {
+	if err == nil {
+		return "nil_claims"
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "invalid jwt format"):
+		return "malformed"
+	case strings.Contains(msg, "invalid jwt signature"):
+		return "bad_signature"
+	case strings.Contains(msg, "has expired"):
+		return "expired"
+	case strings.Contains(msg, "failed decoding jwt payload"):
+		return "undecodable_payload"
+	case strings.Contains(msg, "failed unmarshaling jwt claims"):
+		return "unparseable_claims"
+	default:
+		return "verification_failed"
+	}
+}
+
 // PreventImpersonatedMutations blocks destructive mutations when claims.IsImpersonated == true.
 func PreventImpersonatedMutations(signingSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -107,19 +143,38 @@ func PreventImpersonatedMutations(signingSecret string) fiber.Handler {
 		// entirely (audit finding H6).
 		tokenStr := extractAccessToken(c)
 		if strings.TrimSpace(tokenStr) == "" {
+			// No credential at all is the normal case for the unauthenticated
+			// half of /v1/client (login, signup, password reset), so this path
+			// is intentionally NOT logged — it would drown the log in noise and
+			// carries no signal. The branch below is different: a token was
+			// presented and could not be verified.
 			return c.Next()
 		}
 
 		claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 		if err != nil || claims == nil {
+			// Fail-open is deliberate and load-bearing: this guard is an extra
+			// restriction layered on top of RequireClientAuth, which runs
+			// downstream and is what actually rejects a bad token. Blocking here
+			// would turn every malformed token into a 403 from the wrong layer.
+			//
+			// But fail-open twice over and silently is how a guard rots unnoticed
+			// (audit finding M8). Record that the guard declined to evaluate, with
+			// enough context to spot a pattern — never the token itself, and never
+			// the raw error (see tokenFailureReason).
+			log.Printf("[warn] impersonation guard skipped: token failed verification (reason=%s) %s %s",
+				tokenFailureReason(err), c.Method(), c.Path())
 			return c.Next()
 		}
 
 		if claims.IsImpersonated && matchesDestructiveRoute(c.Method(), c.Path()) {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "destructive account mutation is disabled during an active impersonation session: read-only security mode active",
-				"code":  "impersonation_read_only_restricted",
-			})
+			// NOTE: the code string here is the documented wire contract
+			// (docs/03-API-SPECIFICATION.md, docs/14-USER-IMPERSONATION.md) and is
+			// deliberately NOT swapped for httperr.CodeImpersonationBlocked —
+			// renaming it would break published clients. Only the envelope shape
+			// is normalized (audit finding M9).
+			return httperr.Send(c, fiber.StatusForbidden, "impersonation_read_only_restricted",
+				"destructive account mutation is disabled during an active impersonation session: read-only security mode active")
 		}
 
 		return c.Next()

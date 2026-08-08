@@ -130,7 +130,7 @@ func (s *Service) CreateSAMLConnection(ctx context.Context, tenantID, actorID st
 			for _, newDom := range req.AllowedDomains {
 				for _, existingDom := range conn.AllowedDomains {
 					if strings.EqualFold(newDom, existingDom) {
-						return nil, fmt.Errorf("domain '%s' is already mapped to organization '%s'", newDom, conn.OrganizationID)
+						return nil, fmt.Errorf("%w: domain '%s' is already mapped", ErrDomainConflict, newDom)
 					}
 				}
 			}
@@ -232,7 +232,7 @@ func (s *Service) UpdateSAMLConnection(ctx context.Context, tenantID, actorID, o
 				for _, newDom := range req.AllowedDomains {
 					for _, existingDom := range existingConn.AllowedDomains {
 						if strings.EqualFold(newDom, existingDom) {
-							return nil, fmt.Errorf("domain '%s' is already mapped to another SAML connection", newDom)
+							return nil, fmt.Errorf("%w: domain '%s' is already mapped", ErrDomainConflict, newDom)
 						}
 					}
 				}

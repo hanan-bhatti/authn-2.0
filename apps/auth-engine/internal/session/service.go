@@ -202,7 +202,7 @@ func (s *Service) RevokeSession(ctx context.Context, userID, targetSessionID str
 	}
 
 	if sess.UserID != userID {
-		return errors.New("unauthorized: session does not belong to user")
+		return ErrSessionNotOwned
 	}
 
 	return s.repo.RevokeSession(ctx, targetSessionID)

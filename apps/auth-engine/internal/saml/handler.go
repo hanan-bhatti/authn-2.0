@@ -15,9 +15,10 @@ package saml
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 )
 
@@ -68,6 +69,42 @@ func getUserID(c *fiber.Ctx) string {
 	return rbac.ExtractUserID(c)
 }
 
+// sendConfigValidationError maps SAML config-validation failures onto static,
+// client-safe prose for the 400 branch shared by create and update.
+//
+// Note the domain-conflict arm: the previous code returned err.Error() verbatim,
+// which echoed the *other* organization's ID back to the caller
+// ("domain 'x' is already mapped to organization 'org_abc123'") — an org-ID
+// disclosure across the tenant. The message here is deliberately generic.
+func sendConfigValidationError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, ErrInvalidEntityID):
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			fmt.Sprintf("invalid IdP entity ID length (must be %d-%d chars)", MinEntityIDLength, MaxEntityIDLength))
+	case errors.Is(err, ErrInvalidSSOURL):
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"invalid IdP SSO URL format (must be valid http/https URL)")
+	case errors.Is(err, ErrInvalidCert):
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"invalid IdP certificate (must be valid PEM formatted X.509 certificate)")
+	case errors.Is(err, ErrInvalidDomains):
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			fmt.Sprintf("allowed_domains must contain between 1 and %d valid domain names", MaxAllowedDomains))
+	default:
+		// Kept at 400 (not 409) to preserve the existing status for this branch.
+		return httperr.BadRequest(c, httperr.CodeAlreadyExists,
+			"one or more domains are already mapped to another SAML connection in this tenant")
+	}
+}
+
+// isDomainConflict reports whether err is the "domain already mapped" failure.
+//
+// service.go wraps ErrDomainConflict with %w at both construction sites, so the
+// sentinel check is sufficient and there is no string matching left here.
+func isDomainConflict(err error) bool {
+	return errors.Is(err, ErrDomainConflict)
+}
+
 // Handlers Implementation
 
 func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
@@ -77,7 +114,7 @@ func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 
 	var req CreateSAMLRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request JSON body"})
+		return httperr.InvalidBody(c)
 	}
 
 	req.OrganizationID = orgID
@@ -85,12 +122,13 @@ func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 	resp, err := h.service.CreateSAMLConnection(c.UserContext(), tenantID, actorID, req, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		if errors.Is(err, ErrSAMLExists) {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+			return httperr.Conflict(c, httperr.CodeAlreadyExists,
+				"SAML connection already exists for this organization")
 		}
-		if errors.Is(err, ErrInvalidEntityID) || errors.Is(err, ErrInvalidSSOURL) || errors.Is(err, ErrInvalidCert) || errors.Is(err, ErrInvalidDomains) || strings.Contains(err.Error(), "already mapped") {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		if errors.Is(err, ErrInvalidEntityID) || errors.Is(err, ErrInvalidSSOURL) || errors.Is(err, ErrInvalidCert) || errors.Is(err, ErrInvalidDomains) || isDomainConflict(err) {
+			return sendConfigValidationError(c, err)
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "saml.create_connection", err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(resp)
@@ -103,9 +141,9 @@ func (h *Handler) GetSAMLConnection(c *fiber.Ctx) error {
 	resp, err := h.service.GetSAMLConnection(c.UserContext(), tenantID, orgID)
 	if err != nil {
 		if errors.Is(err, ErrSAMLNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "SAML connection configuration not found"})
+			return httperr.NotFound(c, httperr.CodeNotFound, "SAML connection configuration not found")
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "saml.get_connection", err)
 	}
 
 	return c.JSON(resp)
@@ -118,18 +156,18 @@ func (h *Handler) UpdateSAMLConnection(c *fiber.Ctx) error {
 
 	var req UpdateSAMLRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request JSON body"})
+		return httperr.InvalidBody(c)
 	}
 
 	resp, err := h.service.UpdateSAMLConnection(c.UserContext(), tenantID, actorID, orgID, req, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		if errors.Is(err, ErrSAMLNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "SAML connection configuration not found"})
+			return httperr.NotFound(c, httperr.CodeNotFound, "SAML connection configuration not found")
 		}
-		if errors.Is(err, ErrInvalidEntityID) || errors.Is(err, ErrInvalidSSOURL) || errors.Is(err, ErrInvalidCert) || errors.Is(err, ErrInvalidDomains) || strings.Contains(err.Error(), "already mapped") {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		if errors.Is(err, ErrInvalidEntityID) || errors.Is(err, ErrInvalidSSOURL) || errors.Is(err, ErrInvalidCert) || errors.Is(err, ErrInvalidDomains) || isDomainConflict(err) {
+			return sendConfigValidationError(c, err)
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "saml.update_connection", err)
 	}
 
 	return c.JSON(resp)
@@ -143,9 +181,9 @@ func (h *Handler) DeleteSAMLConnection(c *fiber.Ctx) error {
 	err := h.service.DeleteSAMLConnection(c.UserContext(), tenantID, actorID, orgID, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		if errors.Is(err, ErrSAMLNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "SAML connection configuration not found"})
+			return httperr.NotFound(c, httperr.CodeNotFound, "SAML connection configuration not found")
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "saml.delete_connection", err)
 	}
 
 	return c.JSON(fiber.Map{
@@ -159,12 +197,18 @@ func (h *Handler) LookupDomainSSO(c *fiber.Ctx) error {
 
 	var req DomainLookupRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request JSON body"})
+		return httperr.InvalidBody(c)
 	}
 
 	resp, err := h.service.LookupDomainSSO(c.UserContext(), tenantID, req)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		// This branch collapses two very different failures: a caller-fixable
+		// bad request, and an internal connection-query failure that used to
+		// return raw ent/SQL text under a 400. The status is preserved, but the
+		// detail now only goes to the log.
+		log.Printf("[error] %s %s saml.domain_lookup: %v", c.Method(), c.Path(), err)
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"email or valid domain is required")
 	}
 
 	return c.JSON(resp)
@@ -181,12 +225,18 @@ func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 	}
 
 	if req.SAMLResponse == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing SAMLResponse payload"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "missing SAMLResponse payload")
 	}
 
 	userObj, orgObj, err := h.service.ProcessACS(c.UserContext(), tenantID, req.SAMLResponse, c.IP(), c.Get("User-Agent"))
 	if err != nil {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": err.Error()})
+		// Unauthenticated endpoint: the assertion-rejection reason is never
+		// itemized to the caller. The prior code returned err.Error() here,
+		// which exposed XML parser output, the unmatched email domain, and
+		// wrapped ent errors from JIT provisioning to anyone POSTing to /acs.
+		log.Printf("[error] %s %s saml.process_acs: %v", c.Method(), c.Path(), err)
+		return httperr.Forbidden(c, httperr.CodeForbidden,
+			"SAML assertion could not be validated for this service provider")
 	}
 
 	return c.JSON(fiber.Map{
@@ -211,9 +261,9 @@ func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
 	_, err := h.service.GetSAMLConnection(c.UserContext(), tenantID, orgID)
 	if err != nil {
 		if errors.Is(err, ErrSAMLNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "SAML connection configuration not found for organization"})
+			return httperr.NotFound(c, httperr.CodeNotFound, "SAML connection configuration not found for organization")
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "saml.get_sp_metadata", err)
 	}
 
 	spEntityID := fmt.Sprintf("https://authn.com/saml/sp/%s", orgID)

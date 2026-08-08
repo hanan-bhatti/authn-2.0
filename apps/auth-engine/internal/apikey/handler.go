@@ -13,11 +13,13 @@
 package apikey
 
 import (
+	"log"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
 // CreateKeyRequest defines the HTTP payload for issuing a new API key.
@@ -73,17 +75,17 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 	appID, okApp := c.Locals("application_id").(string)
 	callerEnv, okEnv := c.Locals("environment").(string)
 	if !okApp || appID == "" || !okEnv || callerEnv == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: application context missing"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: application context missing")
 	}
 
 	var req CreateKeyRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	keyType := KeyType(strings.ToLower(strings.TrimSpace(req.Type)))
 	if keyType != TypePublishable && keyType != TypeSecret {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid key type: expected 'publishable' or 'secret'"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid key type: expected 'publishable' or 'secret'")
 	}
 
 	reqEnv := strings.ToLower(strings.TrimSpace(req.Environment))
@@ -93,9 +95,8 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 
 	// Environment isolation enforcement: caller's key environment mode must match the requested key environment
 	if reqEnv != callerEnv {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "environment mismatch: test-mode admin key cannot manage live-mode keys and vice versa",
-		})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"environment mismatch: test-mode admin key cannot manage live-mode keys and vice versa")
 	}
 
 	var expiresAt *time.Time
@@ -106,7 +107,7 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 
 	gen, err := h.service.CreateKey(c.UserContext(), "", appID, req.Name, keyType, reqEnv, expiresAt)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "apikey.create_key", err)
 	}
 
 	dto := KeyDTO{
@@ -133,12 +134,12 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 func (h *Handler) ListKeys(c *fiber.Ctx) error {
 	appID, okApp := c.Locals("application_id").(string)
 	if !okApp || appID == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: application context missing"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: application context missing")
 	}
 
 	keys, err := h.service.ListKeys(c.UserContext(), appID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "apikey.list_keys", err)
 	}
 
 	dtos := make([]KeyDTO, 0, len(keys))
@@ -153,11 +154,15 @@ func (h *Handler) ListKeys(c *fiber.Ctx) error {
 func (h *Handler) RevokeKey(c *fiber.Ctx) error {
 	keyID := c.Params("id")
 	if keyID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "key id is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "key id is required")
 	}
 
 	if err := h.service.RevokeKey(c.UserContext(), keyID); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		// The repository wraps the ent update failure together with the key id;
+		// the 400 is preserved but the driver text stays server-side.
+		log.Printf("[error] %s %s apikey.revoke_key: %v", c.Method(), c.Path(), err)
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"api key could not be revoked: unknown or already-revoked key id")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "revoked", "id": keyID})

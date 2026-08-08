@@ -16,6 +16,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 )
 
@@ -49,21 +50,15 @@ func (h *Handler) CreateEndpoint(c *fiber.Ctx) error {
 
 	var req CreateEndpointRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid JSON request body",
-		})
+		return httperr.InvalidBody(c)
 	}
 
 	resp, err := h.svc.CreateEndpoint(c.UserContext(), tenantID, req)
 	if err != nil {
 		if errors.Is(err, ErrInvalidURL) || errors.Is(err, ErrInvalidEvents) || errors.Is(err, ErrUnsupportedEvent) {
-			return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{
-				"error": err.Error(),
-			})
+			return sendValidationError(c, err)
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.create_endpoint", err)
 	}
 
 	return c.Status(http.StatusCreated).JSON(resp)
@@ -74,9 +69,7 @@ func (h *Handler) ListEndpoints(c *fiber.Ctx) error {
 
 	endpoints, err := h.svc.ListEndpoints(c.UserContext(), tenantID)
 	if err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.list_endpoints", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
@@ -91,13 +84,9 @@ func (h *Handler) GetEndpoint(c *fiber.Ctx) error {
 	ep, err := h.svc.GetEndpoint(c.UserContext(), tenantID, endpointID)
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
-			return c.Status(http.StatusNotFound).JSON(fiber.Map{
-				"error": "webhook endpoint not found",
-			})
+			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.get_endpoint", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(ep)
@@ -109,26 +98,18 @@ func (h *Handler) UpdateEndpoint(c *fiber.Ctx) error {
 
 	var req UpdateEndpointRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid JSON request body",
-		})
+		return httperr.InvalidBody(c)
 	}
 
 	resp, err := h.svc.UpdateEndpoint(c.UserContext(), tenantID, endpointID, req)
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
-			return c.Status(http.StatusNotFound).JSON(fiber.Map{
-				"error": "webhook endpoint not found",
-			})
+			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
 		}
 		if errors.Is(err, ErrInvalidURL) || errors.Is(err, ErrInvalidEvents) || errors.Is(err, ErrUnsupportedEvent) {
-			return c.Status(http.StatusUnprocessableEntity).JSON(fiber.Map{
-				"error": err.Error(),
-			})
+			return sendValidationError(c, err)
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.update_endpoint", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(resp)
@@ -141,13 +122,9 @@ func (h *Handler) RotateSecret(c *fiber.Ctx) error {
 	resp, err := h.svc.RotateSecret(c.UserContext(), tenantID, endpointID)
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
-			return c.Status(http.StatusNotFound).JSON(fiber.Map{
-				"error": "webhook endpoint not found",
-			})
+			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.rotate_secret", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(resp)
@@ -160,13 +137,9 @@ func (h *Handler) DeleteEndpoint(c *fiber.Ctx) error {
 	err := h.svc.DeleteEndpoint(c.UserContext(), tenantID, endpointID)
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
-			return c.Status(http.StatusNotFound).JSON(fiber.Map{
-				"error": "webhook endpoint not found",
-			})
+			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.delete_endpoint", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
@@ -182,13 +155,9 @@ func (h *Handler) SendTestPing(c *fiber.Ctx) error {
 	delivery, err := h.svc.SendTestPing(c.UserContext(), tenantID, endpointID)
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
-			return c.Status(http.StatusNotFound).JSON(fiber.Map{
-				"error": "webhook endpoint not found",
-			})
+			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.send_test_ping", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
@@ -206,9 +175,7 @@ func (h *Handler) ListDeliveries(c *fiber.Ctx) error {
 
 	deliveries, err := h.svc.ListDeliveries(c.UserContext(), endpointID, eventType, limit)
 	if err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.list_deliveries", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
@@ -223,17 +190,31 @@ func (h *Handler) Redeliver(c *fiber.Ctx) error {
 	delivery, err := h.svc.Redeliver(c.UserContext(), tenantID, deliveryID)
 	if err != nil {
 		if errors.Is(err, ErrDeliveryNotFound) || errors.Is(err, ErrEndpointNotFound) {
-			return c.Status(http.StatusNotFound).JSON(fiber.Map{
-				"error": "delivery record or endpoint not found",
-			})
+			return httperr.NotFound(c, httperr.CodeNotFound, "delivery record or endpoint not found")
 		}
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "webhook.redeliver", err)
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
 		"message":  "webhook re-delivery executed",
 		"delivery": delivery,
 	})
+}
+
+// sendValidationError maps the endpoint-validation sentinels onto static,
+// client-safe prose. The sentinel text is deliberately not echoed back
+// verbatim: the service may wrap these sentinels, and a wrapped error would
+// otherwise carry internal detail into the response body.
+func sendValidationError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, ErrInvalidURL):
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			"invalid webhook URL: must be a valid HTTPS URL or localhost for development")
+	case errors.Is(err, ErrInvalidEvents):
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			"invalid events: at least one valid subscribed event type is required")
+	default:
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			"unsupported event type provided")
+	}
 }

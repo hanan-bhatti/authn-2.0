@@ -9,8 +9,11 @@
 package middleware_test
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,4 +122,93 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	resp9, err := app.Test(req9)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp9.StatusCode)
+}
+
+// TestImpersonationGuardLogsUnverifiableToken covers audit finding M8: the guard
+// has two independent ways to silently not run (no token, unverifiable token).
+// The second one is now logged, because a guard that stops evaluating without
+// saying so is indistinguishable from a guard that is working.
+//
+// The assertions are deliberately two-sided: the warning must appear, AND the
+// token must not.
+func TestImpersonationGuardLogsUnverifiableToken(t *testing.T) {
+	signingSecret := "test_encryption_key_32_bytes_12345"
+
+	app := fiber.New()
+	app.Use(middleware.PreventImpersonatedMutations(signingSecret))
+	app.Post("/v1/client/user/password", func(c *fiber.Ctx) error {
+		return c.SendString("password updated")
+	})
+
+	captureLogs := func(fn func()) string {
+		var buf bytes.Buffer
+		origOut, origFlags := log.Writer(), log.Flags()
+		log.SetOutput(&buf)
+		log.SetFlags(0)
+		defer func() {
+			log.SetOutput(origOut)
+			log.SetFlags(origFlags)
+		}()
+		fn()
+		return buf.String()
+	}
+
+	// A token signed with the WRONG secret: structurally a real JWT, so it gets
+	// past extractAccessToken and fails at signature verification.
+	foreignToken, err := jwtpkg.IssueAccessToken("usr_x", "tnt_default", "test", "x@example.com", "X", "user", "a_completely_different_signing_secret_1")
+	require.NoError(t, err)
+
+	// 1. Unverifiable token -> request still proceeds (fail-open preserved) AND a
+	//    warning is emitted naming the method and path.
+	out := captureLogs(func() {
+		req := httptest.NewRequest("POST", "/v1/client/user/password", nil)
+		req.Header.Set("Authorization", "Bearer "+foreignToken)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		// Fail-open behavior is unchanged — downstream auth is what rejects this.
+		assert.Equal(t, http.StatusOK, resp.StatusCode,
+			"M8 is about observability; the fail-open behavior must NOT change")
+	})
+
+	assert.Contains(t, out, "impersonation guard skipped",
+		"an unverifiable token must produce a warning, not silence")
+	assert.Contains(t, out, "POST")
+	assert.Contains(t, out, "/v1/client/user/password")
+	assert.Contains(t, out, "reason=bad_signature",
+		"the failure category should be recorded so a pattern is greppable")
+
+	// 2. The log must never carry token material. Assert on the whole token and
+	//    on each of its three segments individually — a partial leak (e.g. the
+	//    payload segment surfacing through a wrapped json error) is still a leak.
+	assert.NotContains(t, out, foreignToken, "the raw token must never be logged")
+	for _, seg := range strings.Split(foreignToken, ".") {
+		require.NotEmpty(t, seg)
+		assert.NotContains(t, out, seg,
+			"no JWT segment (header/payload/signature) may appear in the log")
+	}
+	// The subject and email live inside the payload; neither should surface.
+	assert.NotContains(t, out, "usr_x")
+	assert.NotContains(t, out, "x@example.com")
+
+	// 3. A request with NO token stays silent — logging every anonymous hit to
+	//    /v1/client (login, signup, reset) would bury the signal above in noise.
+	out = captureLogs(func() {
+		req := httptest.NewRequest("POST", "/v1/client/user/password", nil)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+	assert.NotContains(t, out, "impersonation guard skipped",
+		"the no-credential path is normal traffic and must not be logged")
+
+	// 4. A structurally malformed token is categorized distinctly from a
+	//    well-formed one with a bad signature.
+	out = captureLogs(func() {
+		req := httptest.NewRequest("POST", "/v1/client/user/password", nil)
+		req.Header.Set("Authorization", "Bearer not-a-jwt-at-all")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+	assert.Contains(t, out, "reason=malformed")
 }

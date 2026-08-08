@@ -93,7 +93,7 @@ func TestImpersonationHTTPHandlers(t *testing.T) {
 	clientMwMock := func(c *fiber.Ctx) error {
 		return c.Next()
 	}
-	handler.RegisterRoutes(app, adminMwMock, clientMwMock)
+	handler.RegisterRoutes(app, adminMwMock, clientMwMock, nil)
 
 	// 1. GET /v1/tenant/impersonation-policy -> 200 OK
 	reqGetPol := httptest.NewRequest("GET", "/v1/tenant/impersonation-policy", nil)

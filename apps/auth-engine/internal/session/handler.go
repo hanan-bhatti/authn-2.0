@@ -19,8 +19,23 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
+
+// Refresh-token failure codes that predate internal/httperr and are already part
+// of the published wire contract (the SDK branches on them), but have no constant
+// in httperr. They are spelled out here rather than renamed to an existing code,
+// because renaming one is a breaking API change.
+const (
+	codeSessionCompromised httperr.Code = "session_compromised"
+	codeSessionRevoked     httperr.Code = "session_revoked"
+)
+
+// msgSessionAuthRequired is the single 401 message used by every client session
+// endpoint. It is deliberately identical across handlers so that a caller cannot
+// distinguish "no token" from "token rejected".
+const msgSessionAuthRequired = "session authentication required: missing or invalid access token"
 
 type Handler struct {
 	svc *Service
@@ -88,12 +103,12 @@ func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 func (h *Handler) ListSessions(c *fiber.Ctx) error {
 	userID, currentSessionID := h.getUserIDAndSessionID(c)
 	if userID == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, msgSessionAuthRequired)
 	}
 
 	sessions, err := h.svc.ListUserSessions(c.UserContext(), userID, currentSessionID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.list", err)
 	}
 
 	return c.JSON(fiber.Map{"sessions": sessions})
@@ -104,23 +119,23 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 		SessionID string `json:"session_id"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.SessionID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "session_id is required")
 	}
 
 	userID, _ := h.getUserIDAndSessionID(c)
 	if userID == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, msgSessionAuthRequired)
 	}
 
 	err := h.svc.RevokeSession(c.UserContext(), userID, req.SessionID)
 	if err != nil {
 		if errors.Is(err, ErrSessionNotFound) {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+			return httperr.NotFound(c, httperr.CodeNotFound, "session not found")
 		}
-		if strings.Contains(err.Error(), "unauthorized") {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "unauthorized: session does not belong to user"})
+		if errors.Is(err, ErrSessionNotOwned) {
+			return httperr.Forbidden(c, httperr.CodeForbidden, ErrSessionNotOwned.Error())
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.revoke", err)
 	}
 
 	return c.JSON(fiber.Map{"message": "session revoked", "session_id": req.SessionID})
@@ -129,12 +144,12 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 func (h *Handler) RevokeOtherSessions(c *fiber.Ctx) error {
 	userID, currentSessionID := h.getUserIDAndSessionID(c)
 	if userID == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, msgSessionAuthRequired)
 	}
 
 	count, err := h.svc.RevokeOtherSessions(c.UserContext(), userID, currentSessionID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.revoke_others", err)
 	}
 
 	return c.JSON(fiber.Map{"message": "all other sessions revoked", "count": count})
@@ -143,12 +158,12 @@ func (h *Handler) RevokeOtherSessions(c *fiber.Ctx) error {
 func (h *Handler) RevokeAllSessions(c *fiber.Ctx) error {
 	userID, _ := h.getUserIDAndSessionID(c)
 	if userID == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "session authentication required: missing or invalid access token"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, msgSessionAuthRequired)
 	}
 
 	count, err := h.svc.RevokeAllSessions(c.UserContext(), userID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.revoke_all", err)
 	}
 
 	return c.JSON(fiber.Map{"message": "all sessions revoked", "count": count})
@@ -165,7 +180,7 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 		rawToken = c.Cookies("authn_refresh_token")
 	}
 	if rawToken == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "refresh_token required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "refresh_token required")
 	}
 
 	tenantID := ""
@@ -183,19 +198,21 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 
 	res, err := h.svc.RotateRefreshToken(c.UserContext(), tenantID, environment, rawToken, clientIP, userAgent)
 	if err != nil {
+		// Each message is the sentinel's own package-constant text, not err.Error(),
+		// so a wrapped driver error reaching this path cannot be echoed back.
 		if errors.Is(err, ErrSessionCompromised) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error(), "code": "session_compromised"})
+			return httperr.Unauthorized(c, codeSessionCompromised, ErrSessionCompromised.Error())
 		}
 		if errors.Is(err, ErrSessionRevoked) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error(), "code": "session_revoked"})
+			return httperr.Unauthorized(c, codeSessionRevoked, ErrSessionRevoked.Error())
 		}
 		if errors.Is(err, ErrSessionExpired) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error(), "code": "session_expired"})
+			return httperr.Unauthorized(c, httperr.CodeSessionExpired, ErrSessionExpired.Error())
 		}
 		if errors.Is(err, ErrSessionNotFound) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid or expired refresh token", "code": "invalid_token"})
+			return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired refresh token")
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.refresh", err)
 	}
 
 	return c.JSON(res)
@@ -206,7 +223,7 @@ func (h *Handler) AdminListUserSessions(c *fiber.Ctx) error {
 
 	sessions, err := h.svc.ListUserSessions(c.UserContext(), targetUserID, "")
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.admin_list", err)
 	}
 
 	return c.JSON(fiber.Map{"sessions": sessions})
@@ -217,7 +234,7 @@ func (h *Handler) AdminRevokeAllUserSessions(c *fiber.Ctx) error {
 
 	count, err := h.svc.RevokeAllSessions(c.UserContext(), targetUserID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "session.admin_revoke_all", err)
 	}
 
 	return c.JSON(fiber.Map{"message": "all sessions revoked for user", "user_id": targetUserID, "count": count})

@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 )
 
@@ -35,17 +36,15 @@ func RequireSecretKey(apiKeyService *apikey.Service) fiber.Handler {
 
 		rawKey = strings.TrimSpace(rawKey)
 		if rawKey == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "missing secret admin API key in Authorization Bearer or X-Authn-Secret-Key header",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"missing secret admin API key in Authorization Bearer or X-Authn-Secret-Key header")
 		}
 
 		// 2. Validate key against database records (MUST be type 'secret')
 		key, app, err := apiKeyService.ValidateKey(c.UserContext(), rawKey, apikey.TypeSecret)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "invalid, expired, revoked, or non-secret API key",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"invalid, expired, revoked, or non-secret API key")
 		}
 
 		// 3. Inject resolved TenantID, ApplicationID, and Environment mode into PrivacyContext

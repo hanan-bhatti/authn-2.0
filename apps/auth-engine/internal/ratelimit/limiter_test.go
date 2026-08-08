@@ -365,3 +365,106 @@ func TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit(t *testing.T) {
 		t.Fatalf("token-only endpoint must stay at the configured limit, got %d", got)
 	}
 }
+
+// TestMiddleware_MFAChallengeBucketSurvivesIPRotation pins the fix for audit
+// finding M5.
+//
+// Second-factor verification posts {"code","mfa_token"} — no email, no
+// username. extractAccountIdentifier found no account field and returned "",
+// so the request got the per-IP dimension ALONE. An attacker who already holds
+// the password (they must, to possess an mfa_token) could rotate source IPs and
+// walk the 10^6 TOTP keyspace with no effective ceiling.
+//
+// The challenge token is now the account dimension, so the budget follows the
+// login attempt rather than the network path.
+func TestMiddleware_MFAChallengeBucketSurvivesIPRotation(t *testing.T) {
+	limiter := NewLimiter(nil, false, false, true, 5, 900, nil, 7)
+
+	app := fiber.New(fiber.Config{ProxyHeader: fiber.HeaderXForwardedFor})
+	app.Use(limiter.Middleware())
+	app.Post("/v1/client/2fa/totp/verify", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	})
+
+	post := func(ip, mfaToken, code string) int {
+		req := httptest.NewRequest("POST", "/v1/client/2fa/totp/verify",
+			strings.NewReader(`{"code":"`+code+`","mfa_token":"`+mfaToken+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", ip)
+		req.RemoteAddr = ip + ":54321"
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		return resp.StatusCode
+	}
+
+	const victimToken = "eyJhbGciOiJIUzI1NiJ9.victim-challenge.sig"
+
+	// Five guesses, each from a different source IP — the per-IP bucket alone
+	// can never stop this.
+	for i := 1; i <= 5; i++ {
+		got := post("10.1.1."+string(rune('0'+i)), victimToken, "00000"+string(rune('0'+i)))
+		if got != fiber.StatusUnauthorized {
+			t.Fatalf("guess %d from a fresh IP should reach the handler, got %d", i, got)
+		}
+	}
+
+	// Sixth guess, yet another fresh IP: the challenge bucket must stop it.
+	if got := post("10.1.1.99", victimToken, "999999"); got != fiber.StatusTooManyRequests {
+		t.Fatalf("expected the challenge bucket to block a 6th IP, got %d "+
+			"(before M5 was fixed this returned 401 forever)", got)
+	}
+
+	// A different login attempt is unaffected — the budget is per challenge,
+	// not global, so one user's exhausted attempt cannot lock out another.
+	other := post("10.1.1.99", "eyJhbGciOiJIUzI1NiJ9.other-challenge.sig", "123456")
+	if other != fiber.StatusUnauthorized {
+		t.Fatalf("an unrelated challenge must not be collateral-blocked, got %d", other)
+	}
+}
+
+// The bucket key must not contain the raw mfa_token: keys are stored in Redis
+// and appear in logs, and an unredeemed mfa_token is a live credential.
+func TestExtractAccountIdentifier_ChallengeTokenIsHashed(t *testing.T) {
+	const raw = "eyJhbGciOiJIUzI1NiJ9.super-secret-challenge.sig"
+
+	app := fiber.New()
+	var got string
+	app.Post("/probe", func(c *fiber.Ctx) error {
+		got = extractAccountIdentifier(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest("POST", "/probe",
+		strings.NewReader(`{"code":"123456","mfa_token":"`+raw+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	if _, err := app.Test(req); err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+
+	if got == "" {
+		t.Fatal("challenge-bearing body must yield an account dimension")
+	}
+	if strings.Contains(got, raw) || strings.Contains(got, "super-secret-challenge") {
+		t.Errorf("raw challenge token leaked into the bucket key: %q", got)
+	}
+	if !strings.HasPrefix(got, "chal_") {
+		t.Errorf("expected a chal_ prefixed digest, got %q", got)
+	}
+
+	// An email in the body still wins — the challenge is only a fallback.
+	app.Post("/probe2", func(c *fiber.Ctx) error {
+		got = extractAccountIdentifier(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+	req2 := httptest.NewRequest("POST", "/probe2",
+		strings.NewReader(`{"email":"User@Example.com","mfa_token":"`+raw+`"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	if _, err := app.Test(req2); err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if got != "user@example.com" {
+		t.Errorf("email must take precedence over the challenge fallback, got %q", got)
+	}
+}

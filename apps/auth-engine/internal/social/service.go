@@ -15,8 +15,11 @@ package social
 import (
 	"context"
 	"errors"
+	"net/url"
+	"strings"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -28,7 +31,84 @@ var (
 	ErrEmailConflict         = errors.New("an account with this email already exists; sign in with your original method then link providers in account settings")
 	ErrEmailRequired         = errors.New("provider did not return an email address; cannot create account")
 	ErrProviderAuthFailed    = errors.New("social provider authentication failed")
+	ErrRedirectNotAllowed    = errors.New("post_callback_redirect is not an authorized redirect target for this application")
 )
+
+// validatePostCallbackRedirect checks a caller-supplied post-callback destination
+// against the initiating Application's registered exact_redirect_uris.
+//
+// Audit H5(c) — open redirect carrying a live access token. post_callback_redirect
+// arrives as a raw query parameter on GET /v1/client/auth/social/:provider/authorize,
+// is persisted verbatim into social_auth_state, and was handed straight to
+// c.Redirect() by the callback handler alongside a freshly issued JWT. The
+// authorize endpoint is publishable-key authenticated, and a publishable key is
+// public by design, so anyone able to start a social login could name their own
+// host and have the victim's browser deliver a live token to it.
+//
+// The allowlist reused here is application.exact_redirect_uris — the same
+// registration record internal/oauth's ValidateClientApplication checks
+// redirect_uri against (internal/oauth/service.go), and the allowlist the
+// social_auth_state schema comment already claims is enforced.
+//
+// A destination is accepted when it matches a registered URI exactly, or when it
+// is same-origin (scheme + host + port) with one. The origin relaxation is what
+// lets an application register "https://app.example.com/callback" and still land
+// the user on "https://app.example.com/dashboard"; it cannot move the token off
+// the application's own origin, which is the property that matters here.
+//
+// Fails closed: an unparseable target, a non-http(s) scheme, a scheme-relative
+// URL, a missing application registration, or an empty allowlist all reject.
+func (s *Service) validatePostCallbackRedirect(
+	ctx context.Context,
+	tenantID, environment, applicationID, target string,
+) error {
+	if target == "" {
+		return nil
+	}
+
+	u, err := url.Parse(target)
+	if err != nil {
+		return ErrRedirectNotAllowed
+	}
+
+	// "javascript:alert(1)", "//evil.com/x" and "/dashboard" all parse without
+	// error, so an explicit absolute-http(s) check is required before comparing.
+	scheme := strings.ToLower(u.Scheme)
+	if (scheme != "http" && scheme != "https") || u.Host == "" {
+		return ErrRedirectNotAllowed
+	}
+
+	// No registered application means there is no allowlist to satisfy.
+	if applicationID == "" {
+		return ErrRedirectNotAllowed
+	}
+
+	client := s.repo.factory.GetClient(ctx, tenantID, environment)
+	app, err := client.Application.Query().
+		Where(application.ID(applicationID)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrRedirectNotAllowed
+		}
+		return err
+	}
+
+	for _, raw := range app.ExactRedirectUris {
+		if raw == target {
+			return nil
+		}
+		registered, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(registered.Scheme, scheme) && strings.EqualFold(registered.Host, u.Host) {
+			return nil
+		}
+	}
+
+	return ErrRedirectNotAllowed
+}
 
 type Service struct {
 	repo *Repository
@@ -49,6 +129,13 @@ func (s *Service) InitiateAuthorize(
 	ctx context.Context,
 	tenantID, applicationID, environment, provider, redirectURI, postCallbackRedirect string,
 ) (string, error) {
+	// Reject an unregistered post-callback destination before anything else
+	// happens — no provider config read, no state row written. See
+	// validatePostCallbackRedirect for the H5(c) open-redirect rationale.
+	if err := s.validatePostCallbackRedirect(ctx, tenantID, environment, applicationID, postCallbackRedirect); err != nil {
+		return "", err
+	}
+
 	clientID, clientSecret, enabled, err := s.repo.GetDecryptedProviderConfig(ctx, tenantID, provider)
 	if err != nil {
 		return "", err
@@ -181,7 +268,20 @@ func (s *Service) HandleCallback(
 		return "", "", err
 	}
 
-	return jwtToken, state.PostCallbackRedirect, nil
+	// Re-validate the stored destination at redemption time rather than trusting
+	// the row. State rows persisted before the H5(c) fix landed carry unvalidated
+	// destinations, and this is the last point before a live JWT is handed to
+	// that host. An unauthorized destination degrades to the JSON response
+	// (token returned in the body to the caller) instead of redirecting.
+	postCallback := state.PostCallbackRedirect
+	if err := s.validatePostCallbackRedirect(ctx, state.TenantID, string(state.Environment), state.ApplicationID, postCallback); err != nil {
+		if !errors.Is(err, ErrRedirectNotAllowed) {
+			return "", "", err
+		}
+		postCallback = ""
+	}
+
+	return jwtToken, postCallback, nil
 }
 
 type ProviderSetupResponse struct {

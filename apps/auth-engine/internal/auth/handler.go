@@ -17,12 +17,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/mail"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -212,7 +214,7 @@ type VerifyMagicLinkDTO struct {
 func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
 	var req SendMagicLinkDTO
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	if tenantID, ok := c.Locals("tenant_id").(string); ok && tenantID != "" {
@@ -228,14 +230,14 @@ func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
 	}
 
 	if !isValidEmail(req.Email) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")
 	}
 
 	userAgent := c.Get("User-Agent", "unknown")
 	ipAddress := c.IP()
 
 	if err := h.service.SendMagicLink(c.UserContext(), req.TenantID, req.Environment, req.Email, req.Name, userAgent, ipAddress); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed sending magic link"})
+		return httperr.SendInternal(c, "auth.send_magic_link", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -258,12 +260,12 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 	}
 
 	if strings.TrimSpace(token) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "token query parameter or body field is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "token query parameter or body field is required")
 	}
 
 	clientType, err := parseAndValidateClientType(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, msgInvalidClientType)
 	}
 
 	userAgent := c.Get("User-Agent", "unknown")
@@ -271,7 +273,7 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 
 	u, accessToken, refreshToken, err := h.service.VerifyMagicLinkToken(c.UserContext(), token, userAgent, ipAddress)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired magic link token"})
+		return httperr.BadRequest(c, httperr.CodeMagicLinkExpired, "invalid or expired magic link token")
 	}
 
 	var namePtr *string
@@ -309,7 +311,7 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 func (h *Handler) SignUp(c *fiber.Ctx) error {
 	var req SignUpRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
@@ -324,20 +326,20 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		req.Environment = "test"
 	}
 	if req.Email == "" || req.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email and password are required")
 	}
 	if !isValidEmail(req.Email) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")
 	}
 	if len(req.Name) > 255 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "name cannot exceed 255 characters"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "name cannot exceed 255 characters")
 	}
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 	clientType, err := parseAndValidateClientType(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, msgInvalidClientType)
 	}
 
 	// Validate tenant password policy (defaulting to 8-character NIST 800-63B baseline)
@@ -350,10 +352,9 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		missingCriteria := policy.ValidatePassword(pol, req.Password)
 		if len(missingCriteria) > 0 {
 			if pol.EnforcementMode == "require" {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error":            "password does not meet policy requirements",
-					"missing_criteria": missingCriteria,
-				})
+				return sendWithDetails(c, fiber.StatusBadRequest, httperr.CodeValidationFailed,
+					"password does not meet policy requirements",
+					fiber.Map{"missing_criteria": missingCriteria})
 			}
 			policyWarning = &PolicyWarningDTO{
 				MissingCriteria: missingCriteria,
@@ -363,10 +364,10 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 
 	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.UserContext(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, userAgent, ipAddress)
 	if err != nil {
-		if errorsIs(err, ErrUserAlreadyExists) {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+		if errors.Is(err, ErrUserAlreadyExists) {
+			return httperr.Conflict(c, httperr.CodeAlreadyExists, ErrUserAlreadyExists.Error())
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "auth.signup", err)
 	}
 
 	// Check tenant security policy compliance (require_email_verification notice on signup)
@@ -419,7 +420,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 func (h *Handler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
@@ -435,22 +436,22 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	}
 
 	if req.Email == "" || req.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email and password are required")
 	}
 	if !isValidEmail(req.Email) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")
 	}
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 	clientType, err := parseAndValidateClientType(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, msgInvalidClientType)
 	}
 
 	u, accessToken, refreshToken, err := h.service.ValidatePasswordCredentials(c.UserContext(), req.TenantID, req.Environment, req.Email, req.Password, userAgent, ipAddress)
 	if err != nil {
-		if strings.Contains(err.Error(), Err2FARequired.Error()) {
+		if errors.Is(err, Err2FARequired) {
 			var namePtr *string
 			if u != nil && u.Name != "" {
 				namePtr = &u.Name
@@ -474,7 +475,11 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 				Methods:     methods,
 			})
 		}
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+		// Every non-2FA failure here already answered 401, including wrapped
+		// internal errors. Keep that status, but never echo the error: the
+		// account-status and token-issuance messages behind it are internal.
+		return sendServiceError(c, "auth.login", fiber.StatusUnauthorized, err,
+			httperr.CodeInvalidCredentials, ErrInvalidCredentials.Error())
 	}
 
 	// Check password policy compliance & force upgrade flags on login
@@ -495,11 +500,9 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		secPol, err := h.policyRepo.GetSecurityPolicy(c.UserContext(), req.TenantID)
 		if err == nil && secPol.RequireEmailVerification && !u.EmailVerified {
 			if secPol.EmailVerificationMode == "hard" {
-				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-					"error":          "email_verification_required",
-					"message":        "email verification is required before signing in",
-					"email_verified": false,
-				})
+				return sendWithDetails(c, fiber.StatusForbidden, httperr.CodeEmailVerificationRequired,
+					"email verification is required before signing in",
+					fiber.Map{"email_verified": false})
 			}
 			if policyWarning == nil {
 				policyWarning = &PolicyWarningDTO{}
@@ -547,12 +550,13 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 func (h *Handler) VerifyEmail(c *fiber.Ctx) error {
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "verification token query parameter is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "verification token query parameter is required")
 	}
 
 	u, err := h.service.VerifyEmailToken(c.UserContext(), token)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.verify_email", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidToken, "invalid or expired verification token")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -571,7 +575,7 @@ func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+		return httperr.InvalidBody(c)
 	}
 
 	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
@@ -587,7 +591,7 @@ func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 	}
 
 	if !isValidEmail(req.Email) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid email address format"})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")
 	}
 
 	if h.resendLimiter != nil {
@@ -599,33 +603,35 @@ func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 		allowed, retryAfter, err := h.resendLimiter.Check(c.UserContext(), key)
 		if err != nil {
 			if errors.Is(err, ratelimit.ErrRedisUnavailable) {
-				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-					"error": "rate limit service unavailable",
-				})
+				return httperr.Send(c, fiber.StatusServiceUnavailable, httperr.CodeServiceUnavailable,
+					"rate limit service unavailable")
 			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "internal rate limiter error",
-			})
+			return httperr.SendInternal(c, "auth.resend_verification.ratelimit", err)
 		}
 		if !allowed {
 			if retryAfter > 0 {
 				c.Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
 			}
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error":               "too many verification email requests for this address, please try again later",
-				"retry_after_seconds": int(retryAfter.Seconds()),
-			})
+			return sendWithDetails(c, fiber.StatusTooManyRequests, httperr.CodeRateLimited,
+				"too many verification email requests for this address, please try again later",
+				fiber.Map{"retry_after_seconds": int(retryAfter.Seconds())})
 		}
 	}
 
 	if err := h.service.ResendVerificationEmail(c.UserContext(), req.TenantID, req.Environment, req.Email); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed processing verification request"})
+		return httperr.SendInternal(c, "auth.resend_verification", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "if an account exists with this email address, a verification link has been sent",
 	})
 }
+
+// msgInvalidClientType is the client-facing message for a rejected
+// X-Authn-Client-Type header. The error parseAndValidateClientType returns
+// interpolates the caller-supplied header value for server-side diagnostics;
+// that value is deliberately NOT reflected back in the response body.
+const msgInvalidClientType = "unrecognized X-Authn-Client-Type header: expected 'web', 'native', or 'mobile'"
 
 // parseAndValidateClientType validates and normalizes the X-Authn-Client-Type HTTP header.
 func parseAndValidateClientType(c *fiber.Ctx) (string, error) {
@@ -660,8 +666,108 @@ func isValidEmail(email string) bool {
 	return true
 }
 
-func errorsIs(err error, target error) bool {
-	return err != nil && err.Error() == target.Error()
+// clientSafeError maps a known package sentinel to a machine-readable code and a
+// message that is safe to return verbatim. Sentinel text is authored for end
+// users, so echoing it preserves the wording callers already depend on.
+//
+// Audit M9/H8: anything that is NOT a sentinel — a wrapped ent/SQL error, a JWT
+// parse failure, an fmt.Errorf carrying a session status or column name — must
+// never reach a response body. ok == false is the signal to fall back to a
+// static message. Matching is done with errors.Is so wrapped sentinels
+// (fmt.Errorf("...: %w", ErrX)) still route correctly.
+func clientSafeError(err error) (httperr.Code, string, bool) {
+	switch {
+	// Credentials and sessions.
+	case errors.Is(err, ErrInvalidCredentials):
+		return httperr.CodeInvalidCredentials, ErrInvalidCredentials.Error(), true
+	case errors.Is(err, ErrUserAlreadyExists):
+		return httperr.CodeAlreadyExists, ErrUserAlreadyExists.Error(), true
+	case errors.Is(err, ErrEmailVerificationRequired):
+		return httperr.CodeEmailVerificationRequired, ErrEmailVerificationRequired.Error(), true
+	case errors.Is(err, Err2FARequired):
+		return httperr.CodeMFARequired, Err2FARequired.Error(), true
+	case errors.Is(err, ErrInvalidToken):
+		return httperr.CodeInvalidToken, ErrInvalidToken.Error(), true
+	case errors.Is(err, ErrInvalidApiKey):
+		return httperr.CodeInvalidToken, ErrInvalidApiKey.Error(), true
+
+	// Second-factor enrollment and verification.
+	case errors.Is(err, ErrNoPendingTOTP):
+		return httperr.CodeNotFound, ErrNoPendingTOTP.Error(), true
+	case errors.Is(err, ErrInvalidTOTPCode):
+		return httperr.CodeInvalidMFACode, ErrInvalidTOTPCode.Error(), true
+	case errors.Is(err, ErrRecoveryCodeAlreadyUsed):
+		return httperr.CodeInvalidMFACode, ErrRecoveryCodeAlreadyUsed.Error(), true
+	case errors.Is(err, ErrInvalidRecoveryCode):
+		return httperr.CodeInvalidMFACode, ErrInvalidRecoveryCode.Error(), true
+	case errors.Is(err, ErrSMSOTPExpired):
+		return httperr.CodeInvalidMFACode, ErrSMSOTPExpired.Error(), true
+	case errors.Is(err, ErrAmbiguous2FAMethod):
+		return httperr.CodeMissingParameter, ErrAmbiguous2FAMethod.Error(), true
+	case errors.Is(err, ErrTooManySMSRequests):
+		return httperr.CodeRateLimited, ErrTooManySMSRequests.Error(), true
+	case errors.Is(err, ErrAdmin2FAMandatory):
+		return httperr.CodeForbidden, ErrAdmin2FAMandatory.Error(), true
+	case errors.Is(err, ErrPasskeyCloneDetected):
+		return httperr.CodeInvalidMFACode, ErrPasskeyCloneDetected.Error(), true
+	case errors.Is(err, ErrPasskeyNotFound):
+		return httperr.CodeNotFound, ErrPasskeyNotFound.Error(), true
+
+	// Guardian enrollment (FR-5).
+	case errors.Is(err, ErrMaxGuardiansExceeded):
+		return httperr.CodeValidationFailed, ErrMaxGuardiansExceeded.Error(), true
+	case errors.Is(err, ErrGuardianNotFound):
+		return httperr.CodeNotFound, ErrGuardianNotFound.Error(), true
+	case errors.Is(err, ErrInvalidInviteToken):
+		return httperr.CodeInvalidToken, ErrInvalidInviteToken.Error(), true
+
+	// Account recovery (FR-5).
+	case errors.Is(err, ErrNoRecoveryMethodsAvailable):
+		return httperr.CodeNotFound, ErrNoRecoveryMethodsAvailable.Error(), true
+	case errors.Is(err, ErrOriginBlacklisted):
+		return httperr.CodeForbidden, ErrOriginBlacklisted.Error(), true
+	case errors.Is(err, ErrInvalidCancellationPoint):
+		return httperr.CodeInvalidToken, ErrInvalidCancellationPoint.Error(), true
+	case errors.Is(err, ErrInvalidRecoveryRequest):
+		return httperr.CodeInvalidToken, ErrInvalidRecoveryRequest.Error(), true
+	case errors.Is(err, ErrAccountLockedOut):
+		return httperr.CodeRateLimited, ErrAccountLockedOut.Error(), true
+	case errors.Is(err, ErrHigherTierMethodsNotExhausted):
+		return httperr.CodeForbidden, ErrHigherTierMethodsNotExhausted.Error(), true
+	case errors.Is(err, ErrInvalidProof):
+		return httperr.CodeInvalidCredentials, ErrInvalidProof.Error(), true
+	}
+	return "", "", false
+}
+
+// sendServiceError writes the canonical envelope for a service-layer error
+// without ever putting the error's own text in the body.
+//
+// status is always the status the call site already used — this helper never
+// re-routes a response to a different HTTP status. Known sentinels keep their
+// user-facing wording; everything else is logged server-side under op and
+// answered with the static fallback.
+func sendServiceError(c *fiber.Ctx, op string, status int, err error, fallbackCode httperr.Code, fallbackMsg string) error {
+	if code, msg, ok := clientSafeError(err); ok {
+		return httperr.Send(c, status, code, msg)
+	}
+	if err != nil {
+		log.Printf("[error] %s %s %s: %v", c.Method(), c.Path(), op, err)
+	}
+	return httperr.Send(c, status, fallbackCode, fallbackMsg)
+}
+
+// sendWithDetails writes the canonical envelope plus a small set of extra,
+// non-sensitive fields that clients already branch on (missing_criteria,
+// retry_after_seconds, email_verified). Extras must never carry internal error
+// text — they exist so converting to the envelope does not silently drop a
+// documented part of the response contract.
+func sendWithDetails(c *fiber.Ctx, status int, code httperr.Code, msg string, details fiber.Map) error {
+	body := fiber.Map{"error": msg, "code": string(code)}
+	for k, v := range details {
+		body[k] = v
+	}
+	return c.Status(status).JSON(body)
 }
 
 // TOTPConfirmRequest payload for confirming TOTP enrollment.
@@ -701,17 +807,19 @@ func extractBearerToken(c *fiber.Ctx) string {
 func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	result, err := h.service.EnrollTOTP(c.UserContext(), claims.Sub)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "auth.totp.enroll", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -725,22 +833,25 @@ func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
 func (h *Handler) ConfirmTOTP(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	var req TOTPConfirmRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Code) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "code is required")
 	}
 
 	res, err := h.service.ConfirmTOTP(c.UserContext(), claims.Sub, strings.TrimSpace(req.Code))
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.totp.confirm", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidMFACode, "unable to confirm TOTP enrollment with the supplied code")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(res)
@@ -751,7 +862,7 @@ func (h *Handler) ConfirmTOTP(c *fiber.Ctx) error {
 func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	var req TOTPVerifyRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Code) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "code is required")
 	}
 
 	mfaToken := req.MFAToken
@@ -760,14 +871,15 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	userAgent := c.Get("User-Agent")
 	clientType, err := parseAndValidateClientType(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, msgInvalidClientType)
 	}
 
 	// 1. If MFA challenge token is provided (login 2FA verification flow)
 	if mfaToken != "" {
 		u, accessToken, refreshToken, err := h.service.VerifyTOTPChallenge(c.UserContext(), mfaToken, strings.TrimSpace(req.Code), req.Method, userAgent, ipAddress)
 		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+			return sendServiceError(c, "auth.2fa.verify_challenge", fiber.StatusBadRequest, err,
+				httperr.CodeInvalidMFACode, "two-factor verification failed")
 		}
 
 		var namePtr *string
@@ -806,16 +918,19 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	// 2. Direct TOTP verification within an authenticated session
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token or two_factor_token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token or two_factor_token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	if err := h.service.Verify2FACode(c.UserContext(), claims.Sub, strings.TrimSpace(req.Code), req.Method); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.2fa.verify", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidMFACode, "two-factor verification failed")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -828,27 +943,30 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	var req TOTPDisableRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "password is required for 2FA step-up confirmation"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "password is required for 2FA step-up confirmation")
 	}
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 
 	if err := h.service.DisableTOTP(c.UserContext(), claims.Sub, req.Password, userAgent, ipAddress); err != nil {
-		if errorsIs(err, ErrInvalidCredentials) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password confirmation"})
+		if errors.Is(err, ErrInvalidCredentials) {
+			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password confirmation")
 		}
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.totp.disable", fiber.StatusBadRequest, err,
+			httperr.CodeForbidden, "unable to disable TOTP 2FA")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -866,25 +984,28 @@ type RecoveryCodesRegenerateRequest struct {
 func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	var req RecoveryCodesRegenerateRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "password is required for recovery codes regeneration step-up"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "password is required for recovery codes regeneration step-up")
 	}
 
 	codes, err := h.service.RegenerateRecoveryCodes(c.UserContext(), claims.Sub, req.Password)
 	if err != nil {
-		if errorsIs(err, ErrInvalidCredentials) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password confirmation"})
+		if errors.Is(err, ErrInvalidCredentials) {
+			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password confirmation")
 		}
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.recovery_codes.regenerate", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to regenerate recovery codes")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -898,17 +1019,19 @@ func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 func (h *Handler) GetRecoveryCodesStatus(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	res, err := h.service.GetRecoveryCodesStatus(c.UserContext(), claims.Sub)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "auth.recovery_codes.status", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(res)
@@ -940,17 +1063,20 @@ type PasskeyDeleteRequest struct {
 func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	options, sessionID, err := h.service.BeginWebAuthnRegistration(c.UserContext(), claims.Sub)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.webauthn.register_begin", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to begin passkey registration")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -963,12 +1089,14 @@ func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
 func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	sessionID := c.Query("session_id")
@@ -982,12 +1110,12 @@ func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 		}
 	}
 	if sessionID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "session_id is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "session_id is required")
 	}
 
 	httpReq, err := http.NewRequestWithContext(c.UserContext(), c.Method(), c.OriginalURL(), bytes.NewReader(c.Body()))
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid http request format"})
+		return httperr.BadRequest(c, httperr.CodeInvalidRequestBody, "invalid http request format")
 	}
 	for k, v := range c.GetReqHeaders() {
 		if len(v) > 0 {
@@ -998,7 +1126,8 @@ func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 
 	res, err := h.service.FinishWebAuthnRegistration(c.UserContext(), claims.Sub, sessionID, httpReq, passkeyName)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.webauthn.register_finish", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to complete passkey registration")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(res)
@@ -1008,12 +1137,13 @@ func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 func (h *Handler) BeginWebAuthnLogin(c *fiber.Ctx) error {
 	var req WebAuthnLoginBeginRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.MFAToken) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "mfa_token is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "mfa_token is required")
 	}
 
 	options, sessionID, userID, err := h.service.BeginWebAuthnLogin(c.UserContext(), req.MFAToken)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.webauthn.login_begin", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to begin passkey login")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1038,19 +1168,19 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 		}
 	}
 	if mfaToken == "" || sessionID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "mfa_token and session_id are required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "mfa_token and session_id are required")
 	}
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 	clientType, err := parseAndValidateClientType(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed, msgInvalidClientType)
 	}
 
 	httpReq, err := http.NewRequestWithContext(c.UserContext(), c.Method(), c.OriginalURL(), bytes.NewReader(c.Body()))
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid http request format"})
+		return httperr.BadRequest(c, httperr.CodeInvalidRequestBody, "invalid http request format")
 	}
 	for k, v := range c.GetReqHeaders() {
 		if len(v) > 0 {
@@ -1061,7 +1191,8 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 
 	u, accessToken, refreshToken, err := h.service.FinishWebAuthnLogin(c.UserContext(), mfaToken, sessionID, httpReq, userAgent, ipAddress)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.webauthn.login_finish", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to complete passkey login")
 	}
 
 	var namePtr *string
@@ -1101,17 +1232,19 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	credentials, err := h.service.ListWebAuthnPasskeys(c.UserContext(), claims.Sub)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return httperr.SendInternal(c, "auth.webauthn.list_passkeys", err)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1123,27 +1256,30 @@ func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
 func (h *Handler) DeleteWebAuthnPasskey(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	passkeyID := c.Params("id")
 	if passkeyID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "passkey id is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "passkey id is required")
 	}
 
 	var req PasskeyDeleteRequest
 	_ = c.BodyParser(&req)
 
 	if err := h.service.DeleteWebAuthnPasskey(c.UserContext(), claims.Sub, passkeyID, req.Password); err != nil {
-		if errorsIs(err, ErrInvalidCredentials) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password step-up confirmation required to delete your last remaining 2FA method"})
+		if errors.Is(err, ErrInvalidCredentials) {
+			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password step-up confirmation required to delete your last remaining 2FA method")
 		}
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.webauthn.delete_passkey", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to delete passkey")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1170,21 +1306,24 @@ type SMSDisableRequest struct {
 func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	var req SMSEnrollRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.PhoneNumber) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "phone_number is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "phone_number is required")
 	}
 
 	if err := h.service.BeginSMSEnrollment(c.UserContext(), claims.Sub, strings.TrimSpace(req.PhoneNumber)); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.sms.enroll", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to begin SMS enrollment")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1197,22 +1336,25 @@ func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	var req SMSConfirmRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Code) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "code is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "code is required")
 	}
 
 	res, err := h.service.ConfirmSMSEnrollment(c.UserContext(), claims.Sub, strings.TrimSpace(req.Code))
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.sms.confirm", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidMFACode, "unable to confirm SMS enrollment with the supplied code")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(res)
@@ -1222,24 +1364,27 @@ func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
 func (h *Handler) DisableSMS(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized: session token required"})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": fmt.Sprintf("unauthorized session: %v", err)})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
 	var req SMSDisableRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "password is required"})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "password is required")
 	}
 
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 
 	if err := h.service.DisableSMS2FA(c.UserContext(), claims.Sub, req.Password, userAgent, ipAddress); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return sendServiceError(c, "auth.sms.disable", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to disable SMS 2FA")
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1254,15 +1399,13 @@ func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
 	// populated here. Verify the bearer token directly, as the TOTP/SMS handlers do.
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Authentication required. Please step-up re-authenticate to manage recovery contacts.",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"Authentication required. Please step-up re-authenticate to manage recovery contacts.")
 	}
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Authentication required. Please step-up re-authenticate to manage recovery contacts.",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"Authentication required. Please step-up re-authenticate to manage recovery contacts.")
 	}
 	userID := claims.Sub
 
@@ -1270,17 +1413,15 @@ func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
 		Guardians []InviteGuardianInput `json:"guardians"`
 	}
 	if err := c.BodyParser(&req); err != nil || len(req.Guardians) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid payload: must provide 1 to 5 guardian email and name objects",
-		})
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			"Invalid payload: must provide 1 to 5 guardian email and name objects")
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", c.Protocol(), c.Hostname())
 	res, err := h.guardianService.InviteGuardians(c.Context(), userID, req.Guardians, baseURL)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.guardians.invite", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to invite the requested guardians")
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(res)
@@ -1293,15 +1434,12 @@ func (h *Handler) AcceptGuardianInvite(c *fiber.Ctx) error {
 		Token     string `json:"token"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.ContactID == "" || req.Token == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "contact_id and token are required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "contact_id and token are required")
 	}
 
 	if err := h.guardianService.AcceptGuardianInvite(c.Context(), req.ContactID, req.Token); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.guardians.accept", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidToken, "invalid or expired guardian invitation")
 	}
 
 	return c.JSON(fiber.Map{
@@ -1315,23 +1453,17 @@ func (h *Handler) ListGuardians(c *fiber.Ctx) error {
 	// is never set here. Verify the bearer token directly, like the other authed handlers.
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Authentication required",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Authentication required",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
 	userID := claims.Sub
 
 	dtos, err := h.guardianService.ListGuardians(c.Context(), userID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "auth.guardians.list", err)
 	}
 
 	return c.JSON(fiber.Map{
@@ -1345,29 +1477,22 @@ func (h *Handler) RevokeGuardian(c *fiber.Ctx) error {
 	// is never set here. Verify the bearer token directly, like the other authed handlers.
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Authentication required",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Authentication required",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
 	}
 	userID := claims.Sub
 
 	contactID := c.Params("id")
 	if contactID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Guardian contact ID is required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "Guardian contact ID is required")
 	}
 
 	if err := h.guardianService.RevokeGuardian(c.Context(), userID, contactID); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.guardians.revoke", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to revoke this guardian")
 	}
 
 	return c.JSON(fiber.Map{
@@ -1384,9 +1509,7 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.Email == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "email address is required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email address is required")
 	}
 
 	tenantID := req.TenantID
@@ -1414,22 +1537,20 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 	}
 
 	res, err := h.recoveryService.InitiateRecovery(c.Context(), input)
+	// These two branches previously returned an inverted envelope — the machine
+	// code in `error` and the prose in `message` — which is what forced the SDK
+	// to substring-match across both fields. The prose and the machine code keep
+	// their existing values; only the fields they live in are swapped back.
 	if errors.Is(err, ErrNoRecoveryMethodsAvailable) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error":   "no_recovery_methods_available",
-			"message": "No account recovery methods are configured for this account. Please contact system support for administrative assistance.",
-		})
+		return httperr.Send(c, fiber.StatusBadRequest, httperr.Code("no_recovery_methods_available"),
+			"No account recovery methods are configured for this account. Please contact system support for administrative assistance.")
 	}
 	if errors.Is(err, ErrOriginBlacklisted) {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error":   "origin_blacklisted",
-			"message": "origin IP, subnet, or device fingerprint is temporarily blacklisted following a security cancellation",
-		})
+		return httperr.Send(c, fiber.StatusForbidden, httperr.Code("origin_blacklisted"),
+			"origin IP, subnet, or device fingerprint is temporarily blacklisted following a security cancellation")
 	}
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return httperr.SendInternal(c, "auth.recovery.initiate", err)
 	}
 
 	// H3: never expose the cancellation token to the party that initiated recovery.
@@ -1450,16 +1571,13 @@ func (h *Handler) SubmitGuardianProof(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.RecoveryRequestID == "" || req.SharePayload == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "recovery_request_id and share_payload are required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id and share_payload are required")
 	}
 
 	thresholdReached, err := h.recoveryService.SubmitGuardianShareProof(c.Context(), req.RecoveryRequestID, req.SharePayload)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.recovery.proof_guardian", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1476,15 +1594,12 @@ func (h *Handler) SubmitOldPasswordProof(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.RecoveryRequestID == "" || req.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "recovery_request_id and password are required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id and password are required")
 	}
 
 	if err := h.recoveryService.SubmitOldPasswordProof(c.Context(), req.RecoveryRequestID, req.Password); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.recovery.proof_old_password", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1501,15 +1616,12 @@ func (h *Handler) SubmitSecurityQuestionsProof(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.RecoveryRequestID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "recovery_request_id is required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id is required")
 	}
 
 	if err := h.recoveryService.SubmitSecurityQuestionsProof(c.Context(), req.RecoveryRequestID, req.Answers); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.recovery.proof_security_questions", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1522,9 +1634,7 @@ func (h *Handler) SubmitSecurityQuestionsProof(c *fiber.Ctx) error {
 func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 	var req ClaimAccountInput
 	if err := c.BodyParser(&req); err != nil || req.RequestID == "" || req.ClaimToken == "" || req.NewPassword == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "request_id, claim_token, and new_password are required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "request_id, claim_token, and new_password are required")
 	}
 
 	req.IPAddress = c.IP()
@@ -1533,9 +1643,8 @@ func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 
 	res, err := h.recoveryService.ClaimAccount(c.Context(), req)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.recovery.claim", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidToken, "invalid or expired account claim request")
 	}
 
 	if res.DeviceCookie != "" {
@@ -1559,9 +1668,7 @@ func (h *Handler) CancelRecoveryAuth(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.RecoveryRequestID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "recovery_request_id is required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id is required")
 	}
 
 	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID/sessionID
@@ -1570,23 +1677,20 @@ func (h *Handler) CancelRecoveryAuth(c *fiber.Ctx) error {
 	// session, matching the other authenticated handlers in this file.
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unauthorized: session token required",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": fmt.Sprintf("unauthorized session: %v", err),
-		})
+		// The JWT parse error describes why the token failed (expired, bad
+		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 	userID := claims.Sub
 	sessionID := claims.SessionID
 
 	if err := h.recoveryService.CancelRecoveryRequestByAuthenticatedSession(c.Context(), userID, req.RecoveryRequestID, sessionID); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.recovery.cancel_authenticated", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidToken, ErrInvalidCancellationPoint.Error())
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -1607,15 +1711,12 @@ func (h *Handler) CancelRecoveryToken(c *fiber.Ctx) error {
 	}
 
 	if strings.TrimSpace(req.CancellationToken) == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "cancellation_token is required",
-		})
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "cancellation_token is required")
 	}
 
 	if err := h.recoveryService.CancelRecoveryRequestBySignedToken(c.Context(), req.CancellationToken); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return sendServiceError(c, "auth.recovery.cancel_token", fiber.StatusBadRequest, err,
+			httperr.CodeInvalidToken, ErrInvalidCancellationPoint.Error())
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{

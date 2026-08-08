@@ -129,7 +129,7 @@ func main() {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "password_updated"})
 	})
 
-	impersonationHandler.RegisterRoutes(app, adminMw, nil)
+	impersonationHandler.RegisterRoutes(app, adminMw, nil, nil)
 
 	// Step 1: Attempt Impersonation WITHOUT Step-Up Password -> 400 Bad Request
 	log.Println("\n--- Test 1: Impersonation without Step-Up Verification ---")

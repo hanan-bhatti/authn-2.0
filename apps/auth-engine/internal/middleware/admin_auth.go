@@ -29,6 +29,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
@@ -62,18 +63,16 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 		}
 
 		if raw == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "admin authentication required: provide Authorization: Bearer sk_... (backend) or Bearer <jwt> with tenant_admin role (console)",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"admin authentication required: provide Authorization: Bearer sk_... (backend) or Bearer <jwt> with tenant_admin role (console)")
 		}
 
 		// Route 1: sk_... secret key (backend server / SDK path)
 		if strings.HasPrefix(raw, "sk_") {
 			key, app, err := apiKeyService.ValidateKey(c.UserContext(), raw, apikey.TypeSecret)
 			if err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"error": "invalid, expired, or revoked secret key",
-				})
+				return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+					"invalid, expired, or revoked secret key")
 			}
 			envStr := string(key.Environment)
 			privacyCtx := privacy.NewContext(c.UserContext(), app.TenantID, app.ID, envStr)
@@ -91,25 +90,24 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 		if strings.HasPrefix(raw, "eyJ") {
 			claims, err := jwtpkg.VerifyAccessToken(raw, signingSecret)
 			if err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"error": "invalid or expired console session token",
-				})
+				return httperr.Unauthorized(c, httperr.CodeInvalidToken,
+					"invalid or expired console session token")
 			}
 			if claims.Role != "tenant_admin" {
-				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-					"error": "forbidden: tenant_admin role required — regular user JWTs cannot access admin routes",
-				})
+				return httperr.Forbidden(c, httperr.CodeTenantAdminRequired,
+					"forbidden: tenant_admin role required — regular user JWTs cannot access admin routes")
 			}
 
 			// Mandatory Admin 2FA enforcement
 			if v != nil {
 				count, err := v.CountActivePrimary2FAMethods(c.UserContext(), claims.Sub)
 				if err == nil && count == 0 {
-					return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-						"error":      "admin 2FA required: administrator accounts must enroll in 2FA (TOTP or Passkey) before accessing admin features",
-						"code":       "admin_2fa_required",
-						"enroll_uri": "/v1/client/2fa/totp/enroll",
-					})
+					// The flat envelope has no room for the former `enroll_uri`
+					// field, so the enrollment path is carried in the prose. The
+					// `admin_2fa_required` code is preserved verbatim — it is what
+					// the console branches on to redirect into enrollment.
+					return httperr.Forbidden(c, "admin_2fa_required",
+						"admin 2FA required: administrator accounts must enroll in 2FA (TOTP or Passkey) at /v1/client/2fa/totp/enroll before accessing admin features")
 				}
 			}
 
@@ -124,9 +122,8 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 		}
 
 		// Unrecognised credential format
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unrecognised credential format: expected sk_... secret key or eyJ... JWT access token",
-		})
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"unrecognised credential format: expected sk_... secret key or eyJ... JWT access token")
 	}
 }
 

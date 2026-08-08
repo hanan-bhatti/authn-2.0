@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -229,6 +230,22 @@ func BuildKey(tenantID string, ip string, account string, endpoint string) strin
 // name the account a request is acting against.
 var accountIdentifierFields = []string{"email", "username", "identifier", "phone_number"}
 
+// challengeIdentifierFields name opaque per-attempt credentials that stand in
+// for an account when the body carries no human identifier.
+//
+// Second-factor verification (POST /2fa/totp/verify, /auth/2fa/verify,
+// /2fa/webauthn/login/*) posts {"code", "mfa_token"} — no email, no username.
+// extractAccountIdentifier therefore returned "" and the request fell through
+// to the per-IP dimension ALONE. A six-digit TOTP is a 10^6 keyspace, and an
+// attacker who already holds the password (they must, to have obtained an
+// mfa_token) could rotate source IPs and brute-force the second factor with no
+// effective ceiling.
+//
+// Keying on the challenge token binds the budget to the login attempt itself,
+// which no amount of IP rotation escapes. Minting a fresh mfa_token requires
+// another /login, and that path is bucketed per-account by email.
+var challengeIdentifierFields = []string{"mfa_token", "session_id"}
+
 // ipBudgetMultiplier widens the per-IP allowance when a per-account bucket is
 // also enforcing the strict limit on the same request. It exists so that a
 // shared egress IP (corporate NAT, campus, mobile carrier) is not locked out by
@@ -257,6 +274,19 @@ func extractAccountIdentifier(c *fiber.Ctx) string {
 		if v, ok := parsed[field].(string); ok {
 			if v = strings.ToLower(strings.TrimSpace(v)); v != "" {
 				return v
+			}
+		}
+	}
+
+	// No human identifier. Fall back to the challenge credential so that
+	// second-factor verification still gets a bucket an attacker cannot shed by
+	// changing IP. The token is hashed: the key is stored in Redis and may be
+	// logged, and an mfa_token is a live credential until it is redeemed.
+	for _, field := range challengeIdentifierFields {
+		if v, ok := parsed[field].(string); ok {
+			if v = strings.TrimSpace(v); v != "" {
+				sum := sha256.Sum256([]byte(v))
+				return "chal_" + hex.EncodeToString(sum[:8])
 			}
 		}
 	}
@@ -314,23 +344,23 @@ func (l *Limiter) Middleware() fiber.Handler {
 			allowed, retryAfter, err := l.CheckWithLimit(c.UserContext(), d.key, d.limit)
 			if err != nil {
 				if errors.Is(err, ErrRedisUnavailable) {
-					return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-						"error": "rate limit service unavailable",
-					})
+					return httperr.Send(c, fiber.StatusServiceUnavailable,
+						httperr.CodeServiceUnavailable, "rate limit service unavailable")
 				}
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": "internal rate limiter error",
-				})
+				return httperr.SendInternal(c, "ratelimit.check", err)
 			}
 
 			if !allowed {
+				// Retry-After is the HTTP-standard carrier for this value and is
+				// what the SDK reads (packages/sdk-js/src/http.ts parses the
+				// header, not the body). The body stays the canonical flat
+				// {error, code} envelope — the former `retry_after_seconds` body
+				// field was the only place in the engine that extended it.
 				if retryAfter > 0 {
 					c.Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
 				}
-				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-					"error":               "too many attempts, please try again later",
-					"retry_after_seconds": int(retryAfter.Seconds()),
-				})
+				return httperr.TooManyRequests(c, httperr.CodeRateLimited,
+					"too many attempts, please try again later")
 			}
 		}
 
