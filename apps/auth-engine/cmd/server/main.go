@@ -295,7 +295,7 @@ func main() {
 	rbacHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
 	webhookHandler.RegisterRoutes(app, adminMiddleware)
 	impersonationHandler.RegisterRoutes(app, adminMiddleware, pkMiddleware)
-	orgHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
+	orgHandler.RegisterRoutes(app, clientAuthMiddleware, pkMiddleware, adminMiddleware)
 	samlHandler.RegisterRoutes(app, pkMiddleware, adminMiddleware)
 
 	// 6. Graceful Shutdown Listener

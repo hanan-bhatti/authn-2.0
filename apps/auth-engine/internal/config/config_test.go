@@ -47,3 +47,35 @@ func TestConfig_Defaults(t *testing.T) {
 		t.Errorf("expected RateLimitViolationResetDays default 7, got %d", cfg.RateLimitViolationResetDays)
 	}
 }
+
+// TestConfig_CookieSecure locks in the audit H4 contract: refresh-token cookies
+// carry Secure on every TLS origin, and only plaintext dev opts out. Both
+// directions matter — a false negative ships 30-day refresh tokens in cleartext,
+// a false positive silently breaks local development.
+func TestConfig_CookieSecure(t *testing.T) {
+	cases := []struct {
+		name       string
+		appBaseURL string
+		want       bool
+	}{
+		{name: "https production domain", appBaseURL: "https://auth.acme.com", want: true},
+		{name: "https with trailing slash", appBaseURL: "https://auth.acme.com/", want: true},
+		{name: "https with port", appBaseURL: "https://localhost:8443", want: true},
+		{name: "uppercase scheme", appBaseURL: "HTTPS://AUTH.ACME.COM", want: true},
+		{name: "surrounding whitespace", appBaseURL: "  https://auth.acme.com  ", want: true},
+		{name: "http localhost dev", appBaseURL: "http://localhost:8080", want: false},
+		{name: "http lan host", appBaseURL: "http://192.168.1.20:8080", want: false},
+		{name: "empty falls back to insecure", appBaseURL: "", want: false},
+		// Guards against a naive strings.Contains("https") check.
+		{name: "http host merely containing https", appBaseURL: "http://https.example.com", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &EnvConfig{AppBaseURL: tc.appBaseURL}
+			if got := cfg.CookieSecure(); got != tc.want {
+				t.Errorf("CookieSecure() with AppBaseURL=%q = %v, want %v", tc.appBaseURL, got, tc.want)
+			}
+		})
+	}
+}

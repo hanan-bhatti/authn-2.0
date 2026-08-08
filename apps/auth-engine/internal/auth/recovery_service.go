@@ -34,7 +34,6 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
-	"golang.org/x/crypto/argon2"
 )
 
 var (
@@ -80,7 +79,37 @@ func NewRecoveryService(repo *Repository, telemetry *TelemetryService, policyRep
 }
 
 // InitiateRecovery resolves identity-proof methods in priority order for a locked-out user based on tenant policy.
+// recoveryInitiateFloor is the minimum wall-clock duration of every
+// InitiateRecovery call, real account or not.
+//
+// Enumeration resistance here needs the two paths to be indistinguishable, and
+// an identical response body is not enough — the caller can also time the
+// request. The previous approach ran a dummy Argon2id hash for unknown emails to
+// "pad" them, but the real path never hashes anything (it resolves recovery
+// methods from a handful of indexed reads), so the pad made the unknown-email
+// path roughly an order of magnitude SLOWER than a real one and handed an
+// attacker the exact oracle it was meant to remove — measured live at 166-234ms
+// for unknown emails against 9-45ms for a real account.
+//
+// A floor applied to both paths removes the differential instead of inverting
+// it. 250ms sits above the observed cost of the real path (which does more I/O
+// than the unknown-email path) with headroom for a loaded database; recovery
+// initiation is a rare, human-driven operation, so the added latency is not
+// user-visible in any meaningful way.
+const recoveryInitiateFloor = 250 * time.Millisecond
+
+// padToFloor blocks until at least floor has elapsed since start. Callers defer
+// it so every return path — including error returns, which are themselves
+// account-existence signals — pays the same cost.
+func padToFloor(start time.Time, floor time.Duration) {
+	if elapsed := time.Since(start); elapsed < floor {
+		time.Sleep(floor - elapsed)
+	}
+}
+
 func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRecoveryInput) (*InitiateRecoveryResponse, error) {
+	defer padToFloor(time.Now(), recoveryInitiateFloor)
+
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
 		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, input.TenantID)
@@ -90,11 +119,9 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 
 	u, err := s.repo.FindUserByEmail(ctx, input.TenantID, input.Environment, input.Email)
 	if err != nil || u == nil {
-		// Timing-safe non-existent user handling: execute dummy Argon2id calculation
-		dummySalt := make([]byte, 16)
-		_ = argon2.IDKey([]byte("dummy_password_timing_pad"), dummySalt, 1, 64*1024, 4, 32)
-
-		// Return standard generic response with dummy ID and email_otp to prevent enumeration
+		// Unknown email: return a response indistinguishable from a real one.
+		// The deferred floor above equalizes timing; no dummy hashing is needed
+		// (and the hash that used to live here actively created the leak).
 		dummyReqID := fmt.Sprintf("req_%s", uuid.New().String()[:12])
 		return &InitiateRecoveryResponse{
 			RecoveryRequestID:     dummyReqID,

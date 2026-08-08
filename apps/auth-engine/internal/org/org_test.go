@@ -129,8 +129,8 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Errorf("expected duplicate slug error, got nil")
 	}
 
-	// 3. Get Organization
-	fetched, err := svc.GetOrganization(ctx, "tnt_test", created.ID)
+	// 3. Get Organization (as the creator, who is auto-assigned org_admin — real authz path)
+	fetched, err := svc.GetOrganization(ctx, "tnt_test", created.ID, "usr_creator", false)
 	if err != nil {
 		t.Fatalf("failed to get org: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestOrganizationLifecycle(t *testing.T) {
 	newName := "Acme Corp Global"
 	updated, err := svc.UpdateOrganization(ctx, "tnt_test", "usr_creator", created.ID, org.UpdateOrgRequest{
 		Name: &newName,
-	}, "127.0.0.1", "TestAgent")
+	}, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to update org: %v", err)
 	}
@@ -151,13 +151,13 @@ func TestOrganizationLifecycle(t *testing.T) {
 	}
 
 	// 5. Delete Organization
-	err = svc.DeleteOrganization(ctx, "tnt_test", "usr_creator", created.ID, "127.0.0.1", "TestAgent")
+	err = svc.DeleteOrganization(ctx, "tnt_test", "usr_creator", created.ID, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to delete org: %v", err)
 	}
 
 	// 6. Verify NotFound
-	_, err = svc.GetOrganization(ctx, "tnt_test", created.ID)
+	_, err = svc.GetOrganization(ctx, "tnt_test", created.ID, "usr_creator", false)
 	if err == nil {
 		t.Errorf("expected NotFound error after deletion, got nil")
 	}
@@ -180,7 +180,7 @@ func TestMemberManagement(t *testing.T) {
 	mem, err := svc.AddMember(ctx, "tnt_test", "usr_creator", orgObj.ID, org.AddMemberRequest{
 		UserID: "usr_invitee",
 		RoleID: "editor",
-	}, "127.0.0.1", "TestAgent")
+	}, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to add member: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestMemberManagement(t *testing.T) {
 	}
 
 	// List members
-	members, err := svc.ListOrgMembers(ctx, "tnt_test", orgObj.ID, 10, 0)
+	members, err := svc.ListOrgMembers(ctx, "tnt_test", orgObj.ID, "usr_creator", false, 10, 0)
 	if err != nil {
 		t.Fatalf("failed to list members: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestMemberManagement(t *testing.T) {
 	// Update member role
 	updatedMem, err := svc.UpdateMemberRole(ctx, "tnt_test", "usr_creator", orgObj.ID, "usr_invitee", org.UpdateMemberRoleRequest{
 		RoleID: "org_admin",
-	}, "127.0.0.1", "TestAgent")
+	}, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to update member role: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestMemberManagement(t *testing.T) {
 	}
 
 	// Remove member
-	err = svc.RemoveMember(ctx, "tnt_test", "usr_creator", orgObj.ID, "usr_invitee", "127.0.0.1", "TestAgent")
+	err = svc.RemoveMember(ctx, "tnt_test", "usr_creator", orgObj.ID, "usr_invitee", false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to remove member: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestInvitationFlow(t *testing.T) {
 		Email:      "invitee@example.com",
 		RoleID:     "editor",
 		ExpiresHrs: 24,
-	}, "127.0.0.1", "TestAgent")
+	}, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to create invitation: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestInvitationFlow(t *testing.T) {
 	}
 
 	// List Pending Invitations
-	invs, err := svc.ListPendingInvitations(ctx, "tnt_test", orgObj.ID, 10, 0)
+	invs, err := svc.ListPendingInvitations(ctx, "tnt_test", orgObj.ID, "usr_creator", false, 10, 0)
 	if err != nil {
 		t.Fatalf("failed to list pending invitations: %v", err)
 	}
@@ -286,13 +286,13 @@ func TestRevokeInvitation(t *testing.T) {
 	inv, err := svc.CreateInvitation(ctx, "tnt_test", "usr_creator", orgObj.ID, org.CreateInvitationRequest{
 		Email:  "revoke@example.com",
 		RoleID: "viewer",
-	}, "127.0.0.1", "TestAgent")
+	}, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to create invitation: %v", err)
 	}
 
 	// Revoke Invitation
-	err = svc.RevokeInvitation(ctx, "tnt_test", "usr_creator", orgObj.ID, inv.ID, "127.0.0.1", "TestAgent")
+	err = svc.RevokeInvitation(ctx, "tnt_test", "usr_creator", orgObj.ID, inv.ID, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to revoke invitation: %v", err)
 	}
@@ -303,5 +303,86 @@ func TestRevokeInvitation(t *testing.T) {
 	}, "127.0.0.1", "TestAgent")
 	if err == nil {
 		t.Errorf("expected error accepting revoked invitation, got nil")
+	}
+}
+
+// TestAuthorizationEnforcement locks in the C2 fix: non-members are denied reads,
+// and non-admin members are denied mutations. The admin-tier bypass (isAdmin=true)
+// is verified to still succeed. This is the regression guard for the pk-only vuln.
+func TestAuthorizationEnforcement(t *testing.T) {
+	svc, factory, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := privacy.NewBypassContext(context.Background())
+
+	// Creator makes an org and is auto-assigned org_admin.
+	orgObj, err := svc.CreateOrganization(ctx, "tnt_test", "usr_creator", org.CreateOrgRequest{
+		Name: "Authz Test Org",
+	}, "127.0.0.1", "TestAgent")
+	if err != nil {
+		t.Fatalf("failed to create org: %v", err)
+	}
+
+	// Seed a stranger user who is NOT a member of the org.
+	client := factory.GetClient(ctx, "tnt_test", "")
+	_, err = client.User.Create().
+		SetID("usr_stranger").
+		SetTenantID("tnt_test").
+		SetEmail("stranger@example.com").
+		SetPasswordHash("hash").
+		Save(ctx)
+	if err != nil && !ent.IsConstraintError(err) {
+		t.Fatalf("failed to seed stranger: %v", err)
+	}
+
+	// 1. Non-member is DENIED read (GetOrganization).
+	if _, err := svc.GetOrganization(ctx, "tnt_test", orgObj.ID, "usr_stranger", false); err == nil {
+		t.Errorf("SECURITY: expected non-member to be denied GetOrganization, got nil error")
+	}
+
+	// 2. Non-member is DENIED read (ListOrgMembers).
+	if _, err := svc.ListOrgMembers(ctx, "tnt_test", orgObj.ID, "usr_stranger", false, 10, 0); err == nil {
+		t.Errorf("SECURITY: expected non-member to be denied ListOrgMembers, got nil error")
+	}
+
+	// 3. Empty actorID (unauthenticated) is DENIED.
+	if _, err := svc.GetOrganization(ctx, "tnt_test", orgObj.ID, "", false); err == nil {
+		t.Errorf("SECURITY: expected empty actorID to be denied GetOrganization, got nil error")
+	}
+
+	// 4. Non-member is DENIED mutation (DeleteOrganization) — the original CRITICAL.
+	if err := svc.DeleteOrganization(ctx, "tnt_test", "usr_stranger", orgObj.ID, false, "127.0.0.1", "TestAgent"); err == nil {
+		t.Errorf("SECURITY: expected non-member to be denied DeleteOrganization, got nil error")
+	}
+
+	// 5. Add a member with a NON-admin role (editor, no orgs:*/members:*).
+	//    editor has no Permission edge rows here and slug != org_admin, so it must be denied mutations.
+	if _, err := svc.AddMember(ctx, "tnt_test", "usr_creator", orgObj.ID, org.AddMemberRequest{
+		UserID: "usr_stranger",
+		RoleID: "editor",
+	}, false, "127.0.0.1", "TestAgent"); err != nil {
+		t.Fatalf("setup: creator failed to add editor member: %v", err)
+	}
+
+	// 5a. The editor CAN read (is now a member).
+	if _, err := svc.GetOrganization(ctx, "tnt_test", orgObj.ID, "usr_stranger", false); err != nil {
+		t.Errorf("expected editor member to be allowed GetOrganization, got: %v", err)
+	}
+
+	// 5b. But the editor CANNOT mutate (not org_admin).
+	newName := "Editor Should Not Rename This"
+	if _, err := svc.UpdateOrganization(ctx, "tnt_test", "usr_stranger", orgObj.ID, org.UpdateOrgRequest{
+		Name: &newName,
+	}, false, "127.0.0.1", "TestAgent"); err == nil {
+		t.Errorf("SECURITY: expected non-admin editor to be denied UpdateOrganization, got nil error")
+	}
+
+	// 6. Admin-tier bypass (isAdmin=true) succeeds even with an empty actorID —
+	//    this is the tenant-admin / sk_ path and must keep working.
+	if _, err := svc.GetOrganization(ctx, "tnt_test", orgObj.ID, "", true); err != nil {
+		t.Errorf("expected admin-tier bypass to be allowed GetOrganization, got: %v", err)
+	}
+	if err := svc.DeleteOrganization(ctx, "tnt_test", "", orgObj.ID, true, "127.0.0.1", "TestAgent"); err != nil {
+		t.Errorf("expected admin-tier bypass to be allowed DeleteOrganization, got: %v", err)
 	}
 }

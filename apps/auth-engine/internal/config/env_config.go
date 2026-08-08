@@ -104,6 +104,26 @@ func (c *EnvConfig) SocialCallbackURL(provider string) string {
 	return base + "/v1/client/auth/social/" + provider + "/callback"
 }
 
+// CookieSecure reports whether session cookies must carry the Secure attribute.
+// It is derived from AppBaseURL's scheme — the same single source of truth as
+// SocialCallbackURL — so it adapts to any self-hosted domain without a second
+// knob to keep in sync.
+//
+// Neither constant is safe on its own: hardcoding false ships 30-day refresh
+// tokens over cleartext HTTP, where any network observer can lift them and
+// replay a full session (audit finding H4); hardcoding true silently breaks
+// plaintext local development, because a Secure cookie is never sent over HTTP
+// on a non-localhost origin.
+//
+//	AppBaseURL = "https://auth.acme.com" → true  (production, or any TLS origin)
+//	AppBaseURL = "http://localhost:8080" → false (local dev over plaintext)
+//
+// Deployments terminating TLS at a proxy must set AppBaseURL to the public
+// https:// URL, which they already must do for social callbacks to resolve.
+func (c *EnvConfig) CookieSecure() bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(c.AppBaseURL)), "https://")
+}
+
 // loadDotEnv searches candidate paths for a .env file and populates missing process environment variables.
 func loadDotEnv() {
 	candidatePaths := []string{".env", "../.env", "../../.env", "../../../.env", "/home/hanan-bhatti/authn/.env"}

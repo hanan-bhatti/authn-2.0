@@ -37,7 +37,8 @@ func generateSecureToken() (string, error) {
 }
 
 // CreateInvitation generates a single-use cryptographically random 32-byte token and records pending invitation.
-func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID string, req CreateInvitationRequest, ip, userAgent string) (*OrgInvitationResponse, error) {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID string, req CreateInvitationRequest, isAdmin bool, ip, userAgent string) (*OrgInvitationResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -53,6 +54,13 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 			return nil, ErrOrgNotFound
 		}
 		return nil, fmt.Errorf("failed to query organization: %w", err)
+	}
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Resolve role
@@ -111,7 +119,8 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 }
 
 // ListPendingInvitations returns all pending invitations for an organization.
-func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID string, limit, offset int) ([]*OrgInvitationResponse, error) {
+// Authorization: caller must be an active member (C2), OR hold admin_auth_method privilege.
+func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID string, actorID string, isAdmin bool, limit, offset int) ([]*OrgInvitationResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
 	}
@@ -127,6 +136,13 @@ func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID st
 		Exist(ctx)
 	if err != nil || !exists {
 		return nil, ErrOrgNotFound
+	}
+
+	// Authorization check: tenant-admin tier bypasses membership requirement
+	if !isAdmin {
+		if _, err := s.authzCheckMember(ctx, client, actorID, orgID); err != nil {
+			return nil, err
+		}
 	}
 
 	invitations, err := client.OrgInvitation.Query().
@@ -147,8 +163,16 @@ func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID st
 }
 
 // RevokeInvitation cancels a pending invitation.
-func (s *Service) RevokeInvitation(ctx context.Context, tenantID, actorID, orgID, invitationID string, ip, userAgent string) error {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) RevokeInvitation(ctx context.Context, tenantID, actorID, orgID, invitationID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return err
+		}
+	}
 
 	inv, err := client.OrgInvitation.Query().
 		Where(orginvitation.OrganizationID(orgID), orginvitation.ID(invitationID)).
@@ -229,7 +253,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 	}
 	if targetUser == nil {
 		newUserID := userID
-		if newUserID == "" || newUserID == "usr_accepted_guest" {
+		if newUserID == "" {
 			newUserID = fmt.Sprintf("usr_%s", uuid.New().String()[:12])
 		}
 		createdUser, err := client.User.Create().

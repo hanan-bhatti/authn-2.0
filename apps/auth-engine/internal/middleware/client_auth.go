@@ -19,20 +19,33 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
+// extractAccessToken resolves the caller's access token using the canonical
+// precedence for end-user sessions: the authn_access_token cookie, then the
+// access_token cookie, then the Authorization: Bearer header.
+//
+// This is the SINGLE source of truth for "where does an end-user's access token
+// come from". Both RequireClientAuth and PreventImpersonatedMutations MUST route
+// through it. When the two disagreed — the guard reading only the Authorization
+// header while auth also honored cookies — a cookie-authed impersonation session
+// slipped straight past the read-only guard (audit finding H6).
+func extractAccessToken(c *fiber.Ctx) string {
+	if tok := c.Cookies("authn_access_token"); tok != "" {
+		return tok
+	}
+	if tok := c.Cookies("access_token"); tok != "" {
+		return tok
+	}
+	authHeader := c.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	}
+	return ""
+}
+
 // RequireClientAuth returns a Fiber middleware enforcing valid JWT access token authentication for end-users.
 func RequireClientAuth(signingSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		tokenStr := ""
-		if tok := c.Cookies("authn_access_token"); tok != "" {
-			tokenStr = tok
-		} else if tok := c.Cookies("access_token"); tok != "" {
-			tokenStr = tok
-		} else {
-			authHeader := c.Get("Authorization")
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
-			}
-		}
+		tokenStr := extractAccessToken(c)
 
 		if strings.TrimSpace(tokenStr) == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{

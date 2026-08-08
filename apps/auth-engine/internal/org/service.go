@@ -48,6 +48,59 @@ func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatch
 	}
 }
 
+// authzCheckMember verifies that actorID is an active member of orgID.
+// Returns the membership record if authorized, or an error if not.
+// This is the base authorization check for any org-scoped operation.
+func (s *Service) authzCheckMember(ctx context.Context, client *ent.Client, actorID, orgID string) (*ent.OrgMember, error) {
+	if actorID == "" {
+		return nil, ErrNotAMember
+	}
+
+	membership, err := client.OrgMember.Query().
+		Where(orgmember.OrganizationID(orgID), orgmember.UserID(actorID)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrNotAMember
+		}
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+
+	return membership, nil
+}
+
+// authzRequireOrgAdmin verifies that actorID holds the org_admin role (or equivalent admin permissions).
+// Returns the membership record if authorized, or an error if not.
+// This is the required check for all mutating org operations (update, delete, add/remove members, invitations).
+func (s *Service) authzRequireOrgAdmin(ctx context.Context, client *ent.Client, actorID, orgID string) (*ent.OrgMember, error) {
+	membership, err := s.authzCheckMember(ctx, client, actorID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load the role (with its permission edge) to check permissions
+	roleRecord, err := client.Role.Query().
+		Where(role.ID(membership.RoleID)).
+		WithPermissions().
+		Only(ctx)
+	if err != nil {
+		// A member whose role can't be resolved cannot be granted admin rights.
+		return nil, ErrForbidden
+	}
+
+	// org_admin slug OR permission action containing "orgs:*" or "members:*" OR "*"
+	if roleRecord.Slug == "org_admin" {
+		return membership, nil
+	}
+	for _, perm := range roleRecord.Edges.Permissions {
+		if perm.Action == "*" || perm.Action == "orgs:*" || perm.Action == "members:*" {
+			return membership, nil
+		}
+	}
+
+	return nil, ErrForbidden
+}
+
 // Slugify generates a clean URL-friendly slug from an input string.
 func Slugify(input string) string {
 	cleaned := strings.ToLower(strings.TrimSpace(input))
@@ -169,7 +222,8 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 }
 
 // GetOrganization fetches organization details by ID.
-func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string) (*OrgResponse, error) {
+// Authorization: caller must be an active member (C2), OR hold admin_auth_method privilege.
+func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string, actorID string, isAdmin bool) (*OrgResponse, error) {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
 	o, err := client.Organization.Query().
@@ -180,6 +234,14 @@ func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string) (
 			return nil, ErrOrgNotFound
 		}
 		return nil, fmt.Errorf("failed to query organization: %w", err)
+	}
+
+	// Authorization check: tenant-admin tier bypasses membership requirement
+	if !isAdmin {
+		_, err := s.authzCheckMember(ctx, client, actorID, orgID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return s.toOrgResponse(o), nil
@@ -245,7 +307,8 @@ func (s *Service) ListOrganizationsForTenant(ctx context.Context, tenantID strin
 }
 
 // UpdateOrganization updates organization details.
-func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, orgID string, req UpdateOrgRequest, ip, userAgent string) (*OrgResponse, error) {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, orgID string, req UpdateOrgRequest, isAdmin bool, ip, userAgent string) (*OrgResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -260,6 +323,13 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 			return nil, ErrOrgNotFound
 		}
 		return nil, fmt.Errorf("failed to find organization: %w", err)
+	}
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return nil, err
+		}
 	}
 
 	updater := o.Update()
@@ -308,7 +378,8 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 }
 
 // DeleteOrganization removes an organization and all its memberships and invitations.
-func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, orgID string, ip, userAgent string) error {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, orgID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
 	o, err := client.Organization.Query().
@@ -319,6 +390,13 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 			return ErrOrgNotFound
 		}
 		return fmt.Errorf("failed to find organization: %w", err)
+	}
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return err
+		}
 	}
 
 	// Delete associated members & invitations first
@@ -344,7 +422,8 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 }
 
 // ListOrgMembers returns members of an organization.
-func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, limit, offset int) ([]*OrgMemberResponse, error) {
+// Authorization: caller must be an active member (C2), OR hold admin_auth_method privilege.
+func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, actorID string, isAdmin bool, limit, offset int) ([]*OrgMemberResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
 	}
@@ -360,6 +439,13 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, li
 		Exist(ctx)
 	if err != nil || !exists {
 		return nil, ErrOrgNotFound
+	}
+
+	// Authorization check: tenant-admin tier bypasses membership requirement
+	if !isAdmin {
+		if _, err := s.authzCheckMember(ctx, client, actorID, orgID); err != nil {
+			return nil, err
+		}
 	}
 
 	members, err := client.OrgMember.Query().
@@ -380,7 +466,8 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, li
 }
 
 // AddMember adds a user directly to an organization with a specific role.
-func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string, req AddMemberRequest, ip, userAgent string) (*OrgMemberResponse, error) {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string, req AddMemberRequest, isAdmin bool, ip, userAgent string) (*OrgMemberResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -393,6 +480,13 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 		Exist(ctx)
 	if err != nil || !exists {
 		return nil, ErrOrgNotFound
+	}
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Check if membership already exists
@@ -447,12 +541,20 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 }
 
 // UpdateMemberRole updates a member's role within an organization.
-func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID, userID string, req UpdateMemberRoleRequest, ip, userAgent string) (*OrgMemberResponse, error) {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID, userID string, req UpdateMemberRoleRequest, isAdmin bool, ip, userAgent string) (*OrgMemberResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 
 	client := s.factory.GetClient(ctx, tenantID, "")
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return nil, err
+		}
+	}
 
 	mem, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID), orgmember.UserID(userID)).
@@ -489,8 +591,16 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 }
 
 // RemoveMember removes a user from an organization.
-func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, userID string, ip, userAgent string) error {
+// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, userID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
+
+	// Authorization check: tenant-admin tier bypasses org_admin requirement
+	if !isAdmin {
+		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
+			return err
+		}
+	}
 
 	mem, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID), orgmember.UserID(userID)).

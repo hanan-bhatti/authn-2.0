@@ -16,8 +16,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -95,11 +97,23 @@ func NewLimiter(redisClient *redis.Client, isProduction bool, failClosed bool, e
 	}
 }
 
-// Check evaluates whether a request identified by key is allowed.
+// Check evaluates whether a request identified by key is allowed against the
+// limiter's configured maxAttempts.
 // Returns (allowed bool, retryAfter time.Duration, err error).
 func (l *Limiter) Check(ctx context.Context, key string) (bool, time.Duration, error) {
+	return l.CheckWithLimit(ctx, key, l.maxAttempts)
+}
+
+// CheckWithLimit is Check with an explicit budget, so independent dimensions of
+// the same request can carry different allowances — see Middleware, where the
+// per-account bucket is strict and the per-IP bucket is wider to avoid locking
+// out everyone behind a shared NAT egress.
+func (l *Limiter) CheckWithLimit(ctx context.Context, key string, maxAttempts int) (bool, time.Duration, error) {
 	if !l.enabled {
 		return true, 0, nil
+	}
+	if maxAttempts <= 0 {
+		maxAttempts = l.maxAttempts
 	}
 
 	if l.redisClient != nil {
@@ -115,13 +129,13 @@ func (l *Limiter) Check(ctx context.Context, key string) (bool, time.Duration, e
 
 		// 2. Evaluate sliding window Lua script
 		nowUnix := time.Now().Unix()
-		res, err := l.redisClient.Eval(ctx, slidingWindowLua, []string{attemptKey}, nowUnix, l.windowSeconds, l.maxAttempts).Result()
+		res, err := l.redisClient.Eval(ctx, slidingWindowLua, []string{attemptKey}, nowUnix, l.windowSeconds, maxAttempts).Result()
 		if err != nil {
 			if l.failClosed || l.isProduction {
 				return false, 0, fmt.Errorf("%w: %v", ErrRedisUnavailable, err)
 			}
 			// In dev mode without Redis, fallback to in-memory check
-			allowed := l.checkInMemory(key, l.maxAttempts, time.Duration(l.windowSeconds)*time.Second)
+			allowed := l.checkInMemory(key, maxAttempts, time.Duration(l.windowSeconds)*time.Second)
 			return allowed, 0, nil
 		}
 
@@ -160,7 +174,7 @@ func (l *Limiter) Check(ctx context.Context, key string) (bool, time.Duration, e
 	if l.failClosed && l.isProduction {
 		return false, 0, ErrRedisUnavailable
 	}
-	allowed := l.checkInMemory(key, l.maxAttempts, time.Duration(l.windowSeconds)*time.Second)
+	allowed := l.checkInMemory(key, maxAttempts, time.Duration(l.windowSeconds)*time.Second)
 	return allowed, 0, nil
 }
 
@@ -195,11 +209,58 @@ func (l *Limiter) checkInMemory(key string, maxAttempts int, window time.Duratio
 }
 
 // BuildKey constructs a multi-dimensional rate limit key (ratelimit:{tenant}:{endpoint}:{hash}).
+//
+// The hash covers ip + ":" + account. Because the two values sit on opposite
+// sides of the separator, an IP-only key (account == "") can never collide with
+// an account-only key (ip == ""), so the caller can derive two independent
+// buckets from this one function.
+//
+// NOTE: `account` means the *target identity* of the request (the email being
+// logged into), NOT the User-Agent. Passing a client-controlled header here
+// makes the limiter trivially bypassable — see extractAccountIdentifier.
 func BuildKey(tenantID string, ip string, account string, endpoint string) string {
 	hasher := sha256.New()
-	hasher.Write([]byte(ip + ":" + account))
+	hasher.Write([]byte(ip + ":" + strings.ToLower(strings.TrimSpace(account))))
 	hash := hex.EncodeToString(hasher.Sum(nil))[:16]
 	return fmt.Sprintf("%s:%s:%s", tenantID, endpoint, hash)
+}
+
+// accountIdentifierFields are the JSON body fields, in precedence order, that
+// name the account a request is acting against.
+var accountIdentifierFields = []string{"email", "username", "identifier", "phone_number"}
+
+// ipBudgetMultiplier widens the per-IP allowance when a per-account bucket is
+// also enforcing the strict limit on the same request. It exists so that a
+// shared egress IP (corporate NAT, campus, mobile carrier) is not locked out by
+// the login attempts of unrelated users.
+const ipBudgetMultiplier = 10
+
+// extractAccountIdentifier resolves the target account from the request body so
+// the limiter can enforce a per-account bucket that a single attacker cannot
+// escape by rotating IPs. Returns "" when no identifier is present (e.g. a
+// token-only endpoint), in which case only the per-IP bucket applies.
+//
+// Reading c.Body() here is safe: Fiber buffers the body, so a later BodyParser
+// in the handler still sees it.
+func extractAccountIdentifier(c *fiber.Ctx) string {
+	body := c.Body()
+	if len(body) == 0 || len(body) > 64*1024 {
+		return ""
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+
+	for _, field := range accountIdentifierFields {
+		if v, ok := parsed[field].(string); ok {
+			if v = strings.ToLower(strings.TrimSpace(v)); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 // Middleware returns a Fiber middleware enforcing rate limits with exponential backoff.
@@ -213,30 +274,64 @@ func (l *Limiter) Middleware() fiber.Handler {
 		if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
 			tenantID = tID
 		}
+		// Two independent dimensions, both of which must pass:
+		//
+		//   1. per-account — the target identity, at the configured budget. This
+		//      is the brute-force defense: it holds even if the attacker rotates
+		//      IPs, and login has no separate account-lockout engine behind it.
+		//   2. per-IP — one host spraying many accounts, at a wider budget.
+		//
+		// The User-Agent is deliberately NOT part of either key. It used to be
+		// passed into BuildKey's `account` slot, which meant an attacker locked
+		// out at 5 attempts got a fresh bucket by changing one request header —
+		// unlimited password guesses from a single IP.
+		//
+		// The IP budget is widened only when an account bucket is also in force.
+		// A shared NAT egress can legitimately produce many logins from one
+		// address, and the strict per-account limit is what actually stops
+		// guessing; holding the IP dimension at the same 5 would lock out an
+		// entire office for one user's typos. Endpoints with no identifier in the
+		// body (token-only refresh, verify, etc.) get no account bucket, so their
+		// IP dimension stays at the configured limit.
 		ip := c.IP()
-		userAgent := c.Get("User-Agent")
-		key := BuildKey(tenantID, ip, userAgent, c.Path())
+		account := extractAccountIdentifier(c)
 
-		allowed, retryAfter, err := l.Check(c.UserContext(), key)
-		if err != nil {
-			if errors.Is(err, ErrRedisUnavailable) {
-				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-					"error": "rate limit service unavailable",
-				})
-			}
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "internal rate limiter error",
-			})
+		type dimension struct {
+			key   string
+			limit int
+		}
+		dims := make([]dimension, 0, 2)
+		if account != "" {
+			dims = append(dims,
+				dimension{key: BuildKey(tenantID, "", account, c.Path()), limit: l.maxAttempts},
+				dimension{key: BuildKey(tenantID, ip, "", c.Path()), limit: l.maxAttempts * ipBudgetMultiplier},
+			)
+		} else {
+			dims = append(dims, dimension{key: BuildKey(tenantID, ip, "", c.Path()), limit: l.maxAttempts})
 		}
 
-		if !allowed {
-			if retryAfter > 0 {
-				c.Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
+		for _, d := range dims {
+			allowed, retryAfter, err := l.CheckWithLimit(c.UserContext(), d.key, d.limit)
+			if err != nil {
+				if errors.Is(err, ErrRedisUnavailable) {
+					return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+						"error": "rate limit service unavailable",
+					})
+				}
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "internal rate limiter error",
+				})
 			}
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error":               "too many attempts, please try again later",
-				"retry_after_seconds": int(retryAfter.Seconds()),
-			})
+
+			if !allowed {
+				if retryAfter > 0 {
+					c.Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
+				}
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+					"error":               "too many attempts, please try again later",
+					"retry_after_seconds": int(retryAfter.Seconds()),
+				})
+			}
 		}
 
 		return c.Next()

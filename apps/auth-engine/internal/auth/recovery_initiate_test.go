@@ -15,6 +15,7 @@ package auth_test
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -189,8 +190,21 @@ func TestRecoveryInitiate_ZeroMethodsDeadEnd_Returns400(t *testing.T) {
 }
 
 func TestRecoveryInitiate_TimingSafeNonExistentUser(t *testing.T) {
-	svc, _, _, tenantID := setupTestRecoveryService(t)
+	svc, _, repo, tenantID := setupTestRecoveryService(t)
 	ctx := context.Background()
+
+	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
+
+	// A real, recoverable user to measure the genuine code path against.
+	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	_, err := client.User.Create().
+		SetID(userID).
+		SetTenantID(tenantID).
+		SetEmail("realuser_timing@example.com").
+		SetEmailVerified(true).
+		SetPasswordHash("hashed_pass").
+		Save(ctx)
+	require.NoError(t, err)
 
 	inputNonExistent := auth.InitiateRecoveryInput{
 		TenantID:    tenantID,
@@ -199,13 +213,49 @@ func TestRecoveryInitiate_TimingSafeNonExistentUser(t *testing.T) {
 		IPAddress:   "198.51.100.1",
 		UserAgent:   "Mozilla/5.0",
 	}
+	inputReal := auth.InitiateRecoveryInput{
+		TenantID:    tenantID,
+		Environment: "test",
+		Email:       "realuser_timing@example.com",
+		IPAddress:   "198.51.100.2",
+		UserAgent:   "Mozilla/5.0",
+	}
 
-	start := time.Now()
+	// The response itself must be indistinguishable from a real user's.
 	res, err := svc.InitiateRecovery(ctx, inputNonExistent)
-	duration := time.Since(start)
-
 	require.NoError(t, err)
 	assert.Equal(t, "initiated", res.Status)
 	assert.Equal(t, []string{"email_otp"}, res.AvailableMethods)
-	assert.Less(t, duration, 200*time.Millisecond, "Timing-safe Argon2 dummy iteration MUST execute smoothly")
+
+	// So must the time it takes. Measure the median of both paths rather than
+	// asserting an absolute wall-clock bound: the security property is that the
+	// two are *comparable*, and an absolute ceiling only measures how loaded the
+	// machine is — Argon2 is deliberately expensive, so a fixed 200ms limit
+	// failed intermittently on a busy CI box while proving nothing about
+	// enumeration resistance.
+	median := func(input auth.InitiateRecoveryInput) time.Duration {
+		const samples = 5
+		durations := make([]time.Duration, 0, samples)
+		for i := 0; i < samples; i++ {
+			start := time.Now()
+			_, err := svc.InitiateRecovery(ctx, input)
+			require.NoError(t, err)
+			durations = append(durations, time.Since(start))
+		}
+		sort.Slice(durations, func(a, b int) bool { return durations[a] < durations[b] })
+		return durations[len(durations)/2]
+	}
+
+	realMedian := median(inputReal)
+	fakeMedian := median(inputNonExistent)
+
+	// Guard against the dummy path being skipped entirely (the actual
+	// enumeration leak): it must not be dramatically faster than the real one.
+	ratio := float64(fakeMedian) / float64(realMedian)
+	assert.Greaterf(t, ratio, 0.25,
+		"non-existent-user path (%v) is far faster than the real path (%v): the timing-safe Argon2 dummy iteration is not running, leaking account existence",
+		fakeMedian, realMedian)
+	assert.Lessf(t, ratio, 4.0,
+		"non-existent-user path (%v) is far slower than the real path (%v), which also leaks account existence",
+		fakeMedian, realMedian)
 }

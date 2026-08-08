@@ -148,7 +148,7 @@ func (h *Handler) RequestEmailChange(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid JSON body"})
 	}
 
-	tokenStr, err := h.svc.RequestEmailChange(c.UserContext(), tenantID, env, userID, req.NewEmail)
+	_, err := h.svc.RequestEmailChange(c.UserContext(), tenantID, env, userID, req.NewEmail)
 	if err != nil {
 		if errors.Is(err, ErrEmailAlreadyInUse) {
 			return c.Status(http.StatusConflict).JSON(fiber.Map{"error": err.Error()})
@@ -157,8 +157,7 @@ func (h *Handler) RequestEmailChange(c *fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
-		"message":            "email verification link sent to new email address",
-		"verification_token": tokenStr,
+		"message": "email verification link sent to new email address",
 	})
 }
 
@@ -205,14 +204,13 @@ func (h *Handler) SetRecoveryEmail(c *fiber.Ctx) error {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid JSON body"})
 	}
 
-	tokenStr, err := h.svc.SetRecoveryEmail(c.UserContext(), tenantID, env, userID, req.RecoveryEmail)
+	_, err := h.svc.SetRecoveryEmail(c.UserContext(), tenantID, env, userID, req.RecoveryEmail)
 	if err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
-		"message":            "secondary recovery email verification link sent",
-		"verification_token": tokenStr,
+		"message": "secondary recovery email verification link sent",
 	})
 }
 

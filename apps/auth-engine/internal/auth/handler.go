@@ -288,7 +288,7 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 		cookie.Value = refreshToken
 		cookie.Expires = time.Now().Add(30 * 24 * time.Hour)
 		cookie.HTTPOnly = true
-		cookie.Secure = false
+		cookie.Secure = h.service.config.CookieSecure()
 		cookie.SameSite = "Lax"
 		c.Cookie(cookie)
 	}
@@ -394,7 +394,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 			Name:     "authn_refresh_token",
 			Value:    refreshToken,
 			HTTPOnly: true,
-			Secure:   false,
+			Secure:   h.service.config.CookieSecure(),
 			SameSite: "Lax",
 			Path:     "/v1/client",
 		})
@@ -522,7 +522,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 			Name:     "authn_refresh_token",
 			Value:    refreshToken,
 			HTTPOnly: true,
-			Secure:   false,
+			Secure:   h.service.config.CookieSecure(),
 			SameSite: "Lax",
 			Path:     "/v1/client",
 		})
@@ -783,7 +783,7 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 				Name:     "authn_refresh_token",
 				Value:    refreshToken,
 				HTTPOnly: true,
-				Secure:   false,
+				Secure:   h.service.config.CookieSecure(),
 				SameSite: "Lax",
 				Path:     "/v1/client",
 			})
@@ -1077,7 +1077,7 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 			Name:     "authn_refresh_token",
 			Value:    refreshToken,
 			HTTPOnly: true,
-			Secure:   false,
+			Secure:   h.service.config.CookieSecure(),
 			SameSite: "Lax",
 			Path:     "/v1/client",
 		})
@@ -1249,12 +1249,22 @@ func (h *Handler) DisableSMS(c *fiber.Ctx) error {
 
 // InviteGuardians handles POST /v1/client/account/guardians/invite. Requires step-up re-auth / fresh session.
 func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
-	userID, ok := c.Locals("userID").(string)
-	if !ok || userID == "" {
+	// This handler is on the /v1/client/auth router, which runs only the publishable-key
+	// and rate-limit middlewares — NOT RequireClientAuth — so c.Locals("userID") is never
+	// populated here. Verify the bearer token directly, as the TOTP/SMS handlers do.
+	tokenStr := extractBearerToken(c)
+	if tokenStr == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Authentication required. Please step-up re-authenticate to manage recovery contacts.",
 		})
 	}
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Authentication required. Please step-up re-authenticate to manage recovery contacts.",
+		})
+	}
+	userID := claims.Sub
 
 	var req struct {
 		Guardians []InviteGuardianInput `json:"guardians"`
@@ -1301,12 +1311,21 @@ func (h *Handler) AcceptGuardianInvite(c *fiber.Ctx) error {
 
 // ListGuardians handles GET /v1/client/account/guardians.
 func (h *Handler) ListGuardians(c *fiber.Ctx) error {
-	userID, ok := c.Locals("userID").(string)
-	if !ok || userID == "" {
+	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID local
+	// is never set here. Verify the bearer token directly, like the other authed handlers.
+	tokenStr := extractBearerToken(c)
+	if tokenStr == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Authentication required",
 		})
 	}
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Authentication required",
+		})
+	}
+	userID := claims.Sub
 
 	dtos, err := h.guardianService.ListGuardians(c.Context(), userID)
 	if err != nil {
@@ -1322,12 +1341,21 @@ func (h *Handler) ListGuardians(c *fiber.Ctx) error {
 
 // RevokeGuardian handles DELETE /v1/client/account/guardians/:id.
 func (h *Handler) RevokeGuardian(c *fiber.Ctx) error {
-	userID, ok := c.Locals("userID").(string)
-	if !ok || userID == "" {
+	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID local
+	// is never set here. Verify the bearer token directly, like the other authed handlers.
+	tokenStr := extractBearerToken(c)
+	if tokenStr == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Authentication required",
 		})
 	}
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Authentication required",
+		})
+	}
+	userID := claims.Sub
 
 	contactID := c.Params("id")
 	if contactID == "" {
@@ -1403,6 +1431,13 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
+
+	// H3: never expose the cancellation token to the party that initiated recovery.
+	// The token is the owner's veto against an unwanted takeover; it must reach the
+	// owner out-of-band (their alert email), not the caller of this endpoint — which
+	// may be the attacker. The field stays on the struct (omitempty) for internal use
+	// and the signed-link cancel flow; we blank it here so it is omitted from the body.
+	res.CancellationToken = ""
 
 	return c.Status(fiber.StatusOK).JSON(res)
 }
@@ -1509,7 +1544,7 @@ func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 			Value:    res.DeviceCookie,
 			Expires:  time.Now().Add(90 * 24 * time.Hour),
 			HTTPOnly: true,
-			Secure:   true,
+			Secure:   h.service.config.CookieSecure(),
 			SameSite: "Lax",
 		})
 	}
@@ -1529,8 +1564,24 @@ func (h *Handler) CancelRecoveryAuth(c *fiber.Ctx) error {
 		})
 	}
 
-	userID, _ := c.Locals("userID").(string)
-	sessionID, _ := c.Locals("sessionID").(string)
+	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID/sessionID
+	// locals are never set here — previously this handler passed an empty userID straight to
+	// the service (unauthenticated). Verify the bearer token directly and require a valid
+	// session, matching the other authenticated handlers in this file.
+	tokenStr := extractBearerToken(c)
+	if tokenStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "unauthorized: session token required",
+		})
+	}
+	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.AuthnEncryptionKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": fmt.Sprintf("unauthorized session: %v", err),
+		})
+	}
+	userID := claims.Sub
+	sessionID := claims.SessionID
 
 	if err := h.recoveryService.CancelRecoveryRequestByAuthenticatedSession(c.Context(), userID, req.RecoveryRequestID, sessionID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
