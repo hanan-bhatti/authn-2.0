@@ -273,6 +273,14 @@ func hasSecurityQuestions(meta map[string]interface{}) bool {
 	}
 }
 
+// cancelledRecoveryBlacklistWindow is how long the IP, subnet and device
+// fingerprint that started a cancelled recovery stay blacklisted.
+//
+// Cancelling recovery means the account owner rejected an attempt they did not
+// start, so the origin is treated as hostile: long enough to defeat a retry
+// campaign, bounded so a shared or reassigned address is not blocked forever.
+const cancelledRecoveryBlacklistWindow = 7 * 24 * time.Hour
+
 var (
 	// ErrInvalidRecoveryRequest reports that the request ID matched no row, or that the row is no
 	// longer usable. It covers both cases so a caller cannot enumerate live request IDs.
@@ -858,7 +866,7 @@ func (s *RecoveryService) executeCancellation(ctx context.Context, req *ent.Reco
 
 	// 2. Blacklist originating IP, subnet, and device fingerprint for 7 days
 	fpHash := ComputeFingerprintHash(req.InitiatedFromUserAgent, "")
-	expiresAt := now.Add(7 * 24 * time.Hour)
+	expiresAt := now.Add(cancelledRecoveryBlacklistWindow)
 
 	_, _ = s.repo.CreateSecurityBlacklist(ctx, u.TenantID, req.UserID, req.InitiatedFromIP, req.InitiatedFromSubnet, fpHash, "recovery_cancelled", expiresAt)
 

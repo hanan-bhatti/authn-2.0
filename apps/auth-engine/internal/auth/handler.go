@@ -95,7 +95,7 @@ func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ra
 	}
 	return &Handler{
 		service:         service,
-		guardianService: NewGuardianService(service.repo, policyRepo),
+		guardianService: NewGuardianService(service.repo, policyRepo, service.config),
 		recoveryService: NewRecoveryService(service.repo, telemetry, policyRepo),
 		policyRepo:      policyRepo,
 		rateLimiter:     rateLimiter,
@@ -288,7 +288,9 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 		cookie := new(fiber.Cookie)
 		cookie.Name = "authn_refresh_token"
 		cookie.Value = refreshToken
-		cookie.Expires = time.Now().Add(30 * 24 * time.Hour)
+		// The cookie must not expire before the token inside it, or the browser
+		// discards a still-valid refresh token and the session ends early.
+		cookie.Expires = time.Now().Add(h.service.refreshTokenTTL())
 		cookie.HTTPOnly = true
 		cookie.Secure = h.service.config.CookieSecure()
 		cookie.SameSite = "Lax"
@@ -665,6 +667,15 @@ func isValidEmail(email string) bool {
 	}
 	return true
 }
+
+// trustedDeviceCookieTTL is how long the device-recognition cookie issued by a
+// successful account claim is honoured.
+//
+// It is deliberately long: the cookie's purpose is to recognise a returning
+// device and skip a re-verification step, so a lifetime shorter than the gap
+// between sign-ins would defeat it. The cookie is a recognition signal only and
+// carries no authority on its own.
+const trustedDeviceCookieTTL = 90 * 24 * time.Hour
 
 // clientSafeError maps a known package sentinel to a machine-readable code and a
 // message that is safe to return verbatim. Sentinel text is authored for end
@@ -1519,7 +1530,7 @@ func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:     "authn_td_token",
 			Value:    res.DeviceCookie,
-			Expires:  time.Now().Add(90 * 24 * time.Hour),
+			Expires:  time.Now().Add(trustedDeviceCookieTTL),
 			HTTPOnly: true,
 			Secure:   h.service.config.CookieSecure(),
 			SameSite: "Lax",

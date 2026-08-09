@@ -347,10 +347,19 @@ func (s *TelemetryService) RecordSuccessfulLoginTelemetry(ctx context.Context, u
 	return rawCookieVal, nil
 }
 
-// PurgeExpiredTelemetry removes subnets and trusted devices older than 90 days.
+// telemetryRetentionWindow is how long inactive subnet and trusted-device
+// telemetry is kept before PurgeExpiredTelemetry deletes it.
+//
+// It is a data-retention period rather than a security control: the risk signals
+// derived from this history stop being meaningful well before it elapses, and a
+// deployment with a stricter retention obligation should shorten it.
+const telemetryRetentionWindow = 90 * 24 * time.Hour
+
+// PurgeExpiredTelemetry removes subnet and trusted-device records untouched for
+// longer than telemetryRetentionWindow, returning how many of each it deleted.
 func (s *TelemetryService) PurgeExpiredTelemetry(ctx context.Context) (purgedSubnets int, purgedDevices int, err error) {
 	client := s.repo.factory.GetClient(ctx, "", "")
-	cutoff := time.Now().Add(-90 * 24 * time.Hour)
+	cutoff := time.Now().Add(-telemetryRetentionWindow)
 
 	// Purge subnets last seen > 90 days ago
 	purgedSubnets, err = client.UserIpSubnetHistory.Delete().

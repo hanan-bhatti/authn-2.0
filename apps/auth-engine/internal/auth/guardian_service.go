@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 )
 
@@ -61,14 +62,39 @@ type InviteGuardiansResponse struct {
 type GuardianService struct {
 	repo       *Repository
 	policyRepo *policy.Repository
+	// cfg supplies the guardian invitation lifetime. Nil falls back to
+	// defaultGuardianInviteTTL.
+	cfg *config.Config
 }
 
 // NewGuardianService constructs a new GuardianService instance.
-func NewGuardianService(repo *Repository, policyRepo *policy.Repository) *GuardianService {
-	return &GuardianService{
+//
+// cfg is variadic so the package's own tests can construct a service without
+// one; application code passes it. Without it the invitation lifetime falls back
+// to defaultGuardianInviteTTL.
+func NewGuardianService(repo *Repository, policyRepo *policy.Repository, cfg ...*config.Config) *GuardianService {
+	s := &GuardianService{
 		repo:       repo,
 		policyRepo: policyRepo,
 	}
+	if len(cfg) > 0 {
+		s.cfg = cfg[0]
+	}
+	return s
+}
+
+// defaultGuardianInviteTTL bounds how long a guardian invitation stays
+// redeemable when no configuration was supplied. It mirrors the default
+// config.Load installs for InvitationTTL.
+const defaultGuardianInviteTTL = 7 * 24 * time.Hour
+
+// invitationTTL returns how long a newly issued guardian invitation remains
+// redeemable.
+func (s *GuardianService) invitationTTL() time.Duration {
+	if s.cfg != nil && s.cfg.InvitationTTL > 0 {
+		return s.cfg.InvitationTTL
+	}
+	return defaultGuardianInviteTTL
 }
 
 // InviteGuardians adds trusted guardians, generates Shamir shares, and issues zero-knowledge invite tokens.
@@ -154,7 +180,7 @@ func (s *GuardianService) InviteGuardians(ctx context.Context, userID string, in
 		}
 		rawTokenHex := hex.EncodeToString(rawToken)
 		inviteHash := HashSecret([]byte(rawTokenHex))
-		expiresAt := time.Now().Add(7 * 24 * time.Hour) // 7-day invitation expiry
+		expiresAt := time.Now().Add(s.invitationTTL())
 
 		contact, err := s.repo.CreateRecoveryContact(ctx, userID, input.Email, input.Name, shareIdx, sHash, inviteHash, expiresAt)
 		if err != nil {
