@@ -104,59 +104,56 @@ type Claims struct {
 	Jti string `json:"jti"`
 }
 
-// IssueAccessToken signs a 15-minute access token for a user.
+// AccessTokenTTL returns the lifetime applied when a caller passes a
+// non-positive ttl to either issuing function.
+//
+// It exists so a caller advertising `expires_in` can report the same number the
+// token was actually signed with, rather than a second constant of its own.
+func AccessTokenTTL() time.Duration {
+	return accessTokenTTL
+}
+
+// resolveTTL returns ttl, or the built-in default when ttl is non-positive.
+//
+// A zero duration reaching here means the caller had no configured value; the
+// alternative — signing a token that expires immediately — would take out every
+// login rather than fail visibly.
+func resolveTTL(ttl time.Duration) time.Duration {
+	if ttl <= 0 {
+		return accessTokenTTL
+	}
+	return ttl
+}
+
+// IssueAccessToken signs an access token for a user, valid for ttl.
 //
 // role carries the platform role claim and may be empty for ordinary users.
-// signingSecret is the engine's symmetric signing key.
+// signingSecret is the engine's symmetric signing key. A non-positive ttl falls
+// back to AccessTokenTTL.
+//
+// The lifetime is a parameter rather than a constant because the `expires_in`
+// each caller advertises has to match the `exp` actually signed here; deriving
+// them from two separate values let the API state a lifetime the token did not
+// have.
 //
 // Returns an error only if the claims cannot be marshalled, which indicates a
 // programming fault rather than a runtime condition.
-func IssueAccessToken(userID string, tenantID string, environment string, email string, name string, role string, signingSecret string) (string, error) {
-	now := time.Now().UTC()
-	exp := now.Add(accessTokenTTL)
-
-	claims := Claims{
-		Sub:         userID,
-		TenantID:    tenantID,
-		Environment: environment,
-		Email:       email,
-		Name:        name,
-		Role:        role,
-		Iss:         tokenIssuer,
-		Iat:         now.Unix(),
-		Exp:         exp.Unix(),
-		Jti:         fmt.Sprintf("jti_%d", now.UnixNano()),
-	}
-
-	headerJSON, _ := json.Marshal(map[string]string{
-		"alg": "HS256",
-		"typ": "JWT",
-	})
-	payloadJSON, err := json.Marshal(claims)
-	if err != nil {
-		return "", fmt.Errorf("failed marshaling jwt claims: %w", err)
-	}
-
-	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
-	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadJSON)
-
-	signingInput := encodedHeader + "." + encodedPayload
-
-	h := hmac.New(sha256.New, []byte(signingSecret))
-	h.Write([]byte(signingInput))
-	signature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-
-	return signingInput + "." + signature, nil
+func IssueAccessToken(userID string, tenantID string, environment string, email string, name string, role string, signingSecret string, ttl time.Duration) (string, error) {
+	return IssueAccessTokenWithSession(userID, tenantID, environment, email, name, role, "", signingSecret, ttl)
 }
 
-// IssueAccessTokenWithSession signs a 15-minute access token carrying an
-// explicit session ID in the `sid` claim, letting a consumer correlate the
-// token with a revocable session record.
+// IssueAccessTokenWithSession signs an access token valid for ttl, carrying an
+// explicit session ID in the `sid` claim so a consumer can correlate the token
+// with a revocable session record.
+//
+// An empty sessionID omits the claim, which is what makes this the single
+// implementation behind IssueAccessToken. A non-positive ttl falls back to
+// AccessTokenTTL.
 //
 // Returns an error only if the claims cannot be marshalled.
-func IssueAccessTokenWithSession(userID string, tenantID string, environment string, email string, name string, role string, sessionID string, signingSecret string) (string, error) {
+func IssueAccessTokenWithSession(userID string, tenantID string, environment string, email string, name string, role string, sessionID string, signingSecret string, ttl time.Duration) (string, error) {
 	now := time.Now().UTC()
-	exp := now.Add(accessTokenTTL)
+	exp := now.Add(resolveTTL(ttl))
 
 	claims := Claims{
 		Sub:         userID,

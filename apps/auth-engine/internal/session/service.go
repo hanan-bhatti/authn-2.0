@@ -136,7 +136,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					return nil, fmt.Errorf("failed to load session user: %w", err)
 				}
 
-				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), s.cfg.EncryptionKey)
+				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
@@ -166,7 +166,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		return nil, fmt.Errorf("failed to rotate session: %w", err)
 	}
 
-	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
 	}

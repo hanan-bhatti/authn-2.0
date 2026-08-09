@@ -41,13 +41,6 @@ const (
 	// authorization code, hex-encoded into the value handed to the client.
 	authorizationCodeEntropyBytes = 24
 
-	// accessTokenExpiresInSeconds is the `expires_in` advertised on every token
-	// response. It mirrors the fixed 15-minute lifetime that
-	// pkg/jwt.IssueAccessToken stamps into the token's `exp` claim; the two must
-	// agree, so this is not read from Config.AccessTokenTTL until the signer
-	// itself accepts a configurable lifetime.
-	accessTokenExpiresInSeconds = 900
-
 	// grantedScope is the scope string returned with an authorization-code
 	// exchange. The engine issues the full OIDC identity scope set and does not
 	// yet narrow claims per request.
@@ -89,6 +82,20 @@ func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.S
 		cfg:         cfg,
 		keyManager:  km,
 	}
+}
+
+// accessTokenExpiresIn returns the access token lifetime in whole seconds, for
+// the `expires_in` field of a token response.
+//
+// It reads the same Config value handed to the signer, so the number advertised
+// here and the `exp` stamped into the token are derived from one setting and
+// cannot drift apart.
+func (s *Service) accessTokenExpiresIn() int {
+	ttl := s.cfg.AccessTokenTTL
+	if ttl <= 0 {
+		ttl = jwtpkg.AccessTokenTTL()
+	}
+	return int(ttl.Seconds())
 }
 
 // GetPublicJWKS returns the RFC 7517 key set containing the active signing key
@@ -297,7 +304,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	// The role claim is resolved from the user's recorded roles rather than
 	// fixed: an authorization-code exchange may be a tenant admin signing into
 	// the console, and a blank role would strip that privilege.
-	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.EncryptionKey)
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -329,7 +336,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	return &OAuth2TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   accessTokenExpiresInSeconds,
+		ExpiresIn:   s.accessTokenExpiresIn(),
 		IDToken:     idTokenStr,
 		Scope:       grantedScope,
 	}, nil

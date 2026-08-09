@@ -56,6 +56,9 @@ func Load() (*Config, error) {
 		BodyLimit:         r.positive("SERVER_BODY_LIMIT_BYTES", 4*1024*1024),
 		TrustProxyHeaders: r.boolean("SERVER_TRUST_PROXY_HEADERS", false),
 
+		AppName:    r.str("AUTHN_APP_NAME", "Authn Platform"),
+		AppVersion: r.str("AUTHN_APP_VERSION", "1.0.0"),
+
 		AppBaseURL: r.absoluteURL("APP_BASE_URL", "http://localhost:8080"),
 		Issuer:     r.absoluteURL("ISSUER_URL", "http://localhost:8080"),
 

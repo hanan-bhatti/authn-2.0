@@ -27,7 +27,7 @@ import (
 
 func TestHealthCheckLiveness(t *testing.T) {
 	app := fiber.New()
-	app.Get("/v1/health", HealthCheckHandler)
+	app.Get("/v1/health", HealthCheckHandler("1.0.0"))
 
 	req := httptest.NewRequest("GET", "/v1/health", nil)
 	resp, err := app.Test(req)
@@ -71,7 +71,7 @@ func TestReadinessProbeSuccessAndFailure(t *testing.T) {
 	}
 
 	app := fiber.New()
-	app.Get("/v1/health", HealthCheckHandler)
+	app.Get("/v1/health", HealthCheckHandler("1.0.0"))
 	app.Get("/v1/ready", ReadinessCheckHandler(factory, nil))
 
 	// 1. Dependency Check Test: When Redis is nil/unconfigured, readiness returns 503 not_ready (redis: down, database: ok)

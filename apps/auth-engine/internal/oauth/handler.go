@@ -280,7 +280,7 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 		res := fiber.Map{
 			"access_token": accessToken,
 			"token_type":   "Bearer",
-			"expires_in":   accessTokenExpiresInSeconds,
+			"expires_in":   h.service.accessTokenExpiresIn(),
 			"user":         userDTO,
 		}
 

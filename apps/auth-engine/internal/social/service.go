@@ -281,7 +281,7 @@ func (s *Service) HandleCallback(
 	// resolves to empty naturally.
 	role = rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 
-	jwtToken, err := jwtpkg.IssueAccessToken(userID, state.TenantID, string(state.Environment), email, name, role, s.cfg.EncryptionKey)
+	jwtToken, err := jwtpkg.IssueAccessToken(userID, state.TenantID, string(state.Environment), email, name, role, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
 	if err != nil {
 		return "", "", err
 	}

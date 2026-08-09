@@ -48,7 +48,7 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	})
 
 	// Standard User Token (Not Impersonated)
-	stdToken, err := jwtpkg.IssueAccessToken("usr_std123", "tnt_default", "test", "user@example.com", "User", "user", signingSecret)
+	stdToken, err := jwtpkg.IssueAccessToken("usr_std123", "tnt_default", "test", "user@example.com", "User", "user", signingSecret, 15*time.Minute)
 	require.NoError(t, err)
 
 	// Impersonated Token (IsImpersonated: true)
@@ -158,7 +158,7 @@ func TestImpersonationGuardLogsUnverifiableToken(t *testing.T) {
 
 	// A token signed with the WRONG secret: structurally a real JWT, so it gets
 	// past ExtractAccessToken and fails at signature verification.
-	foreignToken, err := jwtpkg.IssueAccessToken("usr_x", "tnt_default", "test", "x@example.com", "X", "user", "a_completely_different_signing_secret_1")
+	foreignToken, err := jwtpkg.IssueAccessToken("usr_x", "tnt_default", "test", "x@example.com", "X", "user", "a_completely_different_signing_secret_1", 15*time.Minute)
 	require.NoError(t, err)
 
 	// 1. Unverifiable token -> request still proceeds (fail-open preserved) AND a

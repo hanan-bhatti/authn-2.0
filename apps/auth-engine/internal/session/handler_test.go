@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
@@ -46,7 +47,7 @@ func newCookie(name, value string) *http.Cookie {
 func TestGetUserIDAndSessionID_CookieAuthenticatedSession(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
 		"usr_cookie", "tnt_default", "test",
-		"cookie@example.com", "Cookie User", "", "ses_cookie", testSigningSecret)
+		"cookie@example.com", "Cookie User", "", "ses_cookie", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestGetUserIDAndSessionID_CookieAuthenticatedSession(t *testing.T) {
 func TestGetUserIDAndSessionID_BearerHeaderStillWorks(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
 		"usr_hdr", "tnt_default", "test",
-		"hdr@example.com", "Header User", "", "ses_hdr", testSigningSecret)
+		"hdr@example.com", "Header User", "", "ses_hdr", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}
@@ -122,14 +123,14 @@ func TestGetUserIDAndSessionID_BearerHeaderStillWorks(t *testing.T) {
 func TestGetUserIDAndSessionID_RejectsUntrustedTokens(t *testing.T) {
 	valid, err := jwtpkg.IssueAccessTokenWithSession(
 		"usr_real", "tnt_default", "test",
-		"real@example.com", "Real User", "", "ses_real", testSigningSecret)
+		"real@example.com", "Real User", "", "ses_real", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}
 
 	forged, err := jwtpkg.IssueAccessTokenWithSession(
 		"usr_attacker", "tnt_default", "test",
-		"attacker@example.com", "Attacker", "", "ses_attacker", "a-completely-different-secret-value!!")
+		"attacker@example.com", "Attacker", "", "ses_attacker", "a-completely-different-secret-value!!", 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing forged token: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestGetUserIDAndSessionID_RejectsUntrustedTokens(t *testing.T) {
 func TestGetUserIDAndSessionID_LocalsWinOverToken(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
 		"usr_from_token", "tnt_default", "test",
-		"t@example.com", "T", "", "ses_from_token", testSigningSecret)
+		"t@example.com", "T", "", "ses_from_token", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}

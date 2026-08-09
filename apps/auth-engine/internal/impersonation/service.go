@@ -132,6 +132,16 @@ type Service struct {
 	permChecker PermissionChecker
 }
 
+// appName returns the product name shown in the notification a user receives when support
+// accesses their account. Falls back to a constant when Config supplies none, so the mail can
+// never render a blank product name.
+func (s *Service) appName() string {
+	if s.cfg != nil && s.cfg.AppName != "" {
+		return s.cfg.AppName
+	}
+	return "Authn Platform"
+}
+
 // NewService constructs an impersonation service. The variadic arguments are
 // matched by interface, so a caller may supply any combination of a
 // WebhookDispatcher, an EmailProvider and a PermissionChecker — or a single
@@ -295,7 +305,7 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 				Reason:          reason,
 				TicketID:        ticketID,
 				DurationMinutes: mins,
-				AppName:         "Authn Platform",
+				AppName:         s.appName(),
 			})
 			if err == nil {
 				_ = s.emailProvider.Send(context.Background(), toEmail, "🛡️ Security Notice: Support Access to Your Account", htmlBody, textBody)

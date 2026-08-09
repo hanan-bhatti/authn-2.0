@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
@@ -89,7 +90,7 @@ func TestRequireAdminAuthMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
 	// 3. Admin Console JWT WITH 2FA -> 200 OK
-	adminJWTWith2FA, err := jwtpkg.IssueAccessToken("usr_admin_with_2fa", "tnt_adminA", "test", "admin@example.com", "Admin User", "tenant_admin", secretKey)
+	adminJWTWith2FA, err := jwtpkg.IssueAccessToken("usr_admin_with_2fa", "tnt_adminA", "test", "admin@example.com", "Admin User", "tenant_admin", secretKey, 15*time.Minute)
 	require.NoError(t, err)
 
 	req3 := httptest.NewRequest("GET", "/v1/admin/protected", nil)
@@ -99,7 +100,7 @@ func TestRequireAdminAuthMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp3.StatusCode)
 
 	// 4. Admin Console JWT WITHOUT 2FA -> 403 Forbidden (admin_2fa_required)
-	adminJWTNo2FA, err := jwtpkg.IssueAccessToken("usr_admin_without_2fa", "tnt_adminA", "test", "no2fa@example.com", "No 2FA Admin", "tenant_admin", secretKey)
+	adminJWTNo2FA, err := jwtpkg.IssueAccessToken("usr_admin_without_2fa", "tnt_adminA", "test", "no2fa@example.com", "No 2FA Admin", "tenant_admin", secretKey, 15*time.Minute)
 	require.NoError(t, err)
 
 	req4 := httptest.NewRequest("GET", "/v1/admin/protected", nil)
@@ -109,7 +110,7 @@ func TestRequireAdminAuthMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, resp4.StatusCode)
 
 	// 5. Regular User JWT (role != tenant_admin) -> 403 Forbidden
-	userJWT, err := jwtpkg.IssueAccessToken("usr_regular", "tnt_adminA", "test", "user@example.com", "Regular User", "", secretKey)
+	userJWT, err := jwtpkg.IssueAccessToken("usr_regular", "tnt_adminA", "test", "user@example.com", "Regular User", "", secretKey, 15*time.Minute)
 	require.NoError(t, err)
 
 	req5 := httptest.NewRequest("GET", "/v1/admin/protected", nil)

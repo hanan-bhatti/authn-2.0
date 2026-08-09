@@ -66,12 +66,14 @@ type ReadinessResponse struct {
 // touches no dependency, so a database outage does not cause the orchestrator to
 // kill and restart otherwise healthy instances. Readiness is where dependencies
 // are checked.
-func HealthCheckHandler(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusOK).JSON(HealthResponse{
-		Status:    "healthy",
-		Version:   "1.0.0",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-	})
+func HealthCheckHandler(version string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).JSON(HealthResponse{
+			Status:    "healthy",
+			Version:   version,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		})
+	}
 }
 
 // ReadinessCheckHandler returns a handler answering the readiness probe.
@@ -174,7 +176,7 @@ func proxyHeader(cfg *config.Config) string {
 // are fatal in every environment, because continuing would mean serving with
 // settings nobody chose.
 func main() {
-	log.Println("authn engine v1.0.0 starting")
+	log.Println("authn engine starting")
 
 	// 1. Load and validate configuration.
 	//
@@ -204,7 +206,7 @@ func main() {
 
 	// 3. Initialize Fiber Application
 	app := fiber.New(fiber.Config{
-		AppName:               "Authn Engine v1.0.0",
+		AppName:               cfg.AppName + " " + cfg.AppVersion,
 		DisableStartupMessage: false,
 		// Timeouts bound how long a single connection may occupy a worker.
 		// Without them a slow or stalled client holds a connection open
@@ -374,9 +376,9 @@ func main() {
 	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey)
 
 	// 6. System & Feature Routes
-	app.Get("/v1/health", HealthCheckHandler)
+	app.Get("/v1/health", HealthCheckHandler(cfg.AppVersion))
 	app.Get("/v1/ready", ReadinessCheckHandler(factory, redisClient))
-	app.Get("/healthz", HealthCheckHandler)
+	app.Get("/healthz", HealthCheckHandler(cfg.AppVersion))
 	app.Get("/readyz", ReadinessCheckHandler(factory, redisClient))
 	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.EncryptionKey))
 	authHandler.RegisterRoutes(app, pkMiddleware)

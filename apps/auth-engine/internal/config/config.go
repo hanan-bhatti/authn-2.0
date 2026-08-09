@@ -76,6 +76,17 @@ type Config struct {
 	// Public identity
 	// ---------------------------------------------------------------------
 
+	// AppName is the product name shown to users: in outbound mail, and as the
+	// issuer label in an authenticator app.
+	//
+	// Changing it after users have enrolled TOTP is cosmetic but confusing —
+	// existing authenticator entries keep the old label, since the issuer is
+	// baked into the enrollment URI and cannot be updated remotely.
+	AppName string
+	// AppVersion is the build identifier reported by the health endpoint and the
+	// startup banner.
+	AppVersion string
+
 	// AppBaseURL is the engine's own public URL, used to build links in emails,
 	// OAuth callbacks and SAML metadata. It must be the address a browser
 	// reaches, which behind a TLS-terminating proxy is the https:// one.

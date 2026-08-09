@@ -117,6 +117,10 @@ const (
 	defaultMFAChallengeTTL      = 5 * time.Minute
 )
 
+// defaultAppName is the product name applied when Config supplies none. It is the issuer an
+// authenticator app shows beside a TOTP entry, so it must never render blank.
+const defaultAppName = "Authn Platform"
+
 // Per-user SMS OTP send budget, enforced in process by checkSMSRateLimit.
 //
 // These are not configuration. The limiter is a per-instance sync.Map with no shared state, so a
@@ -367,6 +371,16 @@ func (s *Service) mfaChallengeTTL() time.Duration {
 	return defaultMFAChallengeTTL
 }
 
+// appName returns the product name shown to users: in outbound mail, and as the issuer label an
+// authenticator app displays beside a TOTP entry. Falls back to defaultAppName when Config leaves
+// it unset.
+func (s *Service) appName() string {
+	if s.config != nil && s.config.AppName != "" {
+		return s.config.AppName
+	}
+	return defaultAppName
+}
+
 // ValidateApiKey resolves a raw publishable (pk_...) or secret (sk_...) API key to its stored
 // record and returns that record.
 //
@@ -468,7 +482,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 
 	// Issue 15-minute JWT Access Token (role embedded for console auth)
-	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, role, s.config.EncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, role, s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -513,7 +527,7 @@ func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error 
 	htmlBody, textBody, err := emailPkg.RenderVerificationEmail(emailPkg.VerificationEmailData{
 		UserName:         u.Name,
 		VerificationLink: verifyURL,
-		AppName:          "Authn Platform",
+		AppName:          s.appName(),
 		// Derived from the same TTL as the stored expiry, so the mail cannot promise a window
 		// the token does not honour.
 		ExpiresInHours: int(ttl.Hours()),
@@ -621,7 +635,7 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 	htmlBody, textBody, err := emailPkg.RenderMagicLinkEmail(emailPkg.MagicLinkEmailData{
 		UserName:  u.Name,
 		MagicLink: magicURL,
-		AppName:   "Authn Platform",
+		AppName:   s.appName(),
 		// Derived from the same TTL as the stored expiry, so the mail cannot promise a window
 		// the token does not honour.
 		ExpiresInMinutes: int(ttl.Minutes()),
@@ -691,7 +705,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -785,7 +799,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -868,7 +882,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Issue new 15-minute access token
 		tenantID := string(u.TenantID)
 		env := string(u.Environment)
-		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
+		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -888,7 +902,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 					if err == nil && u != nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
+						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -922,7 +936,7 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID string) (*TOTPEnrollRes
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "Authn Platform",
+		Issuer:      s.appName(),
 		AccountName: u.Email,
 	})
 	if err != nil {
@@ -1095,7 +1109,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -1949,7 +1963,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey)
+	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
