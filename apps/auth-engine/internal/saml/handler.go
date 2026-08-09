@@ -3,9 +3,11 @@
  * File: apps/auth-engine/internal/saml/handler.go
  * Tier: HTTP Controller Layer / Fiber Endpoints
  *
- * Description: Fiber HTTP handlers exposing Client (/v1/client/organizations/:orgId/saml),
- *              Domain Lookup (/v1/client/auth/domain-lookup), Assertion Consumer Service (/v1/saml/acs),
- *              and Service Provider Metadata (/v1/saml/metadata/:orgId) REST API endpoints (FR-16).
+ * Description: Fiber handlers for Enterprise SAML 2.0 SSO (FR-16) — per-
+ *              organization connection CRUD, the domain lookup that tells a
+ *              sign-in page whether an email address must go through SSO, the
+ *              Assertion Consumer Service that identity providers post
+ *              assertions to, and the service-provider metadata document.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -22,25 +24,50 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 )
 
+const (
+	// defaultTenantID is the tenant assumed when a request carries no tenant
+	// context, which happens on single-tenant deployments where no tenant was
+	// ever explicitly provisioned.
+	defaultTenantID = "tnt_default"
+
+	// metadataCacheControl is sent on the service-provider metadata document.
+	// Identity providers refetch it periodically and it changes only when the
+	// deployment's own address does.
+	metadataCacheControl = "public, max-age=3600"
+
+	// spEntityIDFormat builds the service-provider entity ID an identity
+	// provider records for an organization. It is an opaque identifier rather
+	// than a URL that must resolve, so it is a fixed namespace and does not vary
+	// with the deployment's address.
+	spEntityIDFormat = "https://authn.com/saml/sp/%s"
+)
+
+// Handler exposes the SAML endpoints over HTTP.
 type Handler struct {
+	// service performs the underlying SAML operations.
 	service *Service
 }
 
+// NewHandler constructs a Handler bound to service.
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-// RegisterRoutes registers all SAML configuration, domain lookup, ACS, and metadata routes.
+// RegisterRoutes mounts the SAML endpoints on app.
+//
+// The ACS and metadata routes are deliberately unauthenticated: an identity
+// provider posts assertions and fetches metadata without any credential of
+// ours. Their protection is assertion validation, not a middleware.
+//
+// pkMiddleware guards the client-facing routes. adminMiddleware, when supplied,
+// mounts a parallel tenant-scoped copy of the connection CRUD routes.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adminMiddleware fiber.Handler) {
-	// Public / Unauthenticated SAML Execution Endpoints
 	app.Post("/v1/saml/acs", h.ProcessACS)
 	app.Get("/v1/saml/metadata/:orgId", h.GetSPMetadata)
 
-	// Client Domain Lookup Endpoint (/v1/client/auth/domain-lookup)
 	clientGroup := app.Group("/v1/client", pkMiddleware)
 	clientGroup.Post("/auth/domain-lookup", h.LookupDomainSSO)
 
-	// Organization SAML Management Endpoints (Client Publishable Key & Admin Secret Key)
 	clientGroup.Post("/organizations/:orgId/saml", h.CreateSAMLConnection)
 	clientGroup.Get("/organizations/:orgId/saml", h.GetSAMLConnection)
 	clientGroup.Patch("/organizations/:orgId/saml", h.UpdateSAMLConnection)
@@ -55,6 +82,8 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adm
 	}
 }
 
+// getTenantID returns the tenant the request is scoped to, accepting either
+// key the middleware chain may have used, and falling back to defaultTenantID.
 func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenantID").(string); ok && val != "" {
 		return val
@@ -62,20 +91,22 @@ func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val
 	}
-	return "tnt_default"
+	return defaultTenantID
 }
 
+// getUserID returns the acting user's ID for audit attribution, or "" when the
+// request is not user-authenticated.
 func getUserID(c *fiber.Ctx) string {
 	return rbac.ExtractUserID(c)
 }
 
-// sendConfigValidationError maps SAML config-validation failures onto static,
-// client-safe prose for the 400 branch shared by create and update.
+// sendConfigValidationError maps a configuration-validation failure onto a
+// client-safe 400 shared by create and update.
 //
-// Note the domain-conflict arm: the previous code returned err.Error() verbatim,
-// which echoed the *other* organization's ID back to the caller
-// ("domain 'x' is already mapped to organization 'org_abc123'") — an org-ID
-// disclosure across the tenant. The message here is deliberately generic.
+// The domain-conflict message names no organization. The underlying error
+// identifies the organization already holding the domain, and returning that
+// would disclose another tenant's organization ID to anyone able to guess a
+// domain name.
 func sendConfigValidationError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidEntityID):
@@ -91,22 +122,21 @@ func sendConfigValidationError(c *fiber.Ctx, err error) error {
 		return httperr.BadRequest(c, httperr.CodeValidationFailed,
 			fmt.Sprintf("allowed_domains must contain between 1 and %d valid domain names", MaxAllowedDomains))
 	default:
-		// Kept at 400 (not 409) to preserve the existing status for this branch.
 		return httperr.BadRequest(c, httperr.CodeAlreadyExists,
 			"one or more domains are already mapped to another SAML connection in this tenant")
 	}
 }
 
-// isDomainConflict reports whether err is the "domain already mapped" failure.
-//
-// service.go wraps ErrDomainConflict with %w at both construction sites, so the
-// sentinel check is sufficient and there is no string matching left here.
+// isDomainConflict reports whether err is the domain-already-mapped failure.
 func isDomainConflict(err error) bool {
 	return errors.Is(err, ErrDomainConflict)
 }
 
-// Handlers Implementation
-
+// CreateSAMLConnection handles POST .../organizations/:orgId/saml and responds
+// 201 with the stored connection.
+//
+// Returns 409 when the organization already has a connection, 400 for invalid
+// configuration or a domain claimed by another connection, and 500 otherwise.
 func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	actorID := getUserID(c)
@@ -117,6 +147,8 @@ func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
+	// The organization comes from the path, not the body, so a caller cannot
+	// configure SSO for an organization other than the one they addressed.
 	req.OrganizationID = orgID
 
 	resp, err := h.service.CreateSAMLConnection(c.UserContext(), tenantID, actorID, req, c.IP(), c.Get("User-Agent"))
@@ -134,6 +166,10 @@ func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(resp)
 }
 
+// GetSAMLConnection handles GET .../organizations/:orgId/saml and responds 200
+// with the connection.
+//
+// Returns 404 when the organization has no connection and 500 otherwise.
 func (h *Handler) GetSAMLConnection(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	orgID := c.Params("orgId")
@@ -149,6 +185,11 @@ func (h *Handler) GetSAMLConnection(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// UpdateSAMLConnection handles PATCH .../organizations/:orgId/saml and responds
+// 200 with the updated connection. Omitted fields keep their stored values.
+//
+// Returns 404 when no connection exists, 400 for invalid configuration or a
+// domain claimed elsewhere, and 500 otherwise.
 func (h *Handler) UpdateSAMLConnection(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	actorID := getUserID(c)
@@ -173,6 +214,10 @@ func (h *Handler) UpdateSAMLConnection(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// DeleteSAMLConnection handles DELETE .../organizations/:orgId/saml and
+// responds 200 once the connection is removed.
+//
+// Returns 404 when no connection exists and 500 otherwise.
 func (h *Handler) DeleteSAMLConnection(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	actorID := getUserID(c)
@@ -192,6 +237,13 @@ func (h *Handler) DeleteSAMLConnection(c *fiber.Ctx) error {
 	})
 }
 
+// LookupDomainSSO handles POST /v1/client/auth/domain-lookup and responds 200
+// with whether the email's domain is mapped to an SSO connection and whether
+// SSO is mandatory for it.
+//
+// Returns 400 when neither a usable email nor a domain is supplied. A lookup
+// failure inside the service reaches the same branch: the detail goes to the
+// log rather than to this unauthenticated-adjacent caller.
 func (h *Handler) LookupDomainSSO(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 
@@ -202,10 +254,6 @@ func (h *Handler) LookupDomainSSO(c *fiber.Ctx) error {
 
 	resp, err := h.service.LookupDomainSSO(c.UserContext(), tenantID, req)
 	if err != nil {
-		// This branch collapses two very different failures: a caller-fixable
-		// bad request, and an internal connection-query failure that used to
-		// return raw ent/SQL text under a 400. The status is preserved, but the
-		// detail now only goes to the log.
 		log.Printf("[error] %s %s saml.domain_lookup: %v", c.Method(), c.Path(), err)
 		return httperr.BadRequest(c, httperr.CodeValidationFailed,
 			"email or valid domain is required")
@@ -214,12 +262,23 @@ func (h *Handler) LookupDomainSSO(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// ProcessACS handles POST /v1/saml/acs, the Assertion Consumer Service that
+// identity providers post SAML responses to. It responds 200 with the
+// authenticated user and their organization.
+//
+// The payload is read from the JSON body or, as identity providers actually
+// send it, from an HTTP-POST-binding form field.
+//
+// Returns 400 when no assertion is present and 403 when the assertion does not
+// validate. The rejection reason is never itemized: this endpoint takes
+// unauthenticated input, and distinguishing "unknown domain" from "malformed
+// XML" from "provisioning failed" would let anyone probe the tenant's SSO
+// configuration by posting crafted assertions.
 func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 
 	var req ACSRequest
 	if err := c.BodyParser(&req); err != nil {
-		// Fallback to form value
 		req.SAMLResponse = c.FormValue("SAMLResponse")
 		req.RelayState = c.FormValue("RelayState")
 	}
@@ -230,10 +289,6 @@ func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 
 	userObj, orgObj, err := h.service.ProcessACS(c.UserContext(), tenantID, req.SAMLResponse, c.IP(), c.Get("User-Agent"))
 	if err != nil {
-		// Unauthenticated endpoint: the assertion-rejection reason is never
-		// itemized to the caller. The prior code returned err.Error() here,
-		// which exposed XML parser output, the unmatched email domain, and
-		// wrapped ent errors from JIT provisioning to anyone POSTing to /acs.
 		log.Printf("[error] %s %s saml.process_acs: %v", c.Method(), c.Path(), err)
 		return httperr.Forbidden(c, httperr.CodeForbidden,
 			"SAML assertion could not be validated for this service provider")
@@ -254,6 +309,17 @@ func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 	})
 }
 
+// GetSPMetadata handles GET /v1/saml/metadata/:orgId and responds 200 with the
+// SAML 2.0 service-provider metadata XML for the organization.
+//
+// An identity provider administrator consumes this document to configure their
+// side of the connection, so the ACS location it advertises is the address the
+// provider will post assertions back to.
+//
+// WantAssertionsSigned is asserted so a conforming identity provider signs the
+// assertion rather than only the response envelope.
+//
+// Returns 404 when the organization has no SAML connection and 500 otherwise.
 func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	orgID := c.Params("orgId")
@@ -266,8 +332,8 @@ func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
 		return httperr.SendInternal(c, "saml.get_sp_metadata", err)
 	}
 
-	spEntityID := fmt.Sprintf("https://authn.com/saml/sp/%s", orgID)
-	acsURL := fmt.Sprintf("http://localhost:8080/v1/saml/acs")
+	spEntityID := fmt.Sprintf(spEntityIDFormat, orgID)
+	acsURL := h.service.AssertionConsumerURL()
 
 	xmlMetadata := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <EntityDescriptor entityID="%s" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
@@ -278,6 +344,6 @@ func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
 </EntityDescriptor>`, spEntityID, acsURL)
 
 	c.Set("Content-Type", "application/xml")
-	c.Set("Cache-Control", "public, max-age=3600")
+	c.Set("Cache-Control", metadataCacheControl)
 	return c.SendString(xmlMetadata)
 }

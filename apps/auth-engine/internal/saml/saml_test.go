@@ -14,24 +14,49 @@ package saml_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
+	"io"
+	"math/big"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/beevik/etree"
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	_ "github.com/mattn/go-sqlite3"
+	dsig "github.com/russellhaering/goxmldsig"
 )
 
 const sampleCert = `-----BEGIN CERTIFICATE-----
 MIIDXTCCAkWgAwIBAgIJAL0b2+
 -----END CERTIFICATE-----`
+
+// testAppBaseURL stands in for a real deployment address so the metadata
+// assertions below fail if the published ACS URL ever reverts to a value baked
+// into the source rather than derived from configuration.
+const testAppBaseURL = "https://auth.acme-corp.example"
+
+func testConfig() *config.Config {
+	return &config.Config{
+		AppBaseURL:                testAppBaseURL,
+		SAMLAssertionConsumerPath: "/v1/saml/acs",
+	}
+}
 
 func setupTestSAMLService(t *testing.T) (*saml.Service, *clientfactory.ClientFactory, func()) {
 	tmpDir, err := os.MkdirTemp("", "saml_test_*")
@@ -64,7 +89,7 @@ func setupTestSAMLService(t *testing.T) (*saml.Service, *clientfactory.ClientFac
 		t.Fatalf("failed to seed organization: %v", err)
 	}
 
-	svc := saml.NewService(factory, nil)
+	svc := saml.NewService(factory, nil, testConfig())
 
 	cleanup := func() {
 		_ = factory.Close()
@@ -218,51 +243,294 @@ func TestSAMLConnectionLifecycle(t *testing.T) {
 	}
 }
 
-func TestProcessACS(t *testing.T) {
-	svc, _, cleanup := setupTestSAMLService(t)
-	defer cleanup()
+// signingIdentity is a throwaway RSA key and self-signed certificate standing in
+// for an identity provider's signing material.
+type signingIdentity struct {
+	key     *rsa.PrivateKey
+	cert    *x509.Certificate
+	certPEM string
+}
 
+// newSigningIdentity mints an identity provider's signing material for one test.
+func newSigningIdentity(t *testing.T) *signingIdentity {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test-idp"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse certificate: %v", err)
+	}
+
+	return &signingIdentity{
+		key:     key,
+		cert:    cert,
+		certPEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+	}
+}
+
+// sign returns responseXML with an enveloped XML-DSig signature over its
+// Assertion element, produced with this identity's key.
+func (s *signingIdentity) sign(t *testing.T, responseXML string) string {
+	t.Helper()
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(responseXML); err != nil {
+		t.Fatalf("parse response for signing: %v", err)
+	}
+
+	assertion := doc.Root().FindElement("./Assertion")
+	if assertion == nil {
+		t.Fatal("response carries no Assertion to sign")
+	}
+
+	keyStore := dsig.TLSCertKeyStore(tls.Certificate{
+		Certificate: [][]byte{s.cert.Raw},
+		PrivateKey:  s.key,
+	})
+	signingCtx := dsig.NewDefaultSigningContext(keyStore)
+	if err := signingCtx.SetSignatureMethod(dsig.RSASHA256SignatureMethod); err != nil {
+		t.Fatalf("set signature method: %v", err)
+	}
+
+	signed, err := signingCtx.SignEnveloped(assertion)
+	if err != nil {
+		t.Fatalf("sign assertion: %v", err)
+	}
+
+	doc.Root().RemoveChild(assertion)
+	doc.Root().AddChild(signed)
+
+	out, err := doc.WriteToString()
+	if err != nil {
+		t.Fatalf("serialize signed response: %v", err)
+	}
+	return out
+}
+
+// acsResponseOptions describes the SAML response an individual case posts.
+type acsResponseOptions struct {
+	issuer       string
+	nameID       string
+	status       string
+	notBefore    time.Time
+	notOnOrAfter time.Time
+	assertionID  string
+}
+
+// buildACSResponse renders a SAML response with the given properties, filling in
+// values that a case did not care about.
+func buildACSResponse(opts acsResponseOptions) string {
+	if opts.issuer == "" {
+		opts.issuer = testIdPEntityID
+	}
+	if opts.nameID == "" {
+		opts.nameID = "alex@siemens.com"
+	}
+	if opts.status == "" {
+		opts.status = "urn:oasis:names:tc:SAML:2.0:status:Success"
+	}
+	if opts.notBefore.IsZero() {
+		opts.notBefore = time.Now().Add(-5 * time.Minute)
+	}
+	if opts.notOnOrAfter.IsZero() {
+		opts.notOnOrAfter = time.Now().Add(5 * time.Minute)
+	}
+	if opts.assertionID == "" {
+		opts.assertionID = fmt.Sprintf("assertion-%d", time.Now().UnixNano())
+	}
+
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol" ID="response-1" IssueInstant="%s">
+  <Issuer>%s</Issuer>
+  <Status><StatusCode Value="%s"/></Status>
+  <Assertion xmlns="urn:oasis:names:tc:SAML:2.0:assertion" ID="%s" IssueInstant="%s">
+    <Issuer>%s</Issuer>
+    <Subject><NameID>%s</NameID></Subject>
+    <Conditions NotBefore="%s" NotOnOrAfter="%s"/>
+  </Assertion>
+</Response>`,
+		time.Now().UTC().Format(time.RFC3339),
+		opts.issuer,
+		opts.status,
+		opts.assertionID,
+		time.Now().UTC().Format(time.RFC3339),
+		opts.issuer,
+		opts.nameID,
+		opts.notBefore.UTC().Format(time.RFC3339),
+		opts.notOnOrAfter.UTC().Format(time.RFC3339),
+	)
+}
+
+const testIdPEntityID = "http://www.okta.com/exk123"
+
+// newACSFixture provisions a service with one active SAML connection trusting
+// idp's certificate for the siemens.com domain.
+func newACSFixture(t *testing.T, idp *signingIdentity) (*saml.Service, context.Context, func()) {
+	t.Helper()
+
+	svc, _, cleanup := setupTestSAMLService(t)
 	ctx := privacy.NewBypassContext(context.Background())
 
-	// Create SAML Connection for siemens.com
 	_, err := svc.CreateSAMLConnection(ctx, "tnt_test", "usr_admin", saml.CreateSAMLRequest{
 		OrganizationID: "org_siemens",
-		IDPEntityID:    "http://www.okta.com/exk123",
+		IDPEntityID:    testIdPEntityID,
 		IDPSSOURL:      "https://siemens.okta.com/app/sso/saml",
-		IDPCertificate: sampleCert,
+		IDPCertificate: idp.certPEM,
 		AllowedDomains: []string{"siemens.com"},
 		EnforceSSO:     true,
 	}, "127.0.0.1", "TestAgent")
 	if err != nil {
+		cleanup()
 		t.Fatalf("failed to create SAML connection: %v", err)
 	}
 
-	// Mock XML SAMLResponse payload
-	xmlPayload := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<Response xmlns="urn:oasis:names:tc:SAML:2.0:protocol" ID="id123" IssueInstant="2026-08-05T12:00:00Z">
-  <Issuer>http://www.okta.com/exk123</Issuer>
-  <Status><StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></Status>
-  <Assertion xmlns="urn:oasis:names:tc:SAML:2.0:assertion" ID="assertion123" IssueInstant="2026-08-05T12:00:00Z">
-    <Issuer>http://www.okta.com/exk123</Issuer>
-    <Subject>
-      <NameID>alex@siemens.com</NameID>
-    </Subject>
-  </Assertion>
-</Response>`)
+	return svc, ctx, cleanup
+}
 
-	encodedXML := base64.StdEncoding.EncodeToString([]byte(xmlPayload))
+// A correctly signed assertion authenticates its subject and provisions them
+// into the organization the connection belongs to.
+func TestProcessACSAcceptsSignedAssertion(t *testing.T) {
+	idp := newSigningIdentity(t)
+	svc, ctx, cleanup := newACSFixture(t, idp)
+	defer cleanup()
 
-	// Process ACS
-	userObj, orgObj, err := svc.ProcessACS(ctx, "tnt_test", encodedXML, "127.0.0.1", "TestAgent")
+	payload := base64.StdEncoding.EncodeToString(
+		[]byte(idp.sign(t, buildACSResponse(acsResponseOptions{}))))
+
+	userObj, orgObj, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent")
 	if err != nil {
-		t.Fatalf("failed to process ACS SAML assertion: %v", err)
+		t.Fatalf("a correctly signed assertion must be accepted, got: %v", err)
 	}
-
 	if userObj.Email != "alex@siemens.com" || !userObj.EmailVerified {
 		t.Errorf("unexpected user payload: %+v", userObj)
 	}
 	if orgObj.ID != "org_siemens" {
-		t.Errorf("expected org_id 'org_siemens', got '%s'", orgObj.ID)
+		t.Errorf("expected org_siemens, got %q", orgObj.ID)
+	}
+}
+
+// Every one of these was accepted before assertion verification existed: the
+// endpoint is unauthenticated, so each represents a pre-authentication account
+// takeover for any tenant with SSO configured.
+func TestProcessACSRejectsUnverifiableAssertions(t *testing.T) {
+	cases := []struct {
+		name string
+		// build returns the raw response XML and whether to sign it with the
+		// connection's trusted key.
+		build func(t *testing.T, idp *signingIdentity) string
+	}{
+		{
+			name: "unsigned assertion",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				return buildACSResponse(acsResponseOptions{})
+			},
+		},
+		{
+			name: "signed by an untrusted key",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				attacker := newSigningIdentity(t)
+				return attacker.sign(t, buildACSResponse(acsResponseOptions{}))
+			},
+		},
+		{
+			name: "tampered after signing",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				signed := idp.sign(t, buildACSResponse(acsResponseOptions{}))
+				return strings.Replace(signed, "alex@siemens.com", "ceo@siemens.com", 1)
+			},
+		},
+		{
+			name: "expired validity window",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				return idp.sign(t, buildACSResponse(acsResponseOptions{
+					notBefore:    time.Now().Add(-2 * time.Hour),
+					notOnOrAfter: time.Now().Add(-1 * time.Hour),
+				}))
+			},
+		},
+		{
+			name: "not yet valid",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				return idp.sign(t, buildACSResponse(acsResponseOptions{
+					notBefore:    time.Now().Add(1 * time.Hour),
+					notOnOrAfter: time.Now().Add(2 * time.Hour),
+				}))
+			},
+		},
+		{
+			name: "unsuccessful status",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				return idp.sign(t, buildACSResponse(acsResponseOptions{
+					status: "urn:oasis:names:tc:SAML:2.0:status:AuthnFailed",
+				}))
+			},
+		},
+		{
+			name: "issuer does not match the connection",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				return idp.sign(t, buildACSResponse(acsResponseOptions{
+					issuer: "http://attacker.example/idp",
+				}))
+			},
+		},
+		{
+			name: "subject outside the connection's allowed domains",
+			build: func(t *testing.T, idp *signingIdentity) string {
+				return idp.sign(t, buildACSResponse(acsResponseOptions{
+					nameID: "victim@other-company.com",
+				}))
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			idp := newSigningIdentity(t)
+			svc, ctx, cleanup := newACSFixture(t, idp)
+			defer cleanup()
+
+			payload := base64.StdEncoding.EncodeToString([]byte(tc.build(t, idp)))
+
+			userObj, _, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent")
+			if err == nil {
+				t.Fatalf("assertion was accepted but must be rejected; it authenticated %v", userObj)
+			}
+			if userObj != nil {
+				t.Errorf("a rejected assertion must not yield a user, got %+v", userObj)
+			}
+		})
+	}
+}
+
+// An assertion is single-use: replaying a captured one inside its validity
+// window must not re-authenticate the subject.
+func TestProcessACSRejectsReplayedAssertion(t *testing.T) {
+	idp := newSigningIdentity(t)
+	svc, ctx, cleanup := newACSFixture(t, idp)
+	defer cleanup()
+
+	payload := base64.StdEncoding.EncodeToString(
+		[]byte(idp.sign(t, buildACSResponse(acsResponseOptions{assertionID: "assertion-replay-1"}))))
+
+	if _, _, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent"); err != nil {
+		t.Fatalf("first presentation must succeed, got: %v", err)
+	}
+	if _, _, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent"); err == nil {
+		t.Fatal("replaying the same assertion must be rejected")
 	}
 }
 
@@ -306,6 +574,21 @@ func TestGetSPMetadataHandler(t *testing.T) {
 	}
 	if cacheControl := resp.Header.Get("Cache-Control"); cacheControl != "public, max-age=3600" {
 		t.Errorf("expected Cache-Control public, max-age=3600, got '%s'", cacheControl)
+	}
+
+	// The ACS location an IdP posts assertions to must come from configuration.
+	// A hardcoded address here reaches every identity provider that consumes
+	// this document and points them all at the wrong host.
+	metadataBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed reading SP metadata body: %v", err)
+	}
+	wantACS := testAppBaseURL + "/v1/saml/acs"
+	if !strings.Contains(string(metadataBody), `Location="`+wantACS+`"`) {
+		t.Errorf("SP metadata does not advertise the configured ACS URL %q; body: %s", wantACS, metadataBody)
+	}
+	if strings.Contains(string(metadataBody), "localhost") {
+		t.Errorf("SP metadata advertises a localhost address; body: %s", metadataBody)
 	}
 
 	// 2. Non-existent Organization Metadata Fetch (404 Guard)
