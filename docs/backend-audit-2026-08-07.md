@@ -453,3 +453,52 @@ Three findings change what the SDK should be built against, so they are worth re
 - **M9 (error envelopes).** `AuthnError` classification quality is capped by how consistently the backend emits a machine-readable `code`.
 
 Everything else can be wrapped as-is.
+
+---
+
+## Resolution — 2026-08-10
+
+All 25 findings are closed. Verified by re-reading the source against each
+finding, not from commit messages. Build, vet and gofmt clean; 23 unit packages
+and the integration suite pass.
+
+| Finding | Resolution |
+|---|---|
+| C1 | `org.RegisterRoutes` takes `clientAuthMw`; `main.go` passes it |
+| C2 | `authzCheckMember` / `authzRequireOrgAdmin` on every mutator |
+| C3 | `user_id` query fallback and `usr_accepted_guest` deleted |
+| H1 | One matcher pair in `rbac/matcher.go`; universal grant deleted |
+| H2 | `verification_token` no longer in any response body |
+| H3 | Handler blanks `CancellationToken` before serialising |
+| H4 | All cookies use `cfg.CookieSecure()`, derived from `APP_BASE_URL` |
+| H5 | Token moved to the URL fragment, built with `net/url`; redirect target validated against the application's registered URIs |
+| H6 | Guard uses the shared `ExtractAccessToken` (cookie-then-header) |
+| H7 | Explicit deny list replaces substring matching |
+| H8 | `errorsIs` deleted; 117 `errors.Is` call sites, 0 string comparisons |
+| M1 | Routes moved behind `RequireClientAuth`; 7 documented exceptions remain where the route cannot sit behind it |
+| M2 | Session handler uses the shared extractor; cookie sessions work |
+| M3 | `tnt_default` fallback replaced by `requireTenantID`, fails closed |
+| M4 | One group on `/v1/client/user`, auth attached per route |
+| M5 | Second-factor verification keys its bucket on the hashed challenge token, so IP rotation cannot escape it |
+| M6 | Query fallback restricted to a closed allowlist of redirect landings |
+| M7 | `IsPrivilegedRole` / `HasPrivilegedRole` is the single list |
+| M8 | Fail-open path logs a categorised reason, without token material |
+| M9 | 411 `httperr` call sites; 0 leaked `err.Error()` in any body |
+| D1–D5 | Documented in `docs/endpoints/client-2fa-verification.md` and `client-login.md`; D5's dead path now verifies its own bearer token |
+
+### Found during the work, not in this audit
+
+- **SAML assertions were never verified.** `ProcessACS` parsed the XML, read the
+  `NameID` and provisioned the user with `email_verified=true`, checking no
+  signature, expiry, status, issuer or audience — on an unauthenticated
+  endpoint. Pre-authentication account takeover for every SSO tenant. Now
+  verified with `goxmldsig` in that order, plus single-use replay protection.
+- **CORS reflected any origin with credentials enabled**, so any site a
+  signed-in user visited could call this API with their cookies and read the
+  replies. Now an exact-match allowlist; startup refuses wildcard + credentials.
+- **Email-verification tokens never expired** — a permanent takeover primitive.
+- **`expires_in` contradicted the signed `exp`**: the signer hardcoded 15
+  minutes while callers advertised the configured lifetime.
+- Organization metadata size was unenforced; `cmd/migrate` opened every database
+  with the Postgres driver; `cmd/seed` assigned a non-existent role and
+  swallowed the error.
