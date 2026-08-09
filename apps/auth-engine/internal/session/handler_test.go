@@ -37,10 +37,12 @@ func newCookie(name, value string) *http.Cookie {
 	return &http.Cookie{Name: name, Value: value}
 }
 
-// TestGetUserIDAndSessionID_CookieAuthenticatedSession is the regression guard
-// for audit finding M2: this helper read only the Authorization header, so a
-// browser holding its session in a cookie — the shape RequireClientAuth accepts
-// first — could not list or revoke its own sessions.
+// TestGetUserIDAndSessionID_CookieAuthenticatedSession pins the credential
+// shapes this route accepts.
+//
+// A browser holds its session in a cookie, which is the form RequireClientAuth
+// accepts first. Resolving from the Authorization header alone would leave such
+// a client unable to list or revoke its own sessions.
 func TestGetUserIDAndSessionID_CookieAuthenticatedSession(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
 		"usr_cookie", "tnt_default", "test",
