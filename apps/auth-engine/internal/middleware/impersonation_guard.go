@@ -144,7 +144,7 @@ func tokenFailureReason(err error) string {
 // impersonated. Every other request continues down the chain unchanged.
 // signingSecret verifies the access-token signature.
 //
-// Token extraction goes through extractAccessToken, so this guard applies the
+// Token extraction goes through ExtractAccessToken, so this guard applies the
 // same cookie-then-header precedence as RequireClientAuth. The two MUST agree: a
 // guard that reads only the Authorization header sees no credential at all on a
 // cookie-authenticated session, waves the request through, and RequireClientAuth
@@ -158,7 +158,7 @@ func tokenFailureReason(err error) string {
 // is observable, hence the log line on every skip.
 func PreventImpersonatedMutations(signingSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		tokenStr := extractAccessToken(c)
+		tokenStr := ExtractAccessToken(c)
 		if strings.TrimSpace(tokenStr) == "" {
 			// No credential is the normal case for the unauthenticated half of
 			// /v1/client (login, signup, password reset). It carries no signal and

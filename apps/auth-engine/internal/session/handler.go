@@ -15,10 +15,10 @@ package session
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -91,9 +91,11 @@ func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 	}
 
 	if userID == "" || sessionID == "" {
-		authHeader := c.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+		// Extraction goes through the shared helper so this route honours the
+		// same cookie-then-header precedence as RequireClientAuth. Reading only
+		// the Authorization header would leave a cookie-authenticated browser
+		// session unable to list or revoke its own sessions.
+		if tokenStr := middleware.ExtractAccessToken(c); tokenStr != "" {
 			claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.svc.cfg.EncryptionKey)
 			if err == nil && claims != nil {
 				if userID == "" {

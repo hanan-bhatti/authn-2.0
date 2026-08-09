@@ -23,7 +23,7 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// extractAccessToken resolves an end-user's access token in the canonical
+// ExtractAccessToken resolves an end-user's access token in the canonical
 // precedence order: the authn_access_token cookie, then the access_token cookie,
 // then the Authorization: Bearer header. It returns "" when the request carries
 // none of them.
@@ -34,7 +34,7 @@ import (
 // whether the session is impersonated. If the two disagreed on precedence, a
 // session authenticated by cookie would be invisible to the guard and visible to
 // the authenticator, and the impersonation restriction would silently not apply.
-func extractAccessToken(c *fiber.Ctx) string {
+func ExtractAccessToken(c *fiber.Ctx) string {
 	if tok := c.Cookies("authn_access_token"); tok != "" {
 		return tok
 	}
@@ -58,7 +58,7 @@ func extractAccessToken(c *fiber.Ctx) string {
 // "refresh your session".
 func RequireClientAuth(signingSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		tokenStr := extractAccessToken(c)
+		tokenStr := ExtractAccessToken(c)
 
 		if strings.TrimSpace(tokenStr) == "" {
 			return httperr.Unauthorized(c, httperr.CodeUnauthorized,

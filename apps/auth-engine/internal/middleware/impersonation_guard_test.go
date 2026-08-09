@@ -157,7 +157,7 @@ func TestImpersonationGuardLogsUnverifiableToken(t *testing.T) {
 	}
 
 	// A token signed with the WRONG secret: structurally a real JWT, so it gets
-	// past extractAccessToken and fails at signature verification.
+	// past ExtractAccessToken and fails at signature verification.
 	foreignToken, err := jwtpkg.IssueAccessToken("usr_x", "tnt_default", "test", "x@example.com", "X", "user", "a_completely_different_signing_secret_1")
 	require.NoError(t, err)
 
