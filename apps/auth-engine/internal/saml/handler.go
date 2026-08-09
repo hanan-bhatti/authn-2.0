@@ -34,12 +34,6 @@ const (
 	// Identity providers refetch it periodically and it changes only when the
 	// deployment's own address does.
 	metadataCacheControl = "public, max-age=3600"
-
-	// spEntityIDFormat builds the service-provider entity ID an identity
-	// provider records for an organization. It is an opaque identifier rather
-	// than a URL that must resolve, so it is a fixed namespace and does not vary
-	// with the deployment's address.
-	spEntityIDFormat = "https://authn.com/saml/sp/%s"
 )
 
 // Handler exposes the SAML endpoints over HTTP.
@@ -332,7 +326,7 @@ func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
 		return httperr.SendInternal(c, "saml.get_sp_metadata", err)
 	}
 
-	spEntityID := fmt.Sprintf(spEntityIDFormat, orgID)
+	spEntityID := h.service.spEntityID(orgID)
 	acsURL := h.service.AssertionConsumerURL()
 
 	xmlMetadata := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>

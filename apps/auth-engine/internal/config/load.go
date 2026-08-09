@@ -131,6 +131,7 @@ func Load() (*Config, error) {
 		WebAuthnRPOrigins:     r.originList("WEBAUTHN_RP_ORIGINS", []string{"http://localhost:8080", "http://localhost:3000"}),
 		WebAuthnRPDisplayName: r.str("WEBAUTHN_RP_DISPLAY_NAME", "Authn Platform"),
 
+		SAMLSPEntityIDPrefix:      r.str("SAML_SP_ENTITY_ID_PREFIX", "https://authn.com/saml/sp/"),
 		SAMLAssertionConsumerPath: r.str("SAML_ACS_PATH", "/v1/saml/acs"),
 
 		WebhookWorkerCount:        r.positive("WEBHOOK_WORKER_COUNT", 5),

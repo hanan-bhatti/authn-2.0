@@ -294,6 +294,17 @@ type Config struct {
 	// SAML
 	// ---------------------------------------------------------------------
 
+	// SAMLSPEntityIDPrefix is the namespace the service-provider entity ID is
+	// built from: the organization ID is appended to it.
+	//
+	// The entity ID is an opaque identifier an identity provider records for this
+	// service provider — it does not have to resolve. It is published in SP
+	// metadata AND checked against an assertion's AudienceRestriction, so both
+	// uses must derive from this one setting or every audience-restricted
+	// assertion is rejected. Changing it after a provider has been configured
+	// requires re-registering there.
+	SAMLSPEntityIDPrefix string
+
 	// SAMLAssertionConsumerPath is the path where identity providers post SAML
 	// assertions. Combined with AppBaseURL it forms the absolute URL published
 	// in service-provider metadata.
@@ -362,6 +373,15 @@ func (c *Config) CookieSecure() bool {
 // variable rather than one entry per provider.
 func (c *Config) SocialCallbackURL(provider string) string {
 	return c.AppBaseURL + "/v1/client/auth/social/" + provider + "/callback"
+}
+
+// SAMLSPEntityID returns the service-provider entity ID for an organization.
+//
+// Metadata publishing and audience validation both call this, so the value an
+// identity provider is told and the value an assertion is checked against can
+// never disagree.
+func (c *Config) SAMLSPEntityID(organizationID string) string {
+	return c.SAMLSPEntityIDPrefix + organizationID
 }
 
 // SAMLAssertionConsumerURL returns the absolute ACS endpoint published in

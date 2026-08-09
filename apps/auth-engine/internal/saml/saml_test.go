@@ -49,12 +49,15 @@ MIIDXTCCAkWgAwIBAgIJAL0b2+
 // testAppBaseURL stands in for a real deployment address so the metadata
 // assertions below fail if the published ACS URL ever reverts to a value baked
 // into the source rather than derived from configuration.
+const testSPEntityIDPrefix = "https://sp.test.example/saml/sp/"
+
 const testAppBaseURL = "https://auth.acme-corp.example"
 
 func testConfig() *config.Config {
 	return &config.Config{
 		AppBaseURL:                testAppBaseURL,
 		SAMLAssertionConsumerPath: "/v1/saml/acs",
+		SAMLSPEntityIDPrefix:      testSPEntityIDPrefix,
 	}
 }
 
@@ -603,5 +606,32 @@ func TestGetSPMetadataHandler(t *testing.T) {
 	respPost, _ := app.Test(reqPost)
 	if respPost.StatusCode != 405 {
 		t.Errorf("expected status 405 for POST, got %d", respPost.StatusCode)
+	}
+}
+
+// The entity ID published in metadata and the one an assertion's audience is
+// checked against must be the same string. If they diverge, every IdP that sets
+// an AudienceRestriction — which is most of them — has its assertions rejected
+// with no indication why.
+func TestSPEntityIDIsConsistentAcrossMetadataAndAudience(t *testing.T) {
+	svc, _, cleanup := setupTestSAMLService(t)
+	defer cleanup()
+
+	const orgID = "org_consistency"
+	got := saml.SPEntityIDForTest(svc, orgID)
+
+	// Built independently from the configured prefix, so this fails if the
+	// accessor stops honouring configuration.
+	want := testSPEntityIDPrefix + orgID
+	if got != want {
+		t.Errorf("SP entity ID = %q, want %q (must derive from SAML_SP_ENTITY_ID_PREFIX)", got, want)
+	}
+	// checkAudience compares against exactly this value, so an assertion naming
+	// it must pass and one naming anything else must not.
+	if err := saml.CheckAudienceForTest(want, got); err != nil {
+		t.Errorf("an assertion addressed to the published entity ID must be accepted: %v", err)
+	}
+	if err := saml.CheckAudienceForTest("https://elsewhere.example/sp/"+orgID, got); err == nil {
+		t.Error("an assertion addressed to a different service provider must be rejected")
 	}
 }

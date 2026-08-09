@@ -43,6 +43,10 @@ const (
 	fallbackAppBaseURL            = "http://localhost:8080"
 	fallbackAssertionConsumerPath = "/v1/saml/acs"
 
+	// fallbackSPEntityIDPrefix mirrors the SAML_SP_ENTITY_ID_PREFIX default and
+	// applies only when the service is built without a Config.
+	fallbackSPEntityIDPrefix = "https://authn.com/saml/sp/"
+
 	// defaultMemberRoleSlug is the role new SSO users are granted in the
 	// organization their email domain maps to.
 	defaultMemberRoleSlug = "editor"
@@ -91,6 +95,15 @@ func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatch
 		s.cfg = cfg[0]
 	}
 	return s
+}
+
+// spEntityID returns the service-provider entity ID for an organization, which
+// is published in metadata and checked against an assertion's audience.
+func (s *Service) spEntityID(organizationID string) string {
+	if s.cfg != nil && s.cfg.SAMLSPEntityIDPrefix != "" {
+		return s.cfg.SAMLSPEntityID(organizationID)
+	}
+	return fallbackSPEntityIDPrefix + organizationID
 }
 
 // AssertionConsumerURL returns the absolute ACS endpoint to publish in
@@ -545,7 +558,7 @@ func (s *Service) ProcessACS(ctx context.Context, tenantID, rawSAMLPayload strin
 	}
 
 	now := time.Now()
-	verified, err := verifyAssertion(doc, conn, now)
+	verified, err := verifyAssertion(doc, conn, now, s.spEntityID(conn.OrganizationID))
 	if err != nil {
 		s.logAudit(ctx, tenantID, "", "saml.login_rejected", "saml_connection", conn.ID, map[string]interface{}{
 			"idp_entity_id": conn.IdpEntityID,

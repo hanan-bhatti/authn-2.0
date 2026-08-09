@@ -170,7 +170,7 @@ func findChildElement(el *etree.Element, name string) *etree.Element {
 // a different service provider, ErrInvalidCert when the connection's stored
 // certificate is unusable, and ErrInvalidAssertion for a malformed or
 // unsuccessful response.
-func verifyAssertion(doc *samlDocument, conn *ent.SAMLConnection, now time.Time) (*verifiedAssertion, error) {
+func verifyAssertion(doc *samlDocument, conn *ent.SAMLConnection, now time.Time, expectedAudience string) (*verifiedAssertion, error) {
 	certificates, err := parseIdPCertificates(conn.IdpCertificate)
 	if err != nil {
 		return nil, err
@@ -241,7 +241,7 @@ func verifyAssertion(doc *samlDocument, conn *ent.SAMLConnection, now time.Time)
 		return nil, err
 	}
 
-	if err := checkAudience(signedAssertion.Conditions, conn.OrganizationID); err != nil {
+	if err := checkAudience(signedAssertion.Conditions, expectedAudience); err != nil {
 		return nil, err
 	}
 
@@ -299,12 +299,11 @@ func checkConditions(conditions SAMLConditions, now time.Time) (time.Time, error
 // provider has not restricted where it may be presented.
 //
 // Returns ErrAudienceMismatch when restrictions are present and none matches.
-func checkAudience(conditions SAMLConditions, organizationID string) error {
+func checkAudience(conditions SAMLConditions, expected string) error {
 	if len(conditions.AudienceRestrictions) == 0 {
 		return nil
 	}
 
-	expected := fmt.Sprintf(spEntityIDFormat, organizationID)
 	for _, restriction := range conditions.AudienceRestrictions {
 		for _, audience := range restriction.Audiences {
 			if strings.TrimSpace(audience) == expected {

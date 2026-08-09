@@ -42,6 +42,11 @@ func baseProductionEnv() map[string]string {
 }
 
 func TestLoadAppliesDocumentedDefaults(t *testing.T) {
+	// Load walks up from the working directory looking for a .env, so run from an
+	// empty temporary directory. Without this the test asserts against whatever
+	// .env the developer happens to have on disk rather than against the defaults
+	// in load.go, and it passes or fails according to local configuration.
+	t.Chdir(t.TempDir())
 	withEnv(t, map[string]string{"APP_ENV": "development"})
 
 	cfg, err := Load()
