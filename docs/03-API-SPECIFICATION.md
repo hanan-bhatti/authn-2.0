@@ -299,7 +299,7 @@ Deliberate design choice matching standard B2C auth practice (Firebase, Clerk, A
 ```json
 {
   "error": "too many attempts, please try again later",
-  "retry_after_seconds": 889
+  "code": "rate_limited"
 }
 ```
 
@@ -367,7 +367,7 @@ Constant-time CPU execution (~190ms) using `DummyArgon2idHash` when user not fou
 ```json
 {
   "error": "too many attempts, please try again later",
-  "retry_after_seconds": 889
+  "code": "rate_limited"
 }
 ```
 
@@ -412,7 +412,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 // 400 — invalid email format: {"error": "invalid email address format"}
 // 401 — missing pk_: {"error": "missing publishable API key in X-Authn-Publishable-Key header"}
 // 405 — wrong verb (Allow: POST): {"error": {"code": 405, "message": "Method Not Allowed"}}
-// 429 — per-email rate limit: {"error": "too many verification email requests for this address, please try again later", "retry_after_seconds": 900}
+// 429 — per-email rate limit: {"error": "too many verification email requests for this address, please try again later", "code": "rate_limited"}
 ```
 
 ### 3.3 Refresh Token Rotation (`POST /v1/client/auth/refresh`)

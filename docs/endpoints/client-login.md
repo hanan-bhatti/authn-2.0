@@ -136,7 +136,7 @@ Triggered on 6th request within 15-minute sliding window per IP + endpoint.
 ```json
 {
   "error": "too many attempts, please try again later",
-  "retry_after_seconds": 889
+  "code": "rate_limited"
 }
 ```
 

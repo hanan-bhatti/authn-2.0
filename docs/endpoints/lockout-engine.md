@@ -52,5 +52,5 @@ Vary: Origin
 X-Authn-Degraded-Mode: false
 Retry-After: 900
 
-{"error":"too many attempts, please try again later","retry_after_seconds":900}
+{"error":"too many attempts, please try again later","code":"rate_limited"}
 ```

@@ -92,7 +92,7 @@ Returned when request rate exceeds 5 attempts per 15-minute window per IP+endpoi
 ```json
 {
   "error": "too many attempts, please try again later",
-  "retry_after_seconds": 889
+  "code": "rate_limited"
 }
 ```
 

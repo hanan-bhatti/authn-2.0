@@ -197,7 +197,7 @@ Retry-After: 900
 ```json
 {
   "error": "too many verification email requests for this address, please try again later",
-  "retry_after_seconds": 900
+  "code": "rate_limited"
 }
 ```
 
