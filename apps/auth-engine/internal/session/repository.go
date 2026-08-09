@@ -1,18 +1,15 @@
-// Copyright (c) 2026 Hanan Bhatti
-// This file is part of Authn.
-//
-// Authn is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Authn is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with Authn.  If not, see <https://www.gnu.org/licenses/>.
+/*
+ * Authn Platform — Enterprise Identity Engine
+ * File: apps/auth-engine/internal/session/repository.go
+ * Tier: Persistence Layer / Session Store
+ *
+ * Description: Data-access layer for session records. Creates sessions with hashed refresh
+ *              tokens, performs the two-step rotation that moves the outgoing session into
+ *              a grace state pointing at its successor, and serves the lookup, listing and
+ *              revocation queries the service layer builds on.
+ *
+ * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
+ */
 
 package session
 
@@ -30,36 +27,55 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
+// Sentinel errors for session lookup and refresh failures. Handlers match on
+// these with errors.Is to choose a status code, so their identity is what
+// matters, not their text.
 var (
-	ErrSessionNotFound    = errors.New("session not found")
-	ErrSessionRevoked     = errors.New("session has been revoked")
-	ErrSessionExpired     = errors.New("session has expired")
+	// ErrSessionNotFound reports that no session matches the given ID or token.
+	ErrSessionNotFound = errors.New("session not found")
+	// ErrSessionRevoked reports that the session was explicitly revoked.
+	ErrSessionRevoked = errors.New("session has been revoked")
+	// ErrSessionExpired reports that the session outlived its own lifetime.
+	ErrSessionExpired = errors.New("session has expired")
+	// ErrSessionCompromised reports detected refresh-token reuse. Sessions have
+	// already been revoked per the tenant's policy by the time it is returned.
 	ErrSessionCompromised = errors.New("session reuse detected; all sessions revoked for security")
-	// ErrSessionNotOwned is returned when a caller tries to act on a session
-	// belonging to another user. Previously this was an anonymous errors.New in
-	// the service, so the handler had to match on error text to pick its status.
+	// ErrSessionNotOwned reports an attempt to act on another user's session.
 	ErrSessionNotOwned = errors.New("unauthorized: session does not belong to user")
 )
 
+// Repository reads and writes session rows through the tenant-aware client factory.
 type Repository struct {
+	// factory resolves the ent client for a tenant and environment.
 	factory *clientfactory.ClientFactory
 }
 
+// NewRepository constructs a session Repository over the given client factory.
 func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
 }
 
+// Factory exposes the underlying client factory so callers can reach sibling
+// repositories without holding a second reference.
 func (r *Repository) Factory() *clientfactory.ClientFactory {
 	return r.factory
 }
 
-// HashRefreshToken returns the SHA-256 hex digest of a raw 64-byte opaque refresh token.
+// HashRefreshToken returns the SHA-256 hex digest of a raw refresh token.
+//
+// Only the digest is stored, so a database leak does not yield usable refresh
+// tokens. Lookups hash the presented token and match on the digest.
 func HashRefreshToken(rawToken string) string {
 	h := sha256.Sum256([]byte(rawToken))
 	return hex.EncodeToString(h[:])
 }
 
-func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, userID, rawRefreshToken, ipAddress, userAgent, deviceFingerprintHmac, location string, ttlDays int) (*ent.Session, string, error) {
+// CreateSession records a new active session valid for ttl and returns it
+// alongside the raw refresh token.
+//
+// The raw token is returned only here, because only its hash is persisted and it
+// cannot be recovered afterwards. Passing an empty rawRefreshToken generates one.
+func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, userID, rawRefreshToken, ipAddress, userAgent, deviceFingerprintHmac, location string, ttl time.Duration) (*ent.Session, string, error) {
 	rawToken := rawRefreshToken
 	if rawToken == "" {
 		rawToken = uuid.New().String() + uuid.New().String()
@@ -67,7 +83,7 @@ func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, u
 	hash := HashRefreshToken(rawToken)
 	id := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
 	now := time.Now()
-	expiresAt := now.Add(time.Duration(ttlDays) * 24 * time.Hour)
+	expiresAt := now.Add(ttl)
 
 	sess, err := r.factory.GetClient(ctx, tenantID, environment).Session.Create().
 		SetID(id).
@@ -88,6 +104,11 @@ func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, u
 	return sess, rawToken, nil
 }
 
+// GetSessionByTokenHash looks up a session by refresh-token digest, returning
+// ErrSessionNotFound when nothing matches.
+//
+// The query is deliberately not filtered by status: the caller must see revoked
+// and grace-state rows to distinguish a legitimate refresh from token reuse.
 func (r *Repository) GetSessionByTokenHash(ctx context.Context, hash string) (*ent.Session, error) {
 	sess, err := r.factory.GetClient(ctx, "", "").Session.Query().
 		Where(session.RefreshTokenHash(hash)).
@@ -101,6 +122,8 @@ func (r *Repository) GetSessionByTokenHash(ctx context.Context, hash string) (*e
 	return sess, nil
 }
 
+// GetSessionByID loads a session by its identifier, returning ErrSessionNotFound
+// when it does not exist.
 func (r *Repository) GetSessionByID(ctx context.Context, sessionID string) (*ent.Session, error) {
 	sess, err := r.factory.GetClient(ctx, "", "").Session.Get(ctx, sessionID)
 	if err != nil {
@@ -112,19 +135,27 @@ func (r *Repository) GetSessionByID(ctx context.Context, sessionID string) (*ent
 	return sess, nil
 }
 
-func (r *Repository) RotateSession(ctx context.Context, tenantID, environment, oldSessionID, newRawToken string, graceSeconds int, ttlDays int) (*ent.Session, string, error) {
+// RotateSession issues a successor session valid for ttl and moves the outgoing
+// one into the grace state for the duration of grace. It returns the new session
+// and its raw refresh token.
+//
+// The successor is created before the old row is updated, so a failure part-way
+// leaves the caller's existing token working rather than stranding the session
+// with no usable successor. The old row records SupersededBySessionID, which is
+// how a refresh arriving inside the grace window finds the session to answer for.
+func (r *Repository) RotateSession(ctx context.Context, tenantID, environment, oldSessionID, newRawToken string, grace, ttl time.Duration) (*ent.Session, string, error) {
 	client := r.factory.GetClient(ctx, tenantID, environment)
 	oldSess, err := client.Session.Get(ctx, oldSessionID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	newSess, newRaw, err := r.CreateSession(ctx, tenantID, environment, oldSess.UserID, newRawToken, oldSess.IPAddress, oldSess.UserAgent, oldSess.DeviceFingerprintHmac, oldSess.Location, ttlDays)
+	newSess, newRaw, err := r.CreateSession(ctx, tenantID, environment, oldSess.UserID, newRawToken, oldSess.IPAddress, oldSess.UserAgent, oldSess.DeviceFingerprintHmac, oldSess.Location, ttl)
 	if err != nil {
 		return nil, "", err
 	}
 
-	graceExpiresAt := time.Now().Add(time.Duration(graceSeconds) * time.Second)
+	graceExpiresAt := time.Now().Add(grace)
 	_, err = client.Session.UpdateOneID(oldSessionID).
 		SetStatus(session.StatusRotatedGrace).
 		SetGraceExpiresAt(graceExpiresAt).
@@ -137,6 +168,7 @@ func (r *Repository) RotateSession(ctx context.Context, tenantID, environment, o
 	return newSess, newRaw, nil
 }
 
+// RevokeSession marks a single session revoked, ending its ability to refresh.
 func (r *Repository) RevokeSession(ctx context.Context, sessionID string) error {
 	client := r.factory.GetClient(ctx, "", "")
 	return client.Session.UpdateOneID(sessionID).
@@ -144,6 +176,8 @@ func (r *Repository) RevokeSession(ctx context.Context, sessionID string) error 
 		Exec(ctx)
 }
 
+// RevokeAllUserSessions revokes every non-revoked session for userID, optionally
+// sparing exceptSessionID, and returns the number of rows changed.
 func (r *Repository) RevokeAllUserSessions(ctx context.Context, userID string, exceptSessionID string) (int, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	pred := session.UserID(userID)
@@ -157,6 +191,8 @@ func (r *Repository) RevokeAllUserSessions(ctx context.Context, userID string, e
 		Save(ctx)
 }
 
+// GetUserActiveSessions returns the user's unrevoked, unexpired sessions, most
+// recently active first.
 func (r *Repository) GetUserActiveSessions(ctx context.Context, userID string) ([]*ent.Session, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	return client.Session.Query().
@@ -169,6 +205,8 @@ func (r *Repository) GetUserActiveSessions(ctx context.Context, userID string) (
 		All(ctx)
 }
 
+// TouchLastActive stamps the session's last-activity time with the current
+// instant, which drives the ordering of the session list.
 func (r *Repository) TouchLastActive(ctx context.Context, sessionID string) error {
 	client := r.factory.GetClient(ctx, "", "")
 	now := time.Now()

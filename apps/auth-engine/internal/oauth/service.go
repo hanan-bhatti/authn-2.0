@@ -3,9 +3,11 @@
  * File: apps/auth-engine/internal/oauth/service.go
  * Tier: Internal Feature Package / OAuth2 & OIDC Service
  *
- * Description: Core business logic layer for OpenID Connect (OIDC) discovery,
- *              PKCE authorization code generation, registered client validation,
- *              and JWT ID token signing.
+ * Description: Business logic for the OAuth2 authorization-code flow and the
+ *              OpenID Connect surface built on top of it: discovery metadata,
+ *              registered-client validation, PKCE-bound authorization codes,
+ *              RS256 ID token signing, JWKS publication and rotation, and the
+ *              UserInfo claim set.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -25,18 +27,56 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// Service provides business logic for OAuth2 and OIDC flows.
+const (
+	// defaultJWTKeyID names the signing key when Config.JWTKeyID is unset. It is
+	// published as the `kid` in the JWKS and in every ID token header, so relying
+	// parties key their cache on it.
+	defaultJWTKeyID = "authn-rsa-key-v1"
+
+	// authorizationCodePrefix marks a string as an authorization code, keeping
+	// codes visually distinct from the other opaque tokens the engine issues.
+	authorizationCodePrefix = "ac_"
+
+	// authorizationCodeEntropyBytes is the number of random bytes behind each
+	// authorization code, hex-encoded into the value handed to the client.
+	authorizationCodeEntropyBytes = 24
+
+	// accessTokenExpiresInSeconds is the `expires_in` advertised on every token
+	// response. It mirrors the fixed 15-minute lifetime that
+	// pkg/jwt.IssueAccessToken stamps into the token's `exp` claim; the two must
+	// agree, so this is not read from Config.AccessTokenTTL until the signer
+	// itself accepts a configurable lifetime.
+	accessTokenExpiresInSeconds = 900
+
+	// grantedScope is the scope string returned with an authorization-code
+	// exchange. The engine issues the full OIDC identity scope set and does not
+	// yet narrow claims per request.
+	grantedScope = "openid profile email"
+)
+
+// Service carries out OAuth2 and OIDC operations against the repositories and
+// signing keys it is constructed with.
 type Service struct {
-	repo        *Repository
-	authRepo    *auth.Repository
+	// repo stores and consumes ephemeral authorization codes.
+	repo *Repository
+	// authRepo reads the authoritative user and application records that back
+	// token claims and redirect-URI validation.
+	authRepo *auth.Repository
+	// authService supplies role resolution and refresh-token rotation.
 	authService *auth.Service
-	cfg         *config.Config
-	keyManager  *jwtpkg.KeyManager
+	// cfg holds issuer identity, token lifetimes and signing-key locations.
+	cfg *config.Config
+	// keyManager owns the active RSA signing key and any keys still inside their
+	// rotation grace period.
+	keyManager *jwtpkg.KeyManager
 }
 
-// NewService constructs a new OAuth2 Service instance.
+// NewService constructs a Service. The key manager is initialized with
+// cfg.JWTKeyID, falling back to defaultJWTKeyID when the setting is absent; if
+// key initialization fails the Service still builds and JWKS publication falls
+// back to the process-wide key.
 func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.Service, cfg *config.Config) *Service {
-	keyID := "authn-rsa-key-v1"
+	keyID := defaultJWTKeyID
 	if cfg != nil && cfg.JWTKeyID != "" {
 		keyID = cfg.JWTKeyID
 	}
@@ -51,7 +91,11 @@ func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.S
 	}
 }
 
-// GetPublicJWKS returns all active and grace period keys as an RFC 7517 JWKS payload.
+// GetPublicJWKS returns the RFC 7517 key set containing the active signing key
+// plus every key still inside its rotation grace period.
+//
+// Publishing grace-period keys is what makes rotation non-breaking: tokens
+// signed by the outgoing key stay verifiable until they expire.
 func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
 	if s.keyManager != nil {
 		return s.keyManager.GetPublicJWKS()
@@ -59,7 +103,10 @@ func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
 	return jwtpkg.GetPublicJWKS(s.cfg.JWTKeyID)
 }
 
-// CreateClientApplication registers an Application client record with authorized redirect URIs.
+// CreateClientApplication registers an OAuth client under tenantID with the
+// exact redirect URIs it is permitted to use.
+//
+// Returns an error if the auth repository is unavailable or the write fails.
 func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, name string, redirectURIs []string) error {
 	if s.authRepo == nil {
 		return fmt.Errorf("auth repository uninitialized")
@@ -68,7 +115,11 @@ func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, nam
 	return err
 }
 
-// RotateJWKSKey triggers manual key rotation: active key moves to grace period, new active key generated.
+// RotateJWKSKey promotes a freshly generated key to active and moves the
+// outgoing key into the grace period.
+//
+// newKeyID overrides the generated identifier when supplied. Returns an error
+// if no key manager was initialized.
 func (s *Service) RotateJWKSKey(newKeyID ...string) (*jwtpkg.KeyEntry, error) {
 	if s.keyManager != nil {
 		return s.keyManager.RotateKey(newKeyID...)
@@ -76,7 +127,15 @@ func (s *Service) RotateJWKSKey(newKeyID ...string) (*jwtpkg.KeyEntry, error) {
 	return nil, fmt.Errorf("key manager uninitialized")
 }
 
-// ValidateClientApplication verifies that clientID is registered in database and redirectURI is strictly authorized.
+// ValidateClientApplication reports whether clientID is a registered
+// application and redirectURI is one of its authorized destinations.
+//
+// Matching is exact — no prefix, wildcard or origin relaxation. A redirect URI
+// that merely starts with a registered value would let anyone who can register
+// a path under that prefix receive authorization codes.
+//
+// Returns an error naming the failing parameter, or a wrapped storage error if
+// the application lookup itself fails. Callers must not surface either verbatim.
 func (s *Service) ValidateClientApplication(ctx context.Context, clientID string, redirectURI string) error {
 	if clientID == "" {
 		return fmt.Errorf("invalid_client: client_id parameter is missing")
@@ -109,7 +168,12 @@ func (s *Service) ValidateClientApplication(ctx context.Context, clientID string
 	return nil
 }
 
-// GetDiscoveryMetadata returns standard OIDC Discovery configurations.
+// GetDiscoveryMetadata returns the OIDC discovery document.
+//
+// The issuer is taken from Config.Issuer, falling back to the scheme and host
+// of the incoming request and then to Config.AppBaseURL. Every endpoint is
+// derived from the resolved issuer so the document is internally consistent
+// whichever source won.
 func (s *Service) GetDiscoveryMetadata(requestHostIssuer string) OIDCDiscoveryConfig {
 	issuer := ""
 	if s.cfg != nil && s.cfg.Issuer != "" {
@@ -118,8 +182,8 @@ func (s *Service) GetDiscoveryMetadata(requestHostIssuer string) OIDCDiscoveryCo
 	if issuer == "" {
 		issuer = requestHostIssuer
 	}
-	if issuer == "" {
-		issuer = "http://localhost:8080"
+	if issuer == "" && s.cfg != nil {
+		issuer = s.cfg.AppBaseURL
 	}
 
 	return OIDCDiscoveryConfig{
@@ -139,17 +203,26 @@ func (s *Service) GetDiscoveryMetadata(requestHostIssuer string) OIDCDiscoveryCo
 	}
 }
 
-// IssueAuthorizationCode generates a 10-minute ephemeral authorization code for PKCE flows.
+// IssueAuthorizationCode mints a single-use authorization code bound to the
+// client, the authenticated user and the PKCE challenge, valid for
+// Config.OAuthCodeTTL.
+//
+// The "plain" challenge method is refused: it puts the verifier and the
+// challenge on the wire as the same value, so an attacker who intercepts the
+// authorization request can complete the exchange. Only S256 is accepted.
+//
+// Returns the code string, or an error if the method is unsupported, entropy is
+// unavailable, or the code cannot be persisted.
 func (s *Service) IssueAuthorizationCode(ctx context.Context, clientID string, userID string, tenantID string, redirectURI string, codeChallenge string, method string, scope string) (string, error) {
 	if strings.EqualFold(method, "plain") {
 		return "", fmt.Errorf("invalid_request: code_challenge_method 'plain' is unsupported; PKCE S256 is required")
 	}
-	bytes := make([]byte, 24)
+	bytes := make([]byte, authorizationCodeEntropyBytes)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("failed generating random code: %w", err)
 	}
 
-	codeStr := "ac_" + hex.EncodeToString(bytes)
+	codeStr := authorizationCodePrefix + hex.EncodeToString(bytes)
 	authCode := AuthorizationCode{
 		Code:                codeStr,
 		ClientID:            clientID,
@@ -159,7 +232,7 @@ func (s *Service) IssueAuthorizationCode(ctx context.Context, clientID string, u
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: method,
 		Scope:               scope,
-		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		ExpiresAt:           time.Now().Add(s.cfg.OAuthCodeTTL),
 	}
 
 	if err := s.repo.SaveAuthorizationCode(ctx, authCode); err != nil {
@@ -169,15 +242,26 @@ func (s *Service) IssueAuthorizationCode(ctx context.Context, clientID string, u
 	return codeStr, nil
 }
 
-// ExchangeCodeForTokens consumes an authorization code, verifies PKCE code_verifier, and issues signed ID & Access tokens.
-// Identity claims (email, name) are loaded STRICTLY from the database using the user ID bound to the authorization code.
+// ExchangeCodeForTokens redeems an authorization code for an access token and a
+// signed OIDC ID token.
+//
+// The code is consumed before anything else, so a replay finds nothing to
+// redeem. The client_id and redirect_uri presented here must match the values
+// bound at authorization time, and the PKCE verifier must hash to the recorded
+// challenge.
+//
+// Identity claims are read from the database using the user ID carried on the
+// code. Taking them from the request instead would let a client mint a token
+// asserting any email it liked.
+//
+// Returns an error if the code is unknown, expired, mismatched, fails PKCE, or
+// if the bound user, signing key or signature step fails.
 func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, clientID string, redirectURI string, codeVerifier string) (*OAuth2TokenResponse, error) {
 	authCode, err := s.repo.ConsumeAuthorizationCode(ctx, codeStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid authorization code: %w", err)
 	}
 
-	// Validate client_id and redirect_uri match original authorization request
 	if authCode.ClientID != "" && authCode.ClientID != clientID {
 		return nil, fmt.Errorf("client_id mismatch")
 	}
@@ -185,16 +269,16 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		return nil, fmt.Errorf("redirect_uri mismatch")
 	}
 
-	// PKCE Verification
 	if authCode.CodeChallenge != "" {
 		if !VerifyPKCE(codeVerifier, authCode.CodeChallenge, authCode.CodeChallengeMethod) {
 			return nil, fmt.Errorf("invalid PKCE code_verifier")
 		}
 	}
 
-	// Fetch authentic User entity from database by bound UserID
 	var email string
 	var name string
+	// Environment defaults to the non-production tier when no user record is
+	// available to read it from.
 	var env string = "test"
 
 	if s.authRepo != nil {
@@ -210,16 +294,14 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		env = string(u.Environment)
 	}
 
-	// Issue Access Token. The role claim is resolved from the user's recorded
-	// roles: an OAuth authorization-code exchange may well be a tenant admin
-	// signing into the console, so hardcoding "" here silently stripped their
-	// console privilege.
+	// The role claim is resolved from the user's recorded roles rather than
+	// fixed: an authorization-code exchange may be a tenant admin signing into
+	// the console, and a blank role would strip that privilege.
 	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
 
-	// Issue Signed OIDC ID Token with RS256 (RSA Private Key)
 	rsaPrivKey, err := jwtpkg.GetOrGenerateRSAPrivateKey(s.cfg.JWTSigningKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving RSA key for OIDC signing: %w", err)
@@ -235,7 +317,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		EmailVerified: true,
 		Name:          name,
 		IssuedAt:      now.Unix(),
-		ExpiresAt:     now.Add(1 * time.Hour).Unix(),
+		ExpiresAt:     now.Add(s.cfg.IDTokenTTL).Unix(),
 		AuthTime:      now.Unix(),
 	}
 
@@ -247,13 +329,19 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	return &OAuth2TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   900, // 15 minutes
+		ExpiresIn:   accessTokenExpiresInSeconds,
 		IDToken:     idTokenStr,
-		Scope:       "openid profile email",
+		Scope:       grantedScope,
 	}, nil
 }
 
-// RotateRefreshTokenSession validates and rotates a refresh token via authService.
+// RotateRefreshTokenSession exchanges a refresh token for a new access token
+// and a replacement refresh token, recording the user agent and IP against the
+// resulting session.
+//
+// Returns the refreshed user projection, the access token, the new raw refresh
+// token, and an error if the auth service is unavailable or the token is
+// invalid, expired or already revoked.
 func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken string, userAgent string, ipAddress string) (*auth.UserDTO, string, string, error) {
 	if s.authService == nil {
 		return nil, "", "", fmt.Errorf("auth service unavailable")
@@ -278,18 +366,29 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 	return userDTO, accessToken, newRawRefreshToken, nil
 }
 
-// UserInfoResponse defines standard OIDC UserInfo response claims payload.
+// UserInfoResponse is the claim set returned by the OIDC UserInfo endpoint.
 type UserInfoResponse struct {
-	Sub           string    `json:"sub"`
-	Email         string    `json:"email"`
-	EmailVerified bool      `json:"email_verified"`
-	Name          string    `json:"name,omitempty"`
-	TenantID      string    `json:"tenant_id"`
-	Environment   string    `json:"environment,omitempty"`
-	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+	// Sub is the subject identifier — the user's stable ID.
+	Sub string `json:"sub"`
+	// Email is the user's primary address.
+	Email string `json:"email"`
+	// EmailVerified reports whether that address has been confirmed.
+	EmailVerified bool `json:"email_verified"`
+	// Name is the display name, omitted when unset.
+	Name string `json:"name,omitempty"`
+	// TenantID identifies the tenant the subject belongs to.
+	TenantID string `json:"tenant_id"`
+	// Environment is the tier the user record lives in.
+	Environment string `json:"environment,omitempty"`
+	// UpdatedAt is when the profile last changed.
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
-// GetUserInfo retrieves identity claims for an authenticated subject ID.
+// GetUserInfo returns the claim set for userID within tenantID.
+//
+// Returns an error when no user ID is supplied and a single indistinct "user
+// not found" when the lookup fails or matches nothing, so the endpoint cannot
+// be used to probe which subject IDs exist.
 func (s *Service) GetUserInfo(ctx context.Context, tenantID, userID string) (*UserInfoResponse, error) {
 	if userID == "" {
 		return nil, fmt.Errorf("user_id is required")
@@ -310,4 +409,3 @@ func (s *Service) GetUserInfo(ctx context.Context, tenantID, userID string) (*Us
 		UpdatedAt:     u.UpdatedAt,
 	}, nil
 }
-

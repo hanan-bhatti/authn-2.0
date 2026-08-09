@@ -3,8 +3,14 @@
  * File: apps/auth-engine/internal/rbac/handler.go
  * Tier: HTTP Delivery Layer (Fiber Handlers)
  *
- * Description: HTTP handlers for RBAC role creation, permission updates, role assignments,
- *              and client user permission evaluation endpoints.
+ * HTTP endpoints for role management and permission inspection: role creation,
+ * permission updates, user-role assignment and revocation on the admin surface,
+ * and a caller's own effective permissions on the client surface.
+ *
+ * Validation failures are reported through fixed prose rather than the
+ * underlying error text, because the sentinels are wrapped with the offending
+ * permission, role slug and action verb — details of tenant policy that a
+ * rejected caller has no claim to.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -20,17 +26,26 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
+// Handler serves the RBAC HTTP endpoints.
 type Handler struct {
+	// svc applies the RBAC business rules behind every endpoint.
 	svc *Service
 }
 
+// NewHandler returns an RBAC handler bound to svc.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// RegisterRoutes registers all RBAC HTTP routes on the Fiber application.
+// RegisterRoutes mounts the RBAC endpoints.
+//
+// tenantAdminMiddleware guards the tenant and admin groups. The client group
+// requires BOTH pkMiddleware and clientAuthMiddleware: a publishable key
+// identifies the application but is public by design and establishes no user
+// identity, so it can never on its own gate a route that reports a specific
+// user's permissions. Passing the publishable-key middleware in the
+// clientAuthMiddleware slot leaves that route effectively unauthenticated.
 func (h *Handler) RegisterRoutes(app *fiber.App, tenantAdminMiddleware, clientAuthMiddleware, pkMiddleware fiber.Handler) {
-	// Tenant endpoints (/v1/tenant/roles)
 	tenantGroup := app.Group("/v1/tenant")
 	if tenantAdminMiddleware != nil {
 		tenantGroup.Use(tenantAdminMiddleware)
@@ -39,7 +54,6 @@ func (h *Handler) RegisterRoutes(app *fiber.App, tenantAdminMiddleware, clientAu
 	tenantGroup.Get("/roles", h.ListRoles)
 	tenantGroup.Put("/roles/:role_id/permissions", h.UpdateRolePermissions)
 
-	// Admin endpoints (/v1/admin/users/:user_id/roles)
 	adminGroup := app.Group("/v1/admin")
 	if tenantAdminMiddleware != nil {
 		adminGroup.Use(tenantAdminMiddleware)
@@ -47,13 +61,6 @@ func (h *Handler) RegisterRoutes(app *fiber.App, tenantAdminMiddleware, clientAu
 	adminGroup.Post("/users/:user_id/roles", h.AssignUserRole)
 	adminGroup.Delete("/users/:user_id/roles/:role_slug", h.RevokeUserRole)
 
-	// Client user permission endpoint (/v1/client/user/permissions).
-	// Requires a publishable key AND a real user session: main.go previously
-	// passed pkMiddleware into the clientAuthMiddleware slot, so this route was
-	// gated only by a publishable key — which is public by design and
-	// establishes no user identity. GetUserPermissions re-verified the bearer
-	// token itself, so it was not exploitable, but the guarantee lived in the
-	// handler rather than in the wiring that claims to provide it.
 	clientGroup := app.Group("/v1/client")
 	if pkMiddleware != nil {
 		clientGroup.Use(pkMiddleware)
@@ -64,6 +71,10 @@ func (h *Handler) RegisterRoutes(app *fiber.App, tenantAdminMiddleware, clientAu
 	clientGroup.Get("/user/permissions", h.GetUserPermissions)
 }
 
+// getActorID resolves who is making the request, from the request locals when an
+// auth middleware set them, otherwise by verifying the bearer token directly. It
+// returns "admin_system" when no identity can be established, which endpoints
+// acting on behalf of a specific user must treat as unauthenticated.
 func (h *Handler) getActorID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("userID").(string); ok && val != "" {
 		return val
@@ -87,10 +98,11 @@ func (h *Handler) getActorID(c *fiber.Ctx) string {
 	return "admin_system"
 }
 
-// sendPermissionValidationError maps the permission-validation sentinels onto
-// static prose. validator.go and policy.go wrap these with the offending
-// permission, role slug, and action verb via fmt.Errorf("%w: ..."), so relaying
-// err.Error() would echo tenant policy internals back to the caller.
+// sendPermissionValidationError answers 422 with static prose for each
+// permission-validation sentinel, defaulting to the restricted-permission
+// message. The sentinels arrive wrapped with the offending permission, role slug
+// and action verb, so relaying err.Error() would echo tenant policy internals to
+// the caller.
 func sendPermissionValidationError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidPermissionFormat):
@@ -105,6 +117,10 @@ func sendPermissionValidationError(c *fiber.Ctx, err error) error {
 	}
 }
 
+// CreateRole handles POST /v1/tenant/roles. It answers 201 with the new role,
+// 400 for an unparseable body, 422 for a malformed or restricted permission, 409
+// when the name or slug is taken, and 500 otherwise. The tenant comes from the
+// body, then the authenticated context, then the query string.
 func (h *Handler) CreateRole(c *fiber.Ctx) error {
 	var req struct {
 		TenantID    string   `json:"tenant_id"`
@@ -142,6 +158,8 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(roleObj)
 }
 
+// ListRoles handles GET /v1/tenant/roles, answering 200 with every role in the
+// tenant and its permissions, or 500 when the query fails.
 func (h *Handler) ListRoles(c *fiber.Ctx) error {
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
@@ -160,6 +178,10 @@ func (h *Handler) ListRoles(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"roles": roles})
 }
 
+// UpdateRolePermissions handles PUT /v1/tenant/roles/:role_id/permissions,
+// replacing the role's permission set. It answers 200 on success, 400 for an
+// unparseable body, 422 for a malformed or restricted permission, and 500
+// otherwise.
 func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 	roleID := c.Params("role_id")
 	tenantID := c.Query("tenant_id")
@@ -190,6 +212,10 @@ func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "permissions updated successfully", "role_id": roleID})
 }
 
+// AssignUserRole handles POST /v1/admin/users/:user_id/roles. The role slug is
+// read from role_slug, falling back to role. It answers 200 on success, 400 for
+// an unparseable body, 409 when the user already holds the role, 404 when the
+// user or role does not exist, and 500 otherwise.
 func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
 	tenantID := c.Query("tenant_id")
@@ -229,6 +255,8 @@ func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "role assigned to user successfully", "user_id": targetUserID, "role": roleSlug})
 }
 
+// RevokeUserRole handles DELETE /v1/admin/users/:user_id/roles/:role_slug,
+// answering 200 on success and 500 when the revocation fails.
 func (h *Handler) RevokeUserRole(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
 	roleSlug := c.Params("role_slug")
@@ -250,6 +278,12 @@ func (h *Handler) RevokeUserRole(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "role revoked from user successfully", "user_id": targetUserID, "role": roleSlug})
 }
 
+// GetUserPermissions handles GET /v1/client/user/permissions, reporting the
+// caller's own roles and effective permissions.
+//
+// It answers 401 unless getActorID resolved a real user: the "admin_system"
+// fallback identifies no one, and reporting a permission set for it would answer
+// an unauthenticated request. Otherwise 200, or 500 when the lookup fails.
 func (h *Handler) GetUserPermissions(c *fiber.Ctx) error {
 	actorID := h.getActorID(c)
 	if actorID == "" || actorID == "admin_system" {

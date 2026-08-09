@@ -3,12 +3,17 @@
  * File: apps/auth-engine/internal/auth/service.go
  * Tier: Internal Feature Package / Auth Service
  *
- * Description: Core authentication domain logic handling signup, login, session issuance,
- *              API key validation, and password security.
+ * Description: Core authentication domain logic: registration and password sign-in, email
+ *              verification and magic links, refresh-token session issuance and rotation, the
+ *              second-factor suite (TOTP, SMS OTP, WebAuthn passkeys, backup recovery codes),
+ *              and API key validation.
  *
  * Security Notice:
- *   - Passwords must be hashed using Argon2id (t=3, m=64MB, p=4).
- *   - Refresh tokens are stored strictly as SHA-256 hashes.
+ *   - Passwords and backup recovery codes are hashed with Argon2id (t=3, m=64MB, p=4).
+ *   - Refresh tokens and email/magic-link tokens are persisted only as SHA-256 digests, so a
+ *     database read yields nothing that can be replayed against this service.
+ *   - Token and session lifetimes come from Config; see the default* constants below for the
+ *     values applied when a field is left unset.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -47,81 +52,183 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
+// Sentinel errors returned by this package. Handlers match them with errors.Is and echo their
+// text to callers verbatim, so each message is written for an end user and must stay free of
+// internal detail. Anything not listed here is an infrastructure failure and is answered with a
+// static message instead.
 var (
-	ErrInvalidCredentials        = errors.New("invalid email or password")
-	ErrUserAlreadyExists         = errors.New("user with this email already exists")
-	ErrInvalidApiKey             = errors.New("invalid or expired api key")
-	ErrInvalidToken              = errors.New("invalid or revoked token")
+	// ErrInvalidCredentials covers every failed password check. It is deliberately identical for
+	// an unknown address and a wrong password, so it cannot be used to enumerate accounts.
+	ErrInvalidCredentials = errors.New("invalid email or password")
+	// ErrUserAlreadyExists reports a signup for an address already registered in this tenant and
+	// environment.
+	ErrUserAlreadyExists = errors.New("user with this email already exists")
+	// ErrInvalidApiKey reports an API key that is unknown, revoked, or past its expiry.
+	ErrInvalidApiKey = errors.New("invalid or expired api key")
+	// ErrInvalidToken reports a single-use token (email verification, magic link, MFA challenge,
+	// WebAuthn session) that did not resolve to a live record.
+	ErrInvalidToken = errors.New("invalid or revoked token")
+	// ErrEmailVerificationRequired reports that tenant policy blocks sign-in until the address is
+	// verified.
 	ErrEmailVerificationRequired = errors.New("email verification required before signing in")
-	Err2FARequired               = errors.New("2FA verification required before signing in")
-	ErrNoPendingTOTP             = errors.New("no pending TOTP enrollment found")
-	ErrInvalidTOTPCode           = errors.New("invalid 6-digit TOTP code")
-	ErrInvalidRecoveryCode       = errors.New("invalid recovery code")
-	ErrRecoveryCodeAlreadyUsed   = errors.New("this recovery code has already been used")
-	ErrPasskeyCloneDetected      = errors.New("authenticator signature counter regression detected: potential cloned or replayed authenticator")
-	ErrPasskeyNotFound          = errors.New("passkey not found or does not belong to user")
-	ErrAmbiguous2FAMethod        = errors.New("multiple 2FA methods enabled; 'method' field is required to specify which 2FA method to verify")
-	ErrSMSOTPExpired             = errors.New("SMS OTP verification code has expired or is invalid")
-	ErrTooManySMSRequests        = errors.New("too many OTP requests; please wait before requesting another code")
-	ErrAdmin2FAMandatory         = errors.New("2FA is mandatory for administrator accounts and cannot be disabled")
+	// Err2FARequired signals that the password was correct but a second factor is outstanding. It
+	// accompanies an MFA challenge token rather than a session.
+	Err2FARequired = errors.New("2FA verification required before signing in")
+	// ErrNoPendingTOTP reports a confirmation attempt with no enrollment in progress.
+	ErrNoPendingTOTP = errors.New("no pending TOTP enrollment found")
+	// ErrInvalidTOTPCode reports a code that failed validation within the accepted skew window.
+	ErrInvalidTOTPCode = errors.New("invalid 6-digit TOTP code")
+	// ErrInvalidRecoveryCode reports a backup code matching no stored hash for the user.
+	ErrInvalidRecoveryCode = errors.New("invalid recovery code")
+	// ErrRecoveryCodeAlreadyUsed reports a backup code that matched but was already consumed.
+	// Distinguished from ErrInvalidRecoveryCode so the user learns to try a different code.
+	ErrRecoveryCodeAlreadyUsed = errors.New("this recovery code has already been used")
+	// ErrPasskeyCloneDetected reports a signature counter that did not advance, which means the
+	// authenticator was cloned or the assertion replayed. The login is refused.
+	ErrPasskeyCloneDetected = errors.New("authenticator signature counter regression detected: potential cloned or replayed authenticator")
+	// ErrPasskeyNotFound reports a passkey ID that is unknown or owned by another user. The two
+	// cases are merged so the ID space cannot be probed.
+	ErrPasskeyNotFound = errors.New("passkey not found or does not belong to user")
+	// ErrAmbiguous2FAMethod reports that several second factors are active and the caller did not
+	// say which one the submitted code belongs to.
+	ErrAmbiguous2FAMethod = errors.New("multiple 2FA methods enabled; 'method' field is required to specify which 2FA method to verify")
+	// ErrSMSOTPExpired reports an SMS code that is unknown, wrong, or past its window. The cases
+	// are merged so a caller cannot tell a wrong code from an expired one.
+	ErrSMSOTPExpired = errors.New("SMS OTP verification code has expired or is invalid")
+	// ErrTooManySMSRequests reports that the per-user SMS send budget for the current window is
+	// spent. It bounds the cost an attacker can impose by triggering paid messages.
+	ErrTooManySMSRequests = errors.New("too many OTP requests; please wait before requesting another code")
+	// ErrAdmin2FAMandatory reports an attempt to remove the last second factor from an account
+	// holding an administrative role, which policy forbids.
+	ErrAdmin2FAMandatory = errors.New("2FA is mandatory for administrator accounts and cannot be disabled")
 )
 
+// Default token and session lifetimes, applied when the corresponding Config field is left unset.
+//
+// They mirror the defaults config.Load installs, so a Service built from a partially populated
+// Config behaves like one built from a fully loaded environment. The fallback exists because a
+// zero duration is not a meaningful setting but a silently destructive one: a zero refresh-token
+// lifetime mints sessions that have already expired at the instant they are created.
+const (
+	defaultRefreshTokenTTL      = 720 * time.Hour
+	defaultSessionGracePeriod   = 10 * time.Second
+	defaultEmailVerificationTTL = 24 * time.Hour
+	defaultMagicLinkTTL         = 15 * time.Minute
+	defaultMFAChallengeTTL      = 5 * time.Minute
+)
+
+// Per-user SMS OTP send budget, enforced in process by checkSMSRateLimit.
+//
+// These are not configuration. The limiter is a per-instance sync.Map with no shared state, so a
+// deployment running several instances already enforces a multiple of this budget; exposing it as
+// a tunable would imply a precision the mechanism does not have. It exists to cap the cost of
+// triggering paid messages, above the Redis-backed request limiter that fronts the route.
+const (
+	smsOTPMaxPerWindow    = 3
+	smsOTPRateLimitWindow = 10 * time.Minute
+)
+
+// webAuthnLoginSessionTTL is the session lifetime granted by a passkey login.
+//
+// It is shorter than Config.RefreshTokenTTL, which governs every other sign-in path, and is held
+// here rather than read from configuration so that changing the general session lifetime does not
+// silently move it. Treat the divergence as deliberate only for as long as this comment stands: a
+// passkey is a stronger credential than a password, so there is no security argument for its
+// sessions being shorter, and unifying the two on RefreshTokenTTL would be a lengthening of live
+// session lifetimes that needs its own decision.
+const webAuthnLoginSessionTTL = 7 * 24 * time.Hour
+
+// SMSOTPState is a pending SMS one-time code held in process between BeginSMSEnrollment and its
+// confirmation. Codes are never persisted, so an instance restart cancels enrollments in flight.
 type SMSOTPState struct {
+	// PhoneNumber is the E.164 destination the code was sent to. It is promoted to the user
+	// record only once the code is confirmed.
 	PhoneNumber string
-	Code        string
-	ExpiresAt   time.Time
+	// Code is the plaintext six-digit code, compared verbatim on confirmation.
+	Code string
+	// ExpiresAt is when the code stops being accepted.
+	ExpiresAt time.Time
 }
 
+// smsRateLimitEntry tracks one user's SMS send budget within the current window.
 type smsRateLimitEntry struct {
-	Count     int
+	// Count is the number of sends charged so far in this window.
+	Count int
+	// WindowEnd is when the budget resets; a load past this instant starts a fresh window.
 	WindowEnd time.Time
 }
 
 // TOTPEnrollResult contains secret and URI returned on 2FA enrollment.
 type TOTPEnrollResult struct {
+	// Secret is the base32 seed, shown once so it can be typed into an authenticator by hand.
 	Secret string `json:"secret"`
-	URI    string `json:"uri"`
+	// URI is the otpauth:// provisioning URI the client renders as a QR code.
+	URI string `json:"uri"`
 }
 
 // ConfirmTOTPResult contains confirmation message and optional auto-generated backup recovery codes.
 type ConfirmTOTPResult struct {
-	Message              string   `json:"message"`
-	RecoveryCodes        []string `json:"recovery_codes,omitempty"`
-	RecoveryCodesCreated bool     `json:"recovery_codes_created"`
+	// Message is human-readable confirmation text.
+	Message string `json:"message"`
+	// RecoveryCodes carries a freshly minted backup code set, present only when this enrollment
+	// created one. It is the single opportunity to read the codes; only hashes are stored.
+	RecoveryCodes []string `json:"recovery_codes,omitempty"`
+	// RecoveryCodesCreated tells the client whether to show the codes, without it having to
+	// distinguish an absent slice from an empty one.
+	RecoveryCodesCreated bool `json:"recovery_codes_created"`
 }
 
 // RecoveryCodesStatusResult contains remaining count of unused recovery codes.
 type RecoveryCodesStatusResult struct {
-	RemainingCount   int  `json:"remaining_count"`
-	TotalCount       int  `json:"total_count"`
+	// RemainingCount is how many codes are still unused.
+	RemainingCount int `json:"remaining_count"`
+	// TotalCount is the size of a full code set, so a client can render "n of m left".
+	TotalCount int `json:"total_count"`
+	// HasRecoveryCodes reports whether any code remains.
 	HasRecoveryCodes bool `json:"has_recovery_codes"`
 }
 
 // PasskeyDTO contains public details of a registered WebAuthn passkey.
 type PasskeyDTO struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	CredentialID string                 `json:"credential_id"`
-	SignCount    uint32                 `json:"sign_count"`
-	CreatedAt    string                 `json:"created_at"`
-	LastUsedAt   *string                `json:"last_used_at,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	// ID is the internal two-factor method row ID, used to address the passkey for deletion.
+	ID string `json:"id"`
+	// Name is the user-supplied label, e.g. "Work YubiKey".
+	Name string `json:"name"`
+	// CredentialID is the base64url authenticator credential handle.
+	CredentialID string `json:"credential_id"`
+	// SignCount is the last observed signature counter, which clone detection compares against.
+	SignCount uint32 `json:"sign_count"`
+	// CreatedAt is when the passkey was registered, RFC 3339 in UTC.
+	CreatedAt string `json:"created_at"`
+	// LastUsedAt is when the passkey last completed a login, nil if never used since registration.
+	LastUsedAt *string `json:"last_used_at,omitempty"`
+	// Metadata holds the AAGUID, attestation type, transports and authenticator flags captured at
+	// registration, which clients use to name and icon the authenticator.
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // WebAuthnUserAdapter implements the webauthn.User interface for an ent.User and its credentials.
 type WebAuthnUserAdapter struct {
-	User        *ent.User
+	// User is the account the ceremony is being run for.
+	User *ent.User
+	// Credentials are the account's already-registered passkeys, supplied to the library so it
+	// can exclude them at registration and match against them at login.
 	Credentials []webauthn.Credential
 }
 
+// WebAuthnID returns the stable user handle the authenticator stores alongside the credential.
+// The account ID is used rather than the email so the handle survives an address change.
 func (u *WebAuthnUserAdapter) WebAuthnID() []byte {
 	return []byte(u.User.ID)
 }
 
+// WebAuthnName returns the account name shown in the authenticator's credential list.
 func (u *WebAuthnUserAdapter) WebAuthnName() string {
 	return u.User.Email
 }
 
+// WebAuthnDisplayName returns the human-friendly name for the browser prompt, falling back to the
+// email address for accounts that have no name set.
 func (u *WebAuthnUserAdapter) WebAuthnDisplayName() string {
 	if u.User.Name != "" {
 		return u.User.Name
@@ -129,27 +236,48 @@ func (u *WebAuthnUserAdapter) WebAuthnDisplayName() string {
 	return u.User.Email
 }
 
+// WebAuthnIcon returns no icon. The field is deprecated in the WebAuthn specification and ignored
+// by current browsers.
 func (u *WebAuthnUserAdapter) WebAuthnIcon() string {
 	return ""
 }
 
+// WebAuthnCredentials returns the account's registered credentials.
 func (u *WebAuthnUserAdapter) WebAuthnCredentials() []webauthn.Credential {
 	return u.Credentials
 }
 
 // Service handles domain business logic for authentication.
 type Service struct {
-	repo             *Repository
-	config           *config.Config
-	emailProvider    emailPkg.EmailProvider
-	smsProvider      smsPkg.SMSProvider
-	webauthn         *webauthn.WebAuthn
+	// repo is the persistence boundary for users, sessions, two-factor methods and audit rows.
+	repo *Repository
+	// config supplies signing secrets and every token lifetime. See the default* constants for
+	// the values used when a lifetime is left unset.
+	config *config.Config
+	// emailProvider delivers verification, magic-link and OTP-fallback mail. Never nil; a noop
+	// provider is substituted at construction so call sites need no guard.
+	emailProvider emailPkg.EmailProvider
+	// smsProvider delivers OTP messages. May be nil, in which case sends fall back to email.
+	smsProvider smsPkg.SMSProvider
+	// webauthn is the configured relying party. Nil when no RP ID is set, which disables the
+	// passkey endpoints rather than failing at startup.
+	webauthn *webauthn.WebAuthn
+	// webauthnSessions holds in-flight ceremony state by session ID. In process, so a ceremony
+	// must finish on the instance that began it.
 	webauthnSessions sync.Map
-	pendingSMSOTPs   sync.Map
-	smsRateLimits    sync.Map
+	// pendingSMSOTPs holds unconfirmed SMS codes keyed by user ID, as SMSOTPState.
+	pendingSMSOTPs sync.Map
+	// smsRateLimits holds per-user SMS send budgets keyed by user ID, as smsRateLimitEntry.
+	smsRateLimits sync.Map
 }
 
 // NewService creates a new authentication domain service instance.
+//
+// A nil emailProvider is replaced with a noop provider. smsProviders is variadic so callers may
+// inject a stub; when none is given the provider is built from cfg, and any construction failure
+// degrades to noop rather than failing, so a deployment with no SMS credentials still starts.
+// WebAuthn is initialized only when cfg carries a relying-party ID; otherwise the passkey
+// endpoints report that the feature is unconfigured.
 func NewService(repo *Repository, cfg *config.Config, emailProvider emailPkg.EmailProvider, smsProviders ...smsPkg.SMSProvider) *Service {
 	if emailProvider == nil {
 		emailProvider = emailPkg.NewNoopProvider()
@@ -189,15 +317,63 @@ func NewService(repo *Repository, cfg *config.Config, emailProvider emailPkg.Ema
 	}
 }
 
-// ValidateApiKey checks a publishable (pk_...) or secret (sk_...) API key against database hashes.
+// refreshTokenTTL returns how long a newly created session may be refreshed before the user must
+// sign in again, falling back to defaultRefreshTokenTTL when Config leaves it unset.
+func (s *Service) refreshTokenTTL() time.Duration {
+	if s.config != nil && s.config.RefreshTokenTTL > 0 {
+		return s.config.RefreshTokenTTL
+	}
+	return defaultRefreshTokenTTL
+}
+
+// sessionGracePeriod returns how long a just-rotated refresh token keeps working, falling back to
+// defaultSessionGracePeriod when Config leaves it unset.
 //
-// Parameters:
-//   - ctx: Request context.
-//   - rawKey: Raw API key header string.
+// The window exists so requests already in flight when a rotation lands are not all logged out. A
+// zero value would make every concurrent refresh look like token theft.
+func (s *Service) sessionGracePeriod() time.Duration {
+	if s.config != nil && s.config.SessionGracePeriod > 0 {
+		return s.config.SessionGracePeriod
+	}
+	return defaultSessionGracePeriod
+}
+
+// emailVerificationTTL returns the lifetime of an email verification link, falling back to
+// defaultEmailVerificationTTL when Config leaves it unset.
+func (s *Service) emailVerificationTTL() time.Duration {
+	if s.config != nil && s.config.EmailVerificationTTL > 0 {
+		return s.config.EmailVerificationTTL
+	}
+	return defaultEmailVerificationTTL
+}
+
+// magicLinkTTL returns the lifetime of a passwordless sign-in link, falling back to
+// defaultMagicLinkTTL when Config leaves it unset. The link alone grants a session, which is why
+// the window is short.
+func (s *Service) magicLinkTTL() time.Duration {
+	if s.config != nil && s.config.MagicLinkTTL > 0 {
+		return s.config.MagicLinkTTL
+	}
+	return defaultMagicLinkTTL
+}
+
+// mfaChallengeTTL returns how long a second-factor challenge stays open — both the token issued
+// after a successful password check and the SMS code sent during enrollment — falling back to
+// defaultMFAChallengeTTL when Config leaves it unset.
+func (s *Service) mfaChallengeTTL() time.Duration {
+	if s.config != nil && s.config.MFAChallengeTTL > 0 {
+		return s.config.MFAChallengeTTL
+	}
+	return defaultMFAChallengeTTL
+}
+
+// ValidateApiKey resolves a raw publishable (pk_...) or secret (sk_...) API key to its stored
+// record and returns that record.
 //
-// Returns:
-//   - *ent.ApiKey: Validated API key entity.
-//   - error: ErrInvalidApiKey if key is invalid or revoked.
+// The key is looked up by HMAC-SHA256 digest under the configured pepper, so the database holds
+// no material an attacker could present. It returns ErrInvalidApiKey for a blank key, a digest
+// matching no row, a revoked key, and an expired one alike — the cases are merged so a caller
+// cannot distinguish "never existed" from "withdrawn".
 func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKey, error) {
 	if rawKey == "" {
 		return nil, ErrInvalidApiKey
@@ -222,20 +398,19 @@ func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKe
 	return key, nil
 }
 
-// SignUpWithPassword registers a new user with password credentials.
+// SignUpWithPassword registers an account and signs it straight in, returning the new user, a
+// JWT access token, and the raw refresh token. The refresh token is returned here and nowhere
+// else; only its SHA-256 digest is stored.
 //
-// Parameters:
-//   - ctx: Request context.
-//   - tenantID: Tenant ID scope.
-//   - env: Environment mode ("test" or "live").
-//   - email: User registered email address.
-//   - password: Plain text password string.
-//   - name: Optional full name string.
+// The first account in a tenant atomically claims the tenant_admin role, so exactly one of any
+// number of concurrent signups wins it. A failed claim is not fatal — the account is created as a
+// regular user, since refusing to register someone because a role query failed is the worse
+// outcome. Verification mail is likewise best-effort: a delivery failure is logged and the signup
+// still succeeds, leaving the account unverified.
 //
-// Returns:
-//   - *ent.User: Created user entity.
-//   - string: Raw 64-byte opaque refresh token string.
-//   - error: ErrUserAlreadyExists or creation error.
+// It returns ErrUserAlreadyExists when the address is already registered in this tenant and
+// environment, and a wrapped error when tenant setup, password hashing, entropy, account
+// creation, session creation, or token signing fails — in which case no account exists.
 func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env string, email string, password string, name string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	if err := s.repo.EnsureTenantExists(ctx, tenantID); err != nil {
 		return nil, "", "", err
@@ -286,7 +461,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
-	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
 		return nil, "", "", err
@@ -310,8 +485,13 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	return u, accessToken, rawRefreshToken, nil
 }
 
-
-// SendVerificationEmail generates a 32-byte token and sends the verification email.
+// SendVerificationEmail mints a 32-byte verification token for u, stores only its SHA-256 digest
+// against the account, and emails the user a link carrying the raw token.
+//
+// It returns a wrapped error when entropy is unavailable or the template fails to render, the
+// repository's error when the digest cannot be stored, and the provider's error when delivery
+// fails. A delivery failure leaves the token live, so a later resend is not required for the link
+// already in flight to work.
 func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error {
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -322,7 +502,8 @@ func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error 
 	h := sha256.Sum256([]byte(rawToken))
 	tokenHash := hex.EncodeToString(h[:])
 
-	expiresAt := time.Now().Add(24 * time.Hour)
+	ttl := s.emailVerificationTTL()
+	expiresAt := time.Now().Add(ttl)
 	if err := s.repo.SetUserEmailVerificationToken(ctx, u.ID, tokenHash, expiresAt); err != nil {
 		return err
 	}
@@ -333,7 +514,9 @@ func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error 
 		UserName:         u.Name,
 		VerificationLink: verifyURL,
 		AppName:          "Authn Platform",
-		ExpiresInHours:   24,
+		// Derived from the same TTL as the stored expiry, so the mail cannot promise a window
+		// the token does not honour.
+		ExpiresInHours: int(ttl.Hours()),
 	})
 	if err != nil {
 		return fmt.Errorf("failed rendering email template: %w", err)
@@ -382,8 +565,16 @@ func (s *Service) ResendVerificationEmail(ctx context.Context, tenantID string, 
 	return s.SendVerificationEmail(ctx, u)
 }
 
-// SendMagicLink generates a 15-minute single-use magic login link and emails it to the user.
-// Auto-provisions a new user if no account exists with the provided email address (Option A).
+// SendMagicLink mints a single-use sign-in link, stores only its SHA-256 digest against the
+// account, and emails the raw token to the user. The link's lifetime is Config.MagicLinkTTL.
+//
+// An address with no account is provisioned one with no password, so a magic link doubles as
+// registration. This means the endpoint must stay behind a rate limiter: it creates rows for
+// arbitrary caller-supplied addresses.
+//
+// It returns an error for a blank address, and a wrapped error when the lookup, provisioning,
+// entropy, token storage, template rendering, or delivery fails. The audit record is
+// best-effort. Nothing here reveals whether the address already had an account.
 func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string, email string, name string, userAgent string, ipAddress string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
@@ -415,7 +606,8 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 	h := sha256.Sum256([]byte(rawToken))
 	tokenHash := hex.EncodeToString(h[:])
 
-	expiresAt := time.Now().Add(15 * time.Minute)
+	ttl := s.magicLinkTTL()
+	expiresAt := time.Now().Add(ttl)
 	if err := s.repo.SetUserMagicLinkToken(ctx, u.ID, tokenHash, expiresAt); err != nil {
 		return fmt.Errorf("failed saving magic link token: %w", err)
 	}
@@ -427,10 +619,12 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 	magicURL := fmt.Sprintf("%s/v1/client/auth/magic-link/verify?token=%s", baseURL, rawToken)
 
 	htmlBody, textBody, err := emailPkg.RenderMagicLinkEmail(emailPkg.MagicLinkEmailData{
-		UserName:         u.Name,
-		MagicLink:        magicURL,
-		AppName:          "Authn Platform",
-		ExpiresInMinutes: 15,
+		UserName:  u.Name,
+		MagicLink: magicURL,
+		AppName:   "Authn Platform",
+		// Derived from the same TTL as the stored expiry, so the mail cannot promise a window
+		// the token does not honour.
+		ExpiresInMinutes: int(ttl.Minutes()),
 	})
 	if err != nil {
 		return fmt.Errorf("failed rendering magic link email template: %w", err)
@@ -447,7 +641,15 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 	return nil
 }
 
-// VerifyMagicLinkToken validates a single-use magic login link token, consumes it, marks email verified, and issues session/tokens.
+// VerifyMagicLinkToken redeems a magic-link token and returns the user with a fresh access token
+// and raw refresh token.
+//
+// The token is cleared before any session is created, so a token that raced two requests is spent
+// exactly once. Clicking the link also marks the address verified: possession of mail sent to it
+// is the same proof the verification flow asks for.
+//
+// It returns ErrInvalidToken for a blank token or one matching no live record, and a wrapped
+// error when consuming the token, creating the session, or signing the access token fails.
 func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	if strings.TrimSpace(rawToken) == "" {
 		return nil, "", "", ErrInvalidToken
@@ -483,7 +685,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	hRef := sha256.Sum256([]byte(rawRefreshToken))
 	refHash := hex.EncodeToString(hRef[:])
 
-	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, refHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", fmt.Errorf("failed creating magic link session: %w", err)
 	}
@@ -503,7 +705,18 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	return u, accessToken, rawRefreshToken, nil
 }
 
-// ValidatePasswordCredentials checks password credentials and issues a login session.
+// ValidatePasswordCredentials verifies a password and, when no second factor is enrolled, issues
+// a session — returning the user, an access token, and the raw refresh token.
+//
+// When the account has any second factor enrolled it returns Err2FARequired together with the
+// user and an MFA challenge token in the access-token position, and an empty refresh token. That
+// sentinel is the normal 2FA path, not a failure; callers must branch on it before treating the
+// error as a rejection.
+//
+// Argon2id verification runs against a dummy hash when the account is missing or has no password,
+// so the hit and miss paths cost the same and cannot be told apart by timing. It returns
+// ErrInvalidCredentials for an unknown address, a wrong password, and a lookup failure alike, and
+// a plain error naming the status for an account that is not active.
 func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID string, env string, email string, password string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	u, err := s.repo.FindUserByEmail(ctx, tenantID, env, email)
 
@@ -565,7 +778,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
-	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
 		return nil, "", "", err
@@ -585,10 +798,22 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	return u, accessToken, rawRefreshToken, nil
 }
 
-// RotateRefreshTokenSession validates a raw refresh token (via SHA-256 hash match),
-// enforces the 10-second rotation grace period for concurrent requests,
-// detects token reuse/theft (revoking all user sessions if reuse occurs past grace period),
-// and issues a new 15-minute JWT access token + newly rotated refresh token.
+// RotateRefreshTokenSession exchanges a raw refresh token for a new session, returning the user,
+// a fresh access token, and the rotated refresh token.
+//
+// Rotation is single-use: the presented session moves to rotated_grace and a new one takes its
+// place. Reuse within Config.SessionGracePeriod is treated as a concurrent in-flight request and
+// answered with a fresh access token for the superseding session, with an empty refresh token —
+// the caller keeps the token it already rotated to.
+//
+// Reuse after that window, or use of an already-revoked session, is treated as theft: every
+// session for the account is revoked and an error is returned. That is deliberately drastic,
+// because a token presented twice means two parties hold it and there is no way to tell which is
+// the owner.
+//
+// It returns a plain error for a blank token, a token matching no session, an expired session, a
+// missing user, or a suspended account, and a wrapped error when entropy, session creation, or
+// token signing fails.
 func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	if rawRefreshToken == "" {
 		return nil, "", "", fmt.Errorf("refresh token is required")
@@ -629,7 +854,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		newTokenHash := hex.EncodeToString(newHash[:])
 
 		newSessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
-		expiresAt := time.Now().Add(30 * 24 * time.Hour)
+		expiresAt := time.Now().Add(s.refreshTokenTTL())
 
 		// Create new active session
 		_, err = s.repo.CreateSession(ctx, newSessionID, u.ID, newTokenHash, userAgent, ipAddress, expiresAt)
@@ -638,7 +863,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		}
 
 		// Transition old session to 'rotated_grace' with 10-second grace window
-		_ = s.repo.MarkSessionRotatedWithGrace(ctx, sess.ID, newSessionID, 10*time.Second)
+		_ = s.repo.MarkSessionRotatedWithGrace(ctx, sess.ID, newSessionID, s.sessionGracePeriod())
 
 		// Issue new 15-minute access token
 		tenantID := string(u.TenantID)
@@ -684,7 +909,12 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 	return nil, "", "", fmt.Errorf("invalid_grant: session has been revoked")
 }
 
-// EnrollTOTP generates a new TOTP secret for a user and stores it in pending state (is_enabled = false).
+// EnrollTOTP mints a TOTP secret for a user and returns it with its provisioning URI.
+//
+// The secret is stored encrypted and disabled, so an abandoned enrollment never counts as an
+// active second factor; ConfirmTOTP is what enables it. Re-enrolling replaces any pending secret.
+// It returns a plain error when the user does not exist, and a wrapped error when key generation,
+// encryption, or storage fails.
 func (s *Service) EnrollTOTP(ctx context.Context, userID string) (*TOTPEnrollResult, error) {
 	u, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil || u == nil {
@@ -716,7 +946,15 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID string) (*TOTPEnrollRes
 	}, nil
 }
 
-// ConfirmTOTP verifies the submitted 6-digit TOTP code against pending secret, activates 2FA (is_enabled = true), and auto-generates recovery codes if missing.
+// ConfirmTOTP validates a code against the pending secret and, on success, activates TOTP.
+//
+// Enabling a first second factor also mints a backup code set when the account has none, returned
+// in the result and readable only here. Code generation is best-effort: a failure leaves TOTP
+// enabled with no backup codes rather than failing a confirmed enrollment.
+//
+// It returns ErrNoPendingTOTP when no enrollment is in progress, ErrInvalidTOTPCode when the code
+// does not validate within the skew window, and a wrapped error when decryption or the enable
+// write fails.
 func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (*ConfirmTOTPResult, error) {
 	tfm, err := s.repo.GetTOTPMethodForUser(ctx, userID)
 	if err != nil || tfm == nil || tfm.SecretEncrypted == "" {
@@ -764,7 +1002,9 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 	}, nil
 }
 
-// VerifyAdminPassword verifies a user's Argon2id password for step-up authentication.
+// VerifyAdminPassword re-checks a user's password for step-up authentication, returning nil when
+// it matches. It returns ErrInvalidCredentials for an unknown user, an account with no password,
+// and a wrong password alike.
 func (s *Service) VerifyAdminPassword(ctx context.Context, userID string, password string) error {
 	u, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil || u == nil {
@@ -776,12 +1016,18 @@ func (s *Service) VerifyAdminPassword(ctx context.Context, userID string, passwo
 	return nil
 }
 
-// VerifyAdminTOTP verifies a user's 6-digit TOTP code for step-up authentication.
+// VerifyAdminTOTP re-checks a user's TOTP code for step-up authentication. It is an alias for
+// VerifyTOTP and returns the same errors.
 func (s *Service) VerifyAdminTOTP(ctx context.Context, userID string, code string) error {
 	return s.VerifyTOTP(ctx, userID, code)
 }
 
-// VerifyTOTP validates a 6-digit code against a user's active TOTP secret with +-1 time step skew window tolerance.
+// VerifyTOTP validates a code against the user's active TOTP secret, returning nil on success.
+//
+// One 30-second step of skew either side is accepted, which tolerates ordinary clock drift
+// between the authenticator and this server. It returns a plain error when no active method is
+// configured, ErrInvalidTOTPCode when the code does not validate, and a wrapped error when the
+// stored secret cannot be decrypted. The last-used timestamp is updated best-effort.
 func (s *Service) VerifyTOTP(ctx context.Context, userID string, code string) error {
 	tfm, err := s.repo.GetActiveTOTPMethodForUser(ctx, userID)
 	if err != nil || tfm == nil || tfm.SecretEncrypted == "" {
@@ -807,7 +1053,17 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID string, code string) er
 	return nil
 }
 
-// VerifyTOTPChallenge verifies a 2FA challenge code during login using an mfa_token and optional targetMethod.
+// VerifyTOTPChallenge completes a login that stopped at the second factor, returning the user, an
+// access token, and the raw refresh token.
+//
+// The challenge token carries the methods the account is permitted to use, so the set of
+// acceptable factors is fixed at password time and cannot be widened by the caller. targetMethod
+// selects among them and may be empty when only one is allowed.
+//
+// It returns ErrInvalidToken for a challenge token that does not verify or whose subject no
+// longer exists, whatever error the factor check produced (ErrInvalidTOTPCode,
+// ErrSMSOTPExpired, ErrInvalidRecoveryCode, ErrAmbiguous2FAMethod), and a wrapped error when
+// entropy, session creation, or token signing fails.
 func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code string, targetMethod string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.EncryptionKey)
 	if err != nil {
@@ -834,7 +1090,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
-	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", err
 	}
@@ -862,7 +1118,12 @@ func (s *Service) ResolveRoleClaim(ctx context.Context, userID string) string {
 	return rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 }
 
-// IsAdminUser checks if a user holds an administrative role (e.g. tenant_admin, admin, super_admin).
+// IsAdminUser reports whether the user holds any administrative role.
+//
+// It answers the broad "is this account privileged" question used to keep admins from being
+// stripped of their last second factor, and is deliberately wider than ResolveRoleClaim, which
+// only names console roles. A query failure yields false, so a lookup outage cannot fabricate
+// privilege.
 func (s *Service) IsAdminUser(ctx context.Context, userID string) bool {
 	client := s.repo.factory.GetClient(ctx, "", "")
 	userRoles, err := client.UserRole.Query().
@@ -882,7 +1143,14 @@ func (s *Service) IsAdminUser(ctx context.Context, userID string) bool {
 	return false
 }
 
-// DisableTOTP re-verifies current password with Argon2id, removes TOTP method, and revokes all active sessions for security.
+// DisableTOTP removes a user's TOTP method after re-checking their password, and revokes every
+// active session.
+//
+// Sessions are dropped because removing a factor is exactly what an attacker holding a stolen
+// session would do, and the legitimate user re-authenticating is a cheap price. It returns a
+// plain error when the user or method is missing, ErrInvalidCredentials when the password does
+// not match, and ErrAdmin2FAMandatory when this is the last factor on an administrative account.
+// Session revocation failure is logged, not returned: the method is already gone.
 func (s *Service) DisableTOTP(ctx context.Context, userID string, password string, userAgent string, ipAddress string) error {
 	u, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil || u == nil {
@@ -920,7 +1188,8 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 	return nil
 }
 
-// isValidE164Phone helper checks if a phone number string is in valid E.164 format (+ followed by 7-15 digits).
+// isValidE164Phone reports whether phone is syntactically E.164: a leading "+" followed by 7 to
+// 15 digits. It is a shape check only and says nothing about whether the number is reachable.
 func isValidE164Phone(phone string) bool {
 	if !strings.HasPrefix(phone, "+") {
 		return false
@@ -937,22 +1206,27 @@ func isValidE164Phone(phone string) bool {
 	return true
 }
 
-// checkSMSRateLimit enforces a maximum of 3 OTP requests per 10-minute window for a user.
+// checkSMSRateLimit charges one SMS send against the user's budget, returning nil when the send
+// may proceed and ErrTooManySMSRequests when the budget for the current window is spent.
+//
+// The window is fixed rather than sliding: the first send of a window starts it, and the budget
+// resets wholesale once it lapses. State is per-instance and in memory, so a restart clears every
+// budget; see smsOTPMaxPerWindow for why that is acceptable here.
 func (s *Service) checkSMSRateLimit(userID string) error {
 	now := time.Now()
 	val, ok := s.smsRateLimits.Load(userID)
 	if !ok {
-		s.smsRateLimits.Store(userID, smsRateLimitEntry{Count: 1, WindowEnd: now.Add(10 * time.Minute)})
+		s.smsRateLimits.Store(userID, smsRateLimitEntry{Count: 1, WindowEnd: now.Add(smsOTPRateLimitWindow)})
 		return nil
 	}
 
 	entry := val.(smsRateLimitEntry)
 	if now.After(entry.WindowEnd) {
-		s.smsRateLimits.Store(userID, smsRateLimitEntry{Count: 1, WindowEnd: now.Add(10 * time.Minute)})
+		s.smsRateLimits.Store(userID, smsRateLimitEntry{Count: 1, WindowEnd: now.Add(smsOTPRateLimitWindow)})
 		return nil
 	}
 
-	if entry.Count >= 3 {
+	if entry.Count >= smsOTPMaxPerWindow {
 		return ErrTooManySMSRequests
 	}
 
@@ -961,7 +1235,16 @@ func (s *Service) checkSMSRateLimit(userID string) error {
 	return nil
 }
 
-// BeginSMSEnrollment sends a 6-digit OTP code via SMS (or Email fallback) and stores a pending SMS 2FA record.
+// BeginSMSEnrollment sends a six-digit code to phoneNumber and records a pending, disabled SMS
+// method for the user. The code lives for Config.MFAChallengeTTL and is held in memory only.
+//
+// A send failure falls back to emailing the code, so a misconfigured or failing SMS provider does
+// not strand enrollment. The number is stored encrypted and is promoted to the user record only
+// once ConfirmSMSEnrollment succeeds.
+//
+// It returns a plain error for a non-E.164 number or an unknown user, ErrTooManySMSRequests when
+// the send budget is spent, and a wrapped error when encryption, the pending-record write, or
+// both delivery paths fail.
 func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNumber string) error {
 	phoneNumber = strings.TrimSpace(phoneNumber)
 	if !isValidE164Phone(phoneNumber) {
@@ -982,10 +1265,11 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 	otpNum := binary.BigEndian.Uint32(otpBuf) % 1000000
 	code := fmt.Sprintf("%06d", otpNum)
 
+	ttl := s.mfaChallengeTTL()
 	s.pendingSMSOTPs.Store(userID, SMSOTPState{
 		PhoneNumber: phoneNumber,
 		Code:        code,
-		ExpiresAt:   time.Now().Add(5 * time.Minute),
+		ExpiresAt:   time.Now().Add(ttl),
 	})
 
 	encryptedPhone, err := crypto.EncryptAES256GCM(phoneNumber, s.config.EncryptionKey)
@@ -1007,8 +1291,10 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 
 	if smsErr != nil {
 		log.Printf("⚠️ SMS send notice for user %s (%s): %v. Falling back to Email OTP.", userID, phoneNumber, smsErr)
-		htmlBody := fmt.Sprintf("<p>Your 2FA verification code is: <strong>%s</strong> (expires in 5 minutes)</p>", code)
-		textBody := fmt.Sprintf("Your 2FA verification code is: %s (expires in 5 minutes)", code)
+		// The stated window is derived from the TTL actually applied above.
+		expiresIn := int(ttl.Minutes())
+		htmlBody := fmt.Sprintf("<p>Your 2FA verification code is: <strong>%s</strong> (expires in %d minutes)</p>", code, expiresIn)
+		textBody := fmt.Sprintf("Your 2FA verification code is: %s (expires in %d minutes)", code, expiresIn)
 		if err := s.emailProvider.Send(ctx, u.Email, "Your Authn 2FA Verification Code", htmlBody, textBody); err != nil {
 			return fmt.Errorf("failed sending OTP via SMS and email fallback: %w", err)
 		}
@@ -1017,7 +1303,16 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 	return nil
 }
 
-// ConfirmSMSEnrollment verifies a 6-digit SMS OTP, activates the method, sets phone_verified = true, and auto-generates recovery codes if first 2FA method.
+// ConfirmSMSEnrollment validates the pending code and, on success, activates the SMS method and
+// marks the phone number verified.
+//
+// The code is consumed before the method is enabled, so a resubmission cannot be replayed. When
+// this is the account's first second factor a backup code set is minted and returned, readable
+// only here.
+//
+// It returns ErrSMSOTPExpired when no code is pending, the code is wrong, or it has lapsed — the
+// three are merged so a caller cannot tell them apart — and a wrapped error when the pending
+// record is missing or any of the enable, phone, or code-generation writes fail.
 func (s *Service) ConfirmSMSEnrollment(ctx context.Context, userID string, code string) (*ConfirmTOTPResult, error) {
 	val, ok := s.pendingSMSOTPs.Load(userID)
 	if !ok {
@@ -1067,7 +1362,14 @@ func (s *Service) ConfirmSMSEnrollment(ctx context.Context, userID string, code 
 	}, nil
 }
 
-// DisableSMS2FA re-verifies password with Argon2id, removes SMS method, sets phone_verified = false, and revokes all active sessions.
+// DisableSMS2FA removes a user's SMS method after re-checking their password, clears the
+// phone-verified flag, and revokes every active session for the same reason DisableTOTP does.
+//
+// It returns a plain error when the user or method is missing and ErrInvalidCredentials when the
+// password does not match. Session revocation failure is logged, not returned.
+//
+// Unlike DisableTOTP this does not enforce ErrAdmin2FAMandatory, so an administrator whose only
+// second factor is SMS can remove it.
 func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password string, userAgent string, ipAddress string) error {
 	u, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil || u == nil {
@@ -1099,7 +1401,9 @@ func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password str
 	return nil
 }
 
-// Verify2FACode verifies 2FA code for a user within an authenticated session, accepting optional targetMethod.
+// Verify2FACode validates a second-factor code for an already-authenticated user, resolving the
+// account's active methods itself. targetMethod is optional and selects among them. It returns
+// the errors listed on Verify2FACodeWithMethod.
 func (s *Service) Verify2FACode(ctx context.Context, userID string, code string, targetMethod ...string) error {
 	method := ""
 	if len(targetMethod) > 0 {
@@ -1108,7 +1412,19 @@ func (s *Service) Verify2FACode(ctx context.Context, userID string, code string,
 	return s.Verify2FACodeWithMethod(ctx, userID, nil, code, method)
 }
 
-// Verify2FACodeWithMethod verifies a 2FA code against specific method or resolves ambiguity according to explicit rules.
+// Verify2FACodeWithMethod validates code against exactly one second-factor method, returning nil
+// on success.
+//
+// allowedMethods bounds what may be used and comes from the MFA challenge token during login;
+// when empty the account's currently active methods are resolved instead. targetMethod picks one
+// of them, and may be omitted only when a single method is allowed — otherwise the caller must
+// say which factor the code belongs to rather than have the server try each in turn, which would
+// let one code be tested against every method.
+//
+// It returns ErrAmbiguous2FAMethod when the method is omitted with several available, a plain
+// error when none is available or targetMethod is unsupported, and otherwise the verifying
+// method's own error: ErrSMSOTPExpired, ErrInvalidTOTPCode, ErrInvalidRecoveryCode, or
+// ErrRecoveryCodeAlreadyUsed.
 func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, allowedMethods []string, code string, targetMethod string) error {
 	code = strings.TrimSpace(code)
 	targetMethod = strings.ToLower(strings.TrimSpace(targetMethod))
@@ -1173,9 +1489,17 @@ func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, al
 	}
 }
 
-// GenerateRecoveryCodes generates 16 cryptographically random human-typeable recovery codes (e.g. 4K7P-9M2N),
-// invalidates any previous recovery codes for the user, stores their Argon2id hashes, and returns the raw codes.
-// Note for type="backup_code": secret_encrypted stores an Argon2id one-way password hash (RFC 9106 t=3, m=64MB, p=4), NOT reversible encrypted data.
+// GenerateRecoveryCodes replaces a user's backup codes with 16 fresh ones and returns them in
+// plaintext. This is the only time they are readable; only Argon2id hashes are stored.
+//
+// Codes are drawn from an alphabet with no visually ambiguous characters (no 0/O, 1/I) and
+// formatted in two groups of four, because these are transcribed by hand under stress. The
+// stored-hash column is named secret_encrypted for consistency with the other method types, but
+// for backup codes it holds a one-way hash, not recoverable ciphertext.
+//
+// Existing codes are deleted first, so a partial failure can leave the account with no usable
+// codes. It returns a wrapped error when entropy or hashing fails, and the repository's error
+// when the batch write fails.
 func (s *Service) GenerateRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
 	_ = s.repo.DeleteAllRecoveryCodesForUser(ctx, userID)
 
@@ -1217,7 +1541,15 @@ func (s *Service) GenerateRecoveryCodes(ctx context.Context, userID string) ([]s
 	return rawCodes, nil
 }
 
-// VerifyRecoveryCode verifies a human-submitted recovery code using Argon2id against stored hashes and marks it consumed.
+// VerifyRecoveryCode validates a backup code and marks it consumed, returning nil on success.
+//
+// Input is upper-cased with dashes stripped before comparison, so the formatting shown to the
+// user does not have to be reproduced exactly. Every stored hash is tried, which costs one
+// Argon2id verification per code held.
+//
+// It returns ErrInvalidRecoveryCode for a blank code, an account with no codes, and a code
+// matching nothing; ErrRecoveryCodeAlreadyUsed when the code matched but was previously spent;
+// and the repository's error when marking it consumed fails.
 func (s *Service) VerifyRecoveryCode(ctx context.Context, userID string, rawCode string) error {
 	normalized := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(rawCode), "-", ""))
 	if normalized == "" {
@@ -1255,7 +1587,13 @@ func (s *Service) VerifyRecoveryCode(ctx context.Context, userID string, rawCode
 	return nil
 }
 
-// RegenerateRecoveryCodes requires Argon2id password step-up, invalidates all old recovery codes, and issues 16 fresh codes.
+// RegenerateRecoveryCodes re-checks the user's password and replaces their backup codes,
+// returning the new set in plaintext. Every previous code stops working.
+//
+// The password step-up matters because these codes bypass the second factor: without it, anyone
+// holding a live session could mint themselves a permanent way past MFA. It returns a plain error
+// when the user is missing, ErrInvalidCredentials when the password does not match, and
+// GenerateRecoveryCodes' error otherwise.
 func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID string, password string) ([]string, error) {
 	u, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil || u == nil {
@@ -1278,7 +1616,8 @@ func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID string, pa
 	return codes, nil
 }
 
-// GetRecoveryCodesStatus returns the remaining unused count of recovery codes for a user.
+// GetRecoveryCodesStatus reports how many backup codes the user has left, without exposing any
+// code value. It returns the repository's error when the count query fails.
 func (s *Service) GetRecoveryCodesStatus(ctx context.Context, userID string) (*RecoveryCodesStatusResult, error) {
 	remaining, err := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID)
 	if err != nil {
@@ -1291,7 +1630,14 @@ func (s *Service) GetRecoveryCodesStatus(ctx context.Context, userID string) (*R
 	}, nil
 }
 
-// convertTwoFactorMethodToWebAuthnCredential converts an ent.TwoFactorMethod into a webauthn.Credential.
+// convertTwoFactorMethodToWebAuthnCredential adapts a stored passkey row into the credential
+// shape the WebAuthn library expects.
+//
+// A credential ID that is not valid base64url is passed through as raw bytes, which keeps
+// credentials enrolled before the encoding was normalized usable. Rows carrying no authenticator
+// flags are assumed to be present, verified, backup-eligible and backed up; that assumption is
+// permissive, so it must not be relied on for any security decision — clone detection uses the
+// signature counter, which is always stored.
 func convertTwoFactorMethodToWebAuthnCredential(tfm *ent.TwoFactorMethod) webauthn.Credential {
 	credID, err := base64.RawURLEncoding.DecodeString(tfm.CredentialID)
 	if err != nil || len(credID) == 0 {
@@ -1348,7 +1694,15 @@ func convertTwoFactorMethodToWebAuthnCredential(tfm *ent.TwoFactorMethod) webaut
 	}
 }
 
-// BeginWebAuthnRegistration generates WebAuthn PublicKeyCredentialCreationOptions for an authenticated user.
+// BeginWebAuthnRegistration starts a passkey enrollment, returning the creation options for the
+// browser and the session ID that FinishWebAuthnRegistration must be given.
+//
+// Already-registered credentials are passed to the library so the authenticator excludes them and
+// the user cannot enroll the same key twice. Ceremony state is held in memory on this instance,
+// so the finish call must reach the same process.
+//
+// It returns a plain error when WebAuthn is unconfigured or the user is missing, and a wrapped
+// error when the passkey read or the library call fails.
 func (s *Service) BeginWebAuthnRegistration(ctx context.Context, userID string) (*protocol.CredentialCreation, string, error) {
 	if s.webauthn == nil {
 		return nil, "", fmt.Errorf("webauthn service is not configured")
@@ -1381,7 +1735,16 @@ func (s *Service) BeginWebAuthnRegistration(ctx context.Context, userID string) 
 	return options, sessionID, nil
 }
 
-// FinishWebAuthnRegistration verifies the browser's attestation response, stores the WebAuthn credential, and auto-generates recovery codes if missing.
+// FinishWebAuthnRegistration verifies the browser's attestation and stores the new passkey.
+//
+// The ceremony session is consumed before verification, so a replayed finish call finds nothing
+// and fails. Authenticator flags are captured at registration and persisted, since they cannot be
+// recovered later. A first second factor also mints a backup code set, returned in the result and
+// best-effort as elsewhere.
+//
+// It returns a plain error when WebAuthn is unconfigured or the user is missing, ErrInvalidToken
+// for an unknown or already-consumed session ID, and a wrapped error when attestation
+// verification or the credential write fails.
 func (s *Service) FinishWebAuthnRegistration(ctx context.Context, userID string, sessionID string, r *http.Request, passkeyName string) (*ConfirmTOTPResult, error) {
 	if s.webauthn == nil {
 		return nil, fmt.Errorf("webauthn service is not configured")
@@ -1456,7 +1819,13 @@ func (s *Service) FinishWebAuthnRegistration(ctx context.Context, userID string,
 	}, nil
 }
 
-// BeginWebAuthnLogin generates WebAuthn PublicKeyCredentialRequestOptions for an mfa_token challenge flow.
+// BeginWebAuthnLogin starts a passkey assertion for a login already past the password step,
+// returning the request options, the ceremony session ID, and the user ID.
+//
+// Authorization comes entirely from the MFA challenge token, which names the account, so this is
+// not a bearer-authenticated call. It returns a plain error when WebAuthn is unconfigured or the
+// account has no passkeys, ErrInvalidToken when the challenge token does not verify or its
+// subject is missing, and a wrapped error when the library call fails.
 func (s *Service) BeginWebAuthnLogin(ctx context.Context, mfaToken string) (*protocol.CredentialAssertion, string, string, error) {
 	if s.webauthn == nil {
 		return nil, "", "", fmt.Errorf("webauthn service is not configured")
@@ -1494,7 +1863,19 @@ func (s *Service) BeginWebAuthnLogin(ctx context.Context, mfaToken string) (*pro
 	return options, sessionID, u.ID, nil
 }
 
-// FinishWebAuthnLogin verifies the browser's assertion response, checks signature counter regression (clone detection), and issues session tokens.
+// FinishWebAuthnLogin verifies a passkey assertion and issues a session, returning the user, an
+// access token, and the raw refresh token.
+//
+// The signature counter must strictly advance for any credential that has ever reported a
+// non-zero one; a counter that stalls or goes backwards means the authenticator was cloned or the
+// assertion replayed, and the login is refused. Authenticators that always report zero are exempt
+// because the counter is optional in the specification.
+//
+// Sessions from this path last webAuthnLoginSessionTTL rather than Config.RefreshTokenTTL. It
+// returns ErrInvalidToken for a bad challenge token or an unknown ceremony session,
+// ErrPasskeyNotFound when the asserted credential is not on file, ErrPasskeyCloneDetected on a
+// counter regression, and a wrapped error when assertion verification, the counter update,
+// session creation, or token signing fails.
 func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sessionID string, r *http.Request, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	if s.webauthn == nil {
 		return nil, "", "", fmt.Errorf("webauthn service is not configured")
@@ -1560,7 +1941,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionIDStr := fmt.Sprintf("sess_%s", uuid.New().String()[:12])
-	sessionTTL := 7 * 24 * time.Hour
+	sessionTTL := webAuthnLoginSessionTTL
 	now := time.Now()
 	expiresAt := now.Add(sessionTTL)
 
@@ -1579,7 +1960,9 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 	return u, accessToken, rawRefreshToken, nil
 }
 
-// ListWebAuthnPasskeys returns all registered passkeys for a user.
+// ListWebAuthnPasskeys returns the user's registered passkeys as public DTOs, carrying no key
+// material. It returns an empty slice for an account with none, and the repository's error when
+// the read fails.
 func (s *Service) ListWebAuthnPasskeys(ctx context.Context, userID string) ([]PasskeyDTO, error) {
 	passkeys, err := s.repo.GetPasskeysForUser(ctx, userID)
 	if err != nil {
@@ -1606,8 +1989,15 @@ func (s *Service) ListWebAuthnPasskeys(ctx context.Context, userID string) ([]Pa
 	return dtos, nil
 }
 
-// DeleteWebAuthnPasskey removes a registered passkey for a user.
-// Requires Argon2id password step-up re-verification ONLY IF this is the user's LAST remaining 2FA method.
+// DeleteWebAuthnPasskey removes one of a user's passkeys.
+//
+// Deleting a passkey while others remain needs no extra proof. Deleting the last remaining second
+// factor does: it requires a password step-up and revokes every session, because that operation
+// is indistinguishable from an attacker with a stolen session dismantling the account's defences.
+//
+// It returns ErrPasskeyNotFound when the ID is unknown or belongs to another user,
+// ErrInvalidCredentials when the last-factor step-up fails or no password was supplied, and the
+// repository's error when a read or the delete fails.
 func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, passkeyID string, password string) error {
 	passkeys, err := s.repo.GetPasskeysForUser(ctx, userID)
 	if err != nil {
@@ -1663,7 +2053,3 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 
 	return nil
 }
-
-
-
-

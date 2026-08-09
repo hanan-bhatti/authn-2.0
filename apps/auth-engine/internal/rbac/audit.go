@@ -3,8 +3,13 @@
  * File: apps/auth-engine/internal/rbac/audit.go
  * Tier: Audit Trail & Compliance Layer
  *
- * Description: Audit logger for RBAC security events. Records immutable logs detailing
- *              who created, modified, assigned, or revoked roles and permissions.
+ * Audit logging for RBAC security events.
+ *
+ * Every change to who holds which authority is recorded: role creation and
+ * modification, permission updates, and role assignment or revocation. The
+ * entries are append-only and carry the actor, the target, and the network
+ * context the change arrived from, so an authority change can always be traced
+ * to a request.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -20,17 +25,27 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
-// AuditLogger wraps clientfactory.ClientFactory for logging RBAC audit events.
+// AuditLogger writes RBAC audit entries through a tenant-scoped ORM client.
 type AuditLogger struct {
+	// factory produces the ORM client bound to the tenant being written to.
 	factory *clientfactory.ClientFactory
 }
 
-// NewAuditLogger initializes a new AuditLogger instance.
+// NewAuditLogger returns an audit logger backed by the given client factory.
 func NewAuditLogger(factory *clientfactory.ClientFactory) *AuditLogger {
 	return &AuditLogger{factory: factory}
 }
 
-// LogRBACEvent records an immutable audit log entry for RBAC security changes.
+// LogRBACEvent records one RBAC change.
+//
+// actorType is "admin", "system", or anything else for an end user; eventType is
+// the dotted event name ("rbac.role.created"); targetType and targetID name what
+// was changed and are folded into metadata alongside the caller's own fields. ip
+// and userAgent are recorded when non-empty.
+//
+// It returns the write error. Callers treat audit logging as best-effort and
+// discard it, so a failed record never turns a completed authority change into a
+// reported failure.
 func (a *AuditLogger) LogRBACEvent(ctx context.Context, tenantID, actorType, actorID, eventType, targetType, targetID string, metadata map[string]interface{}, ip, userAgent string) error {
 	client := a.factory.GetClient(ctx, tenantID, "")
 

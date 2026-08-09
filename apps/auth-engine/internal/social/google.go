@@ -158,7 +158,7 @@ func (p *GoogleProvider) GetUserInfo(ctx context.Context, accessToken string) (*
 	return &ProviderUser{
 		ProviderUserID: userInfo.Sub,
 		Email:          userInfo.Email,
-		EmailVerified: userInfo.EmailVerified,
+		EmailVerified:  userInfo.EmailVerified,
 		Name:           userInfo.Name,
 		AvatarURL:      userInfo.Picture,
 		RawProfile:     rawProfile,

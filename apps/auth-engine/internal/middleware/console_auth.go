@@ -3,18 +3,13 @@
  * File: apps/auth-engine/internal/middleware/console_auth.go
  * Tier: HTTP Middleware Layer / Console Session Authentication
  *
- * Description: Fiber HTTP middleware for the Authn developer console.
- *              Accepts a valid JWT access token (issued by the normal login flow)
- *              where claims.Role == "tenant_admin". Injects PrivacyContext so all
- *              downstream ORM queries are scoped to the correct tenant.
+ * Console-only authentication for the Authn developer console.
  *
- *              This is the console alternative to RequireSecretKey — console admins
- *              log in with their email/password through the same /v1/client/login
- *              endpoint and use the resulting JWT to call admin routes, rather than
- *              embedding an sk_ key in the browser.
- *
- *              Full RBAC (FR-12) will replace the coarse "tenant_admin" role check
- *              with granular permission evaluation.
+ * Console operators sign in through the same /v1/client/login endpoint as any
+ * other user and call admin routes with the resulting JWT, so no sk_ secret key
+ * is ever embedded in a browser. This middleware is the JWT-only counterpart to
+ * RequireSecretKey; RequireAdminAuth accepts either credential on routes that
+ * serve both console and backend callers.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -30,14 +25,19 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// RequireConsoleAuth returns a Fiber middleware that accepts a JWT access token
-// (from Authorization: Bearer or authn_access_token cookie) where the embedded
-// role claim equals "tenant_admin". Used to protect /v1/tenant/* and /v1/admin/*
-// routes when the caller is the Authn web console rather than a backend server
-// using an sk_ key.
+// RequireConsoleAuth returns a Fiber middleware that admits only a valid JWT
+// access token whose role claim is "tenant_admin", verified against
+// signingSecret. The token is read from the authn_access_token cookie, then the
+// access_token cookie, then Authorization: Bearer.
+//
+// It answers 401 for a missing or unverifiable token and 403 for a valid
+// end-user token without the role, so an ordinary session can never reach an
+// admin route by being merely authenticated. On success the token's tenant and
+// environment go onto the privacy context, scoping every downstream ORM query,
+// and the operator's identity onto the request locals in the same shape the
+// secret-key middleware uses.
 func RequireConsoleAuth(signingSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// 1. Extract token from cookie or Authorization Bearer header
 		tokenStr := ""
 		if tok := c.Cookies("authn_access_token"); tok != "" {
 			tokenStr = tok
@@ -55,24 +55,20 @@ func RequireConsoleAuth(signingSecret string) fiber.Handler {
 				"console session required: provide Authorization: Bearer <jwt> or authn_access_token cookie")
 		}
 
-		// 2. Verify signature and expiration
 		claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 		if err != nil {
 			return httperr.Unauthorized(c, httperr.CodeInvalidToken,
 				"invalid or expired console session token")
 		}
 
-		// 3. Enforce tenant_admin role — regular end-users are rejected here
 		if claims.Role != "tenant_admin" {
 			return httperr.Forbidden(c, httperr.CodeTenantAdminRequired,
 				"forbidden: tenant_admin role required to access this resource")
 		}
 
-		// 4. Inject PrivacyContext so all ORM queries are tenant-scoped
 		privacyCtx := privacy.NewContext(c.UserContext(), claims.TenantID, "", claims.Environment)
 		c.SetUserContext(privacyCtx)
 
-		// 5. Store resolved metadata on Fiber request locals (matches sk_ middleware shape)
 		c.Locals("tenant_id", claims.TenantID)
 		c.Locals("environment", claims.Environment)
 		c.Locals("console_user_id", claims.Sub)

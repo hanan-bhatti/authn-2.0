@@ -1,9 +1,13 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/apikey/repository.go
- * Tier: Internal Feature Package / API Key Repository
+ * Tier: Internal Feature Package / API Key Data Access
  *
- * Description: Data access layer for API Key CRUD operations.
+ * Database access for API key records.
+ *
+ * Records hold the peppered hash, never the key. A read of this table therefore
+ * yields nothing usable as a credential, which is what lets key metadata be
+ * listed freely to an application's operators.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -24,17 +28,28 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
-// Repository handles database operations for API Key entities.
+// seedKeyName labels the key created by EnsureDefaultApiKeyExists, so it is
+// distinguishable from an operator-issued one in a listing.
+const seedKeyName = "Default Dev Key"
+
+// Repository reads and writes API key records.
 type Repository struct {
+	// factory supplies the database client for a tenant and environment.
 	factory *clientfactory.ClientFactory
 }
 
-// NewRepository creates a new API Key repository.
+// NewRepository constructs a repository over the given client factory.
 func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
 }
 
-// CreateApiKey persists a new API key record into the database.
+// CreateApiKey persists a key record.
+//
+// keyHash is the peppered digest; the key itself is never passed here. A nil
+// expiresAt stores no expiry, meaning the key is valid until revoked.
+//
+// Returns an error if the insert fails, which for a duplicate id or a missing
+// application is a constraint violation.
 func (r *Repository) CreateApiKey(ctx context.Context, id string, applicationID string, name string, keyType KeyType, prefix string, keyHash string, env string, expiresAt *time.Time) (*ent.ApiKey, error) {
 	client := r.factory.GetClient(ctx, "", env)
 	k, err := client.ApiKey.Create().
@@ -54,7 +69,14 @@ func (r *Repository) CreateApiKey(ctx context.Context, id string, applicationID 
 	return k, nil
 }
 
-// FindByHash queries an API key by its peppered hash.
+// FindByHash looks a key up by its peppered hash.
+//
+// Returns (nil, nil) when no key matches. "Not found" is the ordinary outcome
+// for a bad credential, not a failure, and separating it from a real error lets
+// the caller answer "invalid key" without treating a database outage the same
+// way.
+//
+// Returns an error only when the query itself fails.
 func (r *Repository) FindByHash(ctx context.Context, keyHash string) (*ent.ApiKey, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	k, err := client.ApiKey.Query().
@@ -70,7 +92,11 @@ func (r *Repository) FindByHash(ctx context.Context, keyHash string) (*ent.ApiKe
 	return k, nil
 }
 
-// ListByApplication lists all API keys for an application.
+// ListByApplication returns every key belonging to an application, revoked and
+// expired ones included, so the listing reflects what was issued rather than
+// only what currently works.
+//
+// Returns an error if the query fails.
 func (r *Repository) ListByApplication(ctx context.Context, applicationID string) ([]*ent.ApiKey, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	keys, err := client.ApiKey.Query().
@@ -83,7 +109,11 @@ func (r *Repository) ListByApplication(ctx context.Context, applicationID string
 	return keys, nil
 }
 
-// RevokeApiKey marks an API key as revoked.
+// RevokeApiKey stamps a key's revocation time.
+//
+// The record is retained rather than deleted, keeping the key in the audit
+// trail and preventing its identifier from being reused. Returns an error if no
+// such key exists or the update fails.
 func (r *Repository) RevokeApiKey(ctx context.Context, id string) error {
 	client := r.factory.GetClient(ctx, "", "")
 	now := time.Now()
@@ -97,7 +127,19 @@ func (r *Repository) RevokeApiKey(ctx context.Context, id string) error {
 	return nil
 }
 
-// EnsureDefaultApiKeyExists seeds a default publishable key for verification if missing.
+// EnsureDefaultApiKeyExists creates a known development key if it is not
+// already present, so a freshly seeded database can be exercised without first
+// issuing one through the API.
+//
+// The key type and prefix are inferred from rawKey, letting a caller seed
+// either a publishable or a secret key by choosing the value's shape.
+//
+// Existing keys are left untouched, and a constraint violation is treated as
+// success: two processes seeding concurrently both intend the same record, and
+// whichever loses the race has still achieved what it asked for.
+//
+// Returns an error if the existence check fails, or if creation fails for any
+// reason other than that conflict.
 func (r *Repository) EnsureDefaultApiKeyExists(ctx context.Context, keyID string, appID string, rawKey string, pepper string) error {
 	h := hmac.New(sha256.New, []byte(pepper))
 	h.Write([]byte(rawKey))
@@ -109,6 +151,9 @@ func (r *Repository) EnsureDefaultApiKeyExists(ctx context.Context, keyID string
 		return fmt.Errorf("failed checking default api key: %w", err)
 	}
 	if !exists {
+		// Default to the least privileged shape, and widen only on an explicit
+		// prefix match, so an unrecognised value seeds a test publishable key
+		// rather than a live secret one.
 		keyType := apikey.TypePublishable
 		prefix := "pk_test_"
 		if strings.HasPrefix(rawKey, "sk_test_") {
@@ -124,7 +169,7 @@ func (r *Repository) EnsureDefaultApiKeyExists(ctx context.Context, keyID string
 		_, err := client.ApiKey.Create().
 			SetID(keyID).
 			SetApplicationID(appID).
-			SetName("Default Dev Key").
+			SetName(seedKeyName).
 			SetType(keyType).
 			SetKeyPrefix(prefix).
 			SetKeyHash(keyHash).

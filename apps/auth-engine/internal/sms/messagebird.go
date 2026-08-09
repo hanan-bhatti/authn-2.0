@@ -3,7 +3,7 @@
  * File: apps/auth-engine/internal/sms/messagebird.go
  * Tier: Internal Service Package / SMS Drivers
  *
- * Description: MessageBird REST API SMSProvider implementation.
+ * Delivery through the MessageBird REST API.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -17,45 +17,77 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 )
 
-// MessageBirdProvider implements SMSProvider for MessageBird API.
+const (
+	// messageBirdSendEndpoint is the MessageBird messages resource.
+	messageBirdSendEndpoint = "https://rest.messagebird.com/messages"
+
+	// fallbackOriginator is the sender label used when none is configured.
+	//
+	// It is alphanumeric rather than a phone number, which several countries
+	// require registration for and others reject outright; where it is not
+	// accepted the carrier substitutes its own sender, and recipients cannot
+	// reply. Deployments serving those regions configure a real number instead.
+	fallbackOriginator = "Authn"
+)
+
+// MessageBirdProvider sends messages through MessageBird.
 type MessageBirdProvider struct {
-	accessKey  string
+	// accessKey authenticates the account.
+	accessKey string
+	// originator is the sender shown to the recipient: a phone number or an
+	// alphanumeric label.
 	originator string
+	// httpClient is reused across sends so connections are pooled.
 	httpClient *http.Client
 }
 
-// NewMessageBirdProvider constructs a new MessageBirdProvider.
+// NewMessageBirdProvider constructs a MessageBird-backed provider, defaulting
+// the originator when none is configured.
 func NewMessageBirdProvider(accessKey string, originator string) *MessageBirdProvider {
 	if originator == "" {
-		originator = "Authn"
+		originator = fallbackOriginator
 	}
 	return &MessageBirdProvider{
 		accessKey:  accessKey,
 		originator: originator,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: providerHTTPTimeout},
 	}
 }
 
+// messageBirdSendRequest is the send-message request body.
 type messageBirdSendRequest struct {
-	Originator string   `json:"originator"`
+	// Originator is the sender shown to the recipient.
+	Originator string `json:"originator"`
+	// Recipients lists the destination numbers; this driver always sends to
+	// exactly one.
 	Recipients []string `json:"recipients"`
-	Body       string   `json:"body"`
+	// Body is the message text.
+	Body string `json:"body"`
 }
 
+// messageBirdError is one entry in a MessageBird error list.
 type messageBirdError struct {
-	Code    int    `json:"code"`
+	// Code is the MessageBird error number.
+	Code int `json:"code"`
+	// Description explains the failure.
 	Description string `json:"description"`
 }
 
+// messageBirdSendResponse is the send-message response body.
 type messageBirdSendResponse struct {
-	ID     string             `json:"id"`
+	// ID identifies the accepted message.
+	ID string `json:"id"`
+	// Errors is non-empty when the request was rejected.
 	Errors []messageBirdError `json:"errors,omitempty"`
 }
 
-// SendSMS transmits an SMS message using MessageBird HTTP API.
+// SendSMS delivers one message through MessageBird.
+//
+// Returns an error when the access key is unset, the request cannot be built or
+// executed, the API answers 4xx or 5xx, or the response body carries errors.
+// Only the first error is reported, since they describe the same rejection.
 func (p *MessageBirdProvider) SendSMS(ctx context.Context, toPhoneNumber string, message string) error {
 	if p.accessKey == "" {
 		return fmt.Errorf("messagebird access key is not configured")
@@ -72,7 +104,7 @@ func (p *MessageBirdProvider) SendSMS(ctx context.Context, toPhoneNumber string,
 		return fmt.Errorf("failed marshaling messagebird payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://rest.messagebird.com/messages", bytes.NewBuffer(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", messageBirdSendEndpoint, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed creating messagebird HTTP request: %w", err)
 	}
@@ -92,9 +124,11 @@ func (p *MessageBirdProvider) SendSMS(ctx context.Context, toPhoneNumber string,
 		return fmt.Errorf("messagebird API error (%d): %s", resp.StatusCode, string(respBytes))
 	}
 
-	var mbResp messageBirdSendResponse
-	if err := json.Unmarshal(respBytes, &mbResp); err == nil && len(mbResp.Errors) > 0 {
-		return fmt.Errorf("messagebird error (%d): %s", mbResp.Errors[0].Code, mbResp.Errors[0].Description)
+	// An unparseable body on a success status is treated as success; only a
+	// populated error list contradicts the status.
+	var parsed messageBirdSendResponse
+	if err := json.Unmarshal(respBytes, &parsed); err == nil && len(parsed.Errors) > 0 {
+		return fmt.Errorf("messagebird error (%d): %s", parsed.Errors[0].Code, parsed.Errors[0].Description)
 	}
 
 	return nil

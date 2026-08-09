@@ -1,11 +1,12 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/user/handler.go
- * Tier: HTTP REST Route Handler Layer
+ * Tier: HTTP Controller Layer / Fiber Endpoints
  *
- * Description: Fiber REST API route handlers for User Self-Service Profile,
- *              Password, Recovery Email, Email Change, Social Account Unlinking,
- *              and Account Erasure.
+ * Description: Fiber handlers for the user self-service API (/v1/client/user): profile,
+ *              password, primary and recovery email, linked social accounts and account
+ *              erasure. Resolves the caller from middleware locals and maps the package
+ *              sentinels onto the canonical error envelope.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -21,14 +22,19 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
+// Handler exposes the user self-service operations over HTTP.
 type Handler struct {
+	// svc carries out the operation behind each route.
 	svc *Service
 }
 
+// NewHandler constructs a user Handler over svc.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// getUserID returns the authenticated caller's ID from the locals set by the
+// client-session middleware, or "" when the request carried no session.
 func getUserID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("userID").(string); ok && val != "" {
 		return val
@@ -39,15 +45,12 @@ func getUserID(c *fiber.Ctx) string {
 	return ""
 }
 
-// getTenantID resolves the tenant for this request from the locals set by the
-// authenticating middleware, or returns "" when no tenant could be resolved.
+// getTenantID returns the tenant resolved by the authenticating middleware, or
+// "" when none was resolved.
 //
-// M3 (same class as internal/org/handler.go): this used to fall back to the
-// literal "tnt_default", so a request that reached a handler without a resolved
-// tenant silently mutated a real production tenant's user records. Every route
-// that reads the tenant is mounted behind the publishable-key and client-session
-// middleware, both of which set tenant_id on success and reject the request
-// otherwise, so failing closed here breaks no legitimate flow.
+// There is deliberately no default tenant: a request that reaches a handler with
+// no resolved tenant is not authenticated, and substituting one would let it read
+// and write a real tenant's user records.
 func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val
@@ -66,6 +69,8 @@ func requireTenantID(c *fiber.Ctx) (string, error, bool) {
 	return tenantID, nil, true
 }
 
+// getEnvironment returns the request's environment, defaulting to "test" when
+// the middleware set none.
 func getEnvironment(c *fiber.Ctx) string {
 	if val, ok := c.Locals("environment").(string); ok && val != "" {
 		return val
@@ -73,14 +78,13 @@ func getEnvironment(c *fiber.Ctx) string {
 	return "test"
 }
 
-// badRequestLogged answers with a 400 carrying a static, client-safe message while
-// keeping the underlying error server-side.
+// badRequestLogged answers with a 400 carrying a static, client-safe message
+// while keeping the underlying error server-side.
 //
-// The service layer wraps ent/SQL failures (`failed updating user profile: %w`,
-// `failed saving pending email token: %w`, ...) and returns them through the same
-// branch as genuine validation failures. These branches must stay 4xx for API
-// compatibility, so the client gets a fixed message and the real error is logged
-// in SendInternal's format instead of being echoed back.
+// The service layer returns wrapped ent/SQL failures through the same branch as
+// genuine validation failures. These branches answer 4xx, so the caller gets a
+// fixed message and the real error is logged rather than echoed back, which would
+// disclose table and column names.
 func badRequestLogged(c *fiber.Ctx, op string, err error, code httperr.Code, msg string) error {
 	if err != nil {
 		log.Printf("[error] %s %s %s: %v", c.Method(), c.Path(), op, err)
@@ -88,27 +92,25 @@ func badRequestLogged(c *fiber.Ctx, op string, err error, code httperr.Code, msg
 	return httperr.BadRequest(c, code, msg)
 }
 
+// RegisterRoutes mounts the user self-service routes under /v1/client/user.
+//
+// Exactly one group owns this prefix, because two groups on the same prefix both
+// match every request and would run pkMw twice per call. pkMw is group-wide:
+// every route here requires a publishable key. clientAuthMw is attached per route
+// instead, so each line declares its own authentication and a route's protection
+// does not depend on where its registration sits relative to a group boundary.
 func (h *Handler) RegisterRoutes(app *fiber.App, clientAuthMw, pkMw fiber.Handler) {
-	// ONE group on this prefix. Two groups on the same prefix both matched every
-	// protected request, so pkMw ran twice — two ValidateKey DB round-trips per
-	// request on the hottest path in the user API — and a route's authentication
-	// depended on which side of the group boundary its registration line happened
-	// to sit on. Moving a line was enough to silently expose or protect a route
-	// (audit finding M4).
-	//
-	// pkMw stays group-wide: every route here requires a publishable key.
-	// clientAuthMw is attached PER ROUTE so each line declares its own auth.
 	group := app.Group("/v1/client/user")
 	if pkMw != nil {
 		group.Use(pkMw)
 	}
 
-	// Public: publishable key only. Caller identity comes from the signed token
-	// in the query string, which the handler verifies itself.
+	// Publishable key only. Caller identity comes from the signed token in the
+	// query string, which the handler verifies itself.
 	group.Get("/email/verify", h.VerifyEmailChange)
 	group.Get("/recovery-email/verify", h.VerifyRecoveryEmail)
 
-	// Protected: publishable key + an authenticated user session.
+	// Publishable key plus an authenticated user session.
 	var auth []fiber.Handler
 	if clientAuthMw != nil {
 		auth = []fiber.Handler{clientAuthMw}
@@ -129,6 +131,8 @@ func (h *Handler) RegisterRoutes(app *fiber.App, clientAuthMw, pkMw fiber.Handle
 	group.Delete("/account", protected(h.DeleteAccount)...)
 }
 
+// GetProfile returns the caller's own profile. Answers 404 when the account no
+// longer exists.
 func (h *Handler) GetProfile(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -143,6 +147,8 @@ func (h *Handler) GetProfile(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(prof)
 }
 
+// UpdateProfile applies a partial update to the caller's profile and returns the
+// result. Answers 400 when a field fails validation.
 func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -160,6 +166,8 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(prof)
 }
 
+// ChangePassword changes the caller's password. Answers 400 without a new
+// password or when the policy is unmet, and 401 when the current password is wrong.
 func (h *Handler) ChangePassword(c *fiber.Ctx) error {
 	userID := getUserID(c)
 	tenantID, errResp, ok := requireTenantID(c)
@@ -191,6 +199,10 @@ func (h *Handler) ChangePassword(c *fiber.Ctx) error {
 	})
 }
 
+// RequestEmailChange mails a confirmation link to a proposed new primary address.
+//
+// The response never carries the token, which reaches the user only through the
+// new address. Answers 409 when the address is already in use.
 func (h *Handler) RequestEmailChange(c *fiber.Ctx) error {
 	userID := getUserID(c)
 	tenantID, errResp, ok := requireTenantID(c)
@@ -218,6 +230,8 @@ func (h *Handler) RequestEmailChange(c *fiber.Ctx) error {
 	})
 }
 
+// VerifyEmailChange consumes the token from the query string and promotes the
+// pending address to primary. Answers 400 for a missing, unknown or expired token.
 func (h *Handler) VerifyEmailChange(c *fiber.Ctx) error {
 	token := c.Query("token")
 	if token == "" {
@@ -237,6 +251,8 @@ func (h *Handler) VerifyEmailChange(c *fiber.Ctx) error {
 	})
 }
 
+// GetRecoveryEmail returns the caller's secondary recovery address and whether it
+// has been verified.
 func (h *Handler) GetRecoveryEmail(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -251,6 +267,8 @@ func (h *Handler) GetRecoveryEmail(c *fiber.Ctx) error {
 	})
 }
 
+// SetRecoveryEmail registers a secondary recovery address and mails it a
+// confirmation link. Answers 400 when the address fails validation.
 func (h *Handler) SetRecoveryEmail(c *fiber.Ctx) error {
 	userID := getUserID(c)
 	tenantID, errResp, ok := requireTenantID(c)
@@ -275,6 +293,8 @@ func (h *Handler) SetRecoveryEmail(c *fiber.Ctx) error {
 	})
 }
 
+// VerifyRecoveryEmail consumes the token from the query string and marks the
+// recovery address verified. Answers 400 for a missing, unknown or expired token.
 func (h *Handler) VerifyRecoveryEmail(c *fiber.Ctx) error {
 	token := c.Query("token")
 	if token == "" {
@@ -294,6 +314,7 @@ func (h *Handler) VerifyRecoveryEmail(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteRecoveryEmail removes the caller's secondary recovery address.
 func (h *Handler) DeleteRecoveryEmail(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -307,6 +328,7 @@ func (h *Handler) DeleteRecoveryEmail(c *fiber.Ctx) error {
 	})
 }
 
+// ListSocialAccounts returns the OAuth identities linked to the caller's account.
 func (h *Handler) ListSocialAccounts(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -320,6 +342,8 @@ func (h *Handler) ListSocialAccounts(c *fiber.Ctx) error {
 	})
 }
 
+// UnlinkSocialAccount disconnects the provider named in the path. Answers 404
+// when it is not linked and 403 when it is the account's only way to sign in.
 func (h *Handler) UnlinkSocialAccount(c *fiber.Ctx) error {
 	userID := getUserID(c)
 	provider := c.Params("provider")
@@ -342,6 +366,8 @@ func (h *Handler) UnlinkSocialAccount(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteAccount permanently erases the caller's account. Answers 401 when the
+// confirming password is wrong.
 func (h *Handler) DeleteAccount(c *fiber.Ctx) error {
 	userID := getUserID(c)
 	tenantID, errResp, ok := requireTenantID(c)

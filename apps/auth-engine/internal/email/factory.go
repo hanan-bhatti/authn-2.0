@@ -1,10 +1,14 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/email/factory.go
- * Tier: Internal Service Package / Email Driver Factory
+ * Tier: Internal Service Package / Email Driver Selection
  *
- * Description: Factory constructor that instantiates the requested EmailProvider
- *              driver based on environment configuration (smtp, resend, sendgrid, postmark, aws_ses, noop).
+ * Turns the configured driver name into a live EmailProvider.
+ *
+ * Selection happens once at startup and fails loudly. A driver named with its
+ * credential missing is a configuration mistake, and the useful moment to say
+ * so is before the server accepts traffic — not on the first password reset,
+ * where the user sees a generic failure and nobody sees the cause.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -18,7 +22,23 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 )
 
-// NewEmailProvider instantiates the appropriate EmailProvider driver based on cfg.EmailDriver.
+// fallbackFromAddress is the sender used when configuration names none.
+//
+// The .local suffix is reserved and undeliverable, which is deliberate: mail
+// sent from an unconfigured deployment bounces visibly instead of appearing to
+// originate from a real domain the operator does not own.
+const fallbackFromAddress = "noreply@authn.local"
+
+// NewEmailProvider builds the provider named by cfg.EmailDriver.
+//
+// A nil config yields the no-op driver, so tooling that runs without the
+// configuration layer loaded still constructs successfully.
+//
+// Recognised drivers are smtp, resend, sendgrid, postmark, aws_ses (or ses) and
+// noop (or none, or disabled). An empty driver means smtp, matching the config
+// layer's default. Returns an error when the driver name is unknown, or when a
+// named provider's credential is absent — the two failures an operator can fix
+// by editing configuration.
 func NewEmailProvider(cfg *config.Config) (EmailProvider, error) {
 	if cfg == nil {
 		return NewNoopProvider(), nil
@@ -27,7 +47,7 @@ func NewEmailProvider(cfg *config.Config) (EmailProvider, error) {
 	driver := strings.ToLower(strings.TrimSpace(cfg.EmailDriver))
 	from := cfg.EmailFromAddress
 	if from == "" {
-		from = "noreply@authn.local"
+		from = fallbackFromAddress
 	}
 
 	switch driver {
@@ -58,6 +78,9 @@ func NewEmailProvider(cfg *config.Config) (EmailProvider, error) {
 		}
 		return NewPostmarkProvider(cfg.PostmarkServerToken, from), nil
 
+	// SES credentials are not required here: AWS resolves them from the
+	// instance role or ambient environment when none are configured, so absence
+	// is a valid deployment rather than a misconfiguration.
 	case "aws_ses", "ses":
 		return NewAWSSESProvider(cfg.AWSAccessKeyID, cfg.AWSSecretAccessKey, cfg.AWSRegion, from), nil
 

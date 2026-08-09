@@ -3,8 +3,13 @@
  * File: apps/auth-engine/internal/apikey/service.go
  * Tier: Internal Feature Package / API Key Business Logic
  *
- * Description: Business logic for API key generation, HMAC-SHA256 peppered hash validation,
- *              expiration & revocation checks, and application/tenant resolution.
+ * Issues, validates and revokes API keys.
+ *
+ * Validation is on the hot path: middleware calls it for every request that
+ * authenticates with a key, and it is what resolves an opaque credential into
+ * the tenant and environment the rest of the request is scoped by. Everything
+ * downstream trusts the application this returns, so a mistake here is a
+ * cross-tenant one.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -27,19 +32,32 @@ import (
 )
 
 var (
-	ErrInvalidApiKey   = errors.New("invalid or unrecognized API key")
-	ErrExpiredApiKey   = errors.New("API key has expired")
-	ErrRevokedApiKey   = errors.New("API key has been revoked")
+	// ErrInvalidApiKey means the key is empty or matches no stored hash. It is
+	// deliberately also returned when the lookup itself fails, so a caller
+	// cannot tell a wrong key from a database problem.
+	ErrInvalidApiKey = errors.New("invalid or unrecognized API key")
+	// ErrExpiredApiKey means the key was valid but has passed its expiry.
+	ErrExpiredApiKey = errors.New("API key has expired")
+	// ErrRevokedApiKey means the key was explicitly revoked.
+	ErrRevokedApiKey = errors.New("API key has been revoked")
+	// ErrKeyTypeMismatch means a real key was presented where its scope does
+	// not apply — a publishable key at an endpoint requiring a secret one.
 	ErrKeyTypeMismatch = errors.New("API key scope type mismatch")
 )
 
-// Service provides business logic operations for API Key management and validation.
+// Service issues and validates API keys.
 type Service struct {
-	repo   *Repository
+	// repo reads and writes key records.
+	repo *Repository
+	// pepper is the HMAC key mixed into every hash. It is held in memory only
+	// and never written alongside the hashes it protects.
 	pepper string
 }
 
-// NewService constructs a new API Key Service instance.
+// NewService constructs a key service bound to a repository and pepper.
+//
+// The pepper must stay stable for the life of the deployment: it is an input to
+// every stored hash, so changing it invalidates every key already issued.
 func NewService(repo *Repository, pepper string) *Service {
 	return &Service{
 		repo:   repo,
@@ -47,14 +65,31 @@ func NewService(repo *Repository, pepper string) *Service {
 	}
 }
 
-// ComputeHash returns the peppered HMAC-SHA256 hash string for a raw key.
+// ComputeHash derives the stored hash for a raw key.
+//
+// Exported so middleware can look a key up without going through full
+// validation.
 func (s *Service) ComputeHash(rawKey string) string {
 	h := hmac.New(sha256.New, []byte(s.pepper))
 	h.Write([]byte(rawKey))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// ValidateKey checks a raw API key string against database records and returns key & application entity metadata.
+// ValidateKey resolves a raw API key into its key record and owning
+// application.
+//
+// expectedType constrains the scope; passing an empty type accepts either,
+// which suits an endpoint that serves both public and administrative clients.
+//
+// Returns ErrInvalidApiKey for an empty or unrecognised key, ErrRevokedApiKey
+// or ErrExpiredApiKey for a key that is known but no longer usable, and
+// ErrKeyTypeMismatch when the scope is wrong. Callers should collapse the first
+// three into one client-facing response: distinguishing "unknown" from
+// "revoked" confirms to an attacker that a key they hold was once real.
+//
+// The returned application carries the tenant and environment the request is
+// then scoped by, so a caller must use those rather than any tenant identifier
+// supplied in the request itself.
 func (s *Service) ValidateKey(ctx context.Context, rawKey string, expectedType KeyType) (*ent.ApiKey, *ent.Application, error) {
 	rawKey = strings.TrimSpace(rawKey)
 	if rawKey == "" {
@@ -63,13 +98,19 @@ func (s *Service) ValidateKey(ctx context.Context, rawKey string, expectedType K
 
 	keyHash := s.ComputeHash(rawKey)
 
-	// Execute key lookup using system bypass context
+	// The lookup runs with privacy checks bypassed because it is what
+	// establishes tenancy: the interceptors demand a tenant in context, and the
+	// tenant is not known until this key resolves. The bypass is confined to
+	// this resolution and does not extend to the request that follows.
 	sysCtx := privacy.NewBypassContext(ctx)
 	key, err := s.repo.FindByHash(sysCtx, keyHash)
 	if err != nil || key == nil {
 		return nil, nil, ErrInvalidApiKey
 	}
 
+	// Revocation is checked before expiry so a key that was revoked and has
+	// since also expired reports the deliberate action rather than the passive
+	// one.
 	if key.RevokedAt != nil {
 		return nil, nil, ErrRevokedApiKey
 	}
@@ -82,7 +123,9 @@ func (s *Service) ValidateKey(ctx context.Context, rawKey string, expectedType K
 		return nil, nil, ErrKeyTypeMismatch
 	}
 
-	// Fetch parent Application to resolve tenant_id and environment
+	// The parent application supplies the tenant and environment. A key whose
+	// application has been deleted is unusable, hence the error rather than a
+	// partial result.
 	app, err := s.repo.factory.GetClient(sysCtx, "", "").Application.Query().
 		Where(application.ID(key.ApplicationID)).
 		Only(sysCtx)
@@ -93,7 +136,17 @@ func (s *Service) ValidateKey(ctx context.Context, rawKey string, expectedType K
 	return key, app, nil
 }
 
-// CreateKey generates and persists a new API key for an application.
+// CreateKey generates a key for an application and persists its hash.
+//
+// An empty id is derived from the tail of the generated key, which keeps
+// identifiers unique without a second random draw. Note that this places
+// twelve hex characters of the key into an identifier that later appears in
+// listings; callers wanting the identifier fully independent of the secret
+// should pass one.
+//
+// A nil expiresAt means the key does not expire. Returns the generated key —
+// the only time its raw value is available — or an error if generation or
+// persistence fails.
 func (s *Service) CreateKey(ctx context.Context, id string, applicationID string, name string, keyType KeyType, env string, expiresAt *time.Time) (*GeneratedApiKey, error) {
 	gen, err := GenerateApiKey(keyType, env, s.pepper)
 	if err != nil {
@@ -113,12 +166,19 @@ func (s *Service) CreateKey(ctx context.Context, id string, applicationID string
 	return gen, nil
 }
 
-// ListKeys returns all API keys for an application.
+// ListKeys returns an application's keys, including revoked and expired ones so
+// an operator can audit what was issued. Records carry hashes, never keys.
+//
+// Returns an error if the query fails.
 func (s *Service) ListKeys(ctx context.Context, applicationID string) ([]*ent.ApiKey, error) {
 	return s.repo.ListByApplication(ctx, applicationID)
 }
 
-// RevokeKey soft-revokes an API key by ID.
+// RevokeKey marks a key unusable, effective on its next validation.
+//
+// The record is kept rather than deleted, so the key remains in the audit trail
+// and its identifier cannot be reissued. Returns an error if the key does not
+// exist or the update fails.
 func (s *Service) RevokeKey(ctx context.Context, id string) error {
 	return s.repo.RevokeApiKey(ctx, id)
 }

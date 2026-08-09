@@ -1,10 +1,21 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/pkg/jwt/signer.go
- * Tier: Shared Package / JWT Token Signer
+ * Tier: Shared Package / Access Token Signing
  *
- * Description: RS256 / HS256 JWT access token signer and claim validator.
- *              Issues 15-minute access tokens for client authentication.
+ * HS256-signed access tokens and MFA challenge tokens, plus the verifiers that
+ * accept them back.
+ *
+ * These tokens are symmetric: the engine both signs and verifies them with the
+ * same secret, and nothing outside the engine is expected to validate one. That
+ * is why HS256 is sufficient here, while the OIDC ID tokens that relying
+ * parties verify independently are RS256-signed and published through JWKS —
+ * see rsa.go and key_manager.go.
+ *
+ * A token is a bearer credential: anyone holding one is treated as the subject
+ * until it expires. Lifetimes are therefore short, and nothing that is not
+ * already visible to the token's own bearer belongs in the claims, since the
+ * payload is signed but not encrypted and decodes with base64 alone.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -21,40 +32,88 @@ import (
 	"time"
 )
 
-// Claims represents the standard JWT access token payload structure.
+const (
+	// tokenIssuer is the `iss` claim stamped on every token this file signs.
+	tokenIssuer = "authn-engine"
+
+	// accessTokenTTL bounds how long a leaked access token stays useful. Short
+	// enough that a token lifted from a log or a proxy is stale before it can
+	// be used at leisure; long enough that clients are not refreshing on nearly
+	// every request. Revocation is not immediate — verification is offline and
+	// consults no store — so this window is the actual exposure after a
+	// session is revoked.
+	accessTokenTTL = 15 * time.Minute
+
+	// impersonationFallbackTTL applies when a caller requests an impersonation
+	// token without stating a duration. Support access is deliberately not
+	// open-ended.
+	impersonationFallbackTTL = 15 * time.Minute
+
+	// mfaChallengeTTL bounds the window between a correct password and a second
+	// factor. It is far shorter than an access token's lifetime because the
+	// challenge token represents a half-finished login: the password is already
+	// proven, so anyone holding it needs only the second factor.
+	mfaChallengeTTL = 5 * time.Minute
+
+	// mfaChallengePurpose marks a token as usable only for completing a second
+	// factor. VerifyMFAChallengeToken requires it, which is what stops a
+	// challenge token from being replayed at an endpoint that expects a fully
+	// authenticated access token.
+	mfaChallengePurpose = "2fa_challenge"
+)
+
+// Claims is the access token payload.
+//
+// Everything here is readable by the bearer: the payload is base64, not
+// encrypted, and the signature protects integrity only.
 type Claims struct {
-	Sub            string `json:"sub"`
-	TenantID       string `json:"tenant_id"`
-	Environment    string `json:"environment"`
-	Email          string `json:"email"`
-	Name           string `json:"name,omitempty"`
-	Role           string `json:"role,omitempty"`
-	SessionID      string `json:"sid,omitempty"`
+	// Sub is the authenticated user ID ("usr_...").
+	Sub string `json:"sub"`
+	// TenantID scopes the token to one tenant. Handlers must check it rather
+	// than trusting a tenant identifier supplied in the request.
+	TenantID string `json:"tenant_id"`
+	// Environment is "test" or "live", keeping test-mode credentials from
+	// acting on live data.
+	Environment string `json:"environment"`
+	// Email is the user's registered address at issue time.
+	Email string `json:"email"`
+	// Name is the user's display name, omitted when unset.
+	Name string `json:"name,omitempty"`
+	// Role is the platform role claim ("tenant_admin" for a tenant's first
+	// user, empty for ordinary users).
+	Role string `json:"role,omitempty"`
+	// SessionID ties the token to a session record, so a revoked session can be
+	// recognised by callers that do consult the session store.
+	SessionID string `json:"sid,omitempty"`
+	// ImpersonatorID is the administrator acting as this user, set only on
+	// impersonation tokens. It is what makes an audit trail attribute actions
+	// to the real operator rather than to the impersonated account.
 	ImpersonatorID string `json:"impersonator_id,omitempty"`
-	IsImpersonated bool   `json:"is_impersonated,omitempty"`
-	Iss            string `json:"iss"`
-	Iat            int64  `json:"iat"`
-	Exp            int64  `json:"exp"`
-	Jti            string `json:"jti"`
+	// IsImpersonated marks the token as an impersonation token so middleware
+	// can refuse sensitive operations under it.
+	IsImpersonated bool `json:"is_impersonated,omitempty"`
+	// Iss identifies the issuing engine.
+	Iss string `json:"iss"`
+	// Iat is the issue time in Unix seconds.
+	Iat int64 `json:"iat"`
+	// Exp is the expiry in Unix seconds; verification rejects the token after it.
+	Exp int64 `json:"exp"`
+	// Jti is a per-token identifier derived from the issue timestamp in
+	// nanoseconds. It distinguishes otherwise identical tokens in logs; it is
+	// not random and is not a replay-prevention nonce.
+	Jti string `json:"jti"`
 }
 
-// IssueAccessToken creates and signs a 15-minute JWT access token string.
+// IssueAccessToken signs a 15-minute access token for a user.
 //
-// Parameters:
-//   - userID: User ID (`usr_...`).
-//   - tenantID: Tenant ID scope.
-//   - environment: "test" or "live".
-//   - email: User registered email.
-//   - name: User name.
-//   - role: User platform role ("tenant_admin" for first user in tenant, "" for regular users).
-//   - signingSecret: Signing secret key string (`AUTHN_ENCRYPTION_KEY`).
+// role carries the platform role claim and may be empty for ordinary users.
+// signingSecret is the engine's symmetric signing key.
 //
-// Returns:
-//   - string: Signed JWT string (`header.payload.signature`).
-//   - error: Non-nil if signing fails.
+// Returns an error only if the claims cannot be marshalled, which indicates a
+// programming fault rather than a runtime condition.
 func IssueAccessToken(userID string, tenantID string, environment string, email string, name string, role string, signingSecret string) (string, error) {
 	now := time.Now().UTC()
-	exp := now.Add(15 * time.Minute) // 15-minute Access Token TTL
+	exp := now.Add(accessTokenTTL)
 
 	claims := Claims{
 		Sub:         userID,
@@ -63,7 +122,7 @@ func IssueAccessToken(userID string, tenantID string, environment string, email 
 		Email:       email,
 		Name:        name,
 		Role:        role,
-		Iss:         "authn-engine",
+		Iss:         tokenIssuer,
 		Iat:         now.Unix(),
 		Exp:         exp.Unix(),
 		Jti:         fmt.Sprintf("jti_%d", now.UnixNano()),
@@ -90,10 +149,14 @@ func IssueAccessToken(userID string, tenantID string, environment string, email 
 	return signingInput + "." + signature, nil
 }
 
-// IssueAccessTokenWithSession creates and signs a 15-minute JWT access token with an explicit session ID (sid).
+// IssueAccessTokenWithSession signs a 15-minute access token carrying an
+// explicit session ID in the `sid` claim, letting a consumer correlate the
+// token with a revocable session record.
+//
+// Returns an error only if the claims cannot be marshalled.
 func IssueAccessTokenWithSession(userID string, tenantID string, environment string, email string, name string, role string, sessionID string, signingSecret string) (string, error) {
 	now := time.Now().UTC()
-	exp := now.Add(15 * time.Minute)
+	exp := now.Add(accessTokenTTL)
 
 	claims := Claims{
 		Sub:         userID,
@@ -103,7 +166,7 @@ func IssueAccessTokenWithSession(userID string, tenantID string, environment str
 		Name:        name,
 		Role:        role,
 		SessionID:   sessionID,
-		Iss:         "authn-engine",
+		Iss:         tokenIssuer,
 		Iat:         now.Unix(),
 		Exp:         exp.Unix(),
 		Jti:         fmt.Sprintf("jti_%d", now.UnixNano()),
@@ -130,11 +193,18 @@ func IssueAccessTokenWithSession(userID string, tenantID string, environment str
 	return signingInput + "." + signature, nil
 }
 
-// IssueImpersonationToken creates and signs a short-lived JWT access token for admin impersonation.
+// IssueImpersonationToken signs an access token that identifies both the
+// impersonated user and the administrator acting as them.
+//
+// A non-positive duration falls back to 15 minutes, so a caller that forgets to
+// specify one cannot mint an unusually long-lived support session. The `jti`
+// prefix distinguishes these tokens in logs.
+//
+// Returns an error only if the claims cannot be marshalled.
 func IssueImpersonationToken(userID string, tenantID string, environment string, email string, name string, role string, impersonatorID string, durationMinutes time.Duration, signingSecret string) (string, error) {
 	now := time.Now().UTC()
 	if durationMinutes <= 0 {
-		durationMinutes = 15 * time.Minute
+		durationMinutes = impersonationFallbackTTL
 	}
 	exp := now.Add(durationMinutes)
 
@@ -147,7 +217,7 @@ func IssueImpersonationToken(userID string, tenantID string, environment string,
 		Role:           role,
 		ImpersonatorID: impersonatorID,
 		IsImpersonated: true,
-		Iss:            "authn-engine",
+		Iss:            tokenIssuer,
 		Iat:            now.Unix(),
 		Exp:            exp.Unix(),
 		Jti:            fmt.Sprintf("jti_imp_%d", now.UnixNano()),
@@ -174,27 +244,35 @@ func IssueImpersonationToken(userID string, tenantID string, environment string,
 	return signingInput + "." + signature, nil
 }
 
-// VerifyAccessToken verifies signature and expiration of a JWT access token string.
+// VerifyAccessToken checks a token's signature and expiry and returns its claims.
 //
-// Parameters:
-//   - tokenString: Raw JWT token string.
-//   - signingSecret: Signing secret key string.
+// Distinct errors describe a malformed token, a bad signature, an undecodable
+// payload and an expired token. All of them mean the same thing to a caller —
+// reject the request — so handlers should map them to one generic response
+// rather than reporting which check failed.
 //
-// Returns:
-//   - *Claims: Parsed JWT claims if valid.
-//   - error: Non-nil if token is invalid or expired.
+// Expiry is compared without leeway, so clock skew between instances can reject
+// a token a moment before its peers would.
 func VerifyAccessToken(tokenString string, signingSecret string) (*Claims, error) {
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid jwt format")
 	}
 
+	// The header's `alg` is deliberately never consulted. Recomputing HS256
+	// unconditionally is what makes algorithm-confusion attacks inert: a token
+	// rewritten to "alg":"none", or to RS256 so the public key is treated as an
+	// HMAC secret, still has to carry a signature valid under this secret.
 	signingInput := parts[0] + "." + parts[1]
 	h := hmac.New(sha256.New, []byte(signingSecret))
 	h.Write([]byte(signingInput))
 	expectedSignature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
-	if parts[2] != expectedSignature {
+	// Constant-time comparison. A byte-wise comparison that stops at the first
+	// difference takes measurably longer the more leading bytes are correct,
+	// which lets an attacker who can time repeated requests build a valid
+	// signature one byte at a time.
+	if !hmac.Equal([]byte(parts[2]), []byte(expectedSignature)) {
 		return nil, fmt.Errorf("invalid jwt signature")
 	}
 
@@ -215,30 +293,47 @@ func VerifyAccessToken(tokenString string, signingSecret string) (*Claims, error
 	return &claims, nil
 }
 
-// MFAClaims represents the payload structure for a short-lived 2FA challenge token.
+// MFAClaims is the payload of the short-lived token issued between a successful
+// password check and second-factor entry.
 type MFAClaims struct {
-	Sub         string   `json:"sub"`
-	TenantID    string   `json:"tenant_id"`
-	Environment string   `json:"environment"`
-	Methods     []string `json:"methods"`
-	Purpose     string   `json:"purpose"`
-	Iss         string   `json:"iss"`
-	Iat         int64    `json:"iat"`
-	Exp         int64    `json:"exp"`
+	// Sub is the user ID part-way through logging in.
+	Sub string `json:"sub"`
+	// TenantID scopes the challenge to one tenant.
+	TenantID string `json:"tenant_id"`
+	// Environment is "test" or "live".
+	Environment string `json:"environment"`
+	// Methods lists the second factors this user may complete, so the client
+	// can present the right prompt without a further round trip.
+	Methods []string `json:"methods"`
+	// Purpose is always mfaChallengePurpose and is checked on verification,
+	// preventing this token from being presented as an access token.
+	Purpose string `json:"purpose"`
+	// Iss identifies the issuing engine.
+	Iss string `json:"iss"`
+	// Iat is the issue time in Unix seconds.
+	Iat int64 `json:"iat"`
+	// Exp is the expiry in Unix seconds.
+	Exp int64 `json:"exp"`
 }
 
-// IssueMFAChallengeToken issues a 5-minute JWT challenge token required for 2FA verification.
+// IssueMFAChallengeToken signs a 5-minute token proving the password step
+// succeeded, to be presented alongside the second factor.
+//
+// methods tells the client which factors are enrolled. Listing them is not a
+// disclosure: the caller has already proven the password.
+//
+// Returns an error only if the claims cannot be marshalled.
 func IssueMFAChallengeToken(userID string, tenantID string, environment string, methods []string, signingSecret string) (string, error) {
 	now := time.Now().UTC()
-	exp := now.Add(5 * time.Minute)
+	exp := now.Add(mfaChallengeTTL)
 
 	claims := MFAClaims{
 		Sub:         userID,
 		TenantID:    tenantID,
 		Environment: environment,
 		Methods:     methods,
-		Purpose:     "2fa_challenge",
-		Iss:         "authn-engine",
+		Purpose:     mfaChallengePurpose,
+		Iss:         tokenIssuer,
 		Iat:         now.Unix(),
 		Exp:         exp.Unix(),
 	}
@@ -264,19 +359,29 @@ func IssueMFAChallengeToken(userID string, tenantID string, environment string, 
 	return signingInput + "." + signature, nil
 }
 
-// VerifyMFAChallengeToken validates signature and expiration of an MFA challenge token string.
+// VerifyMFAChallengeToken checks an MFA challenge token and returns its claims.
+//
+// Beyond signature and expiry it requires the purpose claim, which is what
+// keeps a challenge token — issued before the second factor was supplied — from
+// being accepted anywhere a fully authenticated token is expected.
+//
+// Every failure mode means "restart the login"; callers should not distinguish
+// them to the client.
 func VerifyMFAChallengeToken(tokenString string, signingSecret string) (*MFAClaims, error) {
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid mfa token format")
 	}
 
+	// As with access tokens, the header's `alg` is ignored and HS256 is
+	// recomputed unconditionally.
 	signingInput := parts[0] + "." + parts[1]
 	h := hmac.New(sha256.New, []byte(signingSecret))
 	h.Write([]byte(signingInput))
 	expectedSignature := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
-	if parts[2] != expectedSignature {
+	// Constant-time comparison, for the same reason as VerifyAccessToken.
+	if !hmac.Equal([]byte(parts[2]), []byte(expectedSignature)) {
 		return nil, fmt.Errorf("invalid mfa token signature")
 	}
 
@@ -290,7 +395,7 @@ func VerifyMFAChallengeToken(tokenString string, signingSecret string) (*MFAClai
 		return nil, fmt.Errorf("failed unmarshaling mfa token claims: %w", err)
 	}
 
-	if claims.Purpose != "2fa_challenge" {
+	if claims.Purpose != mfaChallengePurpose {
 		return nil, fmt.Errorf("invalid mfa token purpose")
 	}
 
@@ -300,4 +405,3 @@ func VerifyMFAChallengeToken(tokenString string, signingSecret string) (*MFAClai
 
 	return &claims, nil
 }
-

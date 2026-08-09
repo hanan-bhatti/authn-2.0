@@ -21,7 +21,8 @@ import (
 
 // mockAtomicClaimer simulates the DB-level atomic CAS behaviour of ClaimFirstAdminRole.
 // The real implementation issues:
-//   UPDATE tenants SET first_admin_claimed = true WHERE id = ? AND first_admin_claimed = false
+//
+//	UPDATE tenants SET first_admin_claimed = true WHERE id = ? AND first_admin_claimed = false
 //
 // Only one caller can flip false → true. We replicate that guarantee here using
 // a Go atomic int32 (0 = unclaimed, 1 = claimed).

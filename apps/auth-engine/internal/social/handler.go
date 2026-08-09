@@ -3,8 +3,9 @@
  * File: apps/auth-engine/internal/social/handler.go
  * Tier: Social Identity Provider Layer
  *
- * Description: Fiber HTTP handlers for social OAuth2 authorize/callback flows
- *              and admin provider configuration endpoints.
+ * Description: Fiber handlers for the social sign-in round trip — the authorize
+ *              redirect and the provider callback — and the tenant-facing
+ *              endpoints for inspecting and configuring provider credentials.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -19,16 +20,28 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
+// emailExistsSocialCode is returned when a social profile's address already
+// belongs to another account. It is a wire contract with the SDK, which
+// branches on this exact string.
+const emailExistsSocialCode = "email_exists_social_account"
+
+// Handler exposes the social sign-in and provider configuration endpoints.
 type Handler struct {
+	// svc performs the underlying social authentication work.
 	svc *Service
 }
 
+// NewHandler constructs a Handler bound to svc.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// RegisterRoutes mounts the social endpoints on app.
+//
+// pkMiddleware guards the client sign-in routes and establishes the tenant,
+// application and environment those handlers read. adminMiddleware guards the
+// provider configuration routes.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware fiber.Handler) {
-	// Client routes
 	clientGroup := app.Group("/v1/client/auth/social")
 	if pkMiddleware != nil {
 		clientGroup.Use(pkMiddleware)
@@ -36,7 +49,6 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware f
 	clientGroup.Get("/:provider/authorize", h.Authorize)
 	clientGroup.Get("/:provider/callback", h.Callback)
 
-	// Admin routes
 	adminGroup := app.Group("/v1/tenant/social-providers")
 	if adminMiddleware != nil {
 		adminGroup.Use(adminMiddleware)
@@ -47,6 +59,12 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware f
 	adminGroup.Delete("/:provider", h.DeleteProvider)
 }
 
+// Authorize handles GET /v1/client/auth/social/:provider/authorize and responds
+// 302 to the provider's consent screen.
+//
+// Returns 400 when redirect_uri is missing, when the provider is not configured
+// or enabled, or when post_callback_redirect is not an authorized destination
+// for the calling application, and 500 otherwise.
 func (h *Handler) Authorize(c *fiber.Ctx) error {
 	provider := c.Params("provider")
 	tenantID, _ := c.Locals("tenant_id").(string)
@@ -73,6 +91,16 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 	return c.Redirect(authURL, fiber.StatusFound)
 }
 
+// Callback handles GET /v1/client/auth/social/:provider/callback, the
+// destination the provider returns the user to.
+//
+// On success it responds 302 to the application's authorized destination with
+// the access token in the URL fragment, or 200 with the token in the body when
+// no destination applies.
+//
+// Returns 400 when code or state is missing, when the state is unknown or
+// expired, or when the provider returned no email; 409 when the address belongs
+// to another account; and 500 otherwise.
 func (h *Handler) Callback(c *fiber.Ctx) error {
 	provider := c.Params("provider")
 	code := c.Query("code")
@@ -87,9 +115,7 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 	accessToken, postCallbackRedirect, err := h.svc.HandleCallback(c.UserContext(), tenantID, provider, stateToken, code)
 	if err != nil {
 		if errors.Is(err, ErrEmailConflict) {
-			// `email_exists_social_account` is a wire contract with the SDK — the
-			// code stays byte-identical through the envelope migration.
-			return httperr.Send(c, fiber.StatusConflict, "email_exists_social_account", err.Error())
+			return httperr.Send(c, fiber.StatusConflict, emailExistsSocialCode, err.Error())
 		}
 		if errors.Is(err, ErrStateNotFound) {
 			return httperr.BadRequest(c, httperr.CodeInvalidToken, err.Error())
@@ -117,28 +143,33 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 	})
 }
 
-// buildPostCallbackRedirect attaches the issued access token to the application's
-// post-callback destination.
+// buildPostCallbackRedirect returns base with the access token attached in the
+// URL fragment.
 //
-// Audit H5(a) — the token moves from the query string to the URL *fragment*. A
-// query parameter is written to the browser's history, this server's access log,
-// every intermediate proxy log, and the Referer header of any cross-origin
-// subresource the landing page fetches; a fragment is never transmitted to any
-// server, so the token stays inside the browser that earned it.
+// The token must stay in the fragment and must not be moved to the query
+// string. A fragment is never transmitted to any server, so the token stays
+// inside the browser that earned it. A query parameter, by contrast, is written
+// to the browser's history, this server's access log, every proxy log along the
+// way, and the Referer header of any cross-origin subresource the landing page
+// loads.
 //
-// Audit H5(b) — the previous implementation concatenated "?access_token=" onto
-// the base unconditionally and escaped nothing. A destination that already
-// carried a query string ("https://app.example.com/cb?tenant=acme") produced a
-// second "?" and the token silently became part of the `tenant` value, so login
-// appeared to hang. Parsing with net/url and encoding through url.Values keeps
-// an existing query intact and escapes both components.
+// The URL is assembled through net/url so a destination that already carries a
+// query string keeps it intact and both components are escaped; concatenating
+// would produce a second "?" and fold the token into the preceding parameter's
+// value.
+//
+// The fragment is appended literally rather than assigned to url.URL.Fragment,
+// because URL.String re-escapes that field and would percent-encode the encoded
+// values a second time, handing the client a mangled token. Any fragment
+// already on the destination is dropped, since this slot carries the token.
+//
+// Returns an error if base is not a parseable URL.
 func buildPostCallbackRedirect(base, accessToken string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
 		return "", err
 	}
 
-	// Any fragment already on the destination is dropped — this slot is ours.
 	u.Fragment = ""
 	u.RawFragment = ""
 
@@ -146,13 +177,13 @@ func buildPostCallbackRedirect(base, accessToken string) (string, error) {
 	frag.Set("access_token", accessToken)
 	frag.Set("token_type", "Bearer")
 
-	// Appended literally rather than assigned to u.Fragment: url.URL.String()
-	// re-escapes the Fragment field, which would percent-encode the already
-	// encoded output of Values.Encode() a second time and hand the client a
-	// mangled token.
 	return u.String() + "#" + frag.Encode(), nil
 }
 
+// ListProviders handles GET /v1/tenant/social-providers and responds 200 with
+// every supported provider and its configuration state.
+//
+// Returns 500 if the tenant's configuration cannot be read.
 func (h *Handler) ListProviders(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 
@@ -164,6 +195,10 @@ func (h *Handler) ListProviders(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"providers": results})
 }
 
+// GetProvider handles GET /v1/tenant/social-providers/:provider and responds
+// 200 with that provider's configuration state and setup guidance.
+//
+// Returns 404 for an unrecognized provider and 500 if the read fails.
 func (h *Handler) GetProvider(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 	provider := c.Params("provider")
@@ -180,12 +215,23 @@ func (h *Handler) GetProvider(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"provider": results[0]})
 }
 
+// configureProviderRequest is the PUT /v1/tenant/social-providers/:provider
+// payload.
 type configureProviderRequest struct {
-	Enabled      bool   `json:"enabled"`
-	ClientID     string `json:"client_id"`
+	// Enabled switches the provider on or off for the tenant.
+	Enabled bool `json:"enabled"`
+	// ClientID is the provider-issued public client identifier.
+	ClientID string `json:"client_id"`
+	// ClientSecret is the provider-issued secret. Empty keeps the stored one,
+	// which an administrator cannot read back to re-submit.
 	ClientSecret string `json:"client_secret"`
 }
 
+// ConfigureProvider handles PUT /v1/tenant/social-providers/:provider and
+// responds 200 once the credentials are stored.
+//
+// Returns 400 when client_id is missing, 422 when a credential fails the
+// provider's format rules, and 500 otherwise.
 func (h *Handler) ConfigureProvider(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 	provider := c.Params("provider")
@@ -203,10 +249,8 @@ func (h *Handler) ConfigureProvider(c *fiber.Ctx) error {
 	if err != nil {
 		var clientErr *ErrInvalidClientCredentials
 		if errors.As(err, &clientErr) {
-			// clientErr.Error() is fully authored ("[google] invalid client_id:
-			// must end with .apps.googleusercontent.com") — no wrapped internals.
-			// The offending field is named in the prose now that the envelope
-			// carries only `error` and `code`.
+			// This message is fully authored by the validator and names the
+			// offending field, so it carries no wrapped internal detail.
 			return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed, clientErr.Error())
 		}
 		return httperr.SendInternal(c, "social.configure_provider", err)
@@ -218,6 +262,10 @@ func (h *Handler) ConfigureProvider(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteProvider handles DELETE /v1/tenant/social-providers/:provider and
+// responds 200 once the configuration is removed.
+//
+// Returns 500 if the write fails.
 func (h *Handler) DeleteProvider(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 	provider := c.Params("provider")

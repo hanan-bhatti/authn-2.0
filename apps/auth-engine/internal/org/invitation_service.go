@@ -1,11 +1,12 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/org/invitation_service.go
- * Tier: Business Logic Layer / Cryptographic Invitation Engine
+ * Tier: Business Logic Layer / Invitation Engine
  *
- * Description: Cryptographic invitation logic for team member onboarding. Generates 32-byte
- *              random tokens, handles 7-day expiration logic, invitation acceptance, role assignment,
- *              audit logging, and real-time webhook event dispatching.
+ * Description: Team-member invitation lifecycle. Issues single-use invitations carrying a
+ *              cryptographically random token, lists and revokes pending ones, and redeems
+ *              a token into an organization membership, provisioning the invitee's user
+ *              record when they do not have one yet.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -27,7 +28,10 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 )
 
-// generateSecureToken creates a cryptographically random 32-byte hex token string.
+// generateSecureToken returns a 32-byte random value as a hex string.
+//
+// The token is the sole credential that redeems an invitation, so it comes from
+// crypto/rand and is wide enough to make guessing infeasible.
 func generateSecureToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -36,8 +40,13 @@ func generateSecureToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// CreateInvitation generates a single-use cryptographically random 32-byte token and records pending invitation.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+// CreateInvitation issues a single-use invitation to join an organization and
+// returns it with the redemption token attached.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. The expiry comes from req.ExpiresHrs, already defaulted
+// and range-checked by req.Validate. Returns ErrOrgNotFound, a validation
+// sentinel, or an authorization sentinel.
 func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID string, req CreateInvitationRequest, isAdmin bool, ip, userAgent string) (*OrgInvitationResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -45,7 +54,6 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Check org existence
 	o, err := client.Organization.Query().
 		Where(organization.TenantID(tenantID), organization.ID(orgID)).
 		Only(ctx)
@@ -56,14 +64,12 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 		return nil, fmt.Errorf("failed to query organization: %w", err)
 	}
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return nil, err
 		}
 	}
 
-	// Resolve role
 	targetRole, err := s.ensureDefaultRole(ctx, client, tenantID, req.RoleID, "Invited Role")
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve role: %w", err)
@@ -95,7 +101,6 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 		return nil, fmt.Errorf("failed to save invitation: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, actorID, "org.invitation_sent", "invitation", invID, map[string]interface{}{
 		"org_id":     orgID,
 		"email":      req.Email,
@@ -103,6 +108,8 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 		"expires_at": expiresAt.Format(time.RFC3339),
 	}, ip, userAgent)
 
+	// The webhook carries the token because delivering the invitation email is
+	// the subscriber's job.
 	if s.dispatcher != nil {
 		s.dispatcher.Dispatch(tenantID, "org.invitation_sent", map[string]interface{}{
 			"invitation_id":    invID,
@@ -118,8 +125,12 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 	return s.toOrgInvitationResponse(createdInv, true), nil
 }
 
-// ListPendingInvitations returns all pending invitations for an organization.
-// Authorization: caller must be an active member (C2), OR hold admin_auth_method privilege.
+// ListPendingInvitations returns an organization's outstanding invitations.
+//
+// The caller must be a member; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Redemption tokens are withheld from the listing, so a
+// member who can see an invitation cannot redeem it. Returns ErrOrgNotFound or
+// ErrNotAMember.
 func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID string, actorID string, isAdmin bool, limit, offset int) ([]*OrgInvitationResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
@@ -130,7 +141,6 @@ func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID st
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Check org existence
 	exists, err := client.Organization.Query().
 		Where(organization.TenantID(tenantID), organization.ID(orgID)).
 		Exist(ctx)
@@ -138,7 +148,6 @@ func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID st
 		return nil, ErrOrgNotFound
 	}
 
-	// Authorization check: tenant-admin tier bypasses membership requirement
 	if !isAdmin {
 		if _, err := s.authzCheckMember(ctx, client, actorID, orgID); err != nil {
 			return nil, err
@@ -162,18 +171,23 @@ func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID st
 	return responses, nil
 }
 
-// RevokeInvitation cancels a pending invitation.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+// RevokeInvitation cancels a pending invitation, leaving its token unredeemable.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Only a pending invitation can be revoked. Returns
+// ErrInvitationNotFound, an error naming the current status, or an authorization
+// sentinel.
 func (s *Service) RevokeInvitation(ctx context.Context, tenantID, actorID, orgID, invitationID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return err
 		}
 	}
 
+	// Scoped by organization as well as ID, so an admin of one organization
+	// cannot revoke another's invitation by guessing its identifier.
 	inv, err := client.OrgInvitation.Query().
 		Where(orginvitation.OrganizationID(orgID), orginvitation.ID(invitationID)).
 		Only(ctx)
@@ -193,7 +207,6 @@ func (s *Service) RevokeInvitation(ctx context.Context, tenantID, actorID, orgID
 		return fmt.Errorf("failed to update invitation status: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, actorID, "org.invitation_revoked", "invitation", invitationID, map[string]interface{}{
 		"org_id": orgID,
 		"email":  inv.Email,
@@ -210,7 +223,18 @@ func (s *Service) RevokeInvitation(ctx context.Context, tenantID, actorID, orgID
 	return nil
 }
 
-// AcceptInvitation validates single-use token and creates organization membership for the user.
+// AcceptInvitation redeems an invitation token and returns the resulting
+// membership.
+//
+// Possession of the token is the authorization: it is looked up on its own, since
+// the redeemer is by definition not yet a member of the organization. An
+// invitation that is already accepted, expired by status, or past its expiry
+// timestamp is refused, and one found expired by time is marked so. When no user
+// matches the caller's ID or the invited address, an account is provisioned for
+// that address, because the membership needs a user row to reference. Redeeming
+// as an existing member updates their role rather than duplicating the
+// membership. Returns ErrInvitationNotFound, ErrInvitationAccepted or
+// ErrInvitationExpired.
 func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string, req AcceptInvitationRequest, ip, userAgent string) (*OrgMemberResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -232,14 +256,12 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		return nil, ErrInvitationAccepted
 	}
 	if inv.Status == orginvitation.StatusExpired || time.Now().After(inv.ExpiresAt) {
-		// Auto update status if expired
 		if inv.Status != orginvitation.StatusExpired {
 			_, _ = inv.Update().SetStatus(orginvitation.StatusExpired).Save(ctx)
 		}
 		return nil, ErrInvitationExpired
 	}
 
-	// Resolve or auto-provision target User in tenant database to ensure Foreign Key integrity
 	var targetUser *ent.User
 	if userID != "" {
 		targetUser, _ = client.User.Query().
@@ -256,6 +278,8 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		if newUserID == "" {
 			newUserID = fmt.Sprintf("usr_%s", uuid.New().String()[:12])
 		}
+		// The address is treated as verified because reaching here required the
+		// token that was emailed to it.
 		createdUser, err := client.User.Create().
 			SetID(newUserID).
 			SetTenantID(tenantID).
@@ -269,7 +293,6 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 	}
 	userID = targetUser.ID
 
-	// Check if already a member
 	alreadyMember, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(inv.OrganizationID), orgmember.UserID(userID)).
 		Exist(ctx)
@@ -279,7 +302,6 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 
 	var member *ent.OrgMember
 	if alreadyMember {
-		// Update existing role if already a member
 		m, err := client.OrgMember.Query().
 			Where(orgmember.OrganizationID(inv.OrganizationID), orgmember.UserID(userID)).
 			Only(ctx)
@@ -291,7 +313,6 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 			return nil, fmt.Errorf("failed to update member role: %w", err)
 		}
 	} else {
-		// Create new OrgMember entry
 		memID := fmt.Sprintf("mem_%s", uuid.New().String()[:12])
 		builder := client.OrgMember.Create().
 			SetID(memID).
@@ -309,13 +330,12 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		}
 	}
 
-	// Update invitation status to accepted
+	// Marking the invitation accepted is what makes it single-use.
 	_, err = inv.Update().SetStatus(orginvitation.StatusAccepted).Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to accept invitation: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, userID, "org.invitation_accepted", "invitation", inv.ID, map[string]interface{}{
 		"org_id":        inv.OrganizationID,
 		"user_id":       userID,
@@ -335,6 +355,11 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 	return s.toOrgMemberResponse(member), nil
 }
 
+// toOrgInvitationResponse converts an invitation entity to its API
+// representation, returning nil for a nil entity.
+//
+// includeToken must be true only for the caller who just created the invitation;
+// every other path leaves the redemption secret out.
 func (s *Service) toOrgInvitationResponse(inv *ent.OrgInvitation, includeToken bool) *OrgInvitationResponse {
 	if inv == nil {
 		return nil

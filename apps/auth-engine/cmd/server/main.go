@@ -17,7 +17,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -46,19 +45,27 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// HealthResponse represents the standard JSON payload returned by the health check endpoint.
+// HealthResponse is the JSON payload returned by the liveness endpoint.
 type HealthResponse struct {
 	Status    string `json:"status" example:"healthy"`
 	Version   string `json:"version" example:"1.0.0"`
 	Timestamp string `json:"timestamp" example:"2026-08-01T16:55:00Z"`
 }
 
+// ReadinessResponse is the JSON payload returned by the readiness endpoint. It
+// carries a per-dependency verdict so an operator can tell which backing
+// service is at fault without reading the server's logs.
 type ReadinessResponse struct {
 	Status string            `json:"status"`
 	Checks map[string]string `json:"checks"`
 }
 
-// HealthCheckHandler handles engine health check requests (liveness probe).
+// HealthCheckHandler answers the liveness probe.
+//
+// It reports only that the process is running and serving HTTP; it deliberately
+// touches no dependency, so a database outage does not cause the orchestrator to
+// kill and restart otherwise healthy instances. Readiness is where dependencies
+// are checked.
 func HealthCheckHandler(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(HealthResponse{
 		Status:    "healthy",
@@ -67,7 +74,16 @@ func HealthCheckHandler(c *fiber.Ctx) error {
 	})
 }
 
-// ReadinessCheckHandler handles engine readiness check requests (dependency connectivity probe).
+// ReadinessCheckHandler returns a handler answering the readiness probe.
+//
+// It pings the database and Redis and reports "ready" with 200 only when both
+// answer, otherwise "not_ready" with 503 and a per-dependency verdict. A 503
+// takes the instance out of the load balancer's rotation rather than killing
+// it, so an instance whose database briefly went away stops receiving traffic
+// and rejoins when the check passes again.
+//
+// Each ping is bounded by a two-second timeout: a probe that hangs is worse
+// than one that fails, because the orchestrator learns nothing while it waits.
 func ReadinessCheckHandler(factory *clientfactory.ClientFactory, redisClient *redis.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
@@ -150,8 +166,15 @@ func proxyHeader(cfg *config.Config) string {
 	return ""
 }
 
+// main starts the engine: it loads configuration, opens the database and
+// Redis, wires every feature's repository, service and handler onto a Fiber
+// app, and serves until a termination signal arrives.
+//
+// It exits non-zero on any startup failure. Configuration and database errors
+// are fatal in every environment, because continuing would mean serving with
+// settings nobody chose.
 func main() {
-	log.Println("🚀 Authn Platform — Enterprise Identity Engine v1.0.0 starting...")
+	log.Println("authn engine v1.0.0 starting")
 
 	// 1. Load and validate configuration.
 	//
@@ -198,13 +221,11 @@ func main() {
 		// Last-resort handler for errors that reach Fiber unhandled: panics
 		// recovered by recover.New, router 404s, body-limit and parser failures.
 		//
-		// This used to emit a NESTED body with an INTEGER code —
-		// {"error": {"code": 500, "message": err.Error()}} — the only nested
-		// envelope in the engine, and one that returned raw Go error text to
-		// unauthenticated callers (audit finding M9). A panic inside a handler
-		// surfaced its message, and Ent/SQL errors surfaced table and column
-		// names. It is now the canonical flat {error, code} envelope, and the
-		// error text is logged server-side instead of returned.
+		// The body is the canonical flat {error, code} envelope and raw Go
+		// error text is logged rather than returned. That rule must hold:
+		// unhandled errors here carry panic messages and Ent/SQL failures
+		// naming tables and columns, and this handler answers callers who have
+		// not authenticated.
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
@@ -242,9 +263,9 @@ func main() {
 		}
 		redisClient = redis.NewClient(opt)
 		if err := redisClient.Ping(context.Background()).Err(); err != nil {
-			log.Printf("⚠️ Redis ping notice (%s): %v. Rate limiter running with dev fallback / fail-closed protection.", cfg.RedisURL, err)
+			log.Printf("redis: unreachable at %s: %v; rate limiter falling back to in-process state or failing closed", cfg.RedisURL, err)
 		} else {
-			log.Printf("⚡ Connected to Redis at %s", cfg.RedisURL)
+			log.Printf("redis: connected at %s", cfg.RedisURL)
 		}
 	}
 
@@ -300,10 +321,10 @@ func main() {
 
 	emailProvider, err := email.NewEmailProvider(cfg)
 	if err != nil {
-		log.Printf("⚠️ Email Provider warning: %v. Falling back to NoopProvider.", err)
+		log.Printf("email: provider initialization failed: %v; falling back to noop (messages are logged, not sent)", err)
 		emailProvider = email.NewNoopProvider()
 	} else {
-		log.Printf("📧 Email Provider initialized: %s (driver: %s, from: %s)", strings.ToUpper(cfg.EmailDriver), cfg.EmailDriver, cfg.EmailFromAddress)
+		log.Printf("email: driver=%s from=%s", cfg.EmailDriver, cfg.EmailFromAddress)
 	}
 
 	authRepo := auth.NewRepository(factory)
@@ -342,13 +363,13 @@ func main() {
 	impersonationService := impersonation.NewService(factory, cfg, webhookDispatcher, emailProvider, rbacService)
 	impersonationHandler := impersonation.NewHandler(impersonationService, policyRepo, authService)
 
-	orgService := org.NewService(factory, webhookDispatcher)
+	orgService := org.NewService(factory, webhookDispatcher, cfg)
 	orgHandler := org.NewHandler(orgService)
 
-	samlService := saml.NewService(factory, webhookDispatcher)
+	samlService := saml.NewService(factory, webhookDispatcher, cfg)
 	samlHandler := saml.NewHandler(samlService)
 
-	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher)
+	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher, cfg)
 	userHandler := user.NewHandler(userService)
 	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey)
 
@@ -384,9 +405,9 @@ func main() {
 	}()
 
 	<-stop
-	log.Println("🛑 Shutting down Authn Engine server gracefully...")
+	log.Println("shutdown: signal received, draining in-flight requests")
 	if err := app.Shutdown(); err != nil {
-		log.Printf("⚠️ Error shutting down server: %v", err)
+		log.Printf("shutdown: error draining server: %v", err)
 	}
-	log.Println("👋 Authn Engine server stopped cleanly.")
+	log.Println("shutdown: server stopped")
 }

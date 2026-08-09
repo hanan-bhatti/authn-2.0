@@ -3,9 +3,12 @@
  * File: apps/auth-engine/internal/impersonation/handler.go
  * Tier: HTTP Delivery Layer (Fiber Handlers)
  *
- * Description: HTTP handlers for Admin User Impersonation endpoints (FR-14).
- *              Handles POST /v1/admin/users/:user_id/impersonate, POST /v1/client/auth/impersonate/exit,
- *              and GET/PUT /v1/tenant/impersonation-policy.
+ * HTTP endpoints for admin user impersonation (FR-14): initiating a session,
+ * exiting one, and reading or writing the tenant's impersonation policy.
+ *
+ * Step-up verification happens here rather than in the service, because it is a
+ * property of the request — a password or second factor presented alongside it —
+ * while the service's rules are properties of the tenant and the target.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -24,44 +27,82 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// Impersonation-specific error codes. These predate the shared httperr code set
-// and are part of the published wire contract for FR-14, so they are preserved
-// verbatim rather than folded into the generic codes.
+// Impersonation-specific error codes. They are local to this package rather than
+// part of the shared httperr set because they describe conditions no other
+// endpoint can report, and they are published in docs/03-API-SPECIFICATION.md and
+// docs/14-USER-IMPERSONATION.md — the string values are a wire contract, so
+// renaming one is a breaking API change.
 const (
-	codeUserIDRequired          httperr.Code = "user_id_required"
-	codeAdminPasswordRequired   httperr.Code = "admin_password_required"
-	codeInvalidAdminPassword    httperr.Code = "invalid_admin_password"
-	codeMFACodeRequired         httperr.Code = "mfa_code_required"
-	codeInvalidAdmin2FACode     httperr.Code = "invalid_admin_2fa_code"
-	codeCredentialIDRequired    httperr.Code = "credential_id_required"
-	codeAdminStepUpRequired     httperr.Code = "admin_step_up_required"
+	// codeUserIDRequired: the :user_id path parameter is empty.
+	codeUserIDRequired httperr.Code = "user_id_required"
+	// codeAdminPasswordRequired: password step-up was selected with no password.
+	codeAdminPasswordRequired httperr.Code = "admin_password_required"
+	// codeInvalidAdminPassword: the admin's step-up password did not verify.
+	codeInvalidAdminPassword httperr.Code = "invalid_admin_password"
+	// codeMFACodeRequired: TOTP step-up was selected with no code.
+	codeMFACodeRequired httperr.Code = "mfa_code_required"
+	// codeInvalidAdmin2FACode: the admin's step-up TOTP code did not verify.
+	codeInvalidAdmin2FACode httperr.Code = "invalid_admin_2fa_code"
+	// codeCredentialIDRequired: passkey step-up was selected with no credential.
+	codeCredentialIDRequired httperr.Code = "credential_id_required"
+	// codeAdminStepUpRequired: policy demands step-up and the request named no
+	// recognised verification method.
+	codeAdminStepUpRequired httperr.Code = "admin_step_up_required"
+	// codeNotImpersonationSession: exit was called on an ordinary session.
 	codeNotImpersonationSession httperr.Code = "not_an_impersonation_session"
-	codePolicyValidationFailed  httperr.Code = "policy_validation_failed"
-	codeImpersonationDisabled   httperr.Code = "impersonation_disabled_by_policy"
-	codeTargetUserNotFound      httperr.Code = "target_user_not_found"
-	codeUserNotActive           httperr.Code = "user_not_active"
-	codeCannotImpersonateSelf   httperr.Code = "cannot_impersonate_self"
-	codeHierarchyViolation      httperr.Code = "impersonation_hierarchy_violation"
-	codeUserOptInRequired       httperr.Code = "user_opt_in_required"
-	codeValidationError         httperr.Code = "validation_error"
+	// codePolicyValidationFailed: the submitted impersonation policy is out of
+	// bounds.
+	codePolicyValidationFailed httperr.Code = "policy_validation_failed"
+	// codeImpersonationDisabled: tenant policy has the feature switched off.
+	codeImpersonationDisabled httperr.Code = "impersonation_disabled_by_policy"
+	// codeTargetUserNotFound: no such user in the tenant.
+	codeTargetUserNotFound httperr.Code = "target_user_not_found"
+	// codeUserNotActive: the target account is suspended or not active.
+	codeUserNotActive httperr.Code = "user_not_active"
+	// codeCannotImpersonateSelf: caller and target are the same user.
+	codeCannotImpersonateSelf httperr.Code = "cannot_impersonate_self"
+	// codeHierarchyViolation: the target holds an administrative role and policy
+	// restricts impersonating administrators.
+	codeHierarchyViolation httperr.Code = "impersonation_hierarchy_violation"
+	// codeUserOptInRequired: policy requires the target's support-access opt-in
+	// and it is not set.
+	codeUserOptInRequired httperr.Code = "user_opt_in_required"
+	// codeValidationError: the request failed reason, ticket or duration
+	// validation against the active policy.
+	codeValidationError httperr.Code = "validation_error"
 )
 
+// PolicyRepository reads and writes a tenant's impersonation policy.
 type PolicyRepository interface {
+	// GetImpersonationPolicy returns the tenant's policy, or an error when it
+	// cannot be read.
 	GetImpersonationPolicy(ctx context.Context, tenantID string) (policy.ImpersonationPolicy, error)
+	// UpdateImpersonationPolicy validates and persists the policy, returning what
+	// was stored.
 	UpdateImpersonationPolicy(ctx context.Context, tenantID string, pol policy.ImpersonationPolicy) (policy.ImpersonationPolicy, error)
 }
 
+// StepUpVerifier re-checks an administrator's own credentials at the moment of
+// an impersonation request.
 type StepUpVerifier interface {
+	// VerifyAdminPassword returns nil when the password is correct for userID.
 	VerifyAdminPassword(ctx context.Context, userID string, password string) error
+	// VerifyAdminTOTP returns nil when the code is valid for userID.
 	VerifyAdminTOTP(ctx context.Context, userID string, code string) error
 }
 
+// Handler serves the impersonation endpoints.
 type Handler struct {
-	svc        *Service
+	// svc applies the impersonation rules and issues tokens.
+	svc *Service
+	// policyRepo supplies the tenant policy; nil falls back to the defaults.
 	policyRepo PolicyRepository
-	verifier   StepUpVerifier
+	// verifier performs step-up verification; nil skips it.
+	verifier StepUpVerifier
 }
 
+// NewHandler returns an impersonation handler. A nil policyRepo makes every
+// request fall back to policy.DefaultImpersonationPolicy.
 func NewHandler(svc *Service, policyRepo PolicyRepository, verifier StepUpVerifier) *Handler {
 	return &Handler{
 		svc:        svc,
@@ -70,16 +111,21 @@ func NewHandler(svc *Service, policyRepo PolicyRepository, verifier StepUpVerifi
 	}
 }
 
-// RegisterRoutes registers impersonation endpoints on Fiber application.
+// RegisterRoutes mounts the impersonation endpoints.
+//
+// adminMiddleware guards the admin and tenant groups. The client exit route
+// requires BOTH pkMiddleware and clientAuthMiddleware: a publishable key
+// identifies the application but establishes no user identity, so it cannot on
+// its own gate a route that acts on the caller's session. Passing the
+// publishable-key middleware in the clientAuthMiddleware slot leaves the route
+// without the session guarantee the wiring appears to give it.
 func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMiddleware, pkMiddleware fiber.Handler) {
-	// Admin impersonation execution route
 	adminGroup := app.Group("/v1/admin")
 	if adminMiddleware != nil {
 		adminGroup.Use(adminMiddleware)
 	}
 	adminGroup.Post("/users/:user_id/impersonate", h.InitiateImpersonation)
 
-	// Tenant impersonation policy configuration routes
 	tenantGroup := app.Group("/v1/tenant")
 	if adminMiddleware != nil {
 		tenantGroup.Use(adminMiddleware)
@@ -87,12 +133,6 @@ func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMidd
 	tenantGroup.Get("/impersonation-policy", h.GetImpersonationPolicy)
 	tenantGroup.Put("/impersonation-policy", h.UpdateImpersonationPolicy)
 
-	// Client-side exit impersonation session route. Requires a publishable key
-	// AND a real user session: main.go previously passed pkMiddleware into the
-	// clientAuthMiddleware slot, leaving this gated only by a publishable key,
-	// which establishes no user identity. ExitImpersonation re-verifies the
-	// bearer token itself so it was not exploitable, but the wiring did not
-	// provide the guarantee it appeared to.
 	clientGroup := app.Group("/v1/client")
 	if pkMiddleware != nil {
 		clientGroup.Use(pkMiddleware)
@@ -103,7 +143,18 @@ func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMidd
 	clientGroup.Post("/auth/impersonate/exit", h.ExitImpersonation)
 }
 
-// InitiateImpersonation handles POST /v1/admin/users/:user_id/impersonate
+// InitiateImpersonation handles POST /v1/admin/users/:user_id/impersonate.
+//
+// When policy requires step-up, the request must name a verification method and
+// satisfy it before the service is consulted: "password" and "totp" are verified
+// against the admin's own credentials, "webauthn"/"passkey" requires a credential
+// ID whose assertion is checked in the payload, and anything else — including an
+// absent method — is refused with codeAdminStepUpRequired.
+//
+// It answers 200 with the impersonation token, 400 for a missing user ID or
+// unparseable body, 401 for a failed step-up, and otherwise whatever
+// handleImpersonationError maps the service's error to. A policy that cannot be
+// read falls back to the defaults rather than failing the request.
 func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	env := getEnvironment(c)
@@ -127,7 +178,6 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 		}
 	}
 
-	// 1. Step-Up Verification (Sudo Mode) Guard
 	if pol.RequireStepUpAuth && h.verifier != nil && adminID != "" {
 		method := strings.ToLower(strings.TrimSpace(req.VerificationMethod))
 		switch method {
@@ -136,6 +186,8 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 				return httperr.BadRequest(c, codeAdminPasswordRequired,
 					"admin_password is required for password step-up verification")
 			}
+			// Synthetic callers — a secret key, or the system actor — have no
+			// password on record to verify against.
 			if adminID != "" && !strings.HasPrefix(adminID, "key_") && adminID != "usr_admin_system" {
 				if err := h.verifier.VerifyAdminPassword(c.UserContext(), adminID, req.AdminPassword); err != nil {
 					return httperr.Unauthorized(c, codeInvalidAdminPassword,
@@ -152,7 +204,6 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 					"invalid 2FA code provided for step-up verification")
 			}
 		case "webauthn", "passkey":
-			// WebAuthn step-up handled via signed assertion in payload
 			if req.CredentialID == "" {
 				return httperr.BadRequest(c, codeCredentialIDRequired,
 					"credential_id is required for passkey step-up verification")
@@ -163,7 +214,6 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 		}
 	}
 
-	// 2. Execute Impersonation
 	res, err := h.svc.ExecuteImpersonation(c.UserContext(), tenantID, env, adminID, targetUserID, req, pol)
 	if err != nil {
 		return handleImpersonationError(c, err)
@@ -172,7 +222,12 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(res)
 }
 
-// ExitImpersonation handles POST /v1/client/auth/impersonate/exit
+// ExitImpersonation handles POST /v1/client/auth/impersonate/exit, ending a
+// support session by discarding the impersonation token client-side.
+//
+// It re-verifies the bearer token itself and answers 401 when it is missing or
+// invalid, 400 when the session is not an impersonation session, and 200 with
+// both identities so the client can restore the admin's own session.
 func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
@@ -196,7 +251,9 @@ func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 	})
 }
 
-// GetGetTenantImpersonationPolicy handles GET /v1/tenant/impersonation-policy
+// GetImpersonationPolicy handles GET /v1/tenant/impersonation-policy, answering
+// 200 with the tenant's policy, or with the defaults when none is stored or it
+// cannot be read.
 func (h *Handler) GetImpersonationPolicy(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	pol := policy.DefaultImpersonationPolicy()
@@ -209,7 +266,11 @@ func (h *Handler) GetImpersonationPolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(pol)
 }
 
-// UpdateTenantImpersonationPolicy handles PUT /v1/tenant/impersonation-policy
+// UpdateImpersonationPolicy handles PUT /v1/tenant/impersonation-policy.
+//
+// It answers 200 with the stored policy, 400 for an unparseable body, 422 when
+// the policy is out of bounds, and 500 when the write fails. With no repository
+// configured it echoes the validated policy back without persisting it.
 func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 	tenantID := getTenantID(c)
 	var pol policy.ImpersonationPolicy
@@ -218,8 +279,8 @@ func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 	}
 
 	if err := policy.ValidateImpersonationPolicy(pol); err != nil {
-		// The validator echoes the rejected email_notification_policy value back
-		// in its message; the response states the rules instead of the input.
+		// The validator's message quotes the rejected email_notification_policy
+		// value; the response states the rules instead of echoing the input.
 		log.Printf("[error] %s %s impersonation.validate_policy: %v", c.Method(), c.Path(), err)
 		return httperr.UnprocessableEntity(c, codePolicyValidationFailed,
 			"impersonation policy rejected: max_duration_minutes must be between 1 and 60, and email_notification_policy must be IMMEDIATE, POST_SESSION, or DISABLED")
@@ -228,8 +289,6 @@ func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 	if h.policyRepo != nil {
 		updated, err := h.policyRepo.UpdateImpersonationPolicy(c.UserContext(), tenantID, pol)
 		if err != nil {
-			// Previously returned a body with no `code` field at all — the one
-			// site in this file that was off-envelope.
 			return httperr.SendInternal(c, "impersonation.update_policy", err)
 		}
 		return c.Status(fiber.StatusOK).JSON(updated)
@@ -238,6 +297,10 @@ func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(pol)
 }
 
+// handleImpersonationError maps a service error onto its documented status and
+// code. Unrecognised errors become a 422 with static prose: the default arm also
+// catches the service's wrapped token-signing failure, whose text would
+// otherwise carry JWT internals to the caller, so the detail stops at the log.
 func handleImpersonationError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, ErrImpersonationDisabled):
@@ -259,15 +322,14 @@ func handleImpersonationError(c *fiber.Ctx, err error) error {
 		return httperr.Forbidden(c, httperr.CodeInsufficientScope,
 			"insufficient permissions: caller lacks 'users:impersonate' permission required to initiate impersonation")
 	default:
-		// Catch-all for request validation. It also catches the service's
-		// wrapped token-issuing failure, which used to surface JWT signing
-		// internals to the caller under a 422.
 		log.Printf("[error] %s %s impersonation.execute: %v", c.Method(), c.Path(), err)
 		return httperr.UnprocessableEntity(c, codeValidationError,
 			"impersonation request rejected: verify reason (10-500 characters), ticket_id, and duration against the active tenant policy")
 	}
 }
 
+// getTenantID returns the tenant resolved by the auth middleware, or
+// "tnt_default" for single-tenant deployments that never set one.
 func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val
@@ -275,6 +337,9 @@ func getTenantID(c *fiber.Ctx) string {
 	return "tnt_default"
 }
 
+// getEnvironment returns the environment resolved by the auth middleware,
+// defaulting to "test" so an unresolved request cannot silently read or write
+// live data.
 func getEnvironment(c *fiber.Ctx) string {
 	if val, ok := c.Locals("environment").(string); ok && val != "" {
 		return val
@@ -282,6 +347,10 @@ func getEnvironment(c *fiber.Ctx) string {
 	return "test"
 }
 
+// getAdminID identifies the initiating admin from the request locals, preferring
+// a console session, then an end-user session, then the API key that
+// authenticated the call. It falls back to "usr_admin_system", which names no
+// real account and has neither a password nor roles to verify against.
 func getAdminID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("console_user_id").(string); ok && val != "" {
 		return val
@@ -298,6 +367,8 @@ func getAdminID(c *fiber.Ctx) string {
 	return "usr_admin_system"
 }
 
+// extractBearerToken returns the Authorization: Bearer token, or "" when the
+// header is absent or differently formed.
 func extractBearerToken(c *fiber.Ctx) string {
 	authHeader := c.Get("Authorization")
 	if strings.HasPrefix(authHeader, "Bearer ") {

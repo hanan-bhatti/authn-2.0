@@ -3,8 +3,10 @@
  * File: apps/auth-engine/internal/rbac/claim.go
  * Tier: Security & Authorization Layer
  *
- * Description: Resolves the JWT `role` claim from the roles actually recorded in the
- *              database. Single source of truth shared by every token-issuing path.
+ * Resolution of the JWT `role` claim from the roles actually recorded in the
+ * database. Every token-issuing path — login, refresh, 2FA, magic link, OAuth,
+ * social, session rotation, signup — calls this, so a console administrator's
+ * access follows their role assignment rather than the path they signed in by.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -25,13 +27,9 @@ const ConsoleRoleSlug = "tenant_admin"
 // ResolveConsoleRoleClaim returns the role slug to embed in a user's JWT `role`
 // claim, or "" when the user holds no console-admin role.
 //
-// The claim was previously populated only by the signup path, where the first
-// user of a tenant atomically claims tenant_admin; every other issuance path
-// (login, refresh, 2FA, magic link, OAuth, social, session rotation) hardcoded
-// "". A tenant admin therefore lost console access the moment the signup token
-// expired 15 minutes later and could never regain it by logging back in.
-//
-// Fails closed: any query error yields "" rather than a privileged claim.
+// It fails closed: a nil client, an empty user ID, or any query error yields ""
+// rather than a privileged claim, so a database problem can only ever withhold
+// console access, never grant it.
 func ResolveConsoleRoleClaim(ctx context.Context, client *ent.Client, userID string) string {
 	if client == nil || userID == "" {
 		return ""

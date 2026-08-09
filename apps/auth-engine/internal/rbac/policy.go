@@ -3,8 +3,12 @@
  * File: apps/auth-engine/internal/rbac/policy.go
  * Tier: Security & Authorization Layer
  *
- * Description: Configurable Role & Permission Policy engine. Enforces restricted permission
- *              mappings per role slug while permitting tenant admin policy overrides.
+ * Tenant-configurable guardrails on which permissions a role may hold.
+ *
+ * Role membership is one control; what a role is allowed to contain is another.
+ * These mappings stop a lower-tier role from being quietly upgraded into an
+ * administrative one by permission assignment — a support role granted
+ * "system:*" is an administrator whatever its slug says.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -15,14 +19,23 @@ import (
 	"fmt"
 )
 
-// RolePermissionPolicy defines configurable safety guards for role assignments.
+// RolePermissionPolicy holds the assignment guardrails for one tenant.
 type RolePermissionPolicy struct {
-	StrictValidation       bool                `json:"strict_validation"`
-	AllowCustomRoles       bool                `json:"allow_custom_roles"`
+	// StrictValidation reserves the setting for tenants that opt into stricter
+	// assignment rules than the restricted mappings alone provide.
+	StrictValidation bool `json:"strict_validation"`
+	// AllowCustomRoles permits roles beyond the built-in set.
+	AllowCustomRoles bool `json:"allow_custom_roles"`
+	// RestrictedRoleMappings lists, per role slug, the permission patterns that
+	// role may not hold. A pattern matches by intersection, not equality, so a
+	// wildcard grant cannot slip past a narrower restriction.
 	RestrictedRoleMappings map[string][]string `json:"restricted_role_mappings"`
 }
 
-// DefaultRolePermissionPolicy returns default security guardrails.
+// DefaultRolePermissionPolicy returns the guardrails applied when a tenant has
+// configured none: support roles are kept out of tenant destruction, key and
+// security writes; members out of system and key administration and user
+// deletion; viewers out of every mutating verb.
 func DefaultRolePermissionPolicy() *RolePermissionPolicy {
 	return &RolePermissionPolicy{
 		StrictValidation: true,
@@ -35,7 +48,16 @@ func DefaultRolePermissionPolicy() *RolePermissionPolicy {
 	}
 }
 
-// ValidatePermissionsAgainstPolicy checks if any assigned permission in perms matches a restricted pattern for roleSlug.
+// ValidatePermissionsAgainstPolicy reports whether roleSlug may hold every
+// permission in perms, returning ErrRestrictedPermission (wrapped with the
+// offending permission and role) for the first one it may not. A nil policy is
+// evaluated against DefaultRolePermissionPolicy, and a role with no restrictions
+// listed passes.
+//
+// Comparison uses PermissionsOverlap rather than PermissionMatches because both
+// sides may be wildcards, and because a non-match here permits the assignment: a
+// matcher that missed an intersection would hand out exactly the permission the
+// restriction names.
 func ValidatePermissionsAgainstPolicy(roleSlug string, perms []string, policy *RolePermissionPolicy) error {
 	if policy == nil {
 		policy = DefaultRolePermissionPolicy()

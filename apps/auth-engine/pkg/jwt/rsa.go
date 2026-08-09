@@ -1,16 +1,27 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/pkg/jwt/rsa.go
- * Tier: Shared Package / Cryptographic RSA Key Signer & Persistence
+ * Tier: Shared Package / RSA Signing Key Management
  *
- * Description: RS256 (RSA PKCS#1 v1.5 with SHA-256) key generation, PEM file persistence,
- *              swappable KeyStore interface, token signing, and public JWKS exporter.
+ * RS256 signing for OIDC ID tokens, together with the persistence of the RSA
+ * private key that signs them.
  *
- * Architecture Note:
- *   - For local/dev environments, FileKeyStore persists RSA private keys in PKCS#1 PEM format to disk.
- *   - Production Note: In multi-replica cloud deployments (Kubernetes/ECS), the KeyStore interface
- *     should be backed by PostgreSQL or a KMS/Secrets Manager (AWS KMS, HashiCorp Vault, GCP Secret Manager)
- *     so that key rotation and token verification remain consistent across all running instances.
+ * ID tokens are verified by relying parties, not by this engine, which is why
+ * they are asymmetric where access tokens are not: a relying party needs the
+ * public half to check a signature, and must never hold anything that could
+ * forge one. The public half is published as JWKS; the private half never
+ * leaves the process.
+ *
+ * Key identity has to survive a restart. Generating a fresh key on every boot
+ * would invalidate every outstanding ID token and break relying parties that
+ * cached the key set, so the key is persisted on first use and reloaded
+ * thereafter.
+ *
+ * Persistence goes through the KeyStore interface. The file-backed
+ * implementation here suits a single instance; several replicas each holding
+ * their own file would sign with keys the others do not publish, so a
+ * multi-replica deployment needs a shared implementation backed by the database
+ * or a KMS.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -33,23 +44,63 @@ import (
 	"sync"
 )
 
+const (
+	// defaultRSAKeyPath is the last-resort location for the signing key, used
+	// when neither the caller nor the environment names one.
+	defaultRSAKeyPath = ".keys/rsa_private.pem"
+
+	// rsaKeyPathEnvVar names the environment variable consulted when the caller
+	// passes no path.
+	rsaKeyPathEnvVar = "AUTHN_RSA_KEY_PATH"
+
+	// rsaKeyBits is the modulus size for generated keys. RFC 7518 sets 2048
+	// bits as the floor for RS256, and relying parties reject anything smaller.
+	rsaKeyBits = 2048
+
+	// keyFileMode keeps the private key readable only by its owner. A signing
+	// key that is group- or world-readable lets any local account mint tokens
+	// for any user.
+	keyFileMode = 0600
+
+	// keyDirMode restricts the containing directory to its owner, so the key
+	// cannot be replaced by another local account.
+	keyDirMode = 0700
+)
+
+// globalRSAKey caches the process-wide signing key so that signing a token does
+// not re-read and re-parse the key file. globalRSALock guards it.
 var (
 	globalRSALock sync.RWMutex
 	globalRSAKey  *rsa.PrivateKey
 )
 
-// KeyStore abstracts RSA private key persistence across file, database, or KMS backends.
+// KeyStore abstracts where the RSA private key lives, so a deployment can move
+// from a local file to a database or KMS without touching signing code.
 type KeyStore interface {
+	// LoadKey returns the stored key, or (nil, nil) when none is stored yet.
 	LoadKey() (*rsa.PrivateKey, error)
+	// SaveKey persists a key, overwriting any existing one.
 	SaveKey(key *rsa.PrivateKey) error
 }
 
-// FileKeyStore implements file-backed RSA private key persistence on disk.
+// FileKeyStore stores the private key as a PEM file on local disk.
 type FileKeyStore struct {
+	// FilePath is the PEM file's location. An empty path disables persistence:
+	// LoadKey and SaveKey both become no-ops, and the caller gets an in-memory
+	// key that does not survive a restart.
 	FilePath string
 }
 
-// LoadKey reads and parses a PKCS#1 or PKCS#8 RSA private key from PEM file storage.
+// LoadKey reads and parses the PEM-encoded private key.
+//
+// Returns (nil, nil) when no key is stored — an empty path or a missing file.
+// That is not an error: it is the signal that a key must be generated, and
+// callers distinguish it from failure by the nil error.
+//
+// Returns an error when the file exists but cannot be read, contains no PEM
+// block, or holds something that is not an RSA private key. Those are startup
+// failures; overwriting an unreadable key file would silently invalidate every
+// token signed under the key it was meant to hold.
 func (f *FileKeyStore) LoadKey() (*rsa.PrivateKey, error) {
 	if f.FilePath == "" {
 		return nil, nil
@@ -68,12 +119,13 @@ func (f *FileKeyStore) LoadKey() (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("failed decoding PEM block from %s", f.FilePath)
 	}
 
-	// Try PKCS#1
+	// Both encodings are accepted because the two are not distinguishable from
+	// the PEM type alone in the wild: keys generated by older OpenSSL versions
+	// are PKCS#1, newer ones and most KMS exports are PKCS#8.
 	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return key, nil
 	}
 
-	// Try PKCS#8
 	if keyInterface, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
 		if rsaKey, ok := keyInterface.(*rsa.PrivateKey); ok {
 			return rsaKey, nil
@@ -83,14 +135,18 @@ func (f *FileKeyStore) LoadKey() (*rsa.PrivateKey, error) {
 	return nil, fmt.Errorf("unrecognized or invalid RSA private key format in %s", f.FilePath)
 }
 
-// SaveKey persists an RSA private key to disk in PKCS#1 PEM format with 0600 permissions.
+// SaveKey writes the private key as a PKCS#1 PEM file, creating the containing
+// directory if needed.
+//
+// Does nothing when the path is empty or the key is nil. Returns an error when
+// the directory or file cannot be written.
 func (f *FileKeyStore) SaveKey(key *rsa.PrivateKey) error {
 	if f.FilePath == "" || key == nil {
 		return nil
 	}
 
 	dir := filepath.Dir(f.FilePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, keyDirMode); err != nil {
 		return fmt.Errorf("failed creating directory %s for RSA key: %w", dir, err)
 	}
 
@@ -100,19 +156,31 @@ func (f *FileKeyStore) SaveKey(key *rsa.PrivateKey) error {
 	}
 
 	pemBytes := pem.EncodeToMemory(pemBlock)
-	if err := os.WriteFile(f.FilePath, pemBytes, 0600); err != nil {
+	if err := os.WriteFile(f.FilePath, pemBytes, keyFileMode); err != nil {
 		return fmt.Errorf("failed writing RSA private key to %s: %w", f.FilePath, err)
 	}
 
 	return nil
 }
 
-// GetOrGenerateRSAPrivateKey returns a persisted, cached, or newly generated 2048-bit RSA private key.
+// GetOrGenerateRSAPrivateKey returns the process's ID token signing key,
+// loading it from disk on first call and generating and persisting one if no
+// key is stored yet.
+//
+// The path is taken from the optional keyPath argument, then the
+// AUTHN_RSA_KEY_PATH environment variable, then defaultRSAKeyPath. Callers
+// inside the engine pass the configured path explicitly; the other two are
+// fallbacks for tooling that runs without the configuration layer loaded.
+//
+// Returns an error when a stored key cannot be read or parsed, when key
+// generation fails, or when a newly generated key cannot be persisted. Each is
+// a startup failure: continuing would sign tokens with a key that no restart
+// can reproduce and no relying party will have seen.
 func GetOrGenerateRSAPrivateKey(keyPath ...string) (*rsa.PrivateKey, error) {
-	path := ".keys/rsa_private.pem"
+	path := defaultRSAKeyPath
 	if len(keyPath) > 0 && keyPath[0] != "" {
 		path = keyPath[0]
-	} else if envPath := os.Getenv("AUTHN_RSA_KEY_PATH"); envPath != "" {
+	} else if envPath := os.Getenv(rsaKeyPathEnvVar); envPath != "" {
 		path = envPath
 	}
 
@@ -126,13 +194,16 @@ func GetOrGenerateRSAPrivateKey(keyPath ...string) (*rsa.PrivateKey, error) {
 	globalRSALock.Lock()
 	defer globalRSALock.Unlock()
 
+	// Re-check under the write lock. The read lock was released before it was
+	// taken, so a concurrent caller may have populated the cache in between;
+	// without this, two goroutines racing at startup would each generate a key
+	// and one would overwrite the other's file.
 	if globalRSAKey != nil {
 		return globalRSAKey, nil
 	}
 
 	store := &FileKeyStore{FilePath: path}
 
-	// 1. Check for existing persisted key
 	existingKey, err := store.LoadKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed loading persisted RSA key: %w", err)
@@ -142,13 +213,13 @@ func GetOrGenerateRSAPrivateKey(keyPath ...string) (*rsa.PrivateKey, error) {
 		return globalRSAKey, nil
 	}
 
-	// 2. Generate new 2048-bit RSA keypair if none exists
-	newKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	newKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
 	if err != nil {
 		return nil, fmt.Errorf("failed generating RSA 2048 keypair: %w", err)
 	}
 
-	// 3. Persist generated key to disk
+	// Persist before caching. Serving tokens signed by a key that failed to
+	// reach disk would strand every one of them at the next restart.
 	if err := store.SaveKey(newKey); err != nil {
 		return nil, fmt.Errorf("failed persisting RSA key to disk: %w", err)
 	}
@@ -157,7 +228,16 @@ func GetOrGenerateRSAPrivateKey(keyPath ...string) (*rsa.PrivateKey, error) {
 	return globalRSAKey, nil
 }
 
-// SignIDTokenRS256 signs ID token claims using RS256 (RSA SHA-256 private key).
+// SignIDTokenRS256 signs claims with an RSA private key and returns a compact
+// JWT.
+//
+// keyID becomes the header's `kid`, which is how a relying party picks the
+// right entry out of the published key set. Omitting it would force verifiers
+// to try every key and would break rotation, since a key set in a grace period
+// holds more than one.
+//
+// Returns an error if the header or claims cannot be marshalled, or if signing
+// fails.
 func SignIDTokenRS256(privKey *rsa.PrivateKey, claims interface{}, keyID string) (string, error) {
 	headerJSON, err := json.Marshal(map[string]string{
 		"alg": "RS256",
@@ -185,7 +265,12 @@ func SignIDTokenRS256(privKey *rsa.PrivateKey, claims interface{}, keyID string)
 	return signingInput + "." + signature, nil
 }
 
-// ExportRSAPublicJWKS extracts public key components (Modulus N, Exponent E) for JWKS endpoint.
+// ExportRSAPublicJWKS renders one RSA public key as a JWKS document.
+//
+// The modulus and exponent are base64url-encoded big-endian integers with no
+// leading zero padding, which is the representation RFC 7518 requires; the
+// usual exponent 65537 encodes to "AQAB". Only public values appear, so the
+// result is safe to serve unauthenticated.
 func ExportRSAPublicJWKS(pubKey *rsa.PublicKey, keyID string) JWKSResponse {
 	nBytes := pubKey.N.Bytes()
 	eBytes := big.NewInt(int64(pubKey.E)).Bytes()

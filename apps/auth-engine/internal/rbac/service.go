@@ -3,8 +3,13 @@
  * File: apps/auth-engine/internal/rbac/service.go
  * Tier: Security & Authorization Service Layer
  *
- * Description: RBAC service orchestrating role management, permission validation,
- *              policy checks, and immutable security audit trail logging.
+ * RBAC orchestration: role lifecycle, permission validation against tenant
+ * policy, user-role assignment, and the audit trail that records who changed
+ * whose authority.
+ *
+ * Every mutation here is written to the audit log. The log write is best-effort
+ * and never fails the operation — an authorization change that succeeded must
+ * not be reported as failed because its record could not be stored.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -18,13 +23,22 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 )
 
+// Service applies RBAC business rules on top of the repository.
 type Service struct {
-	repo   *Repository
-	audit  *AuditLogger
-	cfg    *config.Config
+	// repo is the persistence layer for roles, permissions and assignments.
+	repo *Repository
+	// audit records every role and permission change.
+	audit *AuditLogger
+	// cfg supplies runtime settings, including the secret used to verify a
+	// caller's token when no identity is present on the request locals.
+	cfg *config.Config
+	// policy holds the restricted role-to-permission mappings enforced on every
+	// assignment.
 	policy *RolePermissionPolicy
 }
 
+// NewService constructs an RBAC service using the default role-permission
+// policy guardrails.
 func NewService(repo *Repository, audit *AuditLogger, cfg *config.Config) *Service {
 	return &Service{
 		repo:   repo,
@@ -34,7 +48,14 @@ func NewService(repo *Repository, audit *AuditLogger, cfg *config.Config) *Servi
 	}
 }
 
-// CreateRole creates a new role with validation, policy checks, permission assignment, and audit logging.
+// CreateRole validates perms, checks them against the tenant's restricted
+// mappings, creates the role, and attaches its permissions.
+//
+// slug defaults to name when empty. It returns ErrInvalidPermissionFormat or
+// ErrInvalidActionVerb for a malformed permission, ErrRestrictedPermission when
+// the role may not hold one of them, ErrRoleExists when the name or slug is
+// taken, and the repository's error otherwise. Validation runs before any write,
+// so a rejected request leaves no partial role behind.
 func (s *Service) CreateRole(ctx context.Context, tenantID, name, slug, description string, perms []string, actorID, ip, ua string) (*ent.Role, error) {
 	if err := ValidatePermissionList(perms); err != nil {
 		return nil, err
@@ -69,7 +90,14 @@ func (s *Service) CreateRole(ctx context.Context, tenantID, name, slug, descript
 	return roleObj, nil
 }
 
-// UpdateRolePermissions updates permissions for a role with policy checks and audit logging.
+// UpdateRolePermissions replaces a role's permission set after validating the
+// new set against format rules and the tenant's restricted mappings.
+//
+// The policy check uses the stored role's slug, not a caller-supplied one, so a
+// request cannot dodge a restriction by naming a different role. It returns the
+// same validation sentinels as CreateRole, ErrRoleNotFound for an unknown role,
+// and the repository's error otherwise. The audit entry carries both the old and
+// the new permission sets.
 func (s *Service) UpdateRolePermissions(ctx context.Context, tenantID, roleID string, perms []string, actorID, ip, ua string) error {
 	if err := ValidatePermissionList(perms); err != nil {
 		return err
@@ -103,7 +131,9 @@ func (s *Service) UpdateRolePermissions(ctx context.Context, tenantID, roleID st
 	return nil
 }
 
-// AssignUserRole assigns a role to a target user and records audit trail.
+// AssignUserRole grants the role named by roleSlug, within tenantID, to
+// targetUserID. It returns ErrRoleNotFound when the slug names no role in that
+// tenant and ErrUserRoleExists when the user already holds it.
 func (s *Service) AssignUserRole(ctx context.Context, tenantID, targetUserID, roleSlug, actorID, ip, ua string) error {
 	roleObj, err := s.repo.GetRoleBySlug(ctx, tenantID, roleSlug)
 	if err != nil {
@@ -126,7 +156,9 @@ func (s *Service) AssignUserRole(ctx context.Context, tenantID, targetUserID, ro
 	return nil
 }
 
-// RevokeUserRole revokes a role from a user and records audit trail.
+// RevokeUserRole removes the role named by roleSlug from targetUserID. It
+// returns ErrRoleNotFound when the slug names no role in the tenant; revoking a
+// role the user does not hold is not an error.
 func (s *Service) RevokeUserRole(ctx context.Context, tenantID, targetUserID, roleSlug, actorID, ip, ua string) error {
 	roleObj, err := s.repo.GetRoleBySlug(ctx, tenantID, roleSlug)
 	if err != nil {
@@ -148,23 +180,27 @@ func (s *Service) RevokeUserRole(ctx context.Context, tenantID, targetUserID, ro
 	return nil
 }
 
-// ListRoles returns all roles for a tenant.
+// ListRoles returns every role defined in a tenant, each with its permissions
+// loaded.
 func (s *Service) ListRoles(ctx context.Context, tenantID string) ([]*ent.Role, error) {
 	return s.repo.ListRoles(ctx, tenantID)
 }
 
-// GetUserRBAC returns accumulated roles and permissions for a user.
+// GetUserRBAC returns the role slugs and the union of permissions a user holds
+// across all of them, or the repository's error.
 func (s *Service) GetUserRBAC(ctx context.Context, userID string) (roles []string, permissions []string, err error) {
 	return s.repo.GetUserRolesAndPermissions(ctx, userID)
 }
 
-// HasPermission checks if a user holds a required permission or an administrative role.
+// HasPermission reports whether a user holds requiredPerm, either through a
+// privileged administrative role or through a granted permission that covers it.
+// It returns the repository's error when the roles cannot be read, and false —
+// never a default grant — alongside it.
 //
-// Matching is delegated to PermissionMatches so that this path and the
-// RequirePermission middleware cannot diverge. This previously granted every
-// permission to any holder of "users:*" or "impersonate:*" — those literals were
-// compared against the held permission rather than requiredPerm, making them a
-// universal grant (audit H1).
+// Matching is delegated to PermissionMatches with the held permission as the
+// grant and requiredPerm as the requirement. The direction matters: comparing a
+// literal pattern against the held permission instead would make any wildcard
+// grant a universal one.
 func (s *Service) HasPermission(ctx context.Context, userID string, requiredPerm string) (bool, error) {
 	roles, perms, err := s.repo.GetUserRolesAndPermissions(ctx, userID)
 	if err != nil {

@@ -3,9 +3,11 @@
  * File: apps/auth-engine/internal/session/service.go
  * Tier: Session Management Layer
  *
- * Description: Orchestration layer for session management — handles refresh token
- *              rotation, 10-second grace window, reuse detection & automatic compromise
- *              mitigation, active session listing, and session revocation.
+ * Description: Orchestration for refresh-token rotation and session lifecycle. Rotates a
+ *              presented refresh token into a fresh token pair, honours a short grace
+ *              window so concurrent in-flight refreshes are not all logged out, detects
+ *              token reuse and applies the tenant's compromise policy, and serves session
+ *              listing and revocation.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -26,40 +28,66 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// Service handles domain logic for session management.
+// Service implements session-management domain logic on top of Repository.
 type Service struct {
+	// repo provides session persistence and the ent client factory.
 	repo *Repository
-	cfg  *config.Config
+	// cfg supplies token lifetimes, the grace window and the signing key.
+	cfg *config.Config
 }
 
-// NewService constructs a new Session Service.
+// NewService constructs a session Service bound to repo and cfg.
 func NewService(repo *Repository, cfg *config.Config) *Service {
 	return &Service{repo: repo, cfg: cfg}
 }
 
-// SessionResponse represents a normalized session object returned to clients.
+// SessionResponse is a session as presented to clients.
 type SessionResponse struct {
-	ID           string     `json:"id"`
-	Device       DeviceInfo `json:"device"`
-	IPAddress    string     `json:"ip_address"`
-	Location     string     `json:"location"`
-	LastActiveAt string     `json:"last_active_at,omitempty"`
-	CreatedAt    string     `json:"created_at"`
-	IsCurrent    bool       `json:"is_current"`
+	// ID is the session identifier, used to target a revocation.
+	ID string `json:"id"`
+	// Device is the browser, OS and form factor parsed from the user agent.
+	Device DeviceInfo `json:"device"`
+	// IPAddress is the client address recorded when the session was created.
+	IPAddress string `json:"ip_address"`
+	// Location is the coarse geographic label recorded for the session.
+	Location string `json:"location"`
+	// LastActiveAt is the RFC 3339 timestamp of the most recent activity, empty
+	// if the session has never been touched.
+	LastActiveAt string `json:"last_active_at,omitempty"`
+	// CreatedAt is the RFC 3339 creation timestamp.
+	CreatedAt string `json:"created_at"`
+	// IsCurrent marks the session the request itself was made with.
+	IsCurrent bool `json:"is_current"`
 }
 
-// SessionTokenPairResponse represents the output of a token refresh or creation.
+// SessionTokenPairResponse is the result of a token refresh.
 type SessionTokenPairResponse struct {
-	AccessToken  string `json:"access_token"`
+	// AccessToken is the newly issued bearer JWT.
+	AccessToken string `json:"access_token"`
+	// RefreshToken is the new opaque refresh token. It is empty on a grace-window
+	// replay, which must not hand out a second copy of the rotated secret.
 	RefreshToken string `json:"refresh_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in"`
-	SessionID    string `json:"session_id"`
+	// TokenType is always "Bearer".
+	TokenType string `json:"token_type"`
+	// ExpiresIn is the access token lifetime in seconds.
+	ExpiresIn int `json:"expires_in"`
+	// SessionID identifies the session the tokens belong to.
+	SessionID string `json:"session_id"`
 }
 
-// RotateRefreshToken exchanges an old refresh token for a new access & refresh token pair.
-// Enforces 10-second grace window for concurrent requests, and revokes all user sessions
-// if token reuse is detected outside the grace period.
+// RotateRefreshToken exchanges a refresh token for a new access and refresh token pair.
+//
+// A token presented after its session was already rotated out is treated as
+// reuse — the sign of a stolen token — and triggers the tenant's TokenReusePolicy
+// before the request is refused. The one exception is the grace window: for
+// cfg.SessionGracePeriod after a rotation the superseded token still answers with
+// a fresh access token, so requests already in flight when the rotation landed do
+// not fail. That reply omits the refresh token, since the new secret was already
+// returned to whichever request performed the rotation.
+//
+// Returns ErrSessionNotFound if the token matches no session, ErrSessionExpired
+// if the session's own lifetime has elapsed, and ErrSessionCompromised when reuse
+// was detected and sessions were revoked.
 func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment, rawRefreshToken, clientIP, userAgent string) (*SessionTokenPairResponse, error) {
 	if rawRefreshToken == "" {
 		return nil, errors.New("refresh_token is required")
@@ -71,7 +99,9 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		return nil, ErrSessionNotFound
 	}
 
-	// Helper to enforce tenant-level TokenReusePolicy on compromise detection
+	// revokeOnCompromise applies the tenant's TokenReusePolicy. "session_revoke"
+	// kills only the offending session; every other value, including an
+	// unreadable policy, falls back to revoking all of the user's sessions.
 	revokeOnCompromise := func(tID, uID, sID string) {
 		if s.repo.Factory() != nil && tID != "" {
 			policyRepo := policy.NewRepository(s.repo.Factory())
@@ -84,22 +114,20 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		_, _ = s.repo.RevokeAllUserSessions(ctx, uID, "")
 	}
 
-	// Case 1: Session is already revoked
+	// A revoked session's token reaching this point is reuse by definition.
 	if sess.Status == session.StatusRevoked {
-		// REUSE DETECTED! Apply tenant TokenReusePolicy (global_revoke vs session_revoke)
 		revokeOnCompromise(tenantID, sess.UserID, sess.ID)
 		return nil, ErrSessionCompromised
 	}
 
-	// Case 2: Session was rotated into grace window
 	if sess.Status == session.StatusRotatedGrace {
 		if sess.GraceExpiresAt != nil && time.Now().After(*sess.GraceExpiresAt) {
-			// Grace period EXPIRED -> REUSE DETECTED!
 			revokeOnCompromise(tenantID, sess.UserID, sess.ID)
 			return nil, ErrSessionCompromised
 		}
 
-		// Grace period ACTIVE -> return the token generated during rotation
+		// Inside the grace window: mint an access token against the session that
+		// superseded this one and withhold the refresh token.
 		if sess.SupersededBySessionID != nil {
 			supersededSess, err := s.repo.GetSessionByID(ctx, *sess.SupersededBySessionID)
 			if err == nil && supersededSess.Status == session.StatusActive {
@@ -115,35 +143,29 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 
 				return &SessionTokenPairResponse{
 					AccessToken:  accessToken,
-					RefreshToken: "", // Do not re-expose new refresh token in grace period response
+					RefreshToken: "",
 					TokenType:    "Bearer",
-					ExpiresIn:    900,
+					ExpiresIn:    s.accessTokenExpiresIn(),
 					SessionID:    supersededSess.ID,
 				}, nil
 			}
 		}
 	}
 
-	// Case 3: Session is active -> check expiration
 	if time.Now().After(sess.ExpiresAt) {
 		return nil, ErrSessionExpired
 	}
 
-	// Fetch user details for access token claims
 	userObj, err := s.getUserByID(ctx, sess.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load user: %w", err)
 	}
 
-	// Rotate session: old session -> rotated_grace (10s window), new session -> active (30d TTL)
-	graceSeconds := 10
-	ttlDays := 30
-	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", graceSeconds, ttlDays)
+	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", s.cfg.SessionGracePeriod, s.cfg.RefreshTokenTTL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to rotate session: %w", err)
 	}
 
-	// Issue new Access Token JWT
 	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
@@ -153,12 +175,14 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		AccessToken:  accessToken,
 		RefreshToken: newRawToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    900,
+		ExpiresIn:    s.accessTokenExpiresIn(),
 		SessionID:    newSess.ID,
 	}, nil
 }
 
-// ListUserSessions returns all active sessions for a user, marking currentSessionID.
+// ListUserSessions returns the user's unexpired, unrevoked sessions, flagging the
+// one matching currentSessionID. Returns an error if userID is empty or the query
+// fails.
 func (s *Service) ListUserSessions(ctx context.Context, userID, currentSessionID string) ([]SessionResponse, error) {
 	if userID == "" {
 		return nil, errors.New("user_id is required")
@@ -190,7 +214,11 @@ func (s *Service) ListUserSessions(ctx context.Context, userID, currentSessionID
 	return resp, nil
 }
 
-// RevokeSession revokes a specific session belonging to userID.
+// RevokeSession revokes targetSessionID.
+//
+// Ownership is verified before the revocation: a caller may only revoke a session
+// that belongs to them. Returns ErrSessionNotFound if no such session exists and
+// ErrSessionNotOwned if it belongs to a different user.
 func (s *Service) RevokeSession(ctx context.Context, userID, targetSessionID string) error {
 	if userID == "" || targetSessionID == "" {
 		return errors.New("user_id and session_id are required")
@@ -208,7 +236,8 @@ func (s *Service) RevokeSession(ctx context.Context, userID, targetSessionID str
 	return s.repo.RevokeSession(ctx, targetSessionID)
 }
 
-// RevokeOtherSessions revokes all sessions for userID except currentSessionID.
+// RevokeOtherSessions revokes every session belonging to userID except
+// currentSessionID and returns the number revoked.
 func (s *Service) RevokeOtherSessions(ctx context.Context, userID, currentSessionID string) (int, error) {
 	if userID == "" {
 		return 0, errors.New("user_id is required")
@@ -216,7 +245,8 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, userID, currentSessio
 	return s.repo.RevokeAllUserSessions(ctx, userID, currentSessionID)
 }
 
-// RevokeAllSessions revokes all sessions for userID.
+// RevokeAllSessions revokes every session belonging to userID, including the
+// caller's own, and returns the number revoked.
 func (s *Service) RevokeAllSessions(ctx context.Context, userID string) (int, error) {
 	if userID == "" {
 		return 0, errors.New("user_id is required")
@@ -224,15 +254,22 @@ func (s *Service) RevokeAllSessions(ctx context.Context, userID string) (int, er
 	return s.repo.RevokeAllUserSessions(ctx, userID, "")
 }
 
-// getUserByID is a internal helper to load user record via ent client factory.
+// accessTokenExpiresIn returns the configured access token lifetime in whole
+// seconds, the unit the OAuth token response uses.
+func (s *Service) accessTokenExpiresIn() int {
+	return int(s.cfg.AccessTokenTTL.Seconds())
+}
+
+// getUserByID loads the user record backing a session, for the claims placed in
+// a freshly issued access token.
 func (s *Service) getUserByID(ctx context.Context, userID string) (*ent.User, error) {
 	client := s.repo.factory.GetClient(ctx, "", "")
 	return client.User.Get(ctx, userID)
 }
 
-// resolveRoleClaim derives the JWT role claim from the user's recorded roles so
-// that a refreshed or rotated session preserves console privilege instead of
-// silently downgrading a tenant admin to a regular end-user.
+// resolveRoleClaim derives the JWT role claim from the user's recorded roles, so
+// that a rotated session keeps console privilege rather than silently downgrading
+// a tenant admin to a regular end user.
 func (s *Service) resolveRoleClaim(ctx context.Context, userID string) string {
 	return rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 }

@@ -3,7 +3,12 @@
  * File: apps/auth-engine/internal/rbac/repository.go
  * Tier: Database Persistence Layer
  *
- * Description: Data access repository for Role, Permission, and UserRole entities.
+ * Persistence for roles, their permissions, and user-role bindings.
+ *
+ * Queries run through the client factory and therefore inherit the request's
+ * privacy context: the ORM interceptor requires an active tenant for every role,
+ * permission and user-role query and scopes it accordingly, so tenant isolation
+ * is enforced below this layer rather than by predicates written here.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -25,21 +30,32 @@ import (
 )
 
 var (
-	ErrRoleNotFound     = errors.New("role not found")
-	ErrRoleExists       = errors.New("role with this name or slug already exists in tenant")
+	// ErrRoleNotFound reports that no role matches the given ID or slug within
+	// the requesting tenant.
+	ErrRoleNotFound = errors.New("role not found")
+	// ErrRoleExists reports a name or slug collision within the tenant.
+	ErrRoleExists = errors.New("role with this name or slug already exists in tenant")
+	// ErrSystemRoleDelete reports an attempt to delete a built-in role.
 	ErrSystemRoleDelete = errors.New("built-in system roles cannot be deleted")
-	ErrUserRoleExists   = errors.New("user already possesses this role")
+	// ErrUserRoleExists reports that the user already holds the role.
+	ErrUserRoleExists = errors.New("user already possesses this role")
 )
 
+// Repository reads and writes RBAC entities.
 type Repository struct {
+	// factory produces the ORM client for the request's tenant and environment.
 	factory *clientfactory.ClientFactory
 }
 
+// NewRepository returns an RBAC repository backed by the given client factory.
 func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
 }
 
-// CreateRole creates a new role entity in the database.
+// CreateRole inserts a role, deriving name from slug or slug from name when
+// either is empty, and returns ErrRoleExists if the tenant already has a role
+// with that name or slug. isSystem marks a built-in role, which DeleteRole then
+// refuses to remove.
 func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, description string, isSystem bool, actorID string) (*ent.Role, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 
@@ -49,11 +65,9 @@ func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, descr
 	}
 	roleSlug := slug
 	if roleSlug == "" {
-		// Auto-derive slug from name: lowercase + underscores
 		roleSlug = strings.ToLower(strings.ReplaceAll(roleName, " ", "_"))
 	}
 
-	// Check name uniqueness
 	nameExists, err := client.Role.Query().Where(role.TenantID(tenantID), role.Name(roleName)).Exist(ctx)
 	if err != nil {
 		return nil, err
@@ -62,7 +76,6 @@ func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, descr
 		return nil, ErrRoleExists
 	}
 
-	// Check slug uniqueness
 	slugExists, err := client.Role.Query().Where(role.TenantID(tenantID), role.Slug(roleSlug)).Exist(ctx)
 	if err != nil {
 		return nil, err
@@ -89,7 +102,9 @@ func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, descr
 	return builder.Save(ctx)
 }
 
-// GetRoleByID retrieves a role by its unique ID.
+// GetRoleByID returns a role with its permissions loaded, or ErrRoleNotFound.
+// The tenant predicate is supplied by the privacy interceptor, so a role ID from
+// another tenant does not resolve.
 func (r *Repository) GetRoleByID(ctx context.Context, roleID string) (*ent.Role, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	roleObj, err := client.Role.Query().Where(role.ID(roleID)).WithPermissions().Only(ctx)
@@ -99,7 +114,8 @@ func (r *Repository) GetRoleByID(ctx context.Context, roleID string) (*ent.Role,
 	return roleObj, err
 }
 
-// GetRoleBySlug retrieves a role by tenant ID and its slug field (exact match).
+// GetRoleBySlug returns the role with an exact slug match in the tenant, with
+// its permissions loaded, or ErrRoleNotFound.
 func (r *Repository) GetRoleBySlug(ctx context.Context, tenantID, slug string) (*ent.Role, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	roleObj, err := client.Role.Query().
@@ -115,13 +131,15 @@ func (r *Repository) GetRoleBySlug(ctx context.Context, tenantID, slug string) (
 	return roleObj, err
 }
 
-// ListRoles retrieves all roles for a given tenant.
+// ListRoles returns every role in the tenant with its permissions loaded.
 func (r *Repository) ListRoles(ctx context.Context, tenantID string) ([]*ent.Role, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	return client.Role.Query().Where(role.TenantID(tenantID)).WithPermissions().All(ctx)
 }
 
-// UpdateRole updates role name/description.
+// UpdateRole renames a role and, when the arguments are non-empty, updates its
+// description and records the actor. It returns the updated role or the ORM
+// error.
 func (r *Repository) UpdateRole(ctx context.Context, tenantID, roleID, name, description string, actorID string) (*ent.Role, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	builder := client.Role.UpdateOneID(roleID).SetName(name)
@@ -136,7 +154,10 @@ func (r *Repository) UpdateRole(ctx context.Context, tenantID, roleID, name, des
 	return builder.Save(ctx)
 }
 
-// DeleteRole deletes a non-system role and its permission/user bindings.
+// DeleteRole removes a role along with its permissions and user bindings,
+// returning ErrSystemRoleDelete for a built-in role and ErrRoleNotFound for an
+// unknown one. Leaving the bindings behind would strand rows pointing at a role
+// that no longer exists, so they go first.
 func (r *Repository) DeleteRole(ctx context.Context, tenantID, roleID string) error {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	roleObj, err := r.GetRoleByID(ctx, roleID)
@@ -153,7 +174,10 @@ func (r *Repository) DeleteRole(ctx context.Context, tenantID, roleID string) er
 	return client.Role.DeleteOneID(roleID).Exec(ctx)
 }
 
-// SetRolePermissions replaces all permissions for a role atomically.
+// SetRolePermissions replaces a role's entire permission set: the existing rows
+// are deleted, then perms inserted. Replacing rather than merging is what makes
+// a permission removal possible at all — a caller sends the set it wants, not a
+// delta. It returns the first write error.
 func (r *Repository) SetRolePermissions(ctx context.Context, roleID string, perms []string, actorID string) error {
 	client := r.factory.GetClient(ctx, "", "")
 
@@ -180,7 +204,8 @@ func (r *Repository) SetRolePermissions(ctx context.Context, roleID string, perm
 	return nil
 }
 
-// AssignRoleToUser binds a role to a user.
+// AssignRoleToUser binds a role to a user, returning ErrUserRoleExists when the
+// binding already exists and the new binding otherwise.
 func (r *Repository) AssignRoleToUser(ctx context.Context, userID, roleID, actorID string) (*ent.UserRole, error) {
 	client := r.factory.GetClient(ctx, "", "")
 
@@ -206,14 +231,22 @@ func (r *Repository) AssignRoleToUser(ctx context.Context, userID, roleID, actor
 	return builder.Save(ctx)
 }
 
-// RevokeRoleFromUser unbinds a role from a user.
+// RevokeRoleFromUser removes the binding between a user and a role. Removing a
+// binding that does not exist is not an error.
 func (r *Repository) RevokeRoleFromUser(ctx context.Context, userID, roleID string) error {
 	client := r.factory.GetClient(ctx, "", "")
 	_, err := client.UserRole.Delete().Where(userrole.UserID(userID), userrole.RoleID(roleID)).Exec(ctx)
 	return err
 }
 
-// GetUserRolesAndPermissions fetches assigned roles and permissions for a user.
+// GetUserRolesAndPermissions returns the user's role slugs and the deduplicated
+// union of the permissions those roles carry, or the query error. Both slices
+// are nil for a user with no roles. Order is unspecified, as both are consumed
+// as sets.
+//
+// Roles are reported by slug rather than display name: the slug is what
+// IsPrivilegedRole and every policy lookup match on, and a display name is
+// editable text.
 func (r *Repository) GetUserRolesAndPermissions(ctx context.Context, userID string) (roles []string, permissions []string, err error) {
 	client := r.factory.GetClient(ctx, "", "")
 
@@ -233,7 +266,6 @@ func (r *Repository) GetUserRolesAndPermissions(ctx context.Context, userID stri
 
 	for _, ur := range userRoles {
 		if ur.Edges.Role != nil {
-			// Return the slug (machine-readable) as the role identifier, not the display name
 			rolesMap[ur.Edges.Role.Slug] = true
 			for _, p := range ur.Edges.Role.Edges.Permissions {
 				permsMap[p.Action] = true

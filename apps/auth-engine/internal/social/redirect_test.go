@@ -3,13 +3,12 @@
  * File: apps/auth-engine/internal/social/redirect_test.go
  * Tier: Social Identity Provider Layer / Tests
  *
- * Description: Covers audit H5 — the post-callback redirect that carried a freshly
- *              issued access token. Three defects are pinned here:
- *                (a) token delivered in the query string instead of the fragment,
- *                (b) naive "?"-concatenation that corrupted destinations which
- *                    already had a query string,
- *                (c) unvalidated, caller-supplied destination host (open redirect
- *                    forwarding a live token to an attacker-chosen origin).
+ * Description: Covers the post-callback redirect, which carries a freshly
+ *              issued access token. Three properties are pinned: the token
+ *              travels in the URL fragment and never the query string, the
+ *              destination's own query string survives intact with both
+ *              components escaped, and the destination host must appear on the
+ *              initiating application's registered allowlist.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -35,7 +34,9 @@ import (
 // of those either terminates or changes meaning inside a URL if unescaped.
 const sampleJWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c3JfYWJjIn0.s1g-n_a+t/u=re"
 
-// TestBuildPostCallbackRedirect_TokenIsNotInQueryString is the H5(a) regression.
+// TestBuildPostCallbackRedirect_TokenIsNotInQueryString pins the token to the
+// fragment. A query parameter would be written to browser history, server and
+// proxy access logs, and the Referer of any cross-origin subresource.
 func TestBuildPostCallbackRedirect_TokenIsNotInQueryString(t *testing.T) {
 	got, err := buildPostCallbackRedirect("https://app.example.com/cb", sampleJWT)
 	if err != nil {
@@ -66,9 +67,9 @@ func TestBuildPostCallbackRedirect_TokenIsNotInQueryString(t *testing.T) {
 	}
 }
 
-// TestBuildPostCallbackRedirect_PreservesExistingQuery is the H5(b) regression:
-// the old concatenation produced "...?tenant=acme?access_token=..." and the
-// token silently became part of the tenant value.
+// TestBuildPostCallbackRedirect_PreservesExistingQuery pins that a destination
+// which already carries a query string keeps it unchanged. Concatenating would
+// emit a second "?" and fold the token into the preceding parameter's value.
 func TestBuildPostCallbackRedirect_PreservesExistingQuery(t *testing.T) {
 	base := "https://app.example.com/cb?tenant=acme&next=%2Fdashboard"
 
@@ -107,7 +108,7 @@ func TestBuildPostCallbackRedirect_PreservesExistingQuery(t *testing.T) {
 
 // TestBuildPostCallbackRedirect_EscapesToken guards the double-escaping trap:
 // assigning to url.URL.Fragment makes String() re-escape the already-encoded
-// Values.Encode() output, handing the client a mangled token.
+// Values.Encode() output, which would hand the client a mangled token.
 func TestBuildPostCallbackRedirect_EscapesToken(t *testing.T) {
 	hostile := "a+b/c=d%e&f=g#h ?i"
 
@@ -152,7 +153,7 @@ func TestBuildPostCallbackRedirect_DropsExistingFragment(t *testing.T) {
 	}
 }
 
-// --- H5(c): open-redirect allowlist ---
+// --- post-callback destination allowlist ---
 
 func setupRedirectTestService(t *testing.T) (*Service, context.Context) {
 	t.Helper()
@@ -213,8 +214,8 @@ func TestValidatePostCallbackRedirect(t *testing.T) {
 		{"same origin, different path", "https://app.example.com/dashboard", "app_test", true},
 		{"same origin with query", "https://app.example.com/dashboard?tenant=acme", "app_test", true},
 
-		// The H5(c) exploit itself: a publishable key is public, so anyone who can
-		// start a social login could previously name their own host here.
+		// A publishable key is public by design, so anyone able to start a social
+		// login can put an arbitrary host here. The allowlist is what stops it.
 		{"attacker host", "https://evil.example.net/steal", "app_test", false},
 		{"attacker subdomain", "https://app.example.com.evil.net/steal", "app_test", false},
 		{"scheme downgrade to http", "http://app.example.com/callback", "app_test", false},

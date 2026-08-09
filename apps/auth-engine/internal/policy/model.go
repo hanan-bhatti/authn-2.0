@@ -3,7 +3,14 @@
  * File: apps/auth-engine/internal/policy/model.go
  * Tier: Domain Model Layer
  *
- * Description: Password, Security, and Recovery policy definitions and validation.
+ * Tenant policy definitions and their validation: password complexity, security
+ * enforcement, account recovery, and impersonation governance.
+ *
+ * Each policy has a Default* constructor and, where its fields interact, a
+ * Validate* function. Defaults are the behaviour of a tenant that has configured
+ * nothing, so they are chosen to be safe rather than permissive. Validation is
+ * the boundary for caller-supplied policy: bounds are enforced here, once, so no
+ * consumer has to re-check what a stored policy contains.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -21,17 +28,31 @@ import (
 
 // PasswordPolicy defines tenant-level password complexity requirements.
 type PasswordPolicy struct {
-	EnforcementMode      string `json:"enforcement_mode"`        // "require" (default) | "notify"
-	RequireUppercase     bool   `json:"require_uppercase"`       // Must contain A-Z
-	RequireLowercase     bool   `json:"require_lowercase"`       // Must contain a-z
-	RequireNumeric       bool   `json:"require_numeric"`         // Must contain 0-9
-	RequireSpecial       bool   `json:"require_special"`         // Must contain special symbols
-	ForceUpgradeOnSignin bool   `json:"force_upgrade_on_signin"` // Require upgrade on signin if non-compliant
-	MinLength            int    `json:"min_length"`              // Minimum character length (default: 6)
-	MaxLength            int    `json:"max_length"`              // Maximum character length (default: 4096)
+	// EnforcementMode is "require" to reject non-compliant passwords or "notify"
+	// to accept them and report what is missing.
+	EnforcementMode string `json:"enforcement_mode"`
+	// RequireUppercase demands at least one A-Z character.
+	RequireUppercase bool `json:"require_uppercase"`
+	// RequireLowercase demands at least one a-z character.
+	RequireLowercase bool `json:"require_lowercase"`
+	// RequireNumeric demands at least one digit.
+	RequireNumeric bool `json:"require_numeric"`
+	// RequireSpecial demands at least one punctuation or symbol character.
+	RequireSpecial bool `json:"require_special"`
+	// ForceUpgradeOnSignin makes an existing user with a non-compliant password
+	// set a new one at their next sign-in.
+	ForceUpgradeOnSignin bool `json:"force_upgrade_on_signin"`
+	// MinLength is the minimum character count. ValidatePassword floors it at 8
+	// whatever is stored.
+	MinLength int `json:"min_length"`
+	// MaxLength is the maximum character count, capped at 4096. The cap exists
+	// because hashing is deliberately expensive: an unbounded password is a
+	// unbounded amount of work per login attempt.
+	MaxLength int `json:"max_length"`
 }
 
-// DefaultPasswordPolicy returns standard initial password policy settings.
+// DefaultPasswordPolicy returns the password policy applied to a tenant that has
+// configured none: eight characters with at least one digit, enforced.
 func DefaultPasswordPolicy() PasswordPolicy {
 	return PasswordPolicy{
 		EnforcementMode:      "require",
@@ -47,12 +68,22 @@ func DefaultPasswordPolicy() PasswordPolicy {
 
 // SecurityPolicy defines tenant-level security enforcement settings.
 type SecurityPolicy struct {
-	RequireEmailVerification bool   `json:"require_email_verification"` // Enforce email verification for users
-	EmailVerificationMode    string `json:"email_verification_mode"`    // "hard" (403 block) | "soft" (allow login with warning/token flag)
-	TokenReusePolicy         string `json:"token_reuse_policy"`         // "global_revoke" (default: revokes all user sessions) | "session_revoke" (revokes only family session)
+	// RequireEmailVerification gates access on a verified email address.
+	RequireEmailVerification bool `json:"require_email_verification"`
+	// EmailVerificationMode is "hard" to block an unverified user with 403, or
+	// "soft" to admit them with the unverified state flagged on the token.
+	EmailVerificationMode string `json:"email_verification_mode"`
+	// TokenReusePolicy is the response to a replayed refresh token:
+	// "global_revoke" ends every session the user has, "session_revoke" ends only
+	// the affected token family. Global revocation is the default because a
+	// replayed token means the token store is compromised, and the blast radius
+	// of guessing wrong is a forced re-login rather than a retained intruder.
+	TokenReusePolicy string `json:"token_reuse_policy"`
 }
 
-// DefaultSecurityPolicy returns standard default security policy settings.
+// DefaultSecurityPolicy returns the security policy applied to a tenant that has
+// configured none: verification encouraged but not enforced, and a replayed
+// refresh token revoking every session.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
 		RequireEmailVerification: false,
@@ -61,33 +92,58 @@ func DefaultSecurityPolicy() SecurityPolicy {
 	}
 }
 
-// RecoveryPolicy defines tenant-level account recovery rules, method toggles, and security limits.
+// RecoveryPolicy defines tenant-level account recovery rules: which proofs are
+// accepted, how long each stage lasts, and how aggressively repeated failures
+// are locked out.
 type RecoveryPolicy struct {
-	// 1. Method Enablement Toggles
-	GuardiansEnabled         bool `json:"guardians_enabled"`
-	PhoneOTPEnabled          bool `json:"phone_otp_enabled"`
-	EmailOTPEnabled          bool `json:"email_otp_enabled"`
-	OldPasswordEnabled       bool `json:"old_password_enabled"`
+	// GuardiansEnabled accepts vouching by enrolled guardians as a recovery proof.
+	GuardiansEnabled bool `json:"guardians_enabled"`
+	// PhoneOTPEnabled accepts a one-time code sent by SMS.
+	PhoneOTPEnabled bool `json:"phone_otp_enabled"`
+	// EmailOTPEnabled accepts a one-time code sent to the recovery address.
+	EmailOTPEnabled bool `json:"email_otp_enabled"`
+	// OldPasswordEnabled accepts a previously valid password.
+	OldPasswordEnabled bool `json:"old_password_enabled"`
+	// SecurityQuestionsEnabled accepts answers to enrolled security questions.
 	SecurityQuestionsEnabled bool `json:"security_questions_enabled"`
 
-	// 2. Configurable Timing & Window Durations
-	FreezeWindowHours       int      `json:"freeze_window_hours"`        // default: 48 hours
-	ClaimTokenTTLMinutes    int      `json:"claim_token_ttl_minutes"`    // default: 15 minutes
-	LockoutSchedule         []string `json:"lockout_schedule"`           // default: ["24h","3d","7d","14d","4w","8w","12w","permanent"]
-	LockoutResetDays        int      `json:"lockout_reset_days"`         // default: 30 days
-	TrustedDeviceWindowDays int      `json:"trusted_device_window_days"` // default: 90 days
+	// FreezeWindowHours is how long an account stays frozen after a recovery is
+	// initiated, giving the real owner time to intervene before control changes
+	// hands. Range 24-168.
+	FreezeWindowHours int `json:"freeze_window_hours"`
+	// ClaimTokenTTLMinutes is the lifetime of the token that completes a
+	// recovery. Range 5-60.
+	ClaimTokenTTLMinutes int `json:"claim_token_ttl_minutes"`
+	// LockoutSchedule is the escalating lockout applied to repeated failed
+	// recovery attempts, as duration steps ("24h", "3d", "4w", "permanent"),
+	// monotonically non-decreasing. Between 3 and 10 steps.
+	LockoutSchedule []string `json:"lockout_schedule"`
+	// LockoutResetDays is how long a clean record must last before the escalation
+	// level returns to zero. Range 7-90.
+	LockoutResetDays int `json:"lockout_reset_days"`
+	// TrustedDeviceWindowDays is how long a device stays trusted for recovery
+	// purposes. Range 30-365.
+	TrustedDeviceWindowDays int `json:"trusted_device_window_days"`
 
-	// 3. Guardian Enrolment Boundaries
-	MinGuardians int `json:"min_guardians"` // default: 1
-	MaxGuardians int `json:"max_guardians"` // default: 5
+	// MinGuardians is the fewest guardians a user must enrol. At least 1.
+	MinGuardians int `json:"min_guardians"`
+	// MaxGuardians is the most a user may enrol. At most 5.
+	MaxGuardians int `json:"max_guardians"`
 
-	// 4. Additional Configurable Audit Parameters
-	IPv4SubnetBits            int `json:"ipv4_subnet_bits"`             // default: 24 (masks to /24)
-	IPv6SubnetBits            int `json:"ipv6_subnet_bits"`             // default: 48 (masks to /48)
-	MaxProofAttemptsPerWindow int `json:"max_proof_attempts_per_window"` // default: 3 attempts per 10 min window
+	// IPv4SubnetBits is the prefix length recovery attempts are grouped by when
+	// the source is IPv4, so an attacker cannot look like a new network by
+	// changing the last octet. Range 16-30.
+	IPv4SubnetBits int `json:"ipv4_subnet_bits"`
+	// IPv6SubnetBits is the same for IPv6, where a single customer is routinely
+	// assigned a whole prefix. Range 32-64.
+	IPv6SubnetBits int `json:"ipv6_subnet_bits"`
+	// MaxProofAttemptsPerWindow caps recovery proof attempts per window. Range 1-10.
+	MaxProofAttemptsPerWindow int `json:"max_proof_attempts_per_window"`
 }
 
-// DefaultRecoveryPolicy returns standard initial account recovery policy settings.
+// DefaultRecoveryPolicy returns the recovery policy applied to a tenant that has
+// configured none: every method available, a two-day freeze, and lockouts
+// escalating from a day to permanent.
 func DefaultRecoveryPolicy() RecoveryPolicy {
 	return RecoveryPolicy{
 		GuardiansEnabled:          true,
@@ -108,24 +164,32 @@ func DefaultRecoveryPolicy() RecoveryPolicy {
 	}
 }
 
-// ValidateRecoveryPolicy evaluates all fields, boundary limits, and schedule ordering of a RecoveryPolicy.
+// minLockoutFirstStep is the shortest permitted opening step of a lockout
+// schedule. A first step below this makes the escalation ineffective: an
+// attacker simply waits it out between attempts.
+const minLockoutFirstStep = 1 * time.Hour
+
+// ValidateRecoveryPolicy checks every field of a RecoveryPolicy against its
+// documented bounds and returns the first violation, naming the field and the
+// value seen. It returns nil when the policy is storable.
+//
+// Two rules are structural rather than numeric: at least one recovery method
+// must stay enabled, or no user could ever recover an account; and the lockout
+// schedule must be monotonically non-decreasing, or a later offence would be
+// punished more lightly than an earlier one.
 func ValidateRecoveryPolicy(p RecoveryPolicy) error {
-	// Rule 7: At least ONE method-enabled toggle must remain true tenant-wide
 	if !p.GuardiansEnabled && !p.PhoneOTPEnabled && !p.EmailOTPEnabled && !p.OldPasswordEnabled && !p.SecurityQuestionsEnabled {
 		return errors.New("at least one recovery method toggle must remain enabled tenant-wide")
 	}
 
-	// Rule 1: freeze_window_hours (min 24, max 168)
 	if p.FreezeWindowHours < 24 || p.FreezeWindowHours > 168 {
 		return fmt.Errorf("freeze_window_hours must be between 24 and 168 (got %d)", p.FreezeWindowHours)
 	}
 
-	// Rule 2: claim_token_ttl_minutes (min 5, max 60)
 	if p.ClaimTokenTTLMinutes < 5 || p.ClaimTokenTTLMinutes > 60 {
 		return fmt.Errorf("claim_token_ttl_minutes must be between 5 and 60 (got %d)", p.ClaimTokenTTLMinutes)
 	}
 
-	// Rule 3: lockout_schedule (between 3 and 10 steps, first step >= 1h, monotonically non-decreasing)
 	if len(p.LockoutSchedule) < 3 || len(p.LockoutSchedule) > 10 {
 		return fmt.Errorf("lockout_schedule must contain between 3 and 10 steps (got %d)", len(p.LockoutSchedule))
 	}
@@ -136,7 +200,7 @@ func ValidateRecoveryPolicy(p RecoveryPolicy) error {
 		if err != nil {
 			return fmt.Errorf("lockout_schedule step [%d] invalid: %w", i, err)
 		}
-		if i == 0 && dur < 1*time.Hour {
+		if i == 0 && dur < minLockoutFirstStep {
 			return fmt.Errorf("lockout_schedule first step must be at least 1h (got %s)", step)
 		}
 		if i > 0 && dur < prevDur {
@@ -146,17 +210,14 @@ func ValidateRecoveryPolicy(p RecoveryPolicy) error {
 		prevDur = dur
 	}
 
-	// Rule 4: lockout_reset_days (min 7, max 90)
 	if p.LockoutResetDays < 7 || p.LockoutResetDays > 90 {
 		return fmt.Errorf("lockout_reset_days must be between 7 and 90 (got %d)", p.LockoutResetDays)
 	}
 
-	// Rule 5: trusted_device_window_days (min 30, max 365)
 	if p.TrustedDeviceWindowDays < 30 || p.TrustedDeviceWindowDays > 365 {
 		return fmt.Errorf("trusted_device_window_days must be between 30 and 365 (got %d)", p.TrustedDeviceWindowDays)
 	}
 
-	// Rule 6: min_guardians & max_guardians boundaries
 	if p.MinGuardians < 1 {
 		return fmt.Errorf("min_guardians must be >= 1 (got %d)", p.MinGuardians)
 	}
@@ -167,7 +228,6 @@ func ValidateRecoveryPolicy(p RecoveryPolicy) error {
 		return fmt.Errorf("min_guardians (%d) cannot exceed max_guardians (%d)", p.MinGuardians, p.MaxGuardians)
 	}
 
-	// Rule 8: Subnet bit boundaries (IPv4: 16-30, IPv6: 32-64)
 	if p.IPv4SubnetBits < 16 || p.IPv4SubnetBits > 30 {
 		return fmt.Errorf("ipv4_subnet_bits must be between 16 and 30 (got %d)", p.IPv4SubnetBits)
 	}
@@ -175,7 +235,6 @@ func ValidateRecoveryPolicy(p RecoveryPolicy) error {
 		return fmt.Errorf("ipv6_subnet_bits must be between 32 and 64 (got %d)", p.IPv6SubnetBits)
 	}
 
-	// Rule 9: max_proof_attempts_per_window (min 1, max 10)
 	if p.MaxProofAttemptsPerWindow < 1 || p.MaxProofAttemptsPerWindow > 10 {
 		return fmt.Errorf("max_proof_attempts_per_window must be between 1 and 10 (got %d)", p.MaxProofAttemptsPerWindow)
 	}
@@ -183,6 +242,13 @@ func ValidateRecoveryPolicy(p RecoveryPolicy) error {
 	return nil
 }
 
+// parseLockoutStepDuration converts one lockout-schedule step into a duration.
+//
+// It accepts "permanent" (the maximum representable duration), a week count
+// suffixed "w", a day count suffixed "d", and otherwise anything
+// time.ParseDuration accepts. Weeks and days are spelled out here because Go's
+// parser stops at hours. It returns an error for an unparseable step and for any
+// step that is zero or negative, since a non-positive lockout is no lockout.
 func parseLockoutStepDuration(step string) (time.Duration, error) {
 	step = strings.ToLower(strings.TrimSpace(step))
 	if step == "permanent" {
@@ -209,7 +275,14 @@ func parseLockoutStepDuration(step string) (time.Duration, error) {
 	return dur, nil
 }
 
-// ValidatePassword evaluates a password against the given policy and returns missing criteria.
+// ValidatePassword evaluates a password against a policy and returns the names
+// of the criteria it fails — "min_length", "max_length", "require_uppercase",
+// "require_lowercase", "require_numeric", "require_special" — or nil when it
+// satisfies all of them. The caller decides what a failure means: "require"
+// rejects, "notify" reports.
+//
+// The policy's own bounds are floored at 8 and capped at 4096 here, so a stored
+// policy weakened below the engine's own minimum cannot admit a shorter password.
 func ValidatePassword(p PasswordPolicy, password string) []string {
 	var missing []string
 
@@ -260,20 +333,37 @@ func ValidatePassword(p PasswordPolicy, password string) []string {
 	return missing
 }
 
-// ImpersonationPolicy defines tenant-level user impersonation governance rules.
+// ImpersonationPolicy defines tenant-level governance for admin impersonation.
 type ImpersonationPolicy struct {
-	Enabled                    bool     `json:"enabled"`                      // Master toggle per tenant (default: true)
-	MaxDurationMinutes         int      `json:"max_duration_minutes"`         // Hard cap on impersonation session TTL (default: 15, range: 1..60)
-	RequireStepUpAuth          bool     `json:"require_step_up_auth"`         // Mandate password/2FA re-verification before token issuance (default: true)
-	RequireTicketID            bool     `json:"require_ticket_id"`            // Mandate support ticket ID in payload (default: false)
-	RequireUserOptIn           bool     `json:"require_user_opt_in"`          // Require user's support_access_enabled flag to be true (default: false)
-	EmailNotificationPolicy    string   `json:"email_notification_policy"`    // "IMMEDIATE" (default) | "POST_SESSION" | "DISABLED"
-	ReadOnlyDefault            bool     `json:"read_only_default"`            // Force impersonation tokens into read-only mode (default: false)
-	RestrictAdminImpersonation bool     `json:"restrict_admin_impersonation"` // Block impersonating users holding admin roles (default: true)
-	AllowedRoles               []string `json:"allowed_roles"`                // List of role slugs permitted to impersonate (default: ["tenant_admin", "support_admin"])
+	// Enabled is the tenant's master switch for the feature.
+	Enabled bool `json:"enabled"`
+	// MaxDurationMinutes caps an impersonation session, 1-60. A request may ask
+	// for less but never more.
+	MaxDurationMinutes int `json:"max_duration_minutes"`
+	// RequireStepUpAuth demands the admin re-prove their own identity —
+	// password, TOTP or passkey — at the moment of the request, so a borrowed
+	// console tab cannot start a session.
+	RequireStepUpAuth bool `json:"require_step_up_auth"`
+	// RequireTicketID demands a support ticket reference, tying each session to
+	// a record outside the engine.
+	RequireTicketID bool `json:"require_ticket_id"`
+	// RequireUserOptIn demands the target's support_access_enabled flag.
+	RequireUserOptIn bool `json:"require_user_opt_in"`
+	// EmailNotificationPolicy is when the target is told: "IMMEDIATE",
+	// "POST_SESSION" or "DISABLED".
+	EmailNotificationPolicy string `json:"email_notification_policy"`
+	// ReadOnlyDefault forces impersonation tokens into read-only mode.
+	ReadOnlyDefault bool `json:"read_only_default"`
+	// RestrictAdminImpersonation blocks impersonating users who hold
+	// administrative roles, so the feature cannot be used to climb privilege.
+	RestrictAdminImpersonation bool `json:"restrict_admin_impersonation"`
+	// AllowedRoles lists the role slugs permitted to impersonate.
+	AllowedRoles []string `json:"allowed_roles"`
 }
 
-// DefaultImpersonationPolicy returns standard default impersonation policy settings.
+// DefaultImpersonationPolicy returns the impersonation policy applied to a
+// tenant that has configured none: enabled, capped at fifteen minutes, step-up
+// required, administrators protected, and the target notified immediately.
 func DefaultImpersonationPolicy() ImpersonationPolicy {
 	return ImpersonationPolicy{
 		Enabled:                    true,
@@ -288,7 +378,9 @@ func DefaultImpersonationPolicy() ImpersonationPolicy {
 	}
 }
 
-// ValidateImpersonationPolicy checks strict configuration bounds for an ImpersonationPolicy.
+// ValidateImpersonationPolicy checks an ImpersonationPolicy's bounds, returning
+// an error when the duration cap falls outside 1-60 minutes or the notification
+// policy is not one of the three recognised values, and nil otherwise.
 func ValidateImpersonationPolicy(pol ImpersonationPolicy) error {
 	if pol.MaxDurationMinutes < 1 || pol.MaxDurationMinutes > 60 {
 		return errors.New("max_duration_minutes must be between 1 and 60 minutes")
@@ -304,18 +396,35 @@ func ValidateImpersonationPolicy(pol ImpersonationPolicy) error {
 	return nil
 }
 
-// ImpersonateRequest defines the incoming payload for initiating an impersonation session.
+// ImpersonateRequest is the payload for initiating an impersonation session.
 type ImpersonateRequest struct {
-	Reason             string `json:"reason"`
-	DurationMinutes    int    `json:"duration_minutes,omitempty"`
-	TicketID           string `json:"ticket_id,omitempty"`
-	VerificationMethod string `json:"verification_method,omitempty"` // "webauthn" | "totp" | "password"
-	MFACode            string `json:"mfa_code,omitempty"`
-	AdminPassword      string `json:"admin_password,omitempty"`
-	CredentialID       string `json:"credential_id,omitempty"`
+	// Reason is the operator's justification, 10-500 characters, recorded in the
+	// audit trail and shown to the user in the notification.
+	Reason string `json:"reason"`
+	// DurationMinutes is the requested session length. Zero takes the policy cap;
+	// anything above it is clamped down to the cap.
+	DurationMinutes int `json:"duration_minutes,omitempty"`
+	// TicketID references the support ticket, 3-100 characters when present.
+	TicketID string `json:"ticket_id,omitempty"`
+	// VerificationMethod selects the step-up proof: "password", "totp",
+	// "webauthn" or "passkey".
+	VerificationMethod string `json:"verification_method,omitempty"`
+	// MFACode is the TOTP code for "totp" step-up.
+	MFACode string `json:"mfa_code,omitempty"`
+	// AdminPassword is the admin's own password for "password" step-up.
+	AdminPassword string `json:"admin_password,omitempty"`
+	// CredentialID identifies the passkey for "webauthn"/"passkey" step-up.
+	CredentialID string `json:"credential_id,omitempty"`
 }
 
-// ValidateImpersonateRequest validates an incoming impersonation request against tenant bounds.
+// ValidateImpersonateRequest checks a request against the tenant's policy,
+// returning an error naming the first field at fault and nil when the request is
+// acceptable.
+//
+// The reason is mandatory and length-bounded because it is the audit record of
+// why a support agent entered someone's account. A ticket ID is bounded whenever
+// it is supplied, whether or not policy requires one, so an optional field
+// cannot be used to smuggle unbounded text into the trail.
 func ValidateImpersonateRequest(req ImpersonateRequest, pol ImpersonationPolicy) error {
 	reason := strings.TrimSpace(req.Reason)
 	if len(reason) < 10 {

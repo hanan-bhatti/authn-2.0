@@ -1,16 +1,15 @@
-// Copyright (c) 2026 Hanan Bhatti
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+/*
+ * Authn Platform — Enterprise Identity Engine
+ * File: apps/auth-engine/internal/session/handler.go
+ * Tier: HTTP Controller Layer / Fiber Endpoints
+ *
+ * Description: Fiber handlers for the client session API (/v1/client/sessions), the token
+ *              refresh endpoint, and the tenant-admin session endpoints. Resolves the
+ *              calling identity from middleware locals or the bearer token, and maps the
+ *              session sentinels onto the canonical error envelope.
+ *
+ * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
+ */
 
 package session
 
@@ -23,45 +22,56 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// Refresh-token failure codes that predate internal/httperr and are already part
-// of the published wire contract (the SDK branches on them), but have no constant
-// in httperr. They are spelled out here rather than renamed to an existing code,
-// because renaming one is a breaking API change.
+// Refresh-failure codes specific to this endpoint. They are part of the published
+// wire contract the SDK branches on, so renaming one is a breaking API change.
 const (
+	// codeSessionCompromised marks a refusal caused by refresh-token reuse.
 	codeSessionCompromised httperr.Code = "session_compromised"
-	codeSessionRevoked     httperr.Code = "session_revoked"
+	// codeSessionRevoked marks a refusal caused by an explicitly revoked session.
+	codeSessionRevoked httperr.Code = "session_revoked"
 )
 
 // msgSessionAuthRequired is the single 401 message used by every client session
-// endpoint. It is deliberately identical across handlers so that a caller cannot
-// distinguish "no token" from "token rejected".
+// endpoint. It is identical across handlers so a caller cannot distinguish
+// "no token supplied" from "token rejected".
 const msgSessionAuthRequired = "session authentication required: missing or invalid access token"
 
+// Handler exposes the session service over HTTP.
 type Handler struct {
+	// svc carries out the session operations behind each route.
 	svc *Service
 }
 
+// NewHandler constructs a session Handler over svc.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// RegisterRoutes mounts the client, refresh and admin session routes.
+//
+// pkMiddleware guards the client tier and resolves the tenant; adminMiddleware
+// guards the admin tier, whose routes act on an arbitrary user ID from the path
+// and therefore must never be reachable from a client session.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware fiber.Handler) {
-	// Client endpoints (session authenticated or publishable key)
 	client := app.Group("/v1/client/sessions", pkMiddleware)
 	client.Get("/", h.ListSessions)
 	client.Post("/revoke", h.RevokeSession)
 	client.Post("/revoke-others", h.RevokeOtherSessions)
 	client.Post("/revoke-all", h.RevokeAllSessions)
 
-	// Token Refresh endpoint
 	app.Post("/v1/client/auth/refresh", pkMiddleware, h.RefreshTokens)
 
-	// Admin endpoints (secret key or console JWT)
 	admin := app.Group("/v1/admin/users/:user_id/sessions", adminMiddleware)
 	admin.Get("/", h.AdminListUserSessions)
 	admin.Post("/revoke-all", h.AdminRevokeAllUserSessions)
 }
 
+// getUserIDAndSessionID resolves the calling user and session, preferring the
+// locals set by authenticating middleware and falling back to the bearer token.
+//
+// The fallback verifies the token's signature before trusting any claim, so an
+// unsigned or tampered token contributes nothing. Either value may come back
+// empty; callers treat an empty user ID as unauthenticated.
 func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 	var userID string
 	var sessionID string
@@ -80,7 +90,6 @@ func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 		sessionID = val.(string)
 	}
 
-	// If userID or sessionID is missing, try parsing Authorization Bearer <jwt>
 	if userID == "" || sessionID == "" {
 		authHeader := c.Get("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
@@ -100,6 +109,8 @@ func (h *Handler) getUserIDAndSessionID(c *fiber.Ctx) (string, string) {
 	return userID, sessionID
 }
 
+// ListSessions returns the caller's active sessions, flagging the current one.
+// Answers 401 when the caller is unauthenticated.
 func (h *Handler) ListSessions(c *fiber.Ctx) error {
 	userID, currentSessionID := h.getUserIDAndSessionID(c)
 	if userID == "" {
@@ -114,6 +125,9 @@ func (h *Handler) ListSessions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"sessions": sessions})
 }
 
+// RevokeSession revokes one of the caller's own sessions, named in the body.
+// Answers 400 without a session_id, 401 when unauthenticated, 404 when the
+// session does not exist, and 403 when it belongs to another user.
 func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 	var req struct {
 		SessionID string `json:"session_id"`
@@ -141,6 +155,8 @@ func (h *Handler) RevokeSession(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "session revoked", "session_id": req.SessionID})
 }
 
+// RevokeOtherSessions revokes all of the caller's sessions except the current
+// one and reports how many were revoked. Answers 401 when unauthenticated.
 func (h *Handler) RevokeOtherSessions(c *fiber.Ctx) error {
 	userID, currentSessionID := h.getUserIDAndSessionID(c)
 	if userID == "" {
@@ -155,6 +171,9 @@ func (h *Handler) RevokeOtherSessions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "all other sessions revoked", "count": count})
 }
 
+// RevokeAllSessions revokes every session belonging to the caller, the current
+// one included, and reports how many were revoked. Answers 401 when
+// unauthenticated.
 func (h *Handler) RevokeAllSessions(c *fiber.Ctx) error {
 	userID, _ := h.getUserIDAndSessionID(c)
 	if userID == "" {
@@ -169,6 +188,13 @@ func (h *Handler) RevokeAllSessions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "all sessions revoked", "count": count})
 }
 
+// RefreshTokens exchanges a refresh token, taken from the body or the
+// authn_refresh_token cookie, for a new token pair.
+//
+// Answers 400 when no token was supplied and 401 for every rejection: reuse,
+// revocation, expiry, or an unrecognised token. Each message is the sentinel's
+// own package-constant text rather than err.Error(), so a wrapped driver error
+// reaching this path cannot be echoed back to the caller.
 func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
@@ -198,8 +224,6 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 
 	res, err := h.svc.RotateRefreshToken(c.UserContext(), tenantID, environment, rawToken, clientIP, userAgent)
 	if err != nil {
-		// Each message is the sentinel's own package-constant text, not err.Error(),
-		// so a wrapped driver error reaching this path cannot be echoed back.
 		if errors.Is(err, ErrSessionCompromised) {
 			return httperr.Unauthorized(c, codeSessionCompromised, ErrSessionCompromised.Error())
 		}
@@ -218,6 +242,8 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// AdminListUserSessions returns the active sessions of the user named in the
+// path. No session is marked current, because the admin caller is not one of them.
 func (h *Handler) AdminListUserSessions(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
 
@@ -229,6 +255,8 @@ func (h *Handler) AdminListUserSessions(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"sessions": sessions})
 }
 
+// AdminRevokeAllUserSessions revokes every session of the user named in the path
+// and reports how many were revoked.
 func (h *Handler) AdminRevokeAllUserSessions(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
 

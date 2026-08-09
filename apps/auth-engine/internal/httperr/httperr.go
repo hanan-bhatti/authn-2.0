@@ -67,31 +67,32 @@ const (
 //
 //	{"error": "human readable prose", "code": "machine_readable_code"}
 //
-// `error` is the human-facing message and `code` is what clients branch on.
-// Note the two are NOT interchangeable — a handful of legacy sites had these
-// inverted (code in `error`, prose in `message`), which is precisely why the
-// SDK had to substring-match across both fields.
+// The two fields are not interchangeable: `error` is prose meant for a person
+// and may be reworded at any time, while `code` is a stable identifier clients
+// branch on. Swapping them forces consumers to substring-match across both.
 type Envelope struct {
+	// Error is the human-readable message. Never contains internal detail.
 	Error string `json:"error"`
-	Code  string `json:"code"`
+	// Code is the stable machine-readable identifier. Part of the wire contract.
+	Code string `json:"code"`
 }
 
 // Send writes a canonical error response with the given HTTP status.
 //
 // msg must be safe to show a caller: no wrapped Go error text, no database
-// driver output, no token parse detail. When you are holding an error value,
-// use SendInternal (5xx) or Sendf (4xx with a sanitized message) instead.
+// driver output, no token parse detail. When holding an error value, use
+// SendInternal for 5xx, or one of the 4xx helpers with a sanitized message.
 func Send(c *fiber.Ctx, status int, code Code, msg string) error {
 	return c.Status(status).JSON(Envelope{Error: msg, Code: string(code)})
 }
 
 // SendInternal logs err server-side and returns a generic 500 to the caller.
 //
-// This is the one function that must be used whenever an unexpected error
-// reaches a handler. Roughly 160 sites previously passed err.Error() straight
-// into the response body, leaking ent/SQL driver text — including table and
-// column names — to unauthenticated callers. op should identify the operation
-// ("auth.login", "org.create") so the log line is actionable.
+// Use it for every unexpected error that reaches a handler. Returning err
+// directly would disclose ent and SQL driver text — including table and column
+// names — to unauthenticated callers, so the detail stays in the log and the
+// client receives a fixed message. op names the operation ("auth.login",
+// "org.create") so the log line is actionable.
 func SendInternal(c *fiber.Ctx, op string, err error) error {
 	if err != nil {
 		log.Printf("[error] %s %s %s: %v", c.Method(), c.Path(), op, err)
@@ -100,40 +101,50 @@ func SendInternal(c *fiber.Ctx, op string, err error) error {
 		"an internal error occurred while processing this request")
 }
 
-// Unauthorized, Forbidden, NotFound, BadRequest and Conflict are the common
-// 4xx shortcuts. Each takes an explicit client-safe message so call sites keep
-// their specific wording without hand-building a fiber.Map.
-
+// Unauthorized answers 401: the caller is unauthenticated, or presented a
+// credential that is missing, malformed or expired.
 func Unauthorized(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusUnauthorized, code, msg)
 }
 
+// Forbidden answers 403: the caller is authenticated but not permitted to
+// perform this operation. Re-authenticating will not help.
 func Forbidden(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusForbidden, code, msg)
 }
 
+// NotFound answers 404: the addressed resource does not exist, or the caller
+// may not know whether it does.
 func NotFound(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusNotFound, code, msg)
 }
 
+// BadRequest answers 400: the request itself is malformed and will fail
+// identically if retried unchanged.
 func BadRequest(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusBadRequest, code, msg)
 }
 
+// Conflict answers 409: the request is well formed but collides with existing
+// state, such as an email address already registered.
 func Conflict(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusConflict, code, msg)
 }
 
+// UnprocessableEntity answers 422: the request parsed correctly but a value
+// failed a semantic rule, such as a password below the configured policy.
 func UnprocessableEntity(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusUnprocessableEntity, code, msg)
 }
 
+// TooManyRequests answers 429: the caller exceeded a rate limit and should
+// retry after the period given in the Retry-After header.
 func TooManyRequests(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusTooManyRequests, code, msg)
 }
 
-// InvalidBody is the single most repeated error in the codebase — every handler
-// that calls c.BodyParser needs it.
+// InvalidBody answers 400 for a request body that is not valid JSON. Every
+// handler calling c.BodyParser needs this exact response, so it is spelled once.
 func InvalidBody(c *fiber.Ctx) error {
 	return BadRequest(c, CodeInvalidRequestBody, "request body is not valid JSON")
 }

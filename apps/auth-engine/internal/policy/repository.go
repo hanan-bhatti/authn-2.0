@@ -3,8 +3,14 @@
  * File: apps/auth-engine/internal/policy/repository.go
  * Tier: Internal Feature Package / Policy Repository
  *
- * Description: Data access layer for tenant password policies. Persists policy configurations
- *              in the Tenant ORM entity JSON field.
+ * Persistence for tenant policies, stored as JSON columns on the tenant record.
+ *
+ * Reads never fail the caller: a missing tenant, an absent column, or a value
+ * that no longer parses all yield the documented defaults. A policy lookup sits
+ * on the login and recovery paths, and a policy the engine cannot read must
+ * degrade to the safe default rather than take authentication down with it.
+ * Writes are the opposite — they validate, clamp, and report failure — because
+ * that is the one moment a bad policy can still be refused.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -20,26 +26,39 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
-// Repository handles database queries and updates for password policies.
+// policyPoolEnvironment is the environment passed when selecting a connection
+// pool for policy queries.
+//
+// Policies live on the tenant record and are environment-independent, so this
+// argument only picks a pool. It matters solely for enterprise deployments that
+// register a dedicated physical pool per environment; every other deployment
+// resolves to the default client whatever is passed here.
+const policyPoolEnvironment = "test"
+
+// Repository reads and writes tenant policies.
 type Repository struct {
+	// factory produces the ORM client for the tenant being read or written.
 	factory *clientfactory.ClientFactory
 }
 
-// NewRepository constructs a new Policy Repository instance.
+// NewRepository returns a policy repository backed by the given client factory.
 func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
 }
 
-// GetPasswordPolicy retrieves the tenant's password policy, defaulting if unconfigured.
+// GetPasswordPolicy returns the tenant's password policy, or
+// DefaultPasswordPolicy when the tenant is missing, has none stored, or has one
+// that no longer parses. Stored values are floored and capped on the way out, so
+// a policy weakened below the engine's own minimum cannot take effect. The error
+// is always nil.
 func (r *Repository) GetPasswordPolicy(ctx context.Context, tenantID string) (PasswordPolicy, error) {
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
 	if err != nil {
-		// If tenant is missing, return default policy
 		return DefaultPasswordPolicy(), nil
 	}
 
-	if t.PasswordPolicy == nil || len(t.PasswordPolicy) == 0 {
+	if len(t.PasswordPolicy) == 0 {
 		return DefaultPasswordPolicy(), nil
 	}
 
@@ -66,11 +85,13 @@ func (r *Repository) GetPasswordPolicy(ctx context.Context, tenantID string) (Pa
 	return p, nil
 }
 
-// UpdatePasswordPolicy updates and persists a tenant's password policy.
+// UpdatePasswordPolicy clamps the policy into range, persists it, and returns
+// what was stored, creating the tenant record if it does not yet exist. Lengths
+// outside the permitted range and an unrecognised enforcement mode are corrected
+// rather than rejected. It returns an error only when the write fails.
 func (r *Repository) UpdatePasswordPolicy(ctx context.Context, tenantID string, p PasswordPolicy) (PasswordPolicy, error) {
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 
-	// Validate min/max boundaries
 	if p.MinLength < 6 {
 		p.MinLength = 6
 	}
@@ -85,7 +106,6 @@ func (r *Repository) UpdatePasswordPolicy(ctx context.Context, tenantID string, 
 	data, _ := json.Marshal(p)
 	_ = json.Unmarshal(data, &policyMap)
 
-	// Ensure tenant exists
 	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(ctx)
 	if err != nil {
 		return p, fmt.Errorf("failed checking tenant existence: %w", err)
@@ -113,15 +133,18 @@ func (r *Repository) UpdatePasswordPolicy(ctx context.Context, tenantID string, 
 	return p, nil
 }
 
-// GetSecurityPolicy retrieves the tenant's security policy, defaulting if unconfigured.
+// GetSecurityPolicy returns the tenant's security policy, or
+// DefaultSecurityPolicy when the tenant is missing, has none stored, or has one
+// that no longer parses. Unrecognised enum values are corrected to their
+// defaults. The error is always nil.
 func (r *Repository) GetSecurityPolicy(ctx context.Context, tenantID string) (SecurityPolicy, error) {
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
 	if err != nil {
 		return DefaultSecurityPolicy(), nil
 	}
 
-	if t.SecurityPolicy == nil || len(t.SecurityPolicy) == 0 {
+	if len(t.SecurityPolicy) == 0 {
 		return DefaultSecurityPolicy(), nil
 	}
 
@@ -145,9 +168,11 @@ func (r *Repository) GetSecurityPolicy(ctx context.Context, tenantID string) (Se
 	return sp, nil
 }
 
-// UpdateSecurityPolicy updates and persists a tenant's security policy.
+// UpdateSecurityPolicy corrects unrecognised enum values, persists the policy,
+// and returns what was stored, creating the tenant record if it does not yet
+// exist. It returns an error only when the write fails.
 func (r *Repository) UpdateSecurityPolicy(ctx context.Context, tenantID string, sp SecurityPolicy) (SecurityPolicy, error) {
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 
 	if sp.EmailVerificationMode != "hard" && sp.EmailVerificationMode != "soft" {
 		sp.EmailVerificationMode = "soft"
@@ -187,15 +212,17 @@ func (r *Repository) UpdateSecurityPolicy(ctx context.Context, tenantID string, 
 	return sp, nil
 }
 
-// GetRecoveryPolicy retrieves the tenant's account recovery policy, defaulting if unconfigured.
+// GetRecoveryPolicy returns the tenant's recovery policy, or
+// DefaultRecoveryPolicy when the tenant is missing, has none stored, or has one
+// that no longer parses. The error is always nil.
 func (r *Repository) GetRecoveryPolicy(ctx context.Context, tenantID string) (RecoveryPolicy, error) {
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
 	if err != nil {
 		return DefaultRecoveryPolicy(), nil
 	}
 
-	if t.RecoveryPolicy == nil || len(t.RecoveryPolicy) == 0 {
+	if len(t.RecoveryPolicy) == 0 {
 		return DefaultRecoveryPolicy(), nil
 	}
 
@@ -212,14 +239,20 @@ func (r *Repository) GetRecoveryPolicy(ctx context.Context, tenantID string) (Re
 	return rp, nil
 }
 
-// UpdateRecoveryPolicy validates and persists a tenant's account recovery policy.
+// UpdateRecoveryPolicy validates the policy in full before persisting it and
+// returns what was stored, creating the tenant record if it does not yet exist.
+//
+// Unlike the password and security policies, nothing here is clamped: a recovery
+// policy's fields constrain each other — schedule ordering, guardian bounds,
+// method toggles — so an out-of-range value is refused rather than silently
+// adjusted into a policy the caller did not ask for. It returns the validation
+// error or the write error.
 func (r *Repository) UpdateRecoveryPolicy(ctx context.Context, tenantID string, rp RecoveryPolicy) (RecoveryPolicy, error) {
-	// Execute strict 9-rule policy validation before saving
 	if err := ValidateRecoveryPolicy(rp); err != nil {
 		return rp, fmt.Errorf("invalid recovery policy: %w", err)
 	}
 
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 
 	var policyMap map[string]interface{}
 	data, _ := json.Marshal(rp)
@@ -252,9 +285,16 @@ func (r *Repository) UpdateRecoveryPolicy(ctx context.Context, tenantID string, 
 	return rp, nil
 }
 
-// GetImpersonationPolicy retrieves the tenant's impersonation policy, defaulting if unconfigured.
+// GetImpersonationPolicy returns the tenant's impersonation policy, nested under
+// the security policy column, or DefaultImpersonationPolicy when the tenant is
+// missing, the key is absent, the value does not parse, or the stored policy no
+// longer validates.
+//
+// Re-validating on read matters: bounds can tighten between releases, and a
+// policy stored under looser rules must not keep granting a longer session than
+// the current rules permit. The error is always nil.
 func (r *Repository) GetImpersonationPolicy(ctx context.Context, tenantID string) (ImpersonationPolicy, error) {
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
 	if err != nil || t == nil || t.SecurityPolicy == nil {
 		return DefaultImpersonationPolicy(), nil
@@ -282,13 +322,18 @@ func (r *Repository) GetImpersonationPolicy(ctx context.Context, tenantID string
 	return ip, nil
 }
 
-// UpdateImpersonationPolicy validates and persists a tenant's impersonation policy.
+// UpdateImpersonationPolicy validates the policy and merges it into the tenant's
+// security policy column, preserving the column's other keys, and returns what
+// was stored. It returns the validation error, an error when the tenant does not
+// exist, or the write error. Unlike the other policies it does not create a
+// tenant: an impersonation policy for a tenant that does not exist governs
+// nothing.
 func (r *Repository) UpdateImpersonationPolicy(ctx context.Context, tenantID string, ip ImpersonationPolicy) (ImpersonationPolicy, error) {
 	if err := ValidateImpersonationPolicy(ip); err != nil {
 		return ip, fmt.Errorf("invalid impersonation policy: %w", err)
 	}
 
-	client := r.factory.GetClient(ctx, tenantID, "test")
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
 	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
 	if err != nil {
 		return ip, fmt.Errorf("failed fetching tenant: %w", err)

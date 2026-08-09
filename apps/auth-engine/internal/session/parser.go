@@ -1,18 +1,14 @@
-// Copyright (c) 2026 Hanan Bhatti
-// This file is part of Authn.
-//
-// Authn is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Authn is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with Authn.  If not, see <https://www.gnu.org/licenses/>.
+/*
+ * Authn Platform — Enterprise Identity Engine
+ * File: apps/auth-engine/internal/session/parser.go
+ * Tier: Session Management Layer / User-Agent Parsing
+ *
+ * Description: Best-effort user-agent parsing that turns the raw header recorded on a
+ *              session into the browser, operating system and form factor shown in the
+ *              session list, so a user can recognise their own devices.
+ *
+ * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
+ */
 
 package session
 
@@ -20,15 +16,23 @@ import (
 	"strings"
 )
 
-// DeviceInfo represents parsed user agent & location details.
+// DeviceInfo is the human-readable description of the client behind a session.
 type DeviceInfo struct {
+	// Browser is the detected browser family, or "Browser" when unrecognised.
 	Browser string `json:"browser"`
-	OS      string `json:"os"`
-	Device  string `json:"device"`
-	Label   string `json:"label"` // e.g. "Chrome 127 on macOS"
+	// OS is the detected operating system, or "Unknown OS" when unrecognised.
+	OS string `json:"os"`
+	// Device is the form factor: "Desktop", "Mobile" or "Tablet".
+	Device string `json:"device"`
+	// Label is the display string combining browser and OS, e.g. "Chrome on macOS".
+	Label string `json:"label"`
 }
 
-// ParseUserAgent extracts human-readable browser, OS, and device type from User-Agent string.
+// ParseUserAgent derives browser, operating system and form factor from a
+// User-Agent header, defaulting to a fully unknown device for an empty string.
+//
+// It is presentational only: user agents are client-supplied and trivially
+// spoofed, so nothing may branch on the result for a security decision.
 func ParseUserAgent(ua string) DeviceInfo {
 	if ua == "" {
 		return DeviceInfo{Browser: "Unknown", OS: "Unknown", Device: "Desktop", Label: "Unknown Device"}
@@ -38,7 +42,6 @@ func ParseUserAgent(ua string) DeviceInfo {
 	os := "Unknown OS"
 	device := "Desktop"
 
-	// Simple OS detection
 	switch {
 	case strings.Contains(ua, "Macintosh") || strings.Contains(ua, "Mac OS X"):
 		os = "macOS"
@@ -57,7 +60,8 @@ func ParseUserAgent(ua string) DeviceInfo {
 		os = "Linux"
 	}
 
-	// Simple Browser detection
+	// Order matters: Edge and Chrome both advertise "Chrome/", and Safari's token
+	// appears in Chrome's user agent too, so the more specific match comes first.
 	switch {
 	case strings.Contains(ua, "Edg/"):
 		browser = "Edge"

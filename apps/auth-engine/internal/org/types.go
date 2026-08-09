@@ -3,8 +3,10 @@
  * File: apps/auth-engine/internal/org/types.go
  * Tier: Business Logic Layer / DTOs & Validation
  *
- * Description: Data transfer objects, request/response models, validation rules,
- *              and limit bounds for B2B Organizations & Team Member Invitations (FR-15).
+ * Description: Request and response payloads, sentinel errors and the validation bounds
+ *              they enforce for B2B organizations and team member invitations (FR-15).
+ *              Each request type validates and normalises itself, so the service layer
+ *              works from trimmed, lowercased, in-range values.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -21,58 +23,105 @@ import (
 	"time"
 )
 
-// Validation Constants & Limit Bounds
+// Validation bounds for organization fields and listings.
 const (
-	MinOrgNameLength        = 2
-	MaxOrgNameLength        = 100
-	MinOrgSlugLength        = 2
-	MaxOrgSlugLength        = 50
-	MaxLogoURLLength        = 2048
-	MaxMetadataSizeBytes    = 10240 // 10 KB
-	DefaultPaginationLimit  = 20
-	MaxPaginationLimit      = 100
-	MinInvitationExpiryHrs  = 1   // 1 hour
-	MaxInvitationExpiryHrs  = 720 // 30 days
-	DefaultInviteExpiryHrs  = 168 // 7 days
+	// MinOrgNameLength is the shortest accepted organization name.
+	MinOrgNameLength = 2
+	// MaxOrgNameLength is the longest accepted organization name.
+	MaxOrgNameLength = 100
+	// MinOrgSlugLength is the shortest accepted slug.
+	MinOrgSlugLength = 2
+	// MaxOrgSlugLength is the longest accepted slug.
+	MaxOrgSlugLength = 50
+	// MaxLogoURLLength is the longest accepted logo URL.
+	MaxLogoURLLength = 2048
+	// MaxMetadataSizeBytes caps an organization's serialized JSON metadata,
+	// bounding how much caller-controlled data one row can hold.
+	MaxMetadataSizeBytes = 10240
+	// DefaultPaginationLimit is the page size used when the caller names none.
+	DefaultPaginationLimit = 20
+	// MaxPaginationLimit is the largest page a caller may request. Larger values
+	// are clamped rather than rejected.
+	MaxPaginationLimit = 100
+	// MinInvitationExpiryHrs is the shortest custom invitation lifetime, 1 hour.
+	MinInvitationExpiryHrs = 1
+	// MaxInvitationExpiryHrs is the longest custom invitation lifetime, 30 days.
+	MaxInvitationExpiryHrs = 720
+	// DefaultInviteExpiryHrs is the invitation lifetime when the caller names
+	// none, 7 days. It mirrors the InvitationTTL setting, which this package
+	// cannot yet read because its constructor takes no *config.Config.
+	DefaultInviteExpiryHrs = 168
 )
 
 var (
-	// SlugRegex permits lowercase alphanumeric characters and single hyphens.
+	// SlugRegex permits lowercase alphanumeric segments joined by single hyphens.
 	SlugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 )
 
-// Common Sentinel Errors
+// Sentinel errors for the organization surface. Handlers match on these with
+// errors.Is to choose a status code, so their identity is what matters, not their
+// text. Matching on identity rather than message substrings also keeps a wrapped
+// database error from being mistaken for one of them.
 var (
-	ErrOrgNotFound            = errors.New("organization not found")
-	ErrOrgSlugExists          = errors.New("organization slug already exists in this tenant")
-	ErrInvalidOrgName         = fmt.Errorf("organization name must be between %d and %d characters", MinOrgNameLength, MaxOrgNameLength)
-	ErrInvalidOrgSlug         = fmt.Errorf("organization slug must be %d-%d lowercase alphanumeric characters or hyphens", MinOrgSlugLength, MaxOrgSlugLength)
-	ErrInvalidLogoURL         = errors.New("invalid logo URL format")
-	ErrMetadataTooLarge       = fmt.Errorf("metadata exceeds maximum allowed size of %d bytes", MaxMetadataSizeBytes)
-	ErrMemberAlreadyExists    = errors.New("user is already a member of this organization")
-	ErrMemberNotFound         = errors.New("organization membership not found")
-	ErrInvalidRole            = errors.New("invalid role ID or slug specified")
-	ErrInvitationNotFound     = errors.New("invitation not found")
-	ErrInvitationExpired      = errors.New("invitation has expired")
-	ErrInvitationAccepted     = errors.New("invitation has already been accepted")
-	ErrInvalidEmail           = errors.New("invalid email address format")
-	ErrDomainNotAllowed       = errors.New("email domain is not permitted by tenant organization policy")
-	ErrMaxMembersExceeded     = errors.New("organization has reached the maximum allowed member count")
-	ErrMaxOrgsExceeded        = errors.New("tenant has reached the maximum allowed organizations limit")
+	// ErrOrgNotFound reports that no organization matches within the tenant.
+	ErrOrgNotFound = errors.New("organization not found")
+	// ErrOrgSlugExists reports a slug collision inside the tenant.
+	ErrOrgSlugExists = errors.New("organization slug already exists in this tenant")
+	// ErrInvalidOrgName reports a name outside the permitted length range.
+	ErrInvalidOrgName = fmt.Errorf("organization name must be between %d and %d characters", MinOrgNameLength, MaxOrgNameLength)
+	// ErrInvalidOrgSlug reports a slug of the wrong length or shape.
+	ErrInvalidOrgSlug = fmt.Errorf("organization slug must be %d-%d lowercase alphanumeric characters or hyphens", MinOrgSlugLength, MaxOrgSlugLength)
+	// ErrInvalidLogoURL reports a malformed or over-long logo URL.
+	ErrInvalidLogoURL = errors.New("invalid logo URL format")
+	// ErrMetadataTooLarge reports metadata whose serialized JSON exceeds the cap.
+	ErrMetadataTooLarge = fmt.Errorf("metadata exceeds maximum allowed size of %d bytes", MaxMetadataSizeBytes)
+	// ErrMemberAlreadyExists reports that the user already belongs to the org.
+	ErrMemberAlreadyExists = errors.New("user is already a member of this organization")
+	// ErrMemberNotFound reports that no membership links the user and the org.
+	ErrMemberNotFound = errors.New("organization membership not found")
+	// ErrInvalidRole reports a missing or unresolvable role ID or slug.
+	ErrInvalidRole = errors.New("invalid role ID or slug specified")
+	// ErrInvitationNotFound reports that no invitation matches.
+	ErrInvitationNotFound = errors.New("invitation not found")
+	// ErrInvitationExpired reports an invitation past its expiry.
+	ErrInvitationExpired = errors.New("invitation has expired")
+	// ErrInvitationAccepted reports an invitation already redeemed. Invitations
+	// are single-use.
+	ErrInvitationAccepted = errors.New("invitation has already been accepted")
+	// ErrInvalidEmail reports a malformed email address.
+	ErrInvalidEmail = errors.New("invalid email address format")
+	// ErrDomainNotAllowed reports an address barred by tenant organization policy.
+	ErrDomainNotAllowed = errors.New("email domain is not permitted by tenant organization policy")
+	// ErrMaxMembersExceeded reports that the organization is at its member cap.
+	ErrMaxMembersExceeded = errors.New("organization has reached the maximum allowed member count")
+	// ErrMaxOrgsExceeded reports that the tenant is at its organization cap.
+	ErrMaxOrgsExceeded = errors.New("tenant has reached the maximum allowed organizations limit")
+	// ErrInvalidInvitationToken reports a missing invitation token.
 	ErrInvalidInvitationToken = errors.New("invitation_token is required")
-	ErrForbidden              = errors.New("forbidden: insufficient permissions for this operation")
-	ErrNotAMember             = errors.New("forbidden: user is not a member of this organization")
+	// ErrForbidden reports a member who lacks the role the operation requires.
+	ErrForbidden = errors.New("forbidden: insufficient permissions for this operation")
+	// ErrNotAMember reports a caller with no membership in the organization.
+	ErrNotAMember = errors.New("forbidden: user is not a member of this organization")
 )
 
-// CreateOrgRequest represents the request payload to create a new organization.
+// CreateOrgRequest is the payload to create an organization.
 type CreateOrgRequest struct {
-	Name     string                 `json:"name"`
-	Slug     string                 `json:"slug,omitempty"`     // Optional, auto-derived if empty
-	LogoURL  string                 `json:"logo_url,omitempty"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// Slug is the URL-safe identifier. When empty it is derived from Name.
+	Slug string `json:"slug,omitempty"`
+	// LogoURL is an optional logo image URL.
+	LogoURL string `json:"logo_url,omitempty"`
+	// Metadata is an optional caller-defined attribute bag, capped at
+	// MaxMetadataSizeBytes once serialized.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// Validate checks constraints on CreateOrgRequest.
+// Validate normalises the request in place and reports the first bound it
+// violates: ErrInvalidOrgName, ErrInvalidOrgSlug or ErrInvalidLogoURL.
+//
+// Metadata size is not checked here, because it is bounded by a configurable
+// limit the service layer owns.
 func (r *CreateOrgRequest) Validate() error {
 	r.Name = strings.TrimSpace(r.Name)
 	if len(r.Name) < MinOrgNameLength || len(r.Name) > MaxOrgNameLength {
@@ -99,15 +148,25 @@ func (r *CreateOrgRequest) Validate() error {
 	return nil
 }
 
-// UpdateOrgRequest represents the request payload to update organization settings.
+// UpdateOrgRequest is the payload to change organization settings. A nil field is
+// left unchanged, which is why each is a pointer.
 type UpdateOrgRequest struct {
-	Name     *string                `json:"name,omitempty"`
-	Slug     *string                `json:"slug,omitempty"`
-	LogoURL  *string                `json:"logo_url,omitempty"`
+	// Name replaces the display name.
+	Name *string `json:"name,omitempty"`
+	// Slug replaces the URL-safe identifier, subject to tenant uniqueness.
+	Slug *string `json:"slug,omitempty"`
+	// LogoURL replaces the logo image URL.
+	LogoURL *string `json:"logo_url,omitempty"`
+	// Metadata replaces the attribute bag wholesale, capped at
+	// MaxMetadataSizeBytes once serialized.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// Validate checks constraints on UpdateOrgRequest.
+// Validate normalises the supplied fields in place and reports the first bound
+// they violate: ErrInvalidOrgName, ErrInvalidOrgSlug or ErrInvalidLogoURL.
+//
+// Metadata size is not checked here, because it is bounded by a configurable
+// limit the service layer owns.
 func (r *UpdateOrgRequest) Validate() error {
 	if r.Name != nil {
 		name := strings.TrimSpace(*r.Name)
@@ -139,13 +198,17 @@ func (r *UpdateOrgRequest) Validate() error {
 	return nil
 }
 
-// AddMemberRequest represents payload for adding/assigning a user to an organization directly.
+// AddMemberRequest is the payload to place a user in an organization directly,
+// without an invitation.
 type AddMemberRequest struct {
+	// UserID identifies the user to add.
 	UserID string `json:"user_id"`
+	// RoleID is the role to grant, given as a role ID or slug.
 	RoleID string `json:"role_id"`
 }
 
-// Validate checks constraints on AddMemberRequest.
+// Validate normalises the request in place and reports a missing user_id or
+// ErrInvalidRole for a missing role.
 func (r *AddMemberRequest) Validate() error {
 	r.UserID = strings.TrimSpace(r.UserID)
 	r.RoleID = strings.TrimSpace(r.RoleID)
@@ -158,12 +221,14 @@ func (r *AddMemberRequest) Validate() error {
 	return nil
 }
 
-// UpdateMemberRoleRequest represents payload to change a member's role in an organization.
+// UpdateMemberRoleRequest is the payload to change a member's role.
 type UpdateMemberRoleRequest struct {
+	// RoleID is the replacement role, given as a role ID or slug.
 	RoleID string `json:"role_id"`
 }
 
-// Validate checks constraints on UpdateMemberRoleRequest.
+// Validate normalises the request in place and returns ErrInvalidRole when no
+// role was given.
 func (r *UpdateMemberRoleRequest) Validate() error {
 	r.RoleID = strings.TrimSpace(r.RoleID)
 	if r.RoleID == "" {
@@ -172,14 +237,24 @@ func (r *UpdateMemberRoleRequest) Validate() error {
 	return nil
 }
 
-// CreateInvitationRequest represents request payload to send a team invitation email.
+// CreateInvitationRequest is the payload to invite someone to an organization.
 type CreateInvitationRequest struct {
-	Email      string `json:"email"`
-	RoleID     string `json:"role_id"`
-	ExpiresHrs int    `json:"expires_hrs,omitempty"` // Optional custom expiry in hours (default 168)
+	// Email is the address to invite.
+	Email string `json:"email"`
+	// RoleID is the role the invitee receives on acceptance.
+	RoleID string `json:"role_id"`
+	// ExpiresHrs is an optional custom lifetime in hours. Zero means
+	// DefaultInviteExpiryHrs.
+	ExpiresHrs int `json:"expires_hrs,omitempty"`
 }
 
-// Validate checks constraints on CreateInvitationRequest.
+// Validate normalises the request in place, applying the default expiry when
+// none was given.
+//
+// Returns ErrInvalidEmail, ErrInvalidRole, or an error naming the permitted
+// expiry range. An out-of-range expiry is rejected rather than clamped, so a
+// caller asking for a year-long invitation is told no instead of being silently
+// given a week.
 func (r *CreateInvitationRequest) Validate() error {
 	r.Email = strings.TrimSpace(strings.ToLower(r.Email))
 	if r.Email == "" {
@@ -203,12 +278,14 @@ func (r *CreateInvitationRequest) Validate() error {
 	return nil
 }
 
-// AcceptInvitationRequest represents payload to redeem an invitation token.
+// AcceptInvitationRequest is the payload to redeem an invitation token.
 type AcceptInvitationRequest struct {
+	// InvitationToken is the single-use token from the invitation email.
 	InvitationToken string `json:"invitation_token"`
 }
 
-// Validate checks constraints on AcceptInvitationRequest.
+// Validate normalises the request in place and returns
+// ErrInvalidInvitationToken when no token was given.
 func (r *AcceptInvitationRequest) Validate() error {
 	r.InvitationToken = strings.TrimSpace(r.InvitationToken)
 	if r.InvitationToken == "" {
@@ -217,37 +294,62 @@ func (r *AcceptInvitationRequest) Validate() error {
 	return nil
 }
 
-// OrgResponse represents serialized Organization payload.
+// OrgResponse is an organization as returned to callers.
 type OrgResponse struct {
-	ID        string                 `json:"id"`
-	TenantID  string                 `json:"tenant_id"`
-	Name      string                 `json:"name"`
-	Slug      string                 `json:"slug"`
-	LogoURL   string                 `json:"logo_url,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt time.Time              `json:"created_at"`
+	// ID is the organization identifier.
+	ID string `json:"id"`
+	// TenantID is the tenant that owns the organization.
+	TenantID string `json:"tenant_id"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// Slug is the URL-safe identifier, unique within the tenant.
+	Slug string `json:"slug"`
+	// LogoURL is the logo image URL, if set.
+	LogoURL string `json:"logo_url,omitempty"`
+	// Metadata is the caller-defined attribute bag.
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	// CreatedAt is when the organization was created.
+	CreatedAt time.Time `json:"created_at"`
 }
 
-// OrgMemberResponse represents serialized OrgMember payload.
+// OrgMemberResponse is a membership as returned to callers.
 type OrgMemberResponse struct {
-	ID               string    `json:"id"`
-	OrganizationID   string    `json:"organization_id"`
-	UserID           string    `json:"user_id"`
-	RoleID           string    `json:"role_id"`
-	AssignedByUserID string    `json:"assigned_by_user_id,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	// ID is the membership identifier.
+	ID string `json:"id"`
+	// OrganizationID is the organization the membership belongs to.
+	OrganizationID string `json:"organization_id"`
+	// UserID is the member.
+	UserID string `json:"user_id"`
+	// RoleID is the role held in this organization.
+	RoleID string `json:"role_id"`
+	// AssignedByUserID is whoever granted the membership, if recorded.
+	AssignedByUserID string `json:"assigned_by_user_id,omitempty"`
+	// CreatedAt is when the membership was created.
+	CreatedAt time.Time `json:"created_at"`
+	// UpdatedAt is when the membership was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// OrgInvitationResponse represents serialized OrgInvitation payload.
+// OrgInvitationResponse is an invitation as returned to callers.
 type OrgInvitationResponse struct {
-	ID              string    `json:"id"`
-	OrganizationID  string    `json:"organization_id"`
-	Email           string    `json:"email"`
-	RoleID          string    `json:"role_id"`
-	InvitedByUserID string    `json:"invited_by_user_id,omitempty"`
-	InvitationToken string    `json:"invitation_token,omitempty"` // Omitted in public responses unless explicitly requested
-	Status          string    `json:"status"`
-	ExpiresAt       time.Time `json:"expires_at"`
-	CreatedAt       time.Time `json:"created_at"`
+	// ID is the invitation identifier.
+	ID string `json:"id"`
+	// OrganizationID is the organization being joined.
+	OrganizationID string `json:"organization_id"`
+	// Email is the invited address.
+	Email string `json:"email"`
+	// RoleID is the role granted on acceptance.
+	RoleID string `json:"role_id"`
+	// InvitedByUserID is whoever sent the invitation, if recorded.
+	InvitedByUserID string `json:"invited_by_user_id,omitempty"`
+	// InvitationToken is the single-use redemption secret. It is populated only
+	// for the caller who created the invitation and omitted from listings, so a
+	// member who can list invitations cannot redeem someone else's.
+	InvitationToken string `json:"invitation_token,omitempty"`
+	// Status is the lifecycle state: pending, accepted or expired.
+	Status string `json:"status"`
+	// ExpiresAt is when the invitation stops being redeemable.
+	ExpiresAt time.Time `json:"expires_at"`
+	// CreatedAt is when the invitation was created.
+	CreatedAt time.Time `json:"created_at"`
 }

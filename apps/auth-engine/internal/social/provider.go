@@ -113,21 +113,30 @@ type ProviderSetup struct {
 // ProviderConfig holds the per-provider settings stored in Tenant.social_providers.
 // This is the shape of each value in the JSON map.
 type ProviderConfig struct {
-	Enabled                bool   `json:"enabled"`
-	ClientID               string `json:"client_id"`
-	ClientSecretEncrypted  string `json:"client_secret_encrypted"`  // AES-256-GCM ciphertext
+	// Enabled reports whether the tenant has switched this provider on.
+	Enabled bool `json:"enabled"`
+	// ClientID is the provider-issued public client identifier.
+	ClientID string `json:"client_id"`
+	// ClientSecretEncrypted is the AES-256-GCM ciphertext of the client secret.
+	// The plaintext is never stored and never leaves the service layer.
+	ClientSecretEncrypted string `json:"client_secret_encrypted"`
 }
 
 // --------- Validation ---------
 
-// ErrInvalidClientCredentials is returned when client_id or client_secret
-// fail format validation for a specific provider.
+// ErrInvalidClientCredentials reports a client_id or client_secret that fails
+// the format rules of a specific provider.
 type ErrInvalidClientCredentials struct {
+	// Provider is the provider the credential was rejected for.
 	Provider string
-	Field    string
-	Reason   string
+	// Field names the offending credential, "client_id" or "client_secret".
+	Field string
+	// Reason is client-safe prose describing the expected format.
+	Reason string
 }
 
+// Error renders the failure as "[provider] invalid field: reason". Every part
+// is authored here, so the result is safe to return to an API caller.
 func (e *ErrInvalidClientCredentials) Error() string {
 	return fmt.Sprintf("[%s] invalid %s: %s", e.Provider, e.Field, e.Reason)
 }

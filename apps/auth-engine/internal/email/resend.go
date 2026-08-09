@@ -3,7 +3,7 @@
  * File: apps/auth-engine/internal/email/resend.go
  * Tier: Internal Service Package / Email Drivers
  *
- * Description: Resend EmailProvider implementation using Resend v1 REST API.
+ * Delivery through the Resend v1 REST API.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -17,42 +17,64 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 )
 
-// ResendProvider implements EmailProvider interface for Resend API.
+// resendSendEndpoint is the Resend send-message resource.
+const resendSendEndpoint = "https://api.resend.com/emails"
+
+// ResendProvider delivers mail through Resend.
 type ResendProvider struct {
-	apiKey      string
+	// apiKey authenticates as a Bearer token.
+	apiKey string
+	// fromAddress is the sender; Resend requires its domain to be verified on
+	// the account.
 	fromAddress string
-	httpClient  *http.Client
+	// httpClient is reused across sends so connections are pooled rather than
+	// renegotiated per message.
+	httpClient *http.Client
 }
 
-// NewResendProvider constructs a new ResendProvider.
+// NewResendProvider constructs a Resend-backed provider.
 func NewResendProvider(apiKey string, fromAddress string) *ResendProvider {
 	return &ResendProvider{
 		apiKey:      apiKey,
 		fromAddress: fromAddress,
-		httpClient:  &http.Client{Timeout: 10 * time.Second},
+		httpClient:  &http.Client{Timeout: providerHTTPTimeout},
 	}
 }
 
+// resendSendRequest is the send-message request body.
 type resendSendRequest struct {
-	From    string `json:"from"`
-	To      []string `json:"to"`
+	// From is the verified sender address.
+	From string `json:"from"`
+	// To is the recipient list; this driver always sends to exactly one.
+	To []string `json:"to"`
+	// Subject is the message subject.
 	Subject string `json:"subject"`
-	HTML    string `json:"html"`
-	Text    string `json:"text,omitempty"`
+	// HTML is the HTML body.
+	HTML string `json:"html"`
+	// Text is the plain-text alternative, omitted when empty.
+	Text string `json:"text,omitempty"`
 }
 
+// resendSendResponse is the send-message response body.
 type resendSendResponse struct {
-	ID    string `json:"id"`
+	// ID identifies the accepted message.
+	ID string `json:"id"`
+	// Error is populated on a rejection reported in the body rather than by
+	// status code.
 	Error *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
 	} `json:"error,omitempty"`
 }
 
-// Send transmits an email using Resend HTTP API.
+// Send delivers one message through Resend.
+//
+// Returns an error when the API key is unset, the request cannot be built or
+// executed, the API answers 4xx or 5xx, or the response body reports an error
+// alongside a success status. The body is checked as well as the status because
+// a 200 carrying an error object still means the message was not sent.
 func (p *ResendProvider) Send(ctx context.Context, to string, subject string, htmlBody string, textBody string) error {
 	if p.apiKey == "" {
 		return fmt.Errorf("resend API key is not configured")
@@ -71,7 +93,7 @@ func (p *ResendProvider) Send(ctx context.Context, to string, subject string, ht
 		return fmt.Errorf("failed marshaling resend payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.resend.com/emails", bytes.NewBuffer(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", resendSendEndpoint, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed creating resend HTTP request: %w", err)
 	}
@@ -91,9 +113,11 @@ func (p *ResendProvider) Send(ctx context.Context, to string, subject string, ht
 		return fmt.Errorf("resend API error (%d): %s", resp.StatusCode, string(respBytes))
 	}
 
-	var resres resendSendResponse
-	if err := json.Unmarshal(respBytes, &resres); err == nil && resres.Error != nil {
-		return fmt.Errorf("resend API error: %s", resres.Error.Message)
+	// An unparseable body on a success status is treated as success: the
+	// message was accepted, and only a well-formed error object contradicts it.
+	var parsed resendSendResponse
+	if err := json.Unmarshal(respBytes, &parsed); err == nil && parsed.Error != nil {
+		return fmt.Errorf("resend API error: %s", parsed.Error.Message)
 	}
 
 	return nil

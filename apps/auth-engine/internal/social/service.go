@@ -3,9 +3,11 @@
  * File: apps/auth-engine/internal/social/service.go
  * Tier: Social Identity Provider Layer
  *
- * Description: Orchestration layer for social OAuth2 flows — authorize initiation,
- *              callback handling (find/create/link user), setup guide generation,
- *              and provider config management.
+ * Description: Orchestration for social OAuth2 sign-in — starting the provider
+ *              round trip behind a single-use CSRF state, redeeming the
+ *              callback into a linked, created or matched user, issuing the
+ *              engine's own access token, and managing per-tenant provider
+ *              credentials and their setup guidance.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -26,38 +28,62 @@ import (
 )
 
 var (
-	ErrProviderNotEnabled    = errors.New("social provider not enabled for this tenant")
+	// ErrProviderNotEnabled reports a provider configured but switched off.
+	ErrProviderNotEnabled = errors.New("social provider not enabled for this tenant")
+	// ErrProviderNotConfigured reports a provider with no credentials on file.
 	ErrProviderNotConfigured = errors.New("social provider not configured for this tenant")
-	ErrEmailConflict         = errors.New("an account with this email already exists; sign in with your original method then link providers in account settings")
-	ErrEmailRequired         = errors.New("provider did not return an email address; cannot create account")
-	ErrProviderAuthFailed    = errors.New("social provider authentication failed")
-	ErrRedirectNotAllowed    = errors.New("post_callback_redirect is not an authorized redirect target for this application")
+	// ErrEmailConflict reports an address already held by another account.
+	ErrEmailConflict = errors.New("an account with this email already exists; sign in with your original method then link providers in account settings")
+	// ErrEmailRequired reports a provider profile with no email address, which
+	// leaves nothing to identify or create an account with.
+	ErrEmailRequired = errors.New("provider did not return an email address; cannot create account")
+	// ErrProviderAuthFailed reports a failed authentication at the provider.
+	ErrProviderAuthFailed = errors.New("social provider authentication failed")
+	// ErrRedirectNotAllowed reports a post-callback destination outside the
+	// initiating application's registered redirect URIs.
+	ErrRedirectNotAllowed = errors.New("post_callback_redirect is not an authorized redirect target for this application")
 )
 
-// validatePostCallbackRedirect checks a caller-supplied post-callback destination
-// against the initiating Application's registered exact_redirect_uris.
+// Service orchestrates social sign-in on top of the repository and provider
+// drivers.
+type Service struct {
+	// repo is the storage layer for state, identities and provider credentials.
+	repo *Repository
+	// cfg supplies the callback URL and the token signing key.
+	cfg *config.Config
+}
+
+// NewService constructs a Service.
+func NewService(repo *Repository, cfg *config.Config) *Service {
+	return &Service{repo: repo, cfg: cfg}
+}
+
+// validatePostCallbackRedirect reports whether target is an authorized
+// post-callback destination for the initiating application.
 //
-// Audit H5(c) — open redirect carrying a live access token. post_callback_redirect
-// arrives as a raw query parameter on GET /v1/client/auth/social/:provider/authorize,
-// is persisted verbatim into social_auth_state, and was handed straight to
-// c.Redirect() by the callback handler alongside a freshly issued JWT. The
-// authorize endpoint is publishable-key authenticated, and a publishable key is
-// public by design, so anyone able to start a social login could name their own
-// host and have the victim's browser deliver a live token to it.
+// The callback hands a live access token to this destination, so it is
+// restricted to the application's registered exact_redirect_uris — the same
+// allowlist the OAuth authorization endpoint checks redirect_uri against. The
+// endpoint that accepts this parameter is authenticated by a publishable key,
+// which is public by design; without this check anyone able to start a social
+// login could name their own host and have the victim's browser deliver a token
+// to it.
 //
-// The allowlist reused here is application.exact_redirect_uris — the same
-// registration record internal/oauth's ValidateClientApplication checks
-// redirect_uri against (internal/oauth/service.go), and the allowlist the
-// social_auth_state schema comment already claims is enforced.
+// A destination is authorized when it matches a registered URI exactly, or when
+// it is same-origin — scheme, host and port all equal — with one. The origin
+// relaxation lets an application registered for "https://app.example.com/callback"
+// land the user on "https://app.example.com/dashboard"; it cannot move the token
+// off the application's own origin, which is the property that matters. Matching
+// on a prefix instead would authorize "https://app.example.com.evil.net".
 //
-// A destination is accepted when it matches a registered URI exactly, or when it
-// is same-origin (scheme + host + port) with one. The origin relaxation is what
-// lets an application register "https://app.example.com/callback" and still land
-// the user on "https://app.example.com/dashboard"; it cannot move the token off
-// the application's own origin, which is the property that matters here.
+// The check fails closed. An empty target is a no-op, but an unparseable URL, a
+// non-http(s) scheme, a scheme-relative or path-relative URL, an absent
+// application, or an empty allowlist all reject. Values like
+// "javascript:alert(1)", "//evil.example.net/x" and "/dashboard" parse without
+// error, so the absolute-http(s) test is explicit rather than implied by url.Parse.
 //
-// Fails closed: an unparseable target, a non-http(s) scheme, a scheme-relative
-// URL, a missing application registration, or an empty allowlist all reject.
+// Returns ErrRedirectNotAllowed for an unauthorized destination, or a storage
+// error if the application lookup itself fails.
 func (s *Service) validatePostCallbackRedirect(
 	ctx context.Context,
 	tenantID, environment, applicationID, target string,
@@ -71,14 +97,11 @@ func (s *Service) validatePostCallbackRedirect(
 		return ErrRedirectNotAllowed
 	}
 
-	// "javascript:alert(1)", "//evil.com/x" and "/dashboard" all parse without
-	// error, so an explicit absolute-http(s) check is required before comparing.
 	scheme := strings.ToLower(u.Scheme)
 	if (scheme != "http" && scheme != "https") || u.Host == "" {
 		return ErrRedirectNotAllowed
 	}
 
-	// No registered application means there is no allowlist to satisfy.
 	if applicationID == "" {
 		return ErrRedirectNotAllowed
 	}
@@ -110,28 +133,20 @@ func (s *Service) validatePostCallbackRedirect(
 	return ErrRedirectNotAllowed
 }
 
-type Service struct {
-	repo *Repository
-	cfg  *config.Config
-}
-
-func NewService(repo *Repository, cfg *config.Config) *Service {
-	return &Service{repo: repo, cfg: cfg}
-}
-
-// InitiateAuthorize generates a CSRF state token, persists it, and returns the
-// provider's authorization URL to redirect the browser to.
+// InitiateAuthorize starts a social sign-in and returns the provider
+// authorization URL to redirect the browser to.
 //
-// Called by: GET /v1/client/auth/social/:provider/authorize
+// The post-callback destination is validated before any other work, so an
+// unauthorized one is refused without reading provider credentials or writing a
+// state row.
 //
-// Returns: (authorizationURL string, err error)
+// Returns ErrRedirectNotAllowed for an unauthorized destination,
+// ErrProviderNotEnabled or ErrProviderNotConfigured when the provider is
+// unusable, or a storage error.
 func (s *Service) InitiateAuthorize(
 	ctx context.Context,
 	tenantID, applicationID, environment, provider, redirectURI, postCallbackRedirect string,
 ) (string, error) {
-	// Reject an unregistered post-callback destination before anything else
-	// happens — no provider config read, no state row written. See
-	// validatePostCallbackRedirect for the H5(c) open-redirect rationale.
 	if err := s.validatePostCallbackRedirect(ctx, tenantID, environment, applicationID, postCallbackRedirect); err != nil {
 		return "", err
 	}
@@ -152,7 +167,7 @@ func (s *Service) InitiateAuthorize(
 		return "", err
 	}
 
-	stateToken, err := s.repo.CreateSocialAuthState(ctx, tenantID, applicationID, environment, provider, redirectURI, postCallbackRedirect)
+	stateToken, err := s.repo.CreateSocialAuthState(ctx, tenantID, applicationID, environment, provider, redirectURI, postCallbackRedirect, s.cfg.SocialAuthStateTTL)
 	if err != nil {
 		return "", err
 	}
@@ -163,13 +178,21 @@ func (s *Service) InitiateAuthorize(
 	return authURL, nil
 }
 
-// HandleCallback processes the OAuth2 callback from a social provider.
-// It validates the state, exchanges the code for tokens, fetches the user profile,
-// and either logs in an existing user or creates a new one.
+// HandleCallback completes a social sign-in and returns the engine's access
+// token together with the destination to send the browser to.
 //
-// Called by: GET /v1/client/auth/social/:provider/callback?code=...&state=...
+// The state is consumed first, which both authenticates the callback as one the
+// engine started and prevents replay. The provider profile then resolves to an
+// account three ways: an existing link signs that user in, a matching email
+// links the provider to that account, and neither creates a new user.
 //
-// Returns: accessToken (our JWT), postCallbackRedirect URL, and any error.
+// The stored destination is re-validated here rather than trusted from the row,
+// because this is the last point before a live token is handed to that host. An
+// unauthorized destination degrades to an empty string, which makes the caller
+// return the token in the response body instead of redirecting.
+//
+// Returns the access token and destination, or ErrStateNotFound,
+// ErrStateExpired, ErrEmailRequired, a provider error, or a storage error.
 func (s *Service) HandleCallback(
 	ctx context.Context,
 	tenantID, provider, stateToken, code string,
@@ -189,6 +212,8 @@ func (s *Service) HandleCallback(
 		return "", "", err
 	}
 
+	// The redirect URI presented at the token endpoint must be identical to the
+	// one used to obtain the code; providers reject a mismatch.
 	callbackURL := s.cfg.SocialCallbackURL(provider)
 	token, err := p.ExchangeCode(ctx, code, callbackURL)
 	if err != nil {
@@ -197,6 +222,8 @@ func (s *Service) HandleCallback(
 
 	var providerUser *ProviderUser
 	if provider == "apple" && token.IDToken != "" {
+		// Apple has no userinfo endpoint; the profile arrives only in the
+		// id_token returned by the exchange.
 		providerUser, err = ParseAppleIDToken(token.IDToken)
 	} else {
 		providerUser, err = p.GetUserInfo(ctx, token.AccessToken)
@@ -220,7 +247,6 @@ func (s *Service) HandleCallback(
 	}
 
 	if identity != nil {
-		// Existing social user — LOGIN path
 		fetchedUser, err := s.getUserByID(ctx, identity.UserID)
 		if err != nil {
 			return "", "", err
@@ -229,19 +255,16 @@ func (s *Service) HandleCallback(
 		email = fetchedUser.Email
 		name = fetchedUser.Name
 	} else {
-		// Check email collision
 		existingUser, err := s.repo.FindUserByEmailForSocial(ctx, state.TenantID, state.Environment, providerUser.Email)
 		if err != nil {
 			return "", "", err
 		}
 
 		if existingUser != nil {
-			// Link identity to existing user
 			userID = existingUser.ID
 			email = existingUser.Email
 			name = existingUser.Name
 		} else {
-			// Brand new user — SIGNUP path
 			newUser, err := s.repo.CreateSocialUser(ctx, state.TenantID, state.Environment, providerUser.Email, providerUser.Name, providerUser.AvatarURL, providerUser.EmailVerified)
 			if err != nil {
 				return "", "", err
@@ -252,10 +275,10 @@ func (s *Service) HandleCallback(
 		}
 	}
 
-	// Resolve the console role claim from recorded roles. A social login can be
-	// a tenant admin returning through Google/GitHub, so hardcoding "" here
-	// stripped their console privilege. A brand-new user has no roles yet and
-	// resolves to "" naturally.
+	// The role claim is resolved from recorded roles rather than fixed: a social
+	// sign-in may be a tenant admin returning through Google or GitHub, and a
+	// blank role would strip that privilege. A new user has no roles and
+	// resolves to empty naturally.
 	role = rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 
 	jwtToken, err := jwtpkg.IssueAccessToken(userID, state.TenantID, string(state.Environment), email, name, role, s.cfg.EncryptionKey)
@@ -268,11 +291,6 @@ func (s *Service) HandleCallback(
 		return "", "", err
 	}
 
-	// Re-validate the stored destination at redemption time rather than trusting
-	// the row. State rows persisted before the H5(c) fix landed carry unvalidated
-	// destinations, and this is the last point before a live JWT is handed to
-	// that host. An unauthorized destination degrades to the JSON response
-	// (token returned in the body to the caller) instead of redirecting.
 	postCallback := state.PostCallbackRedirect
 	if err := s.validatePostCallbackRedirect(ctx, state.TenantID, string(state.Environment), state.ApplicationID, postCallback); err != nil {
 		if !errors.Is(err, ErrRedirectNotAllowed) {
@@ -284,17 +302,30 @@ func (s *Service) HandleCallback(
 	return jwtToken, postCallback, nil
 }
 
+// ProviderSetupResponse describes a provider's configuration state and the
+// steps needed to finish setting it up.
 type ProviderSetupResponse struct {
-	Provider   string        `json:"provider"`
-	Enabled    bool          `json:"enabled"`
-	ClientID   string        `json:"client_id"`
-	Configured bool          `json:"configured"`
-	Setup      ProviderSetup `json:"setup"`
+	// Provider is the canonical provider name.
+	Provider string `json:"provider"`
+	// Enabled reports whether the tenant has switched the provider on.
+	Enabled bool `json:"enabled"`
+	// ClientID is the configured public client identifier. The client secret is
+	// never included.
+	ClientID string `json:"client_id"`
+	// Configured reports whether credentials are present.
+	Configured bool `json:"configured"`
+	// Setup carries the console URL, callback URL and instructions.
+	Setup ProviderSetup `json:"setup"`
 }
 
-// GetSetupGuide returns the setup instructions and current config (secrets masked)
-// for a specific provider, or for all supported providers if provider=="".
-// Used by: GET /v1/tenant/social-providers and GET /v1/tenant/social-providers/:provider
+// GetSetupGuide returns setup guidance and current configuration for one
+// provider, or for every supported provider when provider is empty.
+//
+// Providers with no configuration are still described, so an administrator can
+// see what is available rather than only what is already set up. Secrets are
+// never included.
+//
+// Returns a storage error if the tenant's configuration cannot be read.
 func (s *Service) GetSetupGuide(ctx context.Context, tenantID, provider string) ([]ProviderSetupResponse, error) {
 	configs, err := s.repo.GetAllProviderConfigs(ctx, tenantID)
 	if err != nil {
@@ -308,6 +339,8 @@ func (s *Service) GetSetupGuide(ctx context.Context, tenantID, provider string) 
 	}
 
 	for _, pName := range supported {
+		// Setup instructions are static per provider, so placeholder credentials
+		// are enough to construct a driver and ask for them.
 		p, err := NewProvider(pName, "x", "x")
 		if err != nil {
 			continue
@@ -332,8 +365,13 @@ func (s *Service) GetSetupGuide(ctx context.Context, tenantID, provider string) 
 	return res, nil
 }
 
-// ConfigureProvider validates and saves a provider's credentials.
-// Called by: PUT /v1/tenant/social-providers/:provider
+// ConfigureProvider validates and stores a provider's credentials.
+//
+// The format check runs only when a secret is supplied, because an empty secret
+// means "keep the stored one" rather than "clear it".
+//
+// Returns *ErrInvalidClientCredentials for a malformed credential, or a storage
+// error.
 func (s *Service) ConfigureProvider(
 	ctx context.Context,
 	tenantID, provider string,
@@ -348,12 +386,14 @@ func (s *Service) ConfigureProvider(
 	return s.repo.SetProviderConfig(ctx, tenantID, provider, enabled, clientID, clientSecret)
 }
 
-// RemoveProvider deletes a provider's configuration entirely.
-// Called by: DELETE /v1/tenant/social-providers/:provider
+// RemoveProvider deletes a provider's configuration for a tenant.
+//
+// Returns a storage error if the write fails.
 func (s *Service) RemoveProvider(ctx context.Context, tenantID, provider string) error {
 	return s.repo.DeleteProviderConfig(ctx, tenantID, provider)
 }
 
+// getUserByID loads a user by ID, returning an error if no such user exists.
 func (s *Service) getUserByID(ctx context.Context, userID string) (*ent.User, error) {
 	client := s.repo.factory.GetClient(ctx, "", "")
 	return client.User.Get(ctx, userID)

@@ -3,9 +3,10 @@
  * File: apps/auth-engine/internal/org/service.go
  * Tier: Business Logic Layer / Core Service
  *
- * Description: Core business logic implementation for B2B Organizations and Org Member
- *              management. Handles CRUD operations, slug generation, transaction isolation,
- *              audit logging, and real-time webhook event dispatching.
+ * Description: Business logic for B2B organizations and their memberships. Owns
+ *              organization CRUD, slug derivation and uniqueness, the per-organization
+ *              authorization checks every mutating path runs, role resolution, audit
+ *              logging and webhook dispatch.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -14,9 +15,11 @@ package org
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
@@ -25,32 +28,96 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
 var (
+	// nonAlphanumericRegex matches runs of characters that cannot appear in a
+	// slug; Slugify collapses each run to a single hyphen.
 	nonAlphanumericRegex = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
+// WebhookDispatcher publishes organization lifecycle events to tenant webhooks.
 type WebhookDispatcher interface {
+	// Dispatch queues an event for delivery. It must not block the caller.
 	Dispatch(tenantID, eventType string, data map[string]interface{})
 }
 
+// Service implements organization and membership domain logic.
 type Service struct {
-	factory    *clientfactory.ClientFactory
+	// factory resolves the ent client for a tenant and environment.
+	factory *clientfactory.ClientFactory
+	// dispatcher publishes lifecycle events. Nil disables webhooks.
 	dispatcher WebhookDispatcher
+	// cfg supplies the metadata size cap and default invitation lifetime. It may
+	// be nil, in which case the package defaults apply.
+	cfg *config.Config
 }
 
-func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatcher) *Service {
-	return &Service{
+// NewService constructs an organization Service. dispatcher may be nil.
+//
+// cfg is variadic only so existing callers keep compiling; pass it in
+// application code. Without it the service falls back to MaxMetadataSizeBytes
+// and DefaultInviteExpiryHrs, which match the configuration defaults.
+func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatcher, cfg ...*config.Config) *Service {
+	s := &Service{
 		factory:    factory,
 		dispatcher: dispatcher,
 	}
+	if len(cfg) > 0 {
+		s.cfg = cfg[0]
+	}
+	return s
 }
 
-// authzCheckMember verifies that actorID is an active member of orgID.
-// Returns the membership record if authorized, or an error if not.
-// This is the base authorization check for any org-scoped operation.
+// metadataLimitBytes returns the configured cap on serialized organization
+// metadata, or the package default when no configuration was supplied.
+func (s *Service) metadataLimitBytes() int {
+	if s.cfg != nil && s.cfg.OrgMetadataMaxBytes > 0 {
+		return s.cfg.OrgMetadataMaxBytes
+	}
+	return MaxMetadataSizeBytes
+}
+
+// invitationTTL returns the configured default invitation lifetime, or the
+// package default when no configuration was supplied.
+func (s *Service) invitationTTL() time.Duration {
+	if s.cfg != nil && s.cfg.InvitationTTL > 0 {
+		return s.cfg.InvitationTTL
+	}
+	return time.Duration(DefaultInviteExpiryHrs) * time.Hour
+}
+
+// validateMetadataSize reports ErrMetadataTooLarge when metadata's serialized
+// JSON exceeds MaxMetadataSizeBytes. Nil metadata is always accepted.
+//
+// The encoded length is what matters, not the number of keys: the stored column
+// holds the JSON encoding, so that is the size the cap has to bound. An
+// unencodable value is rejected here rather than surfacing later as a database
+// failure.
+func (s *Service) validateMetadataSize(metadata map[string]interface{}) error {
+	if metadata == nil {
+		return nil
+	}
+
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to encode organization metadata: %w", err)
+	}
+	if len(encoded) > s.metadataLimitBytes() {
+		return ErrMetadataTooLarge
+	}
+
+	return nil
+}
+
+// authzCheckMember verifies that actorID is a member of orgID and returns the
+// membership.
+//
+// This is the base check for every organization-scoped read. An empty actorID is
+// refused outright, so an unauthenticated request cannot pass by supplying no
+// identity. Returns ErrNotAMember when there is no membership.
 func (s *Service) authzCheckMember(ctx context.Context, client *ent.Client, actorID, orgID string) (*ent.OrgMember, error) {
 	if actorID == "" {
 		return nil, ErrNotAMember
@@ -69,31 +136,31 @@ func (s *Service) authzCheckMember(ctx context.Context, client *ent.Client, acto
 	return membership, nil
 }
 
-// authzRequireOrgAdmin verifies that actorID holds the org_admin role (or equivalent admin permissions).
-// Returns the membership record if authorized, or an error if not.
-// This is the required check for all mutating org operations (update, delete, add/remove members, invitations).
+// authzRequireOrgAdmin verifies that actorID holds organization-admin rights over
+// orgID and returns the membership.
+//
+// This is the required check for every mutating operation: update, delete,
+// member changes and invitations. Admin rights come from the org_admin role slug
+// or from a role holding a namespace-wide grant over the organization surface.
+// A whole-namespace grant is deliberately required rather than a single matching
+// permission: a role granted only "orgs:write" is meant to edit organization
+// fields, and treating that as admin would also hand it member removal and
+// organization deletion. A member whose role cannot be resolved gets no admin
+// rights. Returns ErrNotAMember or ErrForbidden.
 func (s *Service) authzRequireOrgAdmin(ctx context.Context, client *ent.Client, actorID, orgID string) (*ent.OrgMember, error) {
 	membership, err := s.authzCheckMember(ctx, client, actorID, orgID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Load the role (with its permission edge) to check permissions
 	roleRecord, err := client.Role.Query().
 		Where(role.ID(membership.RoleID)).
 		WithPermissions().
 		Only(ctx)
 	if err != nil {
-		// A member whose role can't be resolved cannot be granted admin rights.
 		return nil, ErrForbidden
 	}
 
-	// Org admin rights come from the org_admin slug, or from a role holding a
-	// namespace-level grant over the org surface. This deliberately requires a
-	// whole-namespace grant ("orgs:*") rather than reusing the request-gate
-	// matcher against a representative permission: a role granted only
-	// "orgs:write" is meant to update org fields, and treating that as org-admin
-	// would also hand it member removal and org deletion.
 	if roleRecord.Slug == "org_admin" {
 		return membership, nil
 	}
@@ -106,14 +173,19 @@ func (s *Service) authzRequireOrgAdmin(ctx context.Context, client *ent.Client, 
 	return nil, ErrForbidden
 }
 
-// Slugify generates a clean URL-friendly slug from an input string.
+// Slugify derives a URL-safe slug from an arbitrary string, lowercasing it and
+// collapsing every run of unsupported characters into a single hyphen.
 func Slugify(input string) string {
 	cleaned := strings.ToLower(strings.TrimSpace(input))
 	slug := nonAlphanumericRegex.ReplaceAllString(cleaned, "-")
 	return strings.Trim(slug, "-")
 }
 
-// ensureDefaultRole fetches or creates a default org role (e.g. org_admin, editor, viewer).
+// ensureDefaultRole resolves roleSlug within the tenant, creating the role if it
+// does not exist yet.
+//
+// The argument is accepted as either a slug or a role ID, because callers pass
+// whichever the API client supplied. Returns the resolved or created role.
 func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, tenantID, roleSlug, roleName string) (*ent.Role, error) {
 	r, err := client.Role.Query().
 		Where(role.TenantID(tenantID), role.Slug(roleSlug)).
@@ -122,7 +194,6 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		return r, nil
 	}
 
-	// Try querying by ID if roleSlug looks like a role ID
 	r, err = client.Role.Query().
 		Where(role.TenantID(tenantID), role.ID(roleSlug)).
 		Only(ctx)
@@ -130,7 +201,6 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		return r, nil
 	}
 
-	// Create fallback default role
 	roleID := fmt.Sprintf("role_%s", uuid.New().String()[:12])
 	return client.Role.Create().
 		SetID(roleID).
@@ -141,9 +211,18 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		Save(ctx)
 }
 
-// CreateOrganization creates a new B2B Organization workspace and auto-assigns the creator as org_admin.
+// CreateOrganization creates an organization and makes the creator its first
+// org_admin.
+//
+// The slug is derived from the name when the caller supplies none, and must be
+// unique within the tenant. Returns ErrOrgSlugExists on collision,
+// ErrMetadataTooLarge for oversized metadata, or a validation sentinel from
+// req.Validate.
 func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID string, req CreateOrgRequest, ip, userAgent string) (*OrgResponse, error) {
 	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	if err := s.validateMetadataSize(req.Metadata); err != nil {
 		return nil, err
 	}
 
@@ -153,7 +232,6 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Check for existing slug in tenant
 	exists, err := client.Organization.Query().
 		Where(organization.TenantID(tenantID), organization.Slug(req.Slug)).
 		Exist(ctx)
@@ -167,13 +245,11 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 	orgID := fmt.Sprintf("org_%s", uuid.New().String()[:12])
 	memID := fmt.Sprintf("mem_%s", uuid.New().String()[:12])
 
-	// Ensure org_admin role exists
 	orgAdminRole, err := s.ensureDefaultRole(ctx, client, tenantID, "org_admin", "Organization Admin")
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve org_admin role: %w", err)
 	}
 
-	// Create Organization entity
 	builder := client.Organization.Create().
 		SetID(orgID).
 		SetTenantID(tenantID).
@@ -192,7 +268,9 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 		return nil, fmt.Errorf("failed to create organization: %w", err)
 	}
 
-	// Auto-assign creator as member if actorID is specified
+	// The creator's membership is what later grants them admin rights over the
+	// organization they just made. A tenant-admin caller passes no actor, so
+	// there is nobody to enroll.
 	if actorID != "" {
 		_, err = client.OrgMember.Create().
 			SetID(memID).
@@ -202,18 +280,15 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 			SetAssignedByUserID(actorID).
 			Save(ctx)
 		if err != nil {
-			// Non-fatal if actor user doesn't exist, but log error
 			fmt.Printf("[Org Service] Warning: failed to auto-assign creator membership: %v\n", err)
 		}
 	}
 
-	// Log Audit Trail
 	s.logAudit(ctx, tenantID, actorID, "org.created", "organization", orgID, map[string]interface{}{
 		"name": req.Name,
 		"slug": req.Slug,
 	}, ip, userAgent)
 
-	// Dispatch Webhook
 	if s.dispatcher != nil {
 		s.dispatcher.Dispatch(tenantID, "org.created", map[string]interface{}{
 			"org_id":     orgID,
@@ -226,8 +301,11 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 	return s.toOrgResponse(createdOrg), nil
 }
 
-// GetOrganization fetches organization details by ID.
-// Authorization: caller must be an active member (C2), OR hold admin_auth_method privilege.
+// GetOrganization returns an organization within the tenant.
+//
+// The caller must be a member; isAdmin marks the tenant-admin tier, which
+// legitimately operates across every organization and so bypasses that check.
+// Returns ErrOrgNotFound or ErrNotAMember.
 func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string, actorID string, isAdmin bool) (*OrgResponse, error) {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
@@ -241,7 +319,6 @@ func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string, a
 		return nil, fmt.Errorf("failed to query organization: %w", err)
 	}
 
-	// Authorization check: tenant-admin tier bypasses membership requirement
 	if !isAdmin {
 		_, err := s.authzCheckMember(ctx, client, actorID, orgID)
 		if err != nil {
@@ -252,7 +329,8 @@ func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string, a
 	return s.toOrgResponse(o), nil
 }
 
-// ListOrganizationsForUser retrieves all organizations a user is a member of.
+// ListOrganizationsForUser returns the organizations userID belongs to within the
+// tenant. The membership itself is the authorization, so no further check applies.
 func (s *Service) ListOrganizationsForUser(ctx context.Context, tenantID, userID string, limit, offset int) ([]*OrgResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
@@ -275,6 +353,8 @@ func (s *Service) ListOrganizationsForUser(ctx context.Context, tenantID, userID
 
 	responses := make([]*OrgResponse, 0, len(memberships))
 	for _, m := range memberships {
+		// Memberships are queried by user, not by tenant, so the organization's
+		// own tenant is re-checked before it is returned.
 		if m.Edges.Organization != nil && m.Edges.Organization.TenantID == tenantID {
 			responses = append(responses, s.toOrgResponse(m.Edges.Organization))
 		}
@@ -283,7 +363,8 @@ func (s *Service) ListOrganizationsForUser(ctx context.Context, tenantID, userID
 	return responses, nil
 }
 
-// ListOrganizationsForTenant retrieves all organizations under a tenant.
+// ListOrganizationsForTenant returns every organization under the tenant. It
+// backs the tenant-admin listing and performs no per-organization check.
 func (s *Service) ListOrganizationsForTenant(ctx context.Context, tenantID string, limit, offset int) ([]*OrgResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
@@ -311,10 +392,17 @@ func (s *Service) ListOrganizationsForTenant(ctx context.Context, tenantID strin
 	return responses, nil
 }
 
-// UpdateOrganization updates organization details.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+// UpdateOrganization applies a partial update to an organization.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. A changed slug must stay unique within the tenant.
+// Returns ErrOrgNotFound, ErrOrgSlugExists, ErrMetadataTooLarge, or an
+// authorization sentinel.
 func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, orgID string, req UpdateOrgRequest, isAdmin bool, ip, userAgent string) (*OrgResponse, error) {
 	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	if err := s.validateMetadataSize(req.Metadata); err != nil {
 		return nil, err
 	}
 
@@ -330,7 +418,6 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 		return nil, fmt.Errorf("failed to find organization: %w", err)
 	}
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return nil, err
@@ -366,7 +453,6 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 		return nil, fmt.Errorf("failed to update organization: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, actorID, "org.updated", "organization", orgID, map[string]interface{}{
 		"org_id": orgID,
 	}, ip, userAgent)
@@ -382,8 +468,11 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 	return s.toOrgResponse(updatedOrg), nil
 }
 
-// DeleteOrganization removes an organization and all its memberships and invitations.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+// DeleteOrganization removes an organization together with its memberships and
+// invitations.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Returns ErrOrgNotFound or an authorization sentinel.
 func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, orgID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
@@ -397,22 +486,20 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 		return fmt.Errorf("failed to find organization: %w", err)
 	}
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return err
 		}
 	}
 
-	// Delete associated members & invitations first
+	// Dependent rows go first so foreign keys never block the delete, and so no
+	// membership or pending invitation outlives the organization it points at.
 	_, _ = client.OrgMember.Delete().Where(orgmember.OrganizationID(orgID)).Exec(ctx)
 	_, _ = client.OrgInvitation.Delete().Where(orginvitation.OrganizationID(orgID)).Exec(ctx)
-	// Execute Organization deletion
 	if err := client.Organization.DeleteOne(o).Exec(ctx); err != nil {
 		return fmt.Errorf("failed to delete organization: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, actorID, "org.deleted", "organization", orgID, map[string]interface{}{
 		"org_id": orgID,
 	}, ip, userAgent)
@@ -426,8 +513,10 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 	return nil
 }
 
-// ListOrgMembers returns members of an organization.
-// Authorization: caller must be an active member (C2), OR hold admin_auth_method privilege.
+// ListOrgMembers returns an organization's members.
+//
+// The caller must be a member; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Returns ErrOrgNotFound or ErrNotAMember.
 func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, actorID string, isAdmin bool, limit, offset int) ([]*OrgMemberResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
@@ -438,7 +527,6 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Verify org exists under tenant
 	exists, err := client.Organization.Query().
 		Where(organization.TenantID(tenantID), organization.ID(orgID)).
 		Exist(ctx)
@@ -446,7 +534,6 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 		return nil, ErrOrgNotFound
 	}
 
-	// Authorization check: tenant-admin tier bypasses membership requirement
 	if !isAdmin {
 		if _, err := s.authzCheckMember(ctx, client, actorID, orgID); err != nil {
 			return nil, err
@@ -470,8 +557,12 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 	return responses, nil
 }
 
-// AddMember adds a user directly to an organization with a specific role.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+// AddMember places a user in an organization with a given role, bypassing the
+// invitation flow.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Returns ErrOrgNotFound, ErrMemberAlreadyExists, or an
+// authorization sentinel.
 func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string, req AddMemberRequest, isAdmin bool, ip, userAgent string) (*OrgMemberResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -479,7 +570,6 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Check org existence
 	exists, err := client.Organization.Query().
 		Where(organization.TenantID(tenantID), organization.ID(orgID)).
 		Exist(ctx)
@@ -487,14 +577,12 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 		return nil, ErrOrgNotFound
 	}
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return nil, err
 		}
 	}
 
-	// Check if membership already exists
 	alreadyMember, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID), orgmember.UserID(req.UserID)).
 		Exist(ctx)
@@ -505,7 +593,6 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 		return nil, ErrMemberAlreadyExists
 	}
 
-	// Resolve Role
 	targetRole, err := s.ensureDefaultRole(ctx, client, tenantID, req.RoleID, "Member Role")
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve role: %w", err)
@@ -527,7 +614,6 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 		return nil, fmt.Errorf("failed to add organization member: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, actorID, "org.member_joined", "user", req.UserID, map[string]interface{}{
 		"org_id":  orgID,
 		"user_id": req.UserID,
@@ -545,8 +631,10 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 	return s.toOrgMemberResponse(createdMem), nil
 }
 
-// UpdateMemberRole updates a member's role within an organization.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+// UpdateMemberRole changes a member's role within an organization.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Returns ErrMemberNotFound or an authorization sentinel.
 func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID, userID string, req UpdateMemberRoleRequest, isAdmin bool, ip, userAgent string) (*OrgMemberResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -554,7 +642,6 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return nil, err
@@ -596,11 +683,12 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 }
 
 // RemoveMember removes a user from an organization.
-// Authorization: caller must hold org_admin (C2), OR hold admin_auth_method privilege.
+//
+// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
+// bypasses that check. Returns ErrMemberNotFound or an authorization sentinel.
 func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, userID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	// Authorization check: tenant-admin tier bypasses org_admin requirement
 	if !isAdmin {
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return err
@@ -621,7 +709,6 @@ func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, us
 		return fmt.Errorf("failed to remove member: %w", err)
 	}
 
-	// Audit Log & Webhook
 	s.logAudit(ctx, tenantID, actorID, "org.member_removed", "user", userID, map[string]interface{}{
 		"org_id":  orgID,
 		"user_id": userID,
@@ -637,7 +724,8 @@ func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, us
 	return nil
 }
 
-// Helpers
+// toOrgResponse converts an organization entity to its API representation,
+// returning nil for a nil entity.
 func (s *Service) toOrgResponse(o *ent.Organization) *OrgResponse {
 	if o == nil {
 		return nil
@@ -653,6 +741,8 @@ func (s *Service) toOrgResponse(o *ent.Organization) *OrgResponse {
 	}
 }
 
+// toOrgMemberResponse converts a membership entity to its API representation,
+// returning nil for a nil entity.
 func (s *Service) toOrgMemberResponse(m *ent.OrgMember) *OrgMemberResponse {
 	if m == nil {
 		return nil
@@ -671,6 +761,11 @@ func (s *Service) toOrgMemberResponse(m *ent.OrgMember) *OrgMemberResponse {
 	return resp
 }
 
+// logAudit records an organization event on the tenant's audit trail.
+//
+// Failures are swallowed: an unwritable audit row must not fail the operation
+// that has already succeeded. An actor prefixed "key_", or the literal "system",
+// is recorded as the admin tier rather than as an end user.
 func (s *Service) logAudit(ctx context.Context, tenantID, actorID, eventType, targetType, targetID string, metadata map[string]interface{}, ip, userAgent string) {
 	client := s.factory.GetClient(ctx, tenantID, "")
 

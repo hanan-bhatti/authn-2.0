@@ -1,10 +1,23 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/pkg/jwt/key_manager.go
- * Tier: Shared Package / JWKS Key Rotation & Multi-Key Storage
+ * Tier: Shared Package / Signing Key Rotation
  *
- * Description: Multi-key JWKS data model, RSA key pair generation, 30-day rotation,
- *              7-day grace period key retention, and kid-based JWT signature verification.
+ * Holds the active RS256 signing key alongside the keys it replaced, so that
+ * rotating a key does not invalidate tokens signed a moment earlier.
+ *
+ * Rotation has an unavoidable overlap. Tokens signed by the outgoing key stay
+ * in circulation until they expire, and relying parties cache the key set for
+ * a while longer, so a key must remain published after it stops signing. The
+ * active key signs; active and retired keys alike verify and appear in JWKS,
+ * with the header's `kid` selecting between them.
+ *
+ * Retention is bounded by the caller, not by this type. Rotation happens when
+ * RotateKey is called and retired keys are held until the process exits;
+ * nothing here expires a key on a schedule. Keys are generated in memory and
+ * are not persisted, so every restart begins with a new key set — which makes
+ * this suitable for a single instance and not for several replicas that must
+ * publish the same keys.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -25,34 +38,61 @@ import (
 	"time"
 )
 
-// KeyEntry represents an individual RSA signing keypair in the rotation lifecycle.
+// defaultInitialKeyID names the first key when the caller supplies no ID.
+const defaultInitialKeyID = "authn-rsa-key-v1"
+
+// KeyEntry is one signing keypair and its place in the rotation lifecycle.
 type KeyEntry struct {
-	ID         string          `json:"id"`
+	// ID is the `kid` published in JWKS and stamped into token headers. It must
+	// be unique across the key set; a repeated ID makes verification pick a key
+	// arbitrarily.
+	ID string `json:"id"`
+	// PrivateKey signs tokens. It is excluded from JSON so that marshalling a
+	// KeyEntry — for a log line or a debug endpoint — cannot leak it.
 	PrivateKey *rsa.PrivateKey `json:"-"`
-	PublicKey  *rsa.PublicKey  `json:"-"`
-	CreatedAt  time.Time       `json:"created_at"`
-	IsActive   bool            `json:"is_active"`
+	// PublicKey verifies tokens and is what JWKS publishes. Also excluded from
+	// JSON, since JWKS output is built explicitly rather than by marshalling
+	// this struct.
+	PublicKey *rsa.PublicKey `json:"-"`
+	// CreatedAt records when the key was generated, so an operator can tell how
+	// long a retired key has been lingering in the key set.
+	CreatedAt time.Time `json:"created_at"`
+	// IsActive marks the key currently used for signing. Exactly one key in a
+	// KeyManager has this set.
+	IsActive bool `json:"is_active"`
 }
 
-// KeyManager manages active signing keys and retained grace-period keys.
+// KeyManager owns the active signing key and the retired keys still trusted for
+// verification. It is safe for concurrent use.
 type KeyManager struct {
-	mu        sync.RWMutex
+	// mu guards activeKey and graceKeys.
+	mu sync.RWMutex
+	// activeKey signs all new tokens.
 	activeKey *KeyEntry
+	// graceKeys are previously active keys, retained so tokens they signed
+	// still verify. Append-only for the life of the process.
 	graceKeys []*KeyEntry
 }
 
-// NewKeyManager initializes a KeyManager with a default active RSA key.
+// NewKeyManager creates a manager with one freshly generated active key.
+//
+// initialKeyID is optional; the first non-empty value is used, otherwise
+// defaultInitialKeyID. Pass the configured key ID so that the `kid` in issued
+// tokens matches what the deployment advertises.
+//
+// Returns an error if key generation fails, which means the system random
+// source is unavailable and the engine cannot sign anything.
 func NewKeyManager(initialKeyID ...string) (*KeyManager, error) {
 	km := &KeyManager{
 		graceKeys: make([]*KeyEntry, 0),
 	}
 
-	keyID := "authn-rsa-key-v1"
+	keyID := defaultInitialKeyID
 	if len(initialKeyID) > 0 && initialKeyID[0] != "" {
 		keyID = initialKeyID[0]
 	}
 
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	privKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
 	if err != nil {
 		return nil, fmt.Errorf("failed generating initial RSA key: %w", err)
 	}
@@ -68,7 +108,15 @@ func NewKeyManager(initialKeyID ...string) (*KeyManager, error) {
 	return km, nil
 }
 
-// RotateKey triggers a key rotation: moves the active key to grace keys and generates a new active key.
+// RotateKey generates a new active key and retires the current one into the
+// grace set, returning the new key.
+//
+// newKeyID is optional; without it the ID is derived from the current Unix
+// second. Supply an explicit ID when the deployment needs a predictable one,
+// since two rotations within the same second would otherwise collide.
+//
+// Returns an error if key generation fails, in which case the existing active
+// key is left untouched and signing continues uninterrupted.
 func (km *KeyManager) RotateKey(newKeyID ...string) (*KeyEntry, error) {
 	km.mu.Lock()
 	defer km.mu.Unlock()
@@ -78,7 +126,9 @@ func (km *KeyManager) RotateKey(newKeyID ...string) (*KeyEntry, error) {
 		kid = newKeyID[0]
 	}
 
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	// Generate before mutating anything, so a failure leaves the manager in its
+	// previous working state rather than with no active key.
+	privKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
 	if err != nil {
 		return nil, fmt.Errorf("failed generating new rotated RSA key: %w", err)
 	}
@@ -99,14 +149,20 @@ func (km *KeyManager) RotateKey(newKeyID ...string) (*KeyEntry, error) {
 	return km.activeKey, nil
 }
 
-// GetActiveKey returns the currently active signing key.
+// GetActiveKey returns the key currently used for signing, or nil if the
+// manager holds none.
 func (km *KeyManager) GetActiveKey() *KeyEntry {
 	km.mu.RLock()
 	defer km.mu.RUnlock()
 	return km.activeKey
 }
 
-// GetPublicJWKS exports all public keys (Active + Grace Period keys) as an RFC 7517 JWKS payload.
+// GetPublicJWKS returns every public key a relying party may need: the active
+// key first, then the retired ones.
+//
+// Retired keys must stay in this document. Dropping a key the moment it stops
+// signing would break verification for every token it signed that has not yet
+// expired.
 func (km *KeyManager) GetPublicJWKS() JWKSResponse {
 	km.mu.RLock()
 	defer km.mu.RUnlock()
@@ -144,7 +200,10 @@ func (km *KeyManager) GetPublicJWKS() JWKSResponse {
 	return JWKSResponse{Keys: keys}
 }
 
-// SignToken signs claims using the active RSA key and embeds active kid into JWT header.
+// SignToken signs claims with the active key, stamping its ID into the header's
+// `kid`.
+//
+// Returns an error when no active key is available, or when signing fails.
 func (km *KeyManager) SignToken(claims interface{}) (string, error) {
 	km.mu.RLock()
 	active := km.activeKey
@@ -157,7 +216,19 @@ func (km *KeyManager) SignToken(claims interface{}) (string, error) {
 	return SignIDTokenRS256(active.PrivateKey, claims, active.ID)
 }
 
-// VerifyToken verifies a JWT signature by matching its header kid against active or grace period keys.
+// VerifyToken checks a token's RS256 signature against whichever held key its
+// `kid` names, and returns the decoded claims.
+//
+// It verifies the signature only. Expiry, issuer and audience are not checked
+// and the claims are returned raw, so a caller that treats a nil error as
+// "token is valid" will accept expired tokens. Validate the standard claims
+// after this returns.
+//
+// Returns an error when the token is malformed, when its header carries no
+// `kid`, when no held key matches that `kid`, or when the signature does not
+// verify. A missing `kid` is rejected rather than falling back to the active
+// key: trying keys until one works would let a token outlive the rotation it
+// was meant to be retired by.
 func (km *KeyManager) VerifyToken(tokenStr string) (map[string]interface{}, error) {
 	parts := strings.Split(tokenStr, ".")
 	if len(parts) != 3 {
@@ -179,6 +250,9 @@ func (km *KeyManager) VerifyToken(tokenStr string) (map[string]interface{}, erro
 		return nil, fmt.Errorf("missing kid in jwt header")
 	}
 
+	// The `kid` selects a key; it never supplies one. Only keys this manager
+	// generated are consulted, so a forged header can at worst name a key that
+	// does not exist.
 	km.mu.RLock()
 	var matchingPubKey *rsa.PublicKey
 	if km.activeKey != nil && km.activeKey.ID == kid {

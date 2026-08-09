@@ -1,22 +1,16 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/middleware/admin_auth.go
- * Tier: HTTP Middleware Layer / Combined Admin Authentication
+ * Tier: HTTP Middleware Layer / Admin Authentication
  *
- * Description: RequireAdminAuth is the unified middleware for all admin routes
- *              (/v1/tenant/*, /v1/admin/*). It accepts EITHER:
+ * Unified authentication for the admin surface (/v1/tenant/*, /v1/admin/*).
  *
- *              1. sk_... secret key  — Backend servers / SDKs send this in
- *                 Authorization: Bearer or X-Authn-Secret-Key header.
- *
- *              2. JWT with role=tenant_admin — The Authn web console logs in
- *                 via the normal /v1/client/login endpoint and sends the resulting
- *                 JWT as Authorization: Bearer from the browser (never stores sk_).
- *
- *              Detection is done by inspecting the raw header value before any
- *              middleware writes to the response — sk_ keys start with "sk_",
- *              JWTs start with "eyJ". This avoids the "write-before-fallback"
- *              problem that arises when two separate middlewares are chained.
+ * Two kinds of caller reach these routes: backend servers holding an sk_ secret
+ * key, and the Authn web console, which signs its operator in through the normal
+ * end-user login and presents the resulting JWT. Both are accepted here, in one
+ * middleware, and the credential kind is decided from the raw header value
+ * before anything is written to the response — chaining two middlewares instead
+ * would let the first write a 401 that the second could no longer take back.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -34,18 +28,30 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
-// Primary2FAValidator defines the interface for checking if a user has active primary 2FA.
+// Primary2FAValidator reports how many active primary second factors a user has
+// enrolled. It is an interface so this package does not depend on the MFA
+// package, which depends on this one.
 type Primary2FAValidator interface {
+	// CountActivePrimary2FAMethods returns the number of enrolled, active
+	// primary second factors (TOTP, passkey) for userID.
 	CountActivePrimary2FAMethods(ctx context.Context, userID string) (int, error)
 }
 
-// RequireAdminAuth returns a Fiber middleware that gates admin routes behind
-// EITHER a valid sk_... secret key OR a JWT access token with role=tenant_admin.
-// If a Primary2FAValidator is provided, console admin users without active 2FA are rejected.
+// RequireAdminAuth returns a Fiber middleware gating admin routes behind either
+// a valid sk_ secret key or a JWT access token carrying role=tenant_admin. The
+// credential is read from X-Authn-Secret-Key, falling back to Authorization:
+// Bearer, and dispatched on its prefix — "sk_" for a secret key, "eyJ" for the
+// base64url JSON header of a JWT.
 //
-// Callers:
-//   - Backend servers / SDKs: Authorization: Bearer sk_test_... or X-Authn-Secret-Key: sk_...
-//   - Authn web console:      Authorization: Bearer eyJ... (JWT from /v1/client/login)
+// signingSecret verifies console tokens. An optional validator, when supplied,
+// additionally refuses console operators who have not enrolled a second factor:
+// an administrator's password alone must not command the admin surface.
+//
+// It answers 401 for a missing, unrecognised, or invalid credential, and 403 for
+// a valid end-user token that lacks the tenant_admin role or the required 2FA
+// enrolment. On success it installs the resolved tenant and environment on the
+// privacy context and records which of the two routes authenticated the caller
+// in the admin_auth_method local.
 func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, validator ...Primary2FAValidator) fiber.Handler {
 	var v Primary2FAValidator
 	if len(validator) > 0 {
@@ -53,7 +59,6 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 	}
 
 	return func(c *fiber.Ctx) error {
-		// Extract the raw credential from the standard locations
 		raw := strings.TrimSpace(c.Get("X-Authn-Secret-Key"))
 		if raw == "" {
 			authHeader := c.Get("Authorization")
@@ -67,7 +72,7 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 				"admin authentication required: provide Authorization: Bearer sk_... (backend) or Bearer <jwt> with tenant_admin role (console)")
 		}
 
-		// Route 1: sk_... secret key (backend server / SDK path)
+		// Backend server / SDK: sk_ secret key.
 		if strings.HasPrefix(raw, "sk_") {
 			key, app, err := apiKeyService.ValidateKey(c.UserContext(), raw, apikey.TypeSecret)
 			if err != nil {
@@ -85,8 +90,7 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 			return c.Next()
 		}
 
-		// Route 2: JWT access token (console browser path)
-		// JWTs are base64url-encoded JSON and always start with "eyJ"
+		// Web console: JWT access token from the normal login flow.
 		if strings.HasPrefix(raw, "eyJ") {
 			claims, err := jwtpkg.VerifyAccessToken(raw, signingSecret)
 			if err != nil {
@@ -98,14 +102,15 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 					"forbidden: tenant_admin role required — regular user JWTs cannot access admin routes")
 			}
 
-			// Mandatory Admin 2FA enforcement
 			if v != nil {
 				count, err := v.CountActivePrimary2FAMethods(c.UserContext(), claims.Sub)
+				// A validator error leaves the operator through: the second factor
+				// is enforced on a known-zero count, not on an unknown one, so a
+				// database blip cannot lock every administrator out of the console.
 				if err == nil && count == 0 {
-					// The flat envelope has no room for the former `enroll_uri`
-					// field, so the enrollment path is carried in the prose. The
-					// `admin_2fa_required` code is preserved verbatim — it is what
-					// the console branches on to redirect into enrollment.
+					// The enrolment path travels in the prose because the envelope
+					// is flat. The admin_2fa_required code is what the console
+					// branches on to redirect into enrolment.
 					return httperr.Forbidden(c, "admin_2fa_required",
 						"admin 2FA required: administrator accounts must enroll in 2FA (TOTP or Passkey) at /v1/client/2fa/totp/enroll before accessing admin features")
 				}
@@ -121,13 +126,13 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 			return c.Next()
 		}
 
-		// Unrecognised credential format
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
 			"unrecognised credential format: expected sk_... secret key or eyJ... JWT access token")
 	}
 }
 
-// GetTenantID extracts resolved tenant_id from Fiber context locals, defaulting to "tnt_default".
+// GetTenantID returns the tenant resolved by whichever auth middleware ran,
+// falling back to "tnt_default" for single-tenant deployments that never set one.
 func GetTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val

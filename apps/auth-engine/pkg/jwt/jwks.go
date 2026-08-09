@@ -1,32 +1,56 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/pkg/jwt/jwks.go
- * Tier: Shared Package / Cryptographic Signer & JWKS
+ * Tier: Shared Package / JWKS Document Model
  *
- * Description: Implements RFC 7517 compliant JSON Web Key Set (JWKS) generators
- *              and public key metadata representations for OIDC token verification.
+ * The RFC 7517 JSON Web Key Set types served at the discovery endpoint, where
+ * relying parties fetch the material they need to verify tokens this engine
+ * issued.
+ *
+ * Only public values ever appear in these structures. The document is served
+ * unauthenticated by design — a verifier must be able to fetch it before it
+ * trusts anything — so anything placed here is public.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
 
 package jwt
 
-// JSONWebKey represents an RFC 7517 JSON Web Key structure.
+// JSONWebKey is a single entry in a key set.
 type JSONWebKey struct {
-	Kty string `json:"kty"` // Key Type ("oct" for symmetric, "RSA" for asymmetric)
-	Use string `json:"use"` // Key Use ("sig" for signature verification)
-	Alg string `json:"alg"` // Algorithm ("HS256" or "RS256")
-	Kid string `json:"kid"` // Key ID
-	N   string `json:"n,omitempty"` // RSA Modulus (base64url)
-	E   string `json:"e,omitempty"` // RSA Exponent (base64url)
+	// Kty is the key type: "RSA" for the ID token signing keys, "oct" for the
+	// symmetric access token key.
+	Kty string `json:"kty"`
+	// Use marks the key's purpose; "sig" means signature verification rather
+	// than encryption.
+	Use string `json:"use"`
+	// Alg is the algorithm this key is used with: "RS256" or "HS256".
+	Alg string `json:"alg"`
+	// Kid identifies the key. Token headers carry the same value so a verifier
+	// can select the right entry without trying each in turn.
+	Kid string `json:"kid"`
+	// N is the RSA modulus, base64url-encoded, omitted for symmetric keys.
+	N string `json:"n,omitempty"`
+	// E is the RSA public exponent, base64url-encoded, omitted for symmetric
+	// keys.
+	E string `json:"e,omitempty"`
 }
 
-// JWKSResponse defines the standard payload returned by /v1/oauth/jwks.
+// JWKSResponse is the document returned by /v1/oauth/jwks.
 type JWKSResponse struct {
+	// Keys lists every key a verifier may need, including recently retired ones
+	// whose tokens have not all expired.
 	Keys []JSONWebKey `json:"keys"`
 }
 
-// GetPublicJWKS generates the JWKS payload for public key verification.
+// GetPublicJWKS describes the symmetric access token key.
+//
+// The entry carries the key's identifier and algorithm but no `k` member, so no
+// key material is disclosed and the document remains safe to serve publicly.
+// It exists so the discovery endpoint can name the active key rather than
+// returning an empty set; HS256 tokens are verified inside the engine, and an
+// external party cannot verify them from this document. RSA-signed ID tokens,
+// which external parties do verify, are published by KeyManager.GetPublicJWKS.
 func GetPublicJWKS(keyID string) JWKSResponse {
 	return JWKSResponse{
 		Keys: []JSONWebKey{

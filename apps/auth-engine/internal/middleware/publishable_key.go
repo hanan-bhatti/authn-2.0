@@ -1,15 +1,19 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/middleware/publishable_key.go
- * Tier: HTTP Middleware Layer / API Key Security
+ * Tier: HTTP Middleware Layer / API Key Authentication
  *
- * Description: Fiber HTTP middleware enforcing valid, unrevoked Publishable API key (`pk_test_...` / `pk_live_...`)
- *              via X-Authn-Publishable-Key header. Automatically populates PrivacyContext (tenant_id + environment)
- *              for ORM privacy hook enforcement.
+ * Publishable API key authentication for public client routes.
  *
- *              The header is the ONLY accepted transport except on a closed allowlist of
- *              redirect-landing GET routes (see pkQueryFallbackRoutes), where the caller is a
- *              browser following a 302 or an emailed link and physically cannot set a header.
+ * A publishable key (pk_test_... / pk_live_...) identifies the calling
+ * application and resolves the tenant and environment that scope every
+ * downstream ORM query. It is low-sensitivity by design — it ships in browser
+ * bundles — but it is still the value that binds a request to a tenant, so it is
+ * required, validated, and never inferred.
+ *
+ * The X-Authn-Publishable-Key header is the only transport, except on a closed
+ * allowlist of redirect-landing GET routes where the caller physically cannot
+ * set a header (see pkQueryFallbackRoutes).
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -26,41 +30,38 @@ import (
 )
 
 // pkQueryFallbackRoute names one route permitted to carry the publishable key in
-// the query string. prefix is matched against the normalized request path; when
-// suffix is non-empty the route has a variable segment in the middle (e.g.
-// /auth/social/:provider/callback) and the path must start with prefix and end
-// with suffix.
+// the query string.
 type pkQueryFallbackRoute struct {
+	// prefix is the leading portion of the path. When suffix is empty it is the
+	// whole path, matched exactly.
 	prefix string
+	// suffix, when non-empty, marks a route with a variable segment in the middle
+	// (/auth/social/:provider/callback). The path must then start with prefix and
+	// end with suffix.
 	suffix string
 }
 
 // pkQueryFallbackRoutes is the closed allowlist of routes that may supply the
-// publishable key as ?publishable_key= / ?pk= instead of a header.
+// publishable key as ?publishable_key= or ?pk= instead of a header.
 //
-// Audit finding M6: the fallback used to apply to EVERY route, which put the key
-// into access logs, browser history, and the Referer header of any outbound link
-// on the landing page — on POST endpoints that had a perfectly good header
-// available. Publishable keys are low-sensitivity by design, but there is no
-// reason to broadcast one on a request that could have sent a header.
-//
-// Every entry below is a GET that a browser arrives at by redirect or by clicking
-// an emailed link, where no JavaScript runs before the request and no header can
-// be attached. Non-GET methods are rejected outright, so the fallback cannot be
-// reached by any API-style call.
-//
-// A route belongs here ONLY if it is (a) a GET, (b) reached by top-level browser
-// navigation rather than fetch/XHR, and (c) behind RequirePublishableKey.
+// A key in the query string lands in access logs, browser history, and the
+// Referer header of every outbound link on the page it loads. The header costs
+// nothing to set, so the fallback is confined to the requests that cannot set
+// one: a route qualifies ONLY if it is (a) a GET, (b) reached by top-level
+// browser navigation rather than fetch or XHR, and (c) behind
+// RequirePublishableKey. Non-GET methods are refused outright, which keeps the
+// fallback unreachable from any API-style call that had a header available.
 var pkQueryFallbackRoutes = []pkQueryFallbackRoute{
-	// Emailed-link landings: the link is opened from a mail client.
+	// Emailed-link landings: the link is opened from a mail client, and no
+	// JavaScript runs before the request is issued.
 	{prefix: "/v1/client/verify-email"},
 	{prefix: "/v1/client/auth/magic-link/verify"},
 	{prefix: "/v1/client/user/email/verify"},
 	{prefix: "/v1/client/user/recovery-email/verify"},
 
-	// Social login: top-level navigation out to the IdP, and the IdP's 302 back.
-	// The callback URL is registered verbatim in the provider console and is
-	// matched exactly by the IdP, so a header can never be added to it.
+	// Social login: top-level navigation out to the identity provider, and the
+	// provider's 302 back. The callback URL is registered verbatim in the
+	// provider console and matched exactly, so no header can be attached to it.
 	{prefix: "/v1/client/auth/social/", suffix: "/authorize"},
 	{prefix: "/v1/client/auth/social/", suffix: "/callback"},
 
@@ -68,8 +69,9 @@ var pkQueryFallbackRoutes = []pkQueryFallbackRoute{
 	{prefix: "/v1/oauth/authorize"},
 }
 
-// allowsPublishableKeyInQuery reports whether (method, path) is on the redirect
-// allowlist. Comparison is case-insensitive and ignores a trailing slash.
+// allowsPublishableKeyInQuery reports whether (method, path) is on the
+// redirect-landing allowlist. Non-GET methods are always false. Path comparison
+// is case-insensitive and ignores a single trailing slash.
 func allowsPublishableKeyInQuery(method, path string) bool {
 	if strings.ToUpper(method) != fiber.MethodGet {
 		return false
@@ -91,12 +93,17 @@ func allowsPublishableKeyInQuery(method, path string) bool {
 	return false
 }
 
-// RequirePublishableKey returns a Fiber middleware enforcing valid publishable key authentication.
+// RequirePublishableKey returns a Fiber middleware that admits only requests
+// carrying a valid, unrevoked publishable key.
+//
+// On success it resolves the key's application and installs the tenant,
+// application and environment on both the privacy context — which the ORM hooks
+// read to scope every query — and the Fiber locals. It answers 401 when the key
+// is absent, and 401 when it is invalid, expired, revoked, or of the wrong type;
+// the two are distinguished by message only, since neither should tell an
+// unauthenticated caller which keys exist.
 func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// 1. Extract publishable key. The header is the default and only
-		// universally accepted transport; the query fallback is scoped to the
-		// redirect-landing GET routes above (audit finding M6).
 		rawKey := c.Get("X-Authn-Publishable-Key")
 		if rawKey == "" && allowsPublishableKeyInQuery(c.Method(), c.Path()) {
 			rawKey = c.Query("publishable_key")
@@ -111,19 +118,17 @@ func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 				"missing publishable API key in X-Authn-Publishable-Key header")
 		}
 
-		// 2. Validate key against database records (type must be 'publishable')
+		// The type argument is what stops a secret key being accepted here.
 		key, app, err := apiKeyService.ValidateKey(c.UserContext(), rawKey, apikey.TypePublishable)
 		if err != nil {
 			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
 				"invalid, expired, or revoked publishable API key")
 		}
 
-		// 3. Inject resolved TenantID, ApplicationID, and Environment mode into PrivacyContext
 		envStr := string(key.Environment)
 		privacyCtx := privacy.NewContext(c.UserContext(), app.TenantID, app.ID, envStr)
 		c.SetUserContext(privacyCtx)
 
-		// 4. Store resolved metadata on Fiber request locals
 		c.Locals("tenant_id", app.TenantID)
 		c.Locals("application_id", app.ID)
 		c.Locals("environment", envStr)

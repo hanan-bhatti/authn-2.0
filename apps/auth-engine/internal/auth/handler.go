@@ -25,6 +25,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -60,9 +61,9 @@ type AuthResponse struct {
 
 // PolicyWarningDTO contains password compliance and verification notices returned during login/signup.
 type PolicyWarningDTO struct {
-	RequiresPasswordUpgrade  bool     `json:"requires_password_upgrade,omitempty"`
+	RequiresPasswordUpgrade   bool     `json:"requires_password_upgrade,omitempty"`
 	RequiresEmailVerification bool     `json:"requires_email_verification,omitempty"`
-	MissingCriteria          []string `json:"missing_criteria,omitempty"`
+	MissingCriteria           []string `json:"missing_criteria,omitempty"`
 }
 
 // UserDTO defines the public profile payload returned to clients.
@@ -102,9 +103,27 @@ func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ra
 	}
 }
 
-// RegisterRoutes attaches authentication endpoints to the Fiber app with rate limiting protection.
+// RegisterRoutes mounts every client authentication endpoint under /v1/client.
+//
+// pkMiddleware validates the publishable key and resolves the tenant; it applies to every route
+// here and may be nil in tests. The account rate limiter, when configured, runs next, so a
+// throttled caller is rejected before any credential is examined.
+//
+// Authentication is declared per route rather than by group position. Routes built with public()
+// carry no bearer requirement; routes built with protected() additionally run RequireClientAuth,
+// which is the single implementation of "this caller holds a valid access token" shared with
+// /v1/client/user. A route's authentication is therefore visible on its own registration line and
+// does not depend on where that line sits relative to a group boundary.
+//
+// Three groups of routes are deliberately public despite acting on an identity:
+//   - the 2FA verify and passkey login routes, which are authorized by the short-lived mfa_token
+//     issued after a successful password check, not by a session;
+//   - the recovery proof, claim, and token-cancel routes, whose whole purpose is to serve a user
+//     who cannot sign in;
+//   - the guardian invitation accept route, authorized by the invitation token itself.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	api := app.Group("/v1/client")
+
 	var mws []fiber.Handler
 	if pkMiddleware != nil {
 		mws = append(mws, pkMiddleware)
@@ -113,88 +132,69 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 		mws = append(mws, h.rateLimiter.Middleware())
 	}
 
-	signupHandlers := append(append([]fiber.Handler{}, mws...), h.SignUp)
-	loginHandlers := append(append([]fiber.Handler{}, mws...), h.Login)
-	verifyHandlers := append(append([]fiber.Handler{}, mws...), h.VerifyEmail)
-	resendHandlers := append(append([]fiber.Handler{}, mws...), h.ResendVerification)
-	magicLinkSendHandlers := append(append([]fiber.Handler{}, mws...), h.SendMagicLink)
-	magicLinkVerifyHandlers := append(append([]fiber.Handler{}, mws...), h.VerifyMagicLink)
-	totpEnrollHandlers := append(append([]fiber.Handler{}, mws...), h.EnrollTOTP)
-	totpConfirmHandlers := append(append([]fiber.Handler{}, mws...), h.ConfirmTOTP)
-	totpVerifyHandlers := append(append([]fiber.Handler{}, mws...), h.VerifyTOTP)
-	totpDisableHandlers := append(append([]fiber.Handler{}, mws...), h.DisableTOTP)
-	recRegenHandlers := append(append([]fiber.Handler{}, mws...), h.RegenerateRecoveryCodes)
-	recStatusHandlers := append(append([]fiber.Handler{}, mws...), h.GetRecoveryCodesStatus)
+	// The signing secret is the same one the handlers used to verify with inline, so a token
+	// accepted before is accepted now.
+	clientAuth := middleware.RequireClientAuth(h.service.config.EncryptionKey)
 
-	waRegBeginHandlers := append(append([]fiber.Handler{}, mws...), h.BeginWebAuthnRegistration)
-	waRegFinishHandlers := append(append([]fiber.Handler{}, mws...), h.FinishWebAuthnRegistration)
-	waLogBeginHandlers := append(append([]fiber.Handler{}, mws...), h.BeginWebAuthnLogin)
-	waLogFinishHandlers := append(append([]fiber.Handler{}, mws...), h.FinishWebAuthnLogin)
-	waListHandlers := append(append([]fiber.Handler{}, mws...), h.ListWebAuthnPasskeys)
-	waDeleteHandlers := append(append([]fiber.Handler{}, mws...), h.DeleteWebAuthnPasskey)
+	public := func(handler fiber.Handler) []fiber.Handler {
+		return append(append([]fiber.Handler{}, mws...), handler)
+	}
+	protected := func(handler fiber.Handler) []fiber.Handler {
+		return append(append(append([]fiber.Handler{}, mws...), clientAuth), handler)
+	}
 
-	smsEnrollHandlers := append(append([]fiber.Handler{}, mws...), h.EnrollSMS)
-	smsConfirmHandlers := append(append([]fiber.Handler{}, mws...), h.ConfirmSMS)
-	smsDisableHandlers := append(append([]fiber.Handler{}, mws...), h.DisableSMS)
+	// Registration, password sign-in and email verification.
+	api.Post("/signup", public(h.SignUp)...)
+	api.Post("/login", public(h.Login)...)
+	api.Get("/verify-email", public(h.VerifyEmail)...)
+	api.Post("/resend-verification", public(h.ResendVerification)...)
 
-	api.Post("/signup", signupHandlers...)
-	api.Post("/login", loginHandlers...)
-	api.Get("/verify-email", verifyHandlers...)
-	api.Post("/resend-verification", resendHandlers...)
+	// Passwordless magic link (FR-15). The emailed token is the credential.
+	api.Post("/auth/magic-link", public(h.SendMagicLink)...)
+	api.Get("/auth/magic-link/verify", public(h.VerifyMagicLink)...)
+	api.Post("/auth/magic-link/verify", public(h.VerifyMagicLink)...)
 
-	// Passwordless Magic Link routes (FR-15)
-	api.Post("/auth/magic-link", magicLinkSendHandlers...)
-	api.Get("/auth/magic-link/verify", magicLinkVerifyHandlers...)
-	api.Post("/auth/magic-link/verify", magicLinkVerifyHandlers...)
+	// TOTP second factor (FR-4). Verification is public because it also serves the login
+	// challenge, where the caller holds an mfa_token rather than a session.
+	api.Post("/2fa/totp/enroll", protected(h.EnrollTOTP)...)
+	api.Post("/2fa/totp/confirm", protected(h.ConfirmTOTP)...)
+	api.Post("/2fa/totp/disable", protected(h.DisableTOTP)...)
+	api.Post("/2fa/totp/verify", public(h.VerifyTOTP)...)
+	api.Post("/auth/2fa/verify", public(h.VerifyTOTP)...)
 
-	// 2FA TOTP & Recovery Code routes (FR-4)
-	api.Post("/2fa/totp/enroll", totpEnrollHandlers...)
-	api.Post("/2fa/totp/confirm", totpConfirmHandlers...)
-	api.Post("/2fa/totp/verify", totpVerifyHandlers...)
-	api.Post("/2fa/totp/disable", totpDisableHandlers...)
-	api.Post("/auth/2fa/verify", totpVerifyHandlers...)
+	// SMS OTP second factor (FR-4).
+	api.Post("/2fa/sms/enroll", protected(h.EnrollSMS)...)
+	api.Post("/2fa/sms/confirm", protected(h.ConfirmSMS)...)
+	api.Delete("/2fa/sms/disable", protected(h.DisableSMS)...)
 
-	// SMS OTP 2FA routes (FR-4)
-	api.Post("/2fa/sms/enroll", smsEnrollHandlers...)
-	api.Post("/2fa/sms/confirm", smsConfirmHandlers...)
-	api.Delete("/2fa/sms/disable", smsDisableHandlers...)
+	// Backup recovery codes (FR-4).
+	api.Post("/2fa/recovery-codes/regenerate", protected(h.RegenerateRecoveryCodes)...)
+	api.Get("/2fa/recovery-codes/status", protected(h.GetRecoveryCodesStatus)...)
 
-	// Backup Recovery Code routes (FR-4)
-	api.Post("/2fa/recovery-codes/regenerate", recRegenHandlers...)
-	api.Get("/2fa/recovery-codes/status", recStatusHandlers...)
+	// WebAuthn passkeys (FR-4). Registration needs a session; login is authorized by mfa_token.
+	api.Post("/2fa/webauthn/register/begin", protected(h.BeginWebAuthnRegistration)...)
+	api.Post("/2fa/webauthn/register/finish", protected(h.FinishWebAuthnRegistration)...)
+	api.Post("/2fa/webauthn/login/begin", public(h.BeginWebAuthnLogin)...)
+	api.Post("/2fa/webauthn/login/finish", public(h.FinishWebAuthnLogin)...)
+	api.Get("/2fa/webauthn/credentials", protected(h.ListWebAuthnPasskeys)...)
+	api.Delete("/2fa/webauthn/credentials/:id", protected(h.DeleteWebAuthnPasskey)...)
 
-	// WebAuthn / Passkeys (FIDO2) routes (FR-4)
-	api.Post("/2fa/webauthn/register/begin", waRegBeginHandlers...)
-	api.Post("/2fa/webauthn/register/finish", waRegFinishHandlers...)
-	api.Post("/2fa/webauthn/login/begin", waLogBeginHandlers...)
-	api.Post("/2fa/webauthn/login/finish", waLogFinishHandlers...)
-	api.Get("/2fa/webauthn/credentials", waListHandlers...)
-	api.Delete("/2fa/webauthn/credentials/:id", waDeleteHandlers...)
+	// Guardian roster management (FR-5). Accepting an invitation is public: the invitee is a
+	// different person from the account holder and generally has no session here.
+	api.Post("/account/guardians/invite", protected(h.InviteGuardians)...)
+	api.Post("/account/guardians/accept", public(h.AcceptGuardianInvite)...)
+	api.Get("/account/guardians", protected(h.ListGuardians)...)
+	api.Delete("/account/guardians/:id", protected(h.RevokeGuardian)...)
 
-	// Guardian Recovery routes (FR-5)
-	gdnInviteHandlers := append(append([]fiber.Handler{}, mws...), h.InviteGuardians)
-	gdnAcceptHandlers := append(append([]fiber.Handler{}, mws...), h.AcceptGuardianInvite)
-	gdnListHandlers := append(append([]fiber.Handler{}, mws...), h.ListGuardians)
-	gdnRevokeHandlers := append(append([]fiber.Handler{}, mws...), h.RevokeGuardian)
-	recInitiateHandlers := append(append([]fiber.Handler{}, mws...), h.InitiateRecovery)
-	recGuardianProofHandlers := append(append([]fiber.Handler{}, mws...), h.SubmitGuardianProof)
-	recOldPassProofHandlers := append(append([]fiber.Handler{}, mws...), h.SubmitOldPasswordProof)
-	recSecQuestProofHandlers := append(append([]fiber.Handler{}, mws...), h.SubmitSecurityQuestionsProof)
-	recClaimHandlers := append(append([]fiber.Handler{}, mws...), h.ClaimAccount)
-	recCancelAuthHandlers := append(append([]fiber.Handler{}, mws...), h.CancelRecoveryAuth)
-	recCancelTokenHandlers := append(append([]fiber.Handler{}, mws...), h.CancelRecoveryToken)
-
-	api.Post("/account/guardians/invite", gdnInviteHandlers...)
-	api.Post("/account/guardians/accept", gdnAcceptHandlers...)
-	api.Get("/account/guardians", gdnListHandlers...)
-	api.Delete("/account/guardians/:id", gdnRevokeHandlers...)
-	api.Post("/auth/recovery/initiate", recInitiateHandlers...)
-	api.Post("/auth/recovery/proof/guardian", recGuardianProofHandlers...)
-	api.Post("/auth/recovery/proof/old-password", recOldPassProofHandlers...)
-	api.Post("/auth/recovery/proof/security-questions", recSecQuestProofHandlers...)
-	api.Post("/auth/recovery/claim", recClaimHandlers...)
-	api.Post("/auth/recovery/cancel", recCancelAuthHandlers...)
-	api.Post("/auth/recovery/cancel/token", recCancelTokenHandlers...)
+	// Account recovery (FR-5). Everything except the authenticated cancel is reachable without a
+	// session by design — a locked-out user has none.
+	api.Post("/auth/recovery/initiate", public(h.InitiateRecovery)...)
+	api.Post("/auth/recovery/proof/guardian", public(h.SubmitGuardianProof)...)
+	api.Post("/auth/recovery/proof/old-password", public(h.SubmitOldPasswordProof)...)
+	api.Post("/auth/recovery/proof/security-questions", public(h.SubmitSecurityQuestionsProof)...)
+	api.Post("/auth/recovery/claim", public(h.ClaimAccount)...)
+	api.Post("/auth/recovery/cancel", public(h.CancelRecoveryAuth)...)
+	api.Post("/auth/recovery/cancel/token", public(h.CancelRecoveryToken)...)
 }
 
 // SendMagicLinkDTO defines the request payload for requesting a magic login link.
@@ -787,7 +787,12 @@ type TOTPDisableRequest struct {
 	Password string `json:"password" example:"SuperSecret123!"`
 }
 
-// extractBearerToken extracts the JWT access token from cookies or Authorization Bearer header.
+// extractBearerToken resolves the caller's access token from the authn_access_token cookie, the
+// access_token cookie, or an Authorization: Bearer header, in that order.
+//
+// Cookies take precedence over the header, matching middleware.RequireClientAuth. The two must
+// agree: a route whose token source differs from the one the middleware reads would authenticate
+// a different caller than the middleware authorized.
 func extractBearerToken(c *fiber.Ctx) string {
 	if tok := c.Cookies("authn_access_token"); tok != "" {
 		return tok
@@ -802,22 +807,26 @@ func extractBearerToken(c *fiber.Ctx) string {
 	return ""
 }
 
+// getUserID returns the authenticated user's ID from the locals RequireClientAuth populates.
+//
+// It is only meaningful on a route registered with protected(); on a public route it returns "",
+// which every caller must treat as a programming error rather than as an anonymous user.
+func getUserID(c *fiber.Ctx) string {
+	if val, ok := c.Locals("userID").(string); ok && val != "" {
+		return val
+	}
+	if val, ok := c.Locals("user_id").(string); ok && val != "" {
+		return val
+	}
+	return ""
+}
+
 // EnrollTOTP handles POST /v1/client/2fa/totp/enroll.
 // Generates a new TOTP secret for the authenticated user and stores it in pending state (is_enabled = false).
 func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
+	userID := getUserID(c)
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
-
-	result, err := h.service.EnrollTOTP(c.UserContext(), claims.Sub)
+	result, err := h.service.EnrollTOTP(c.UserContext(), userID)
 	if err != nil {
 		return httperr.SendInternal(c, "auth.totp.enroll", err)
 	}
@@ -831,24 +840,14 @@ func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
 // ConfirmTOTP handles POST /v1/client/2fa/totp/confirm.
 // Validates a 6-digit TOTP code against the pending secret and enables 2FA (is_enabled = true).
 func (h *Handler) ConfirmTOTP(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	var req TOTPConfirmRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Code) == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "code is required")
 	}
 
-	res, err := h.service.ConfirmTOTP(c.UserContext(), claims.Sub, strings.TrimSpace(req.Code))
+	res, err := h.service.ConfirmTOTP(c.UserContext(), userID, strings.TrimSpace(req.Code))
 	if err != nil {
 		return sendServiceError(c, "auth.totp.confirm", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidMFACode, "unable to confirm TOTP enrollment with the supplied code")
@@ -915,7 +914,10 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 		})
 	}
 
-	// 2. Direct TOTP verification within an authenticated session
+	// 2. Direct verification inside an already-authenticated session.
+	//
+	// This route is public because branch 1 above serves the login challenge, where the caller
+	// holds an mfa_token and no session. The bearer path therefore has to authenticate itself.
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token or two_factor_token required")
@@ -923,8 +925,8 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		// The parse error names why the token failed (expired, bad signature, wrong algorithm),
+		// which an unauthenticated caller must not learn.
 		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 
@@ -941,17 +943,7 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 // DisableTOTP handles POST /v1/client/2fa/totp/disable.
 // Re-verifies current password using Argon2id, removes TOTP 2FA, and revokes all active user sessions for security.
 func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	var req TOTPDisableRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
@@ -961,7 +953,7 @@ func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 
-	if err := h.service.DisableTOTP(c.UserContext(), claims.Sub, req.Password, userAgent, ipAddress); err != nil {
+	if err := h.service.DisableTOTP(c.UserContext(), userID, req.Password, userAgent, ipAddress); err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
 			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password confirmation")
 		}
@@ -982,24 +974,14 @@ type RecoveryCodesRegenerateRequest struct {
 // RegenerateRecoveryCodes handles POST /v1/client/2fa/recovery-codes/regenerate.
 // Requires Argon2id password step-up, invalidates all old recovery codes, and issues 16 fresh codes.
 func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	var req RecoveryCodesRegenerateRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "password is required for recovery codes regeneration step-up")
 	}
 
-	codes, err := h.service.RegenerateRecoveryCodes(c.UserContext(), claims.Sub, req.Password)
+	codes, err := h.service.RegenerateRecoveryCodes(c.UserContext(), userID, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
 			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password confirmation")
@@ -1017,19 +999,9 @@ func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 // GetRecoveryCodesStatus handles GET /v1/client/2fa/recovery-codes/status.
 // Returns remaining unused count of recovery codes for the authenticated user without exposing code values.
 func (h *Handler) GetRecoveryCodesStatus(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
+	userID := getUserID(c)
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
-
-	res, err := h.service.GetRecoveryCodesStatus(c.UserContext(), claims.Sub)
+	res, err := h.service.GetRecoveryCodesStatus(c.UserContext(), userID)
 	if err != nil {
 		return httperr.SendInternal(c, "auth.recovery_codes.status", err)
 	}
@@ -1061,19 +1033,9 @@ type PasskeyDeleteRequest struct {
 
 // BeginWebAuthnRegistration handles POST /v1/client/2fa/webauthn/register/begin.
 func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
+	userID := getUserID(c)
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
-
-	options, sessionID, err := h.service.BeginWebAuthnRegistration(c.UserContext(), claims.Sub)
+	options, sessionID, err := h.service.BeginWebAuthnRegistration(c.UserContext(), userID)
 	if err != nil {
 		return sendServiceError(c, "auth.webauthn.register_begin", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to begin passkey registration")
@@ -1087,17 +1049,7 @@ func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
 
 // FinishWebAuthnRegistration handles POST /v1/client/2fa/webauthn/register/finish.
 func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	sessionID := c.Query("session_id")
 	passkeyName := c.Query("name")
@@ -1124,7 +1076,7 @@ func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	res, err := h.service.FinishWebAuthnRegistration(c.UserContext(), claims.Sub, sessionID, httpReq, passkeyName)
+	res, err := h.service.FinishWebAuthnRegistration(c.UserContext(), userID, sessionID, httpReq, passkeyName)
 	if err != nil {
 		return sendServiceError(c, "auth.webauthn.register_finish", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to complete passkey registration")
@@ -1230,19 +1182,9 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 
 // ListWebAuthnPasskeys handles GET /v1/client/2fa/webauthn/credentials.
 func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
+	userID := getUserID(c)
 
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
-
-	credentials, err := h.service.ListWebAuthnPasskeys(c.UserContext(), claims.Sub)
+	credentials, err := h.service.ListWebAuthnPasskeys(c.UserContext(), userID)
 	if err != nil {
 		return httperr.SendInternal(c, "auth.webauthn.list_passkeys", err)
 	}
@@ -1254,17 +1196,7 @@ func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
 
 // DeleteWebAuthnPasskey handles DELETE /v1/client/2fa/webauthn/credentials/:id.
 func (h *Handler) DeleteWebAuthnPasskey(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	passkeyID := c.Params("id")
 	if passkeyID == "" {
@@ -1274,7 +1206,7 @@ func (h *Handler) DeleteWebAuthnPasskey(c *fiber.Ctx) error {
 	var req PasskeyDeleteRequest
 	_ = c.BodyParser(&req)
 
-	if err := h.service.DeleteWebAuthnPasskey(c.UserContext(), claims.Sub, passkeyID, req.Password); err != nil {
+	if err := h.service.DeleteWebAuthnPasskey(c.UserContext(), userID, passkeyID, req.Password); err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
 			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password step-up confirmation required to delete your last remaining 2FA method")
 		}
@@ -1304,24 +1236,14 @@ type SMSDisableRequest struct {
 
 // EnrollSMS handles POST /v1/client/2fa/sms/enroll.
 func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	var req SMSEnrollRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.PhoneNumber) == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "phone_number is required")
 	}
 
-	if err := h.service.BeginSMSEnrollment(c.UserContext(), claims.Sub, strings.TrimSpace(req.PhoneNumber)); err != nil {
+	if err := h.service.BeginSMSEnrollment(c.UserContext(), userID, strings.TrimSpace(req.PhoneNumber)); err != nil {
 		return sendServiceError(c, "auth.sms.enroll", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to begin SMS enrollment")
 	}
@@ -1334,24 +1256,14 @@ func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 
 // ConfirmSMS handles POST /v1/client/2fa/sms/confirm.
 func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	var req SMSConfirmRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Code) == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "code is required")
 	}
 
-	res, err := h.service.ConfirmSMSEnrollment(c.UserContext(), claims.Sub, strings.TrimSpace(req.Code))
+	res, err := h.service.ConfirmSMSEnrollment(c.UserContext(), userID, strings.TrimSpace(req.Code))
 	if err != nil {
 		return sendServiceError(c, "auth.sms.confirm", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidMFACode, "unable to confirm SMS enrollment with the supplied code")
@@ -1362,17 +1274,7 @@ func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
 
 // DisableSMS handles DELETE /v1/client/2fa/sms/disable.
 func (h *Handler) DisableSMS(c *fiber.Ctx) error {
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
-	}
-
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
-		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
-	}
+	userID := getUserID(c)
 
 	var req SMSDisableRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
@@ -1382,7 +1284,7 @@ func (h *Handler) DisableSMS(c *fiber.Ctx) error {
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 
-	if err := h.service.DisableSMS2FA(c.UserContext(), claims.Sub, req.Password, userAgent, ipAddress); err != nil {
+	if err := h.service.DisableSMS2FA(c.UserContext(), userID, req.Password, userAgent, ipAddress); err != nil {
 		return sendServiceError(c, "auth.sms.disable", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to disable SMS 2FA")
 	}
@@ -1394,20 +1296,7 @@ func (h *Handler) DisableSMS(c *fiber.Ctx) error {
 
 // InviteGuardians handles POST /v1/client/account/guardians/invite. Requires step-up re-auth / fresh session.
 func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
-	// This handler is on the /v1/client/auth router, which runs only the publishable-key
-	// and rate-limit middlewares — NOT RequireClientAuth — so c.Locals("userID") is never
-	// populated here. Verify the bearer token directly, as the TOTP/SMS handlers do.
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
-			"Authentication required. Please step-up re-authenticate to manage recovery contacts.")
-	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
-			"Authentication required. Please step-up re-authenticate to manage recovery contacts.")
-	}
-	userID := claims.Sub
+	userID := getUserID(c)
 
 	var req struct {
 		Guardians []InviteGuardianInput `json:"guardians"`
@@ -1449,17 +1338,7 @@ func (h *Handler) AcceptGuardianInvite(c *fiber.Ctx) error {
 
 // ListGuardians handles GET /v1/client/account/guardians.
 func (h *Handler) ListGuardians(c *fiber.Ctx) error {
-	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID local
-	// is never set here. Verify the bearer token directly, like the other authed handlers.
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
-	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
-	}
-	userID := claims.Sub
+	userID := getUserID(c)
 
 	dtos, err := h.guardianService.ListGuardians(c.Context(), userID)
 	if err != nil {
@@ -1473,17 +1352,7 @@ func (h *Handler) ListGuardians(c *fiber.Ctx) error {
 
 // RevokeGuardian handles DELETE /v1/client/account/guardians/:id.
 func (h *Handler) RevokeGuardian(c *fiber.Ctx) error {
-	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID local
-	// is never set here. Verify the bearer token directly, like the other authed handlers.
-	tokenStr := extractBearerToken(c)
-	if tokenStr == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
-	}
-	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
-	if err != nil {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "Authentication required")
-	}
-	userID := claims.Sub
+	userID := getUserID(c)
 
 	contactID := c.Params("id")
 	if contactID == "" {
@@ -1567,7 +1436,7 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 func (h *Handler) SubmitGuardianProof(c *fiber.Ctx) error {
 	var req struct {
 		RecoveryRequestID string `json:"recovery_request_id"`
-		SharePayload     string `json:"share_payload"`
+		SharePayload      string `json:"share_payload"`
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.RecoveryRequestID == "" || req.SharePayload == "" {
@@ -1671,18 +1540,18 @@ func (h *Handler) CancelRecoveryAuth(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id is required")
 	}
 
-	// /v1/client/auth router runs only pk + rate-limit middleware, so the userID/sessionID
-	// locals are never set here — previously this handler passed an empty userID straight to
-	// the service (unauthenticated). Verify the bearer token directly and require a valid
-	// session, matching the other authenticated handlers in this file.
+	// This is the one authenticated route in this file that verifies its own bearer token rather
+	// than being registered with protected(). Cancellation must spare the session issuing it, so
+	// the handler needs the session ID from the `sid` claim, and RequireClientAuth publishes only
+	// the user, tenant and environment. Verifying here keeps that claim reachable.
 	tokenStr := extractBearerToken(c)
 	if tokenStr == "" {
 		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: session token required")
 	}
 	claims, err := jwtpkg.VerifyAccessToken(tokenStr, h.service.config.EncryptionKey)
 	if err != nil {
-		// The JWT parse error describes why the token failed (expired, bad
-		// signature, wrong alg) — detail an unauthenticated caller must not get.
+		// The parse error names why the token failed (expired, bad signature, wrong algorithm),
+		// which an unauthenticated caller must not learn.
 		return httperr.Unauthorized(c, httperr.CodeSessionExpired, "unauthorized session: invalid or expired session token")
 	}
 	userID := claims.Sub
@@ -1724,6 +1593,3 @@ func (h *Handler) CancelRecoveryToken(c *fiber.Ctx) error {
 		"message": "Recovery request successfully cancelled. Originating request details blacklisted for 7 days. Account flagged for security review.",
 	})
 }
-
-
-

@@ -1,10 +1,24 @@
 /*
  * Authn Platform — Enterprise Identity Engine
  * File: apps/auth-engine/internal/email/template.go
- * Tier: Internal Service Package / Email Template System
+ * Tier: Internal Service Package / Email Rendering
  *
- * Description: Minimal HTML/Text email template rendering engine using Go's
- *              built-in html/template and text/template packages.
+ * Renders the transactional emails the engine sends, each as a matched pair of
+ * HTML and plain-text bodies.
+ *
+ * Templates are compiled from string constants rather than loaded from disk, so
+ * rendering cannot fail because of a missing file and the binary ships
+ * self-contained.
+ *
+ * The HTML side uses html/template and the text side text/template. That split
+ * matters: html/template escapes by context, so a display name containing
+ * markup is neutralised inside an attribute, a URL and an element body alike,
+ * whereas text/template performs no escaping at all and is correct only because
+ * its output is never parsed as markup.
+ *
+ * Styling is inlined in a <style> block because mail clients strip external
+ * stylesheets, and layout stays on tables and simple blocks for the same
+ * reason.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -18,14 +32,37 @@ import (
 	textTmpl "text/template"
 )
 
-// VerificationEmailData contains data required to render verification emails.
+// Fallbacks applied when a caller leaves a field unset, so a rendered message
+// never shows a blank product name or an expiry of "0".
+const (
+	// fallbackAppName is the product name shown when none is supplied.
+	fallbackAppName = "Authn Platform"
+	// fallbackVerificationHours mirrors the configured verification link
+	// lifetime and is shown only when the caller passes none.
+	fallbackVerificationHours = 24
+	// fallbackMagicLinkMinutes mirrors the configured magic link lifetime.
+	fallbackMagicLinkMinutes = 15
+	// fallbackImpersonationMinutes mirrors the default support session length.
+	fallbackImpersonationMinutes = 15
+)
+
+// VerificationEmailData fills the email verification templates.
 type VerificationEmailData struct {
-	UserName         string
+	// UserName is the recipient's display name; the greeting falls back to
+	// "there" when empty.
+	UserName string
+	// VerificationLink is the absolute URL that confirms the address. It is a
+	// single-use credential, which is why these messages are not forwarded or
+	// logged.
 	VerificationLink string
-	AppName          string
-	ExpiresInHours   int
+	// AppName is the product name shown in the message.
+	AppName string
+	// ExpiresInHours is the link's stated lifetime, which must match the
+	// lifetime actually enforced or the message misleads the recipient.
+	ExpiresInHours int
 }
 
+// verificationHTMLTemplate is the HTML body for email verification.
 const verificationHTMLTemplate = `<!DOCTYPE html>
 <html>
 <head>
@@ -61,6 +98,7 @@ const verificationHTMLTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
+// verificationTextTemplate is the plain-text alternative for email verification.
 const verificationTextTemplate = `Verify your email address for {{.AppName}}
 
 Hi {{if .UserName}}{{.UserName}}{{else}}there{{end}},
@@ -73,13 +111,21 @@ This link is valid for {{.ExpiresInHours}} hours.
 
 If you didn't create an account with {{.AppName}}, you can safely ignore this email.`
 
-// RenderVerificationEmail renders HTML and plain text email verification templates.
+// RenderVerificationEmail renders the HTML and plain-text bodies of the email
+// verification message, in that order.
+//
+// Unset AppName and ExpiresInHours take their fallbacks, so a caller supplying
+// only the link and the name still produces a coherent message.
+//
+// Returns an error if a template fails to parse or execute. Both indicate a
+// defect in the templates themselves rather than in the caller's data, since
+// the data is plain values that cannot fail to render.
 func RenderVerificationEmail(data VerificationEmailData) (string, string, error) {
 	if data.AppName == "" {
-		data.AppName = "Authn Platform"
+		data.AppName = fallbackAppName
 	}
 	if data.ExpiresInHours == 0 {
-		data.ExpiresInHours = 24
+		data.ExpiresInHours = fallbackVerificationHours
 	}
 
 	hTmpl, err := htmlTmpl.New("verification_html").Parse(verificationHTMLTemplate)
@@ -103,14 +149,22 @@ func RenderVerificationEmail(data VerificationEmailData) (string, string, error)
 	return htmlBuf.String(), textBuf.String(), nil
 }
 
-// MagicLinkEmailData contains data required to render magic login link emails.
+// MagicLinkEmailData fills the passwordless sign-in templates.
 type MagicLinkEmailData struct {
-	UserName         string
-	MagicLink        string
-	AppName          string
+	// UserName is the recipient's display name; the greeting falls back to
+	// "there" when empty.
+	UserName string
+	// MagicLink is the absolute sign-in URL. It grants a session on its own, so
+	// it is the most sensitive value this package renders.
+	MagicLink string
+	// AppName is the product name shown in the message.
+	AppName string
+	// ExpiresInMinutes is the link's stated lifetime, kept short because the
+	// link alone authenticates.
 	ExpiresInMinutes int
 }
 
+// magicLinkHTMLTemplate is the HTML body for passwordless sign-in.
 const magicLinkHTMLTemplate = `<!DOCTYPE html>
 <html>
 <head>
@@ -146,6 +200,7 @@ const magicLinkHTMLTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
+// magicLinkTextTemplate is the plain-text alternative for passwordless sign-in.
 const magicLinkTextTemplate = `Log in to {{.AppName}}
 
 Hi {{if .UserName}}{{.UserName}}{{else}}there{{end}},
@@ -158,13 +213,17 @@ This link is single-use and valid for {{.ExpiresInMinutes}} minutes.
 
 If you didn't request this login link, you can safely ignore this email.`
 
-// RenderMagicLinkEmail renders HTML and plain text magic link emails.
+// RenderMagicLinkEmail renders the HTML and plain-text bodies of the
+// passwordless sign-in message, in that order.
+//
+// Unset AppName and ExpiresInMinutes take their fallbacks. Returns an error if
+// a template fails to parse or execute.
 func RenderMagicLinkEmail(data MagicLinkEmailData) (string, string, error) {
 	if data.AppName == "" {
-		data.AppName = "Authn Platform"
+		data.AppName = fallbackAppName
 	}
 	if data.ExpiresInMinutes == 0 {
-		data.ExpiresInMinutes = 15
+		data.ExpiresInMinutes = fallbackMagicLinkMinutes
 	}
 
 	hTmpl, err := htmlTmpl.New("magic_link_html").Parse(magicLinkHTMLTemplate)
@@ -188,16 +247,30 @@ func RenderMagicLinkEmail(data MagicLinkEmailData) (string, string, error) {
 	return htmlBuf.String(), textBuf.String(), nil
 }
 
-// ImpersonationEmailData contains data required to render support access notification emails.
+// ImpersonationEmailData fills the support access notification templates.
+//
+// This message is a security notice, not a courtesy: it is what lets a user
+// notice support access they did not ask for. It is sent whether or not the
+// access was legitimate.
 type ImpersonationEmailData struct {
-	UserName        string
-	AdminName       string
-	Reason          string
-	TicketID        string
+	// UserName is the account holder's display name; the greeting falls back to
+	// "there" when empty.
+	UserName string
+	// AdminName identifies the operator who accessed the account, falling back
+	// to a generic label when unavailable.
+	AdminName string
+	// Reason is the justification recorded for the access.
+	Reason string
+	// TicketID references the support ticket, omitted from the message when
+	// empty.
+	TicketID string
+	// DurationMinutes is how long the support session lasts before expiring.
 	DurationMinutes int
-	AppName         string
+	// AppName is the product name shown in the message.
+	AppName string
 }
 
+// impersonationHTMLTemplate is the HTML body for the support access notice.
 const impersonationHTMLTemplate = `<!DOCTYPE html>
 <html>
 <head>
@@ -234,6 +307,8 @@ const impersonationHTMLTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
+// impersonationTextTemplate is the plain-text alternative for the support
+// access notice.
 const impersonationTextTemplate = `Security Notice: Support Access for {{.AppName}}
 
 Hi {{if .UserName}}{{.UserName}}{{else}}there{{end}},
@@ -248,13 +323,17 @@ Session Details:
 
 If you requested assistance, no action is required. If you did not request support, please contact our security team immediately.`
 
-// RenderImpersonationEmail renders HTML and plain text support access notification emails.
+// RenderImpersonationEmail renders the HTML and plain-text bodies of the
+// support access notice, in that order.
+//
+// Unset AppName and DurationMinutes take their fallbacks. Returns an error if a
+// template fails to parse or execute.
 func RenderImpersonationEmail(data ImpersonationEmailData) (string, string, error) {
 	if data.AppName == "" {
-		data.AppName = "Authn Platform"
+		data.AppName = fallbackAppName
 	}
 	if data.DurationMinutes == 0 {
-		data.DurationMinutes = 15
+		data.DurationMinutes = fallbackImpersonationMinutes
 	}
 
 	hTmpl, err := htmlTmpl.New("impersonation_html").Parse(impersonationHTMLTemplate)

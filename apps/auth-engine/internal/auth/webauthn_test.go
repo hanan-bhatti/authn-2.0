@@ -37,8 +37,8 @@ import (
 
 func setupWebAuthnTestEnvironment(t *testing.T) (*fiber.App, *auth.Service, *auth.Repository, string, string) {
 	cfg := &config.Config{
-		APIKeyPepper:     "test_pepper_key_32_bytes_long_12345",
-		EncryptionKey:    "super_secret_32_byte_kms_encryption_key_authn_2026!",
+		APIKeyPepper:          "test_pepper_key_32_bytes_long_12345",
+		EncryptionKey:         "super_secret_32_byte_kms_encryption_key_authn_2026!",
 		WebAuthnRPID:          "localhost",
 		WebAuthnRPOrigins:     []string{"http://localhost:8080"},
 		WebAuthnRPDisplayName: "Authn Platform",

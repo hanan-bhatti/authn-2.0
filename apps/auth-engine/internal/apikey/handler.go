@@ -3,9 +3,16 @@
  * File: apps/auth-engine/internal/apikey/handler.go
  * Tier: Internal Feature Package / Admin Key HTTP Handlers
  *
- * Description: Fiber HTTP handlers for Admin API Key CRUD management (create, list, revoke).
- *              Protected strictly by `RequireSecretKey` middleware.
- *              Enforces strict environment cross-isolation (test keys cannot manage live keys).
+ * HTTP routes for issuing, listing and revoking an application's API keys.
+ *
+ * Every route sits behind secret-key authentication, so managing keys requires
+ * a key that already carries administrative authority. A publishable key can
+ * never mint a secret one.
+ *
+ * Environments are isolated in both directions: a caller authenticated with a
+ * test-mode key cannot create or see live-mode keys, and the reverse holds too.
+ * Without that, a test credential — the kind that ends up in a shared fixture
+ * or a CI log — would be a route to live access.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -22,44 +29,71 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
-// CreateKeyRequest defines the HTTP payload for issuing a new API key.
+// CreateKeyRequest is the body of a key issuance request.
 type CreateKeyRequest struct {
-	Name          string `json:"name" example:"Production Stripe Webhook Key"`
-	Type          string `json:"type" example:"publishable"` // "publishable" or "secret"
-	Environment   string `json:"environment" example:"test"` // "test" or "live"
-	ExpiresInDays *int   `json:"expires_in_days,omitempty"`
+	// Name is an operator-facing label for the key.
+	Name string `json:"name" example:"Production Stripe Webhook Key"`
+	// Type is the requested scope: "publishable" or "secret".
+	Type string `json:"type" example:"publishable"`
+	// Environment is "test" or "live". It must match the caller's own
+	// environment, and defaults to it when omitted.
+	Environment string `json:"environment" example:"test"`
+	// ExpiresInDays sets an optional lifetime. Omitting it issues a key that
+	// stays valid until revoked.
+	ExpiresInDays *int `json:"expires_in_days,omitempty"`
 }
 
-// KeyDTO represents public API key metadata returned in API responses (never includes key hash or secret string).
+// KeyDTO is the public view of a key. It carries no hash and no key material,
+// so it is safe to return in a listing.
 type KeyDTO struct {
-	ID            string  `json:"id" example:"key_1a2b3c"`
-	ApplicationID string  `json:"application_id" example:"app_test123"`
-	Name          string  `json:"name" example:"Production Key"`
-	Type          string  `json:"type" example:"publishable"`
-	KeyPrefix     string  `json:"key_prefix" example:"pk_test_"`
-	Environment   string  `json:"environment" example:"test"`
-	CreatedAt     string  `json:"created_at" example:"2026-08-01T12:00:00Z"`
-	ExpiresAt     *string `json:"expires_at,omitempty"`
-	RevokedAt     *string `json:"revoked_at,omitempty"`
+	// ID is the key's identifier, used to revoke it.
+	ID string `json:"id" example:"key_1a2b3c"`
+	// ApplicationID is the owning application.
+	ApplicationID string `json:"application_id" example:"app_test123"`
+	// Name is the operator-facing label.
+	Name string `json:"name" example:"Production Key"`
+	// Type is the key's scope.
+	Type string `json:"type" example:"publishable"`
+	// KeyPrefix is the key's leading marker, enough to recognise a key without
+	// revealing it.
+	KeyPrefix string `json:"key_prefix" example:"pk_test_"`
+	// Environment is "test" or "live".
+	Environment string `json:"environment" example:"test"`
+	// CreatedAt is the issue time in RFC 3339.
+	CreatedAt string `json:"created_at" example:"2026-08-01T12:00:00Z"`
+	// ExpiresAt is the expiry in RFC 3339, omitted when the key does not expire.
+	ExpiresAt *string `json:"expires_at,omitempty"`
+	// RevokedAt is the revocation time in RFC 3339, omitted while the key is
+	// active.
+	RevokedAt *string `json:"revoked_at,omitempty"`
 }
 
-// CreateKeyResponse defines the response returned when issuing a new key (includes raw_key ONCE).
+// CreateKeyResponse is returned when a key is issued.
 type CreateKeyResponse struct {
-	Key    KeyDTO `json:"key"`
+	// Key is the new key's metadata.
+	Key KeyDTO `json:"key"`
+	// RawKey is the usable key. This response is the only place it ever
+	// appears: it is not stored and cannot be retrieved again.
 	RawKey string `json:"raw_key" example:"pk_test_12345678901234567890123456789012"`
 }
 
-// Handler handles HTTP requests for API Key CRUD operations.
+// Handler serves the key management routes.
 type Handler struct {
+	// service performs issuance, listing and revocation.
 	service *Service
 }
 
-// NewHandler creates a new API Key HTTP Handler.
+// NewHandler constructs a handler over a key service.
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-// RegisterRoutes registers admin key management routes gated by secret key middleware.
+// RegisterRoutes mounts the key management routes under /v1/admin/keys.
+//
+// secretKeyMiddleware authenticates the caller and populates the application
+// and environment the handlers read. It is applied when non-nil; passing nil
+// leaves the routes unauthenticated and suits only a test that supplies those
+// values itself.
 func (h *Handler) RegisterRoutes(app *fiber.App, secretKeyMiddleware fiber.Handler) {
 	group := app.Group("/v1/admin/keys")
 	if secretKeyMiddleware != nil {
@@ -70,7 +104,11 @@ func (h *Handler) RegisterRoutes(app *fiber.App, secretKeyMiddleware fiber.Handl
 	group.Post("/:id/revoke", h.RevokeKey)
 }
 
-// CreateKey issues a new publishable or secret API key for the caller's Application.
+// CreateKey issues a key for the caller's application and returns it once.
+//
+// Responds 401 when the middleware left no application context, 400 for an
+// unparseable body, an unrecognised type, or an environment differing from the
+// caller's, 500 when issuance fails, and 201 with the key on success.
 func (h *Handler) CreateKey(c *fiber.Ctx) error {
 	appID, okApp := c.Locals("application_id").(string)
 	callerEnv, okEnv := c.Locals("environment").(string)
@@ -93,7 +131,10 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 		reqEnv = callerEnv
 	}
 
-	// Environment isolation enforcement: caller's key environment mode must match the requested key environment
+	// The requested environment must equal the caller's. Comparing rather than
+	// simply overriding means a request that names the wrong environment is
+	// reported as a mistake instead of quietly producing a key for a different
+	// one than the operator asked for.
 	if reqEnv != callerEnv {
 		return httperr.BadRequest(c, httperr.CodeValidationFailed,
 			"environment mismatch: test-mode admin key cannot manage live-mode keys and vice versa")
@@ -130,7 +171,12 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 	})
 }
 
-// ListKeys retrieves all API keys for the caller's Application.
+// ListKeys returns the metadata of every key belonging to the caller's
+// application, revoked and expired ones included.
+//
+// Responds 401 when the middleware left no application context, 500 if the
+// query fails, and 200 with the list — never containing key material — on
+// success.
 func (h *Handler) ListKeys(c *fiber.Ctx) error {
 	appID, okApp := c.Locals("application_id").(string)
 	if !okApp || appID == "" {
@@ -150,7 +196,12 @@ func (h *Handler) ListKeys(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(dtos)
 }
 
-// RevokeKey soft-revokes an API key by ID.
+// RevokeKey marks a key unusable.
+//
+// Responds 400 when the id is missing or names no revocable key, and 200 on
+// success. The failure is reported as a 400 with fixed wording, because the
+// underlying error distinguishes "no such key" from "already revoked" and
+// relaying that would let a caller probe which identifiers exist.
 func (h *Handler) RevokeKey(c *fiber.Ctx) error {
 	keyID := c.Params("id")
 	if keyID == "" {
@@ -158,8 +209,8 @@ func (h *Handler) RevokeKey(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.RevokeKey(c.UserContext(), keyID); err != nil {
-		// The repository wraps the ent update failure together with the key id;
-		// the 400 is preserved but the driver text stays server-side.
+		// The repository wraps the ent failure together with the key id, so the
+		// detail is logged rather than returned.
 		log.Printf("[error] %s %s apikey.revoke_key: %v", c.Method(), c.Path(), err)
 		return httperr.BadRequest(c, httperr.CodeValidationFailed,
 			"api key could not be revoked: unknown or already-revoked key id")
@@ -168,6 +219,8 @@ func (h *Handler) RevokeKey(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "revoked", "id": keyID})
 }
 
+// toKeyDTO projects a key record onto its public view, formatting timestamps as
+// RFC 3339 and omitting the optional ones when unset.
 func toKeyDTO(k *ent.ApiKey) KeyDTO {
 	dto := KeyDTO{
 		ID:            k.ID,

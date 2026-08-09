@@ -147,17 +147,20 @@ func ValidateClientCredentials(provider, clientID, clientSecret string) error {
 				Reason:   "must be a reverse-domain Services ID (e.g. com.yourapp.auth)",
 			}
 		}
-	// facebook, x, linkedin, generic_oidc: only the empty-string check above
+		// facebook, x, linkedin, generic_oidc: only the empty-string check above
 	}
 
 	return nil
 }
 
-// ErrUnknownProvider is returned by NewProvider for unrecognized provider names.
+// ErrUnknownProvider reports a provider name that maps to no built-in driver
+// and carried no issuer URL to be treated as generic OIDC.
 type ErrUnknownProvider struct {
+	// Name is the unrecognized provider name as supplied by the caller.
 	Name string
 }
 
+// Error names the unrecognized provider and lists the supported ones.
 func (e *ErrUnknownProvider) Error() string {
 	return fmt.Sprintf("unknown social provider: %q — supported: %s", e.Name, strings.Join(SupportedProviders(), ", "))
 }

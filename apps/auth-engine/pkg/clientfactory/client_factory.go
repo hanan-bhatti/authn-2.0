@@ -44,9 +44,15 @@ type PoolOptions struct {
 
 // ClientFactory manages Ent ORM database connection pools for tenants and environments.
 type ClientFactory struct {
-	mu            sync.RWMutex
+	// mu guards pools against concurrent lookup and registration.
+	mu sync.RWMutex
+	// defaultClient serves every tenant that has no dedicated pool, which is
+	// the usual case: tenants are separated logically by the privacy
+	// interceptors rather than by a physical database each.
 	defaultClient *ent.Client
-	pools         map[string]*ent.Client
+	// pools holds dedicated clients keyed by "tenantID:environment", for
+	// self-hosters who route a tenant at its own database.
+	pools map[string]*ent.Client
 }
 
 // NewFromURL opens a connection pool using the engine implied by databaseURL's
@@ -118,15 +124,13 @@ func NewClientFactory(driverName string, dataSourceName string) (*ClientFactory,
 	}, nil
 }
 
-// GetClient returns the Ent client instance for a given tenant and environment.
+// GetClient returns the Ent client serving a tenant and environment, falling
+// back to the shared default pool when the pair has no dedicated one.
 //
-// Parameters:
-//   - ctx: Request context.
-//   - tenantID: Unique Tenant ID.
-//   - environment: Environment mode ("test" or "live").
-//
-// Returns:
-//   - *ent.Client: Active Ent database client.
+// It never returns nil for a configured factory, so callers do not branch on
+// the result. Tenant isolation does not come from this choice: the default pool
+// is shared, and it is the privacy interceptors that confine a query to its
+// tenant. Passing empty strings selects the default pool explicitly.
 func (f *ClientFactory) GetClient(ctx context.Context, tenantID string, environment string) *ent.Client {
 	poolKey := fmt.Sprintf("%s:%s", tenantID, environment)
 
@@ -140,7 +144,13 @@ func (f *ClientFactory) GetClient(ctx context.Context, tenantID string, environm
 	return f.defaultClient
 }
 
-// Ping checks database connectivity on default client with context timeout.
+// Ping reports whether the default pool can serve queries, by running the
+// cheapest real query against it.
+//
+// It issues a bounded query rather than a driver-level ping so that a pool
+// which connects but cannot read — a failed-over replica, a revoked grant, a
+// missing schema — is reported as unhealthy rather than healthy. Returns an
+// error when the factory is uninitialised or the query fails.
 func (f *ClientFactory) Ping(ctx context.Context) error {
 	if f == nil || f.defaultClient == nil {
 		return fmt.Errorf("database client uninitialized")
@@ -149,12 +159,11 @@ func (f *ClientFactory) Ping(ctx context.Context) error {
 	return err
 }
 
-// Close gracefully closes all active database connection pools.
+// Close shuts down the default pool and every dedicated pool.
 //
-// Parameters: None
-//
-// Returns:
-//   - error: Combined error if any pool fails to close.
+// It attempts all of them even after one fails, so a single bad pool cannot
+// leak the rest, and returns a combined error naming each failure. Called
+// during shutdown; the factory is unusable afterwards.
 func (f *ClientFactory) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

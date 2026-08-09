@@ -3,9 +3,10 @@
  * File: apps/auth-engine/internal/org/org_test.go
  * Tier: Automated Testing Layer / Unit & Integration Tests
  *
- * Description: Comprehensive test suite for B2B Organizations & Team Member Invitations (FR-15).
- *              Verifies validation bounds, CRUD operations, membership management, token redemption,
- *              expiration handling, and error conditions.
+ * Description: Test suite for B2B organizations and team member invitations (FR-15).
+ *              Covers validation bounds, organization CRUD, membership management,
+ *              invitation issue/redeem/revoke, metadata size limits, and the
+ *              per-organization authorization rules.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -14,8 +15,10 @@ package org_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
@@ -25,6 +28,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// setupTestService builds a service over a throwaway SQLite database seeded with
+// a tenant and two users, and returns it with a cleanup function.
 func setupTestService(t *testing.T) (*org.Service, *clientfactory.ClientFactory, func()) {
 	tmpDir, err := os.MkdirTemp("", "org_test_*")
 	if err != nil {
@@ -43,7 +48,6 @@ func setupTestService(t *testing.T) (*org.Service, *clientfactory.ClientFactory,
 		t.Fatalf("failed to create schema: %v", err)
 	}
 
-	// Seed test tenant & user
 	_, err = client.Tenant.Create().SetID("tnt_test").SetName("Test Tenant").SetSlug("test-tenant").Save(ctx)
 	if err != nil && !ent.IsConstraintError(err) {
 		t.Fatalf("failed to seed tenant: %v", err)
@@ -79,6 +83,7 @@ func setupTestService(t *testing.T) (*org.Service, *clientfactory.ClientFactory,
 	return svc, factory, cleanup
 }
 
+// TestOrgValidation checks the request-level bounds on name, slug and logo URL.
 func TestOrgValidation(t *testing.T) {
 	req := org.CreateOrgRequest{Name: "A"} // Too short
 	if err := req.Validate(); err == nil {
@@ -101,13 +106,14 @@ func TestOrgValidation(t *testing.T) {
 	}
 }
 
+// TestOrganizationLifecycle walks create, duplicate-slug rejection, read, update
+// and delete as the creator, who is auto-assigned org_admin.
 func TestOrganizationLifecycle(t *testing.T) {
 	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := privacy.NewBypassContext(context.Background())
 
-	// 1. Create Organization
 	created, err := svc.CreateOrganization(ctx, "tnt_test", "usr_creator", org.CreateOrgRequest{
 		Name:    "Acme Engineering",
 		Slug:    "acme-eng",
@@ -120,7 +126,6 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Errorf("unexpected created org payload: %+v", created)
 	}
 
-	// 2. Duplicate Slug Error
 	_, err = svc.CreateOrganization(ctx, "tnt_test", "usr_creator", org.CreateOrgRequest{
 		Name: "Acme Engineering Duplicate",
 		Slug: "acme-eng",
@@ -129,7 +134,6 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Errorf("expected duplicate slug error, got nil")
 	}
 
-	// 3. Get Organization (as the creator, who is auto-assigned org_admin — real authz path)
 	fetched, err := svc.GetOrganization(ctx, "tnt_test", created.ID, "usr_creator", false)
 	if err != nil {
 		t.Fatalf("failed to get org: %v", err)
@@ -138,7 +142,6 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Errorf("expected name 'Acme Engineering', got '%s'", fetched.Name)
 	}
 
-	// 4. Update Organization
 	newName := "Acme Corp Global"
 	updated, err := svc.UpdateOrganization(ctx, "tnt_test", "usr_creator", created.ID, org.UpdateOrgRequest{
 		Name: &newName,
@@ -150,19 +153,18 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Errorf("expected updated name 'Acme Corp Global', got '%s'", updated.Name)
 	}
 
-	// 5. Delete Organization
 	err = svc.DeleteOrganization(ctx, "tnt_test", "usr_creator", created.ID, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to delete org: %v", err)
 	}
 
-	// 6. Verify NotFound
 	_, err = svc.GetOrganization(ctx, "tnt_test", created.ID, "usr_creator", false)
 	if err == nil {
 		t.Errorf("expected NotFound error after deletion, got nil")
 	}
 }
 
+// TestMemberManagement covers adding, listing, re-roling and removing a member.
 func TestMemberManagement(t *testing.T) {
 	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
@@ -176,7 +178,6 @@ func TestMemberManagement(t *testing.T) {
 		t.Fatalf("failed to create org: %v", err)
 	}
 
-	// Add member
 	mem, err := svc.AddMember(ctx, "tnt_test", "usr_creator", orgObj.ID, org.AddMemberRequest{
 		UserID: "usr_invitee",
 		RoleID: "editor",
@@ -188,7 +189,6 @@ func TestMemberManagement(t *testing.T) {
 		t.Errorf("unexpected member user ID: %s", mem.UserID)
 	}
 
-	// List members
 	members, err := svc.ListOrgMembers(ctx, "tnt_test", orgObj.ID, "usr_creator", false, 10, 0)
 	if err != nil {
 		t.Fatalf("failed to list members: %v", err)
@@ -197,7 +197,6 @@ func TestMemberManagement(t *testing.T) {
 		t.Errorf("expected at least 2 members (creator + invitee), got %d", len(members))
 	}
 
-	// Update member role
 	updatedMem, err := svc.UpdateMemberRole(ctx, "tnt_test", "usr_creator", orgObj.ID, "usr_invitee", org.UpdateMemberRoleRequest{
 		RoleID: "org_admin",
 	}, false, "127.0.0.1", "TestAgent")
@@ -208,13 +207,14 @@ func TestMemberManagement(t *testing.T) {
 		t.Fatalf("updated member response is nil")
 	}
 
-	// Remove member
 	err = svc.RemoveMember(ctx, "tnt_test", "usr_creator", orgObj.ID, "usr_invitee", false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to remove member: %v", err)
 	}
 }
 
+// TestInvitationFlow covers issuing, listing and redeeming an invitation, and
+// confirms a token is single-use.
 func TestInvitationFlow(t *testing.T) {
 	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
@@ -228,7 +228,6 @@ func TestInvitationFlow(t *testing.T) {
 		t.Fatalf("failed to create org: %v", err)
 	}
 
-	// Create Invitation
 	inv, err := svc.CreateInvitation(ctx, "tnt_test", "usr_creator", orgObj.ID, org.CreateInvitationRequest{
 		Email:      "invitee@example.com",
 		RoleID:     "editor",
@@ -241,7 +240,6 @@ func TestInvitationFlow(t *testing.T) {
 		t.Errorf("unexpected invitation response: %+v", inv)
 	}
 
-	// List Pending Invitations
 	invs, err := svc.ListPendingInvitations(ctx, "tnt_test", orgObj.ID, "usr_creator", false, 10, 0)
 	if err != nil {
 		t.Fatalf("failed to list pending invitations: %v", err)
@@ -250,7 +248,6 @@ func TestInvitationFlow(t *testing.T) {
 		t.Errorf("expected 1 pending invitation, got %d", len(invs))
 	}
 
-	// Accept Invitation
 	acceptedMem, err := svc.AcceptInvitation(ctx, "tnt_test", "usr_invitee", org.AcceptInvitationRequest{
 		InvitationToken: inv.InvitationToken,
 	}, "127.0.0.1", "TestAgent")
@@ -261,7 +258,6 @@ func TestInvitationFlow(t *testing.T) {
 		t.Errorf("expected accepted member user_id 'usr_invitee', got '%s'", acceptedMem.UserID)
 	}
 
-	// Try accepting again (should fail with ErrInvitationAccepted)
 	_, err = svc.AcceptInvitation(ctx, "tnt_test", "usr_invitee", org.AcceptInvitationRequest{
 		InvitationToken: inv.InvitationToken,
 	}, "127.0.0.1", "TestAgent")
@@ -270,6 +266,7 @@ func TestInvitationFlow(t *testing.T) {
 	}
 }
 
+// TestRevokeInvitation confirms a revoked invitation can no longer be redeemed.
 func TestRevokeInvitation(t *testing.T) {
 	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
@@ -291,13 +288,11 @@ func TestRevokeInvitation(t *testing.T) {
 		t.Fatalf("failed to create invitation: %v", err)
 	}
 
-	// Revoke Invitation
 	err = svc.RevokeInvitation(ctx, "tnt_test", "usr_creator", orgObj.ID, inv.ID, false, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("failed to revoke invitation: %v", err)
 	}
 
-	// Attempting to accept revoked invitation should fail
 	_, err = svc.AcceptInvitation(ctx, "tnt_test", "usr_invitee", org.AcceptInvitationRequest{
 		InvitationToken: inv.InvitationToken,
 	}, "127.0.0.1", "TestAgent")
@@ -306,9 +301,81 @@ func TestRevokeInvitation(t *testing.T) {
 	}
 }
 
-// TestAuthorizationEnforcement locks in the C2 fix: non-members are denied reads,
-// and non-admin members are denied mutations. The admin-tier bypass (isAdmin=true)
-// is verified to still succeed. This is the regression guard for the pk-only vuln.
+// TestOrgMetadataSizeLimit verifies the serialized-JSON cap on organization
+// metadata is enforced on both create and update, and that metadata under the cap
+// is stored unchanged.
+func TestOrgMetadataSizeLimit(t *testing.T) {
+	svc, _, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := privacy.NewBypassContext(context.Background())
+
+	// A single value longer than the cap guarantees the encoded object exceeds it.
+	oversized := map[string]interface{}{
+		"blob": strings.Repeat("a", org.MaxMetadataSizeBytes+1),
+	}
+	normal := map[string]interface{}{
+		"team":  "platform",
+		"tier":  "enterprise",
+		"seats": 25,
+	}
+
+	// 1. Oversized metadata is rejected on create.
+	_, err := svc.CreateOrganization(ctx, "tnt_test", "usr_creator", org.CreateOrgRequest{
+		Name:     "Oversized Metadata Org",
+		Slug:     "oversized-meta",
+		Metadata: oversized,
+	}, "127.0.0.1", "TestAgent")
+	if !errors.Is(err, org.ErrMetadataTooLarge) {
+		t.Fatalf("expected ErrMetadataTooLarge on create, got: %v", err)
+	}
+
+	// 2. Normal metadata is accepted on create and round-trips intact.
+	created, err := svc.CreateOrganization(ctx, "tnt_test", "usr_creator", org.CreateOrgRequest{
+		Name:     "Normal Metadata Org",
+		Slug:     "normal-meta",
+		Metadata: normal,
+	}, "127.0.0.1", "TestAgent")
+	if err != nil {
+		t.Fatalf("expected normal metadata to be accepted on create, got: %v", err)
+	}
+	if created.Metadata["team"] != "platform" {
+		t.Errorf("expected metadata to round-trip, got: %+v", created.Metadata)
+	}
+
+	// 3. Oversized metadata is rejected on update.
+	_, err = svc.UpdateOrganization(ctx, "tnt_test", "usr_creator", created.ID, org.UpdateOrgRequest{
+		Metadata: oversized,
+	}, false, "127.0.0.1", "TestAgent")
+	if !errors.Is(err, org.ErrMetadataTooLarge) {
+		t.Fatalf("expected ErrMetadataTooLarge on update, got: %v", err)
+	}
+
+	// A rejected update must leave the stored metadata untouched.
+	unchanged, err := svc.GetOrganization(ctx, "tnt_test", created.ID, "usr_creator", false)
+	if err != nil {
+		t.Fatalf("failed to re-read org after rejected update: %v", err)
+	}
+	if unchanged.Metadata["team"] != "platform" {
+		t.Errorf("rejected update must not modify stored metadata, got: %+v", unchanged.Metadata)
+	}
+
+	// 4. Normal metadata is accepted on update.
+	replacement := map[string]interface{}{"team": "infrastructure"}
+	updated, err := svc.UpdateOrganization(ctx, "tnt_test", "usr_creator", created.ID, org.UpdateOrgRequest{
+		Metadata: replacement,
+	}, false, "127.0.0.1", "TestAgent")
+	if err != nil {
+		t.Fatalf("expected normal metadata to be accepted on update, got: %v", err)
+	}
+	if updated.Metadata["team"] != "infrastructure" {
+		t.Errorf("expected updated metadata to be stored, got: %+v", updated.Metadata)
+	}
+}
+
+// TestAuthorizationEnforcement pins the per-organization rules: non-members are
+// denied reads, non-admin members are denied mutations, an unauthenticated caller
+// is denied outright, and the tenant-admin tier bypasses both checks.
 func TestAuthorizationEnforcement(t *testing.T) {
 	svc, factory, cleanup := setupTestService(t)
 	defer cleanup()
@@ -350,7 +417,7 @@ func TestAuthorizationEnforcement(t *testing.T) {
 		t.Errorf("SECURITY: expected empty actorID to be denied GetOrganization, got nil error")
 	}
 
-	// 4. Non-member is DENIED mutation (DeleteOrganization) — the original CRITICAL.
+	// 4. Non-member is DENIED mutation (DeleteOrganization).
 	if err := svc.DeleteOrganization(ctx, "tnt_test", "usr_stranger", orgObj.ID, false, "127.0.0.1", "TestAgent"); err == nil {
 		t.Errorf("SECURITY: expected non-member to be denied DeleteOrganization, got nil error")
 	}

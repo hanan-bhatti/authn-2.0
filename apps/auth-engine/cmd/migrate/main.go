@@ -3,8 +3,12 @@
  * File: apps/auth-engine/cmd/migrate/main.go
  * Tier: Database Migration CLI
  *
- * Description: Command line utility to run Ent ORM automatic database schema
- *              migrations against the configured target database.
+ * Applies the ORM schema to the configured database and exits.
+ *
+ * The engine selection follows the same rule as the server: the scheme of
+ * DATABASE_URL decides whether this is PostgreSQL, MySQL or SQLite. Nothing
+ * here names a driver, so the migration cannot be applied to a different engine
+ * than the one the server will open.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -12,45 +16,41 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
-	"os"
 
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
-	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/database"
 )
 
+// main loads configuration, opens the configured database and creates or
+// updates the schema.
+//
+// It exits non-zero on any failure: a configuration error, an unreachable
+// database, or a migration the ORM could not apply. A partially migrated
+// schema is reported rather than ignored, because the server that starts next
+// would otherwise fail on a missing column at request time.
 func main() {
-	log.Println("⚡ Authn Platform — Ent Schema Migration CLI")
-
 	cfg, err := config.Load()
-	driver := "postgres"
-	dbURL := ""
-	if err == nil && cfg != nil && cfg.DatabaseURL != "" {
-		dbURL = cfg.DatabaseURL
-	} else {
-		dbURL = os.Getenv("DATABASE_URL")
-	}
-
-	if dbURL == "" {
-		driver = "sqlite3"
-		dbURL = "file:authn.db?cache=shared&_fk=1"
-	}
-
-	log.Printf("🔌 Connecting to %s database...", driver)
-	client, err := ent.Open(driver, dbURL)
 	if err != nil {
-		log.Fatalf("❌ Failed connecting to database: %v", err)
-	}
-	defer client.Close()
-
-	log.Println("🔄 Executing Ent ORM schema migration...")
-	if err := client.Schema.Create(context.Background()); err != nil {
-		log.Fatalf("❌ Migration failed: %v", err)
+		log.Fatalf("configuration error:\n%v", err)
 	}
 
-	fmt.Println("✅ Ent ORM schema migration executed successfully!")
+	log.Printf("migrate: starting database=%s", database.DescribeURL(cfg.DatabaseURL))
+
+	// AutoMigrate is set explicitly rather than read from cfg.DatabaseAutoMigrate:
+	// running the migration is this command's entire purpose, and honouring a
+	// DATABASE_AUTO_MIGRATE=false setting here would make it silently do nothing.
+	factory, err := clientfactory.NewFromURL(cfg.DatabaseURL, clientfactory.PoolOptions{
+		MaxOpenConns:    cfg.DatabaseMaxOpenConns,
+		MaxIdleConns:    cfg.DatabaseMaxIdleConns,
+		ConnMaxLifetime: cfg.DatabaseConnMaxLifetime,
+		AutoMigrate:     true,
+	})
+	if err != nil {
+		log.Fatalf("migrate: schema migration failed: %v", err)
+	}
+	defer factory.Close()
+
+	log.Println("migrate: schema migration completed")
 }
