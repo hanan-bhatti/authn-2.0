@@ -48,7 +48,7 @@ import (
 // HealthResponse is the JSON payload returned by the liveness endpoint.
 type HealthResponse struct {
 	Status    string `json:"status" example:"healthy"`
-	Version   string `json:"version" example:"1.0.0"`
+	Version   string `json:"version" example:"0.1.0"`
 	Timestamp string `json:"timestamp" example:"2026-08-01T16:55:00Z"`
 }
 
