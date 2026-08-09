@@ -101,14 +101,14 @@ func TestRequirePublishableKeyMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp4.StatusCode)
 }
 
-// TestPublishableKeyQueryFallbackScoping locks in audit finding M6: the
-// publishable key used to be accepted from ?publishable_key= / ?pk= on EVERY
-// route, which leaked it into access logs, browser history, and the Referer
-// header of any outbound link on the landing page.
+// TestPublishableKeyQueryFallbackScoping pins the scope of the query-parameter
+// fallback.
 //
-// The fallback is now restricted to the redirect-landing GET routes in
-// pkQueryFallbackRoutes, which a browser reaches by 302 or by clicking an
-// emailed link and therefore cannot attach a header to.
+// A key in the query string reaches access logs, browser history and the
+// Referer header of any outbound link on the landing page, so the fallback is
+// confined to the redirect-landing GET routes in pkQueryFallbackRoutes. Those
+// are reached by a 302 or an emailed link, where no JavaScript runs to attach a
+// header. Every other route must require the header.
 func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	pepper := "test_pepper_key_32_bytes_long_12345"
 	factory, err := clientfactory.NewClientFactory("sqlite3", "file:pk_query_scope_test?mode=memory&cache=shared&_fk=1")

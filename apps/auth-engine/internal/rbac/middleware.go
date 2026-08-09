@@ -17,6 +17,8 @@ package rbac
 
 import (
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
 // ExtractUserID returns the authenticated caller's user ID from the request
@@ -47,16 +49,13 @@ func RequirePermission(svc *Service, requiredPerm string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := ExtractUserID(c)
 		if userID == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "unauthorized: user authentication context missing",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"authentication required")
 		}
 
 		roles, permissions, err := svc.GetUserRBAC(c.UserContext(), userID)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to evaluate user permissions",
-			})
+			return httperr.SendInternal(c, "rbac.evaluate_permissions", err)
 		}
 
 		if HasPrivilegedRole(roles) {
@@ -69,10 +68,10 @@ func RequirePermission(svc *Service, requiredPerm string) fiber.Handler {
 			}
 		}
 
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error":               "forbidden: insufficient permissions",
-			"required_permission": requiredPerm,
-		})
+		// The required permission is named so a caller can tell which grant is
+		// missing; it discloses nothing they could not infer from the route.
+		return httperr.Forbidden(c, httperr.CodeInsufficientScope,
+			"insufficient permissions: "+requiredPerm+" is required")
 	}
 }
 
@@ -85,16 +84,13 @@ func RequireRole(svc *Service, requiredRole string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID := ExtractUserID(c)
 		if userID == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "unauthorized: user authentication context missing",
-			})
+			return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+				"authentication required")
 		}
 
 		roles, _, err := svc.GetUserRBAC(c.UserContext(), userID)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to evaluate user roles",
-			})
+			return httperr.SendInternal(c, "rbac.evaluate_roles", err)
 		}
 
 		for _, r := range roles {
@@ -103,9 +99,7 @@ func RequireRole(svc *Service, requiredRole string) fiber.Handler {
 			}
 		}
 
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error":         "forbidden: required role missing",
-			"required_role": requiredRole,
-		})
+		return httperr.Forbidden(c, httperr.CodeInsufficientScope,
+			"insufficient permissions: the "+requiredRole+" role is required")
 	}
 }

@@ -30,10 +30,10 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	app := fiber.New()
 	app.Use(middleware.PreventImpersonatedMutations(signingSecret))
 
-	// Routes below mirror the REAL registered API surface. The previous version
-	// of this test used PUT /user/password and DELETE /2fa/totp — paths that do
-	// not exist in the router — which is why it passed while the real
-	// POST /2fa/totp/disable route went unguarded (audit H7).
+	// These routes mirror the real registered API surface exactly. A test that
+	// asserts against paths the router does not serve passes while the actual
+	// route goes unguarded, so the method and path of each must match the
+	// handler registration.
 	app.Get("/v1/client/user/profile", func(c *fiber.Ctx) error {
 		return c.SendString("profile data")
 	})
@@ -99,9 +99,10 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, resp6.StatusCode)
 
-	// 7. H6 regression — impersonated token delivered via COOKIE (not header)
-	// must be blocked. Previously the guard read only the Authorization header,
-	// so a cookie-authed impersonation session bypassed it entirely.
+	// 7. An impersonated token delivered by COOKIE rather than header must be
+	// blocked. Cookies are the default for browser sessions, so a guard reading
+	// only the Authorization header would see nothing and wave the request
+	// through while RequireClientAuth then admits it from the cookie.
 	req7 := httptest.NewRequest("POST", "/v1/client/user/password", nil)
 	req7.AddCookie(&http.Cookie{Name: "authn_access_token", Value: impToken})
 	resp7, err := app.Test(req7)
@@ -124,10 +125,12 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp9.StatusCode)
 }
 
-// TestImpersonationGuardLogsUnverifiableToken covers audit finding M8: the guard
-// has two independent ways to silently not run (no token, unverifiable token).
-// The second one is now logged, because a guard that stops evaluating without
-// saying so is indistinguishable from a guard that is working.
+// TestImpersonationGuardLogsUnverifiableToken pins the observability of the
+// fail-open path.
+//
+// The guard stops evaluating on both a missing and an unverifiable token. The
+// unverifiable case is logged, because a guard that stops without saying so is
+// indistinguishable from one that is working.
 //
 // The assertions are deliberately two-sided: the warning must appear, AND the
 // token must not.

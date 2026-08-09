@@ -670,11 +670,10 @@ func isValidEmail(email string) bool {
 // message that is safe to return verbatim. Sentinel text is authored for end
 // users, so echoing it preserves the wording callers already depend on.
 //
-// Audit M9/H8: anything that is NOT a sentinel — a wrapped ent/SQL error, a JWT
-// parse failure, an fmt.Errorf carrying a session status or column name — must
-// never reach a response body. ok == false is the signal to fall back to a
-// static message. Matching is done with errors.Is so wrapped sentinels
-// (fmt.Errorf("...: %w", ErrX)) still route correctly.
+// Anything that is NOT a sentinel — a wrapped ent/SQL error, a JWT parse
+// failure, an fmt.Errorf carrying a session status or column name — must never
+// reach a response body; ok == false signals the caller to fall back to a static
+// message. Matching uses errors.Is so a wrapped sentinel still routes correctly.
 func clientSafeError(err error) (httperr.Code, string, bool) {
 	switch {
 	// Credentials and sessions.

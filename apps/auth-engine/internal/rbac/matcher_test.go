@@ -3,7 +3,8 @@
  * File: apps/auth-engine/internal/rbac/matcher_test.go
  * Tier: Security & Authorization Layer / Tests
  *
- * Description: Regression tests for the unified permission matcher (audit H1).
+ * Description: Tests for the permission matcher: wildcard grant coverage,
+ * pattern intersection for policy validation, and the privileged-role bypass.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -26,15 +27,15 @@ func TestPermissionMatches(t *testing.T) {
 		{"unrelated permission denied", "billing:read", "billing:write", false},
 		{"different resource denied", "users:read", "billing:read", false},
 
-		// H1 regression: these two literals were compared against the HELD
-		// permission rather than the required one, so any holder passed every
-		// check. They must now only cover their own namespace.
-		{"H1: users:* does not grant billing:delete", "users:*", "billing:delete", false},
-		{"H1: users:* does not grant apikeys:manage", "users:*", "apikeys:manage", false},
-		{"H1: impersonate:* does not grant billing:delete", "impersonate:*", "billing:delete", false},
+		// A wildcard grant covers its own namespace and nothing else. Comparing
+		// these literals against the HELD permission instead of the required one
+		// turns either into a master key for every check in the engine.
+		{"users:* does not grant billing:delete", "users:*", "billing:delete", false},
+		{"users:* does not grant apikeys:manage", "users:*", "apikeys:manage", false},
+		{"impersonate:* does not grant billing:delete", "impersonate:*", "billing:delete", false},
 
-		// Behaviour change worth pinning: "impersonate:*" never covered the
-		// actual impersonation permission, which is "users:impersonate".
+		// The impersonation permission is "users:impersonate", so an
+		// "impersonate:*" grant does not reach it.
 		{"impersonate:* does not cover users:impersonate", "impersonate:*", "users:impersonate", false},
 		{"users:* does cover users:impersonate", "users:*", "users:impersonate", true},
 	}
@@ -65,9 +66,9 @@ func TestPermissionsOverlap(t *testing.T) {
 		{"unrelated resource does not trip", "users:read", "keys:write", false},
 		{"differing depth does not trip", "users:read", "users:read:extra", false},
 
-		// The case the old prefix-based matcher missed entirely: a viewer
-		// granted "orgs:*" must still trip the "*:write" restriction, because
-		// "orgs:*" includes "orgs:write". Both operands are wildcards here.
+		// Both operands may be wildcards, which prefix comparison cannot express:
+		// a viewer granted "orgs:*" must still trip the "*:write" restriction,
+		// because "orgs:*" contains "orgs:write".
 		{"wildcard grant vs wildcard restriction", "orgs:*", "*:write", true},
 		{"member granted keys:* trips keys:write restriction", "keys:*", "keys:write", true},
 	}
