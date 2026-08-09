@@ -133,6 +133,9 @@ func Load() (*Config, error) {
 
 		SAMLAssertionConsumerPath: r.str("SAML_ACS_PATH", "/v1/saml/acs"),
 
+		WebhookWorkerCount:        r.positive("WEBHOOK_WORKER_COUNT", 5),
+		DegradedModeCheckInterval: r.duration("DEGRADED_MODE_CHECK_INTERVAL", time.Second),
+
 		OrgMetadataMaxBytes: r.positive("ORG_METADATA_MAX_BYTES", 10*1024),
 
 		FeaturePush2FAEnabled:       r.boolean("FEATURE_PUSH_2FA_ENABLED", true),

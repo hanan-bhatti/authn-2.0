@@ -300,6 +300,23 @@ type Config struct {
 	SAMLAssertionConsumerPath string
 
 	// ---------------------------------------------------------------------
+	// Background workers
+	// ---------------------------------------------------------------------
+
+	// WebhookWorkerCount is how many goroutines deliver webhooks concurrently.
+	//
+	// It bounds how much outbound traffic one instance aims at a subscriber, so a
+	// slow endpoint cannot consume the whole process. Raising it increases
+	// throughput and the load a subscriber sees at once.
+	WebhookWorkerCount int
+	// DegradedModeCheckInterval is how often the engine probes Redis to decide
+	// whether it is running in degraded mode.
+	//
+	// Shorter notices an outage sooner at the cost of more probes; longer leaves
+	// the engine reporting healthy after Redis has gone.
+	DegradedModeCheckInterval time.Duration
+
+	// ---------------------------------------------------------------------
 	// Organizations
 	// ---------------------------------------------------------------------
 

@@ -42,16 +42,28 @@ type PoolOptions struct {
 	AutoMigrate bool
 }
 
-// ClientFactory manages Ent ORM database connection pools for tenants and environments.
+// ClientFactory hands out the Ent client a request should use.
+//
+// Every caller currently receives the same client: the per-tenant pool map is
+// read on each lookup but nothing registers an entry, so the tenantID and
+// environment arguments to GetClient select nothing today. They are the seam a
+// self-hoster would use to route one tenant at its own database, and callers
+// pass their real values so that becoming true later requires no change at the
+// call sites.
+//
+// Tenant and environment isolation does NOT come from this type. It is enforced
+// by the privacy interceptors, which narrow every query by the tenant and
+// environment on the request context. Adding a dedicated pool would be a
+// performance and blast-radius choice, not the thing that keeps one tenant's
+// rows away from another.
 type ClientFactory struct {
 	// mu guards pools against concurrent lookup and registration.
 	mu sync.RWMutex
-	// defaultClient serves every tenant that has no dedicated pool, which is
-	// the usual case: tenants are separated logically by the privacy
-	// interceptors rather than by a physical database each.
+	// defaultClient serves every tenant, and is the only client in use unless a
+	// dedicated pool has been registered.
 	defaultClient *ent.Client
-	// pools holds dedicated clients keyed by "tenantID:environment", for
-	// self-hosters who route a tenant at its own database.
+	// pools holds dedicated clients keyed by "tenantID:environment". Nothing
+	// populates it yet; see the type comment.
 	pools map[string]*ent.Client
 }
 

@@ -29,10 +29,18 @@ import (
 // policyPoolEnvironment is the environment passed when selecting a connection
 // pool for policy queries.
 //
-// Policies live on the tenant record and are environment-independent, so this
-// argument only picks a pool. It matters solely for enterprise deployments that
-// register a dedicated physical pool per environment; every other deployment
-// resolves to the default client whatever is passed here.
+// Policies hang off the tenant record and are not environment-scoped: the
+// privacy interceptor narrows a tenant query by tenant ID alone, so no policy
+// row is reachable from one environment and hidden from another. The value here
+// therefore selects a connection pool and nothing else, and since nothing
+// registers a per-tenant pool it resolves to the shared default client — see
+// clientfactory.ClientFactory.
+//
+// It is a fixed literal rather than the caller's environment because threading
+// one through eight repository methods and their callers would pass a value that
+// is discarded. If dedicated pools are ever registered, this constant becomes
+// live and wrong — policy reads would land on whichever database "test" names —
+// so that change and this line have to move together.
 const policyPoolEnvironment = "test"
 
 // Repository reads and writes tenant policies.

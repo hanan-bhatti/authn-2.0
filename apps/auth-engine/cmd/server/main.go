@@ -271,7 +271,7 @@ func main() {
 		}
 	}
 
-	degradedTracker := middleware.NewDegradedModeTracker(redisClient, 1*time.Second)
+	degradedTracker := middleware.NewDegradedModeTracker(redisClient, cfg.DegradedModeCheckInterval)
 
 	// 5. Global Middleware Stack
 	app.Use(recover.New())
@@ -356,7 +356,7 @@ func main() {
 	rbacHandler := rbac.NewHandler(rbacService)
 
 	webhookRepo := webhook.NewRepository(factory)
-	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.EncryptionKey, 5)
+	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.EncryptionKey, cfg.WebhookWorkerCount)
 	webhookDispatcher.Start()
 	defer webhookDispatcher.Stop()
 	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
