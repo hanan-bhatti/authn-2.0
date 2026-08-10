@@ -1,30 +1,56 @@
-version: '3.8'
-
 services:
+  # Database and cache are opt-in via COMPOSE_PROFILES, which
+  # scripts/compose-env.sh sets from DATABASE_URL's scheme. A deployment using
+  # sqlite, or a managed database elsewhere, starts neither container instead of
+  # running one nothing connects to.
   postgres:
     image: postgres:16-alpine
     container_name: authn-postgres
+    profiles: [postgres]
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: authn_db
+      # Derived from DATABASE_URL — see .env.compose. They are never written by
+      # hand, so the container's credentials and the engine's connection string
+      # cannot disagree.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d authn_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  mysql:
+    image: mysql:8
+    container_name: authn-mysql
+    profiles: [mysql]
+    restart: always
+    environment:
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+    ports:
+      - '${MYSQL_PORT:-3306}:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
     container_name: authn-redis
     restart: always
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,6 +59,50 @@ services:
       timeout: 5s
       retries: 5
 
+  auth-engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth-engine
+    container_name: authn-engine
+    restart: unless-stopped
+    depends_on:
+      # Waiting for healthy rather than started: the engine reads the database
+      # during boot, so starting alongside a container still initialising would
+      # fail the first attempt. required:false lets the stack come up when the
+      # profile is inactive — sqlite, or an external database.
+      postgres:
+        condition: service_healthy
+        required: false
+      mysql:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+    ports:
+      - '${PORT:-8080}:${PORT:-8080}'
+    # .env holds every engine setting. .env.compose holds only the values
+    # derived from it for containerised use, and is regenerated on each
+    # `make dev` rather than maintained by hand.
+    env_file:
+      - .env
+      - .env.compose
+    environment:
+      # The sole difference between host and container: inside the compose
+      # network the database and cache answer to service names, where .env's
+      # host would mean this container. Credentials, database name and query
+      # parameters are carried through from DATABASE_URL unchanged.
+      DATABASE_URL: ${DATABASE_URL_CONTAINER}
+      REDIS_URL: ${REDIS_URL_CONTAINER}
+    healthcheck:
+      # /v1/ready checks the database and Redis, so this reports whether the
+      # engine can serve traffic rather than merely that the process is up.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:${PORT:-8080}/v1/ready"]
+      interval: 15s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+
 volumes:
   postgres_data:
+  mysql_data:
   redis_data:

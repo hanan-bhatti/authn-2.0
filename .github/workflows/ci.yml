@@ -1,0 +1,79 @@
+# Authn Platform — Enterprise Identity Engine
+#
+# Build, vet and test the Go engine on every push and pull request.
+#
+# The suite runs against SQLite, which every test constructs in memory, so no
+# service containers are needed and a run stays fast enough to gate a merge.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: apps/auth-engine
+
+jobs:
+  engine:
+    name: Auth engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Read from go.mod so the toolchain here cannot drift from the one the
+          # module declares.
+          go-version-file: apps/auth-engine/go.mod
+          cache-dependency-path: apps/auth-engine/go.sum
+
+      - name: Verify formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race is what catches the concurrency bugs this codebase cares about:
+      # the first-admin claim and refresh-token rotation are both raced by
+      # design, and a regression there is silent without it.
+      - name: Test
+        run: go test -race ./...
+
+  image:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Building the image is the test: it proves the multi-stage Dockerfile
+      # still compiles a static binary, which is what the published artifact and
+      # the compose quickstart both depend on. Nothing is pushed.
+      - name: Build engine image
+        run: docker build -f docker/Dockerfile.auth-engine -t authn-engine:ci .

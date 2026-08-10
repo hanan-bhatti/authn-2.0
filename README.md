@@ -63,14 +63,14 @@ authn-2.0/
 
 Explore our comprehensive technical specifications:
 
-1. 📄 **[docs/01-PRD.md](file:///home/hanan-bhatti/authn/docs/01-PRD.md)** — Product Requirements Document (PRD v1.0.0)
-2. 📄 **[docs/02-DATABASE-SCHEMA.md](file:///home/hanan-bhatti/authn/docs/02-DATABASE-SCHEMA.md)** — Database Schema & Ent ORM Specification
-3. 📄 **[docs/03-API-SPECIFICATION.md](file:///home/hanan-bhatti/authn/docs/03-API-SPECIFICATION.md)** — REST & OpenID Connect API Specification
-4. 📄 **[docs/04-MOBILE-ARCHITECTURE.md](file:///home/hanan-bhatti/authn/docs/04-MOBILE-ARCHITECTURE.md)** — Android (Kotlin 2.0) & iOS (Swift 6.0) Specification
-5. 📄 **[docs/05-SECURITY-THREAT-MODEL.md](file:///home/hanan-bhatti/authn/docs/05-SECURITY-THREAT-MODEL.md)** — OWASP Threat Matrix & Cryptography Spec
-6. 📄 **[docs/06-SDK-SPECIFICATION.md](file:///home/hanan-bhatti/authn/docs/06-SDK-SPECIFICATION.md)** — `@authn/js` & `@authn/react` Client SDK Specification
-7. 📄 **[docs/07-CODE-QUALITY-AND-TESTING-STANDARDS.md](file:///home/hanan-bhatti/authn/docs/07-CODE-QUALITY-AND-TESTING-STANDARDS.md)** — Linting, Formatting & Testing Standards
-8. 📄 **[docs/08-DEPLOYMENT-AND-CICD-SPECIFICATION.md](file:///home/hanan-bhatti/authn/docs/08-DEPLOYMENT-AND-CICD-SPECIFICATION.md)** — Docker Compose & GitHub Actions CI/CD Pipeline
+1. 📄 **[docs/01-PRD.md](docs/01-PRD.md)** — Product Requirements Document (PRD v1.0.0)
+2. 📄 **[docs/02-DATABASE-SCHEMA.md](docs/02-DATABASE-SCHEMA.md)** — Database Schema & Ent ORM Specification
+3. 📄 **[docs/03-API-SPECIFICATION.md](docs/03-API-SPECIFICATION.md)** — REST & OpenID Connect API Specification
+4. 📄 **[docs/04-MOBILE-ARCHITECTURE.md](docs/04-MOBILE-ARCHITECTURE.md)** — Android (Kotlin 2.0) & iOS (Swift 6.0) Specification
+5. 📄 **[docs/05-SECURITY-THREAT-MODEL.md](docs/05-SECURITY-THREAT-MODEL.md)** — OWASP Threat Matrix & Cryptography Spec
+6. 📄 **[docs/06-SDK-SPECIFICATION.md](docs/06-SDK-SPECIFICATION.md)** — `@authn/js` & `@authn/react` Client SDK Specification
+7. 📄 **[docs/07-CODE-QUALITY-AND-TESTING-STANDARDS.md](docs/07-CODE-QUALITY-AND-TESTING-STANDARDS.md)** — Linting, Formatting & Testing Standards
+8. 📄 **[docs/08-DEPLOYMENT-AND-CICD-SPECIFICATION.md](docs/08-DEPLOYMENT-AND-CICD-SPECIFICATION.md)** — Docker Compose & GitHub Actions CI/CD Pipeline
 
 ---
 
@@ -85,40 +85,97 @@ Explore our comprehensive technical specifications:
 
 ---
 
-## 🚀 Quickstart & Local Development
+## 🚀 Quickstart
 
-### Prerequisites
-* **Node.js**: v20.0.0+
-* **pnpm**: v11.0.0+
-* **Go**: v1.23+
-* **JDK**: 17+ (For Android Kotlin builds)
-* **Docker Engine**: Optional for local Redis/PostgreSQL containers
+Docker is the only prerequisite. This brings up the engine with a database and
+cache, creates your first tenant, and prints the API keys your app authenticates
+with.
 
-### Installation & Setup
+```bash
+git clone https://github.com/hanan-bhatti/authn-2.0.git
+cd authn-2.0
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/hanan-bhatti/authn-2.0.git
-   cd authn-2.0
-   ```
+make dev                              # engine + database + redis
+make bootstrap NAME="Your Company"    # first tenant; prints its API keys
+```
 
-2. **Install Workspace Dependencies**:
-   ```bash
-   pnpm install
-   ```
+`make bootstrap` prints something like:
 
-3. **Run Local Development Servers**:
-   ```bash
-   pnpm dev
-   ```
+```
+  Tenant       tnt_728fa19d48e24c1a9f3b1234567890ab  (your-company)
+  Application  app_4c1a9f3b1234567890ab728fa19d48e2
+  Roles        4 installed
 
-4. **Self-Hosting via Docker Compose**:
-   ```bash
-   docker compose up -d
-   ```
+  Publishable key — safe to ship in browser and mobile bundles:
+    pk_test_c7296f04f4310ddd60d98f4c9f9f6626496881ae63c025587d4786d35a4bbcd9
+
+  Secret key — server-side only. Shown once and never recoverable:
+    sk_test_80edbb939532779268a4853b91bd47acd897e7128bbc928939adc8678add9048
+```
+
+Give the **publishable key** to your frontend:
+
+```ts
+import { AuthnClient } from "@authn/js";
+
+const authn = new AuthnClient({
+  publishableKey: "pk_test_...",
+  endpoint: "http://localhost:8080",
+});
+```
+
+**The first account that signs up becomes the tenant's administrator.** That
+claim is atomic, so exactly one account gets it no matter how many sign up at
+once. Everyone after is an ordinary user.
+
+### Configuration
+
+`.env` is the single source of truth, created from `.env.example` on first run.
+
+The database is described **once**, by `DATABASE_URL`. Its scheme selects the
+engine — PostgreSQL, MySQL or SQLite — and `make dev` derives everything else
+from it: which database container to start, its credentials, and the address the
+engine connects on inside Docker. Point it at SQLite and no database container
+starts at all; point it at a managed database and the same is true.
+
+```bash
+DATABASE_URL="postgres://authn:secret@localhost:5432/authn?sslmode=disable"
+DATABASE_URL="sqlite://file:authn.db?_fk=1&cache=shared"
+```
+
+Two secrets must be set before production, and the engine refuses to start
+without them: `AUTHN_ENCRYPTION_KEY` and `AUTHN_API_KEY_PEPPER`, each at least
+32 characters.
+
+### Common commands
+
+```bash
+make help        # every target
+make logs        # follow the engine
+make test        # run the engine test suite
+make migrate     # apply the schema
+make down        # stop, keeping data
+make clean       # stop and delete all local data
+```
+
+### Developing without Docker
+
+```bash
+make migrate
+cd apps/auth-engine && go run ./cmd/server
+```
+
+`DATABASE_URL` defaults to SQLite, so this needs no external services. Redis is
+optional in development; without it, rate limiting falls back to local state.
+
+### Demo data
+
+`make seed` installs demo users, an organization and **fixed credentials that
+are published in this repository**. It is for local development only and refuses
+to run when `APP_ENV=production`. Use `make bootstrap` for anything real.
 
 ---
 
 ## 📄 License
 
-Distributed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [`LICENSE`](file:///home/hanan-bhatti/authn/LICENSE) for more information.
+Distributed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [`LICENSE`](LICENSE) for more information.
