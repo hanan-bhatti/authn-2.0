@@ -131,11 +131,16 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 	}
 }
 
-// GetTenantID returns the tenant resolved by whichever auth middleware ran,
-// falling back to "tnt_default" for single-tenant deployments that never set one.
+// GetTenantID returns the tenant resolved by whichever auth middleware ran, or
+// "" when none was resolved.
+//
+// There is deliberately no default tenant: every route using this sits behind a
+// middleware that sets the tenant on success and rejects the request otherwise,
+// so an empty value means the request was never authenticated. Substituting one
+// would turn a middleware misconfiguration into a cross-tenant read or write.
 func GetTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val
 	}
-	return "tnt_default"
+	return ""
 }

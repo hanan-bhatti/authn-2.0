@@ -12,7 +12,6 @@
 package auth_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -33,7 +32,7 @@ func TestSubmitGuardianProof_ShareAccumulation(t *testing.T) {
 	svc, _, repo, tenantID := setupTestRecoveryService(t)
 	policyRepo := policy.NewRepository(repo.GetClientFactory())
 	gdnSvc := auth.NewGuardianService(repo, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -104,7 +103,7 @@ func TestSubmitGuardianProof_ShareAccumulation(t *testing.T) {
 
 func TestSubmitOldPasswordProof_LockoutSchedule(t *testing.T) {
 	svc, telemetry, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -156,7 +155,7 @@ func TestSubmitSecurityQuestionsProof_EnforcesHigherTierExhaustion(t *testing.T)
 	svc, _, repo, tenantID := setupTestRecoveryService(t)
 	policyRepo := policy.NewRepository(repo.GetClientFactory())
 	gdnSvc := auth.NewGuardianService(repo, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 

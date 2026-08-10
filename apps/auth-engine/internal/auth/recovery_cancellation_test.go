@@ -16,7 +16,6 @@
 package auth_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -43,7 +42,7 @@ func TestRecoveryCancellation_AttackerScenario_AuthenticatedSessionCancel(t *tes
 	policyRepo := policy.NewRepository(factory)
 	telemetry := auth.NewTelemetryService(repo, kmsKey, policyRepo)
 	svc := auth.NewRecoveryService(repo, telemetry, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	tenantID := "tnt_cancel_test"
 	err = repo.EnsureTenantExists(ctx, tenantID)
@@ -162,7 +161,7 @@ func TestRecoveryCancellation_AttackerScenario_SignedTokenCancel(t *testing.T) {
 	policyRepo := policy.NewRepository(factory)
 	telemetry := auth.NewTelemetryService(repo, kmsKey, policyRepo)
 	svc := auth.NewRecoveryService(repo, telemetry, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	tenantID := "tnt_cancel_token_test"
 	err = repo.EnsureTenantExists(ctx, tenantID)

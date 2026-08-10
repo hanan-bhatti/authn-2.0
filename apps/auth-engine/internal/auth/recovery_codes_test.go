@@ -44,12 +44,13 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	polRepo := policy.NewRepository(factory)
 	svc := auth.NewService(repo, cfg, nil)
 	handler := auth.NewHandler(svc, polRepo, nil)
 
 	app := fiber.New()
-	handler.RegisterRoutes(app, nil)
+	handler.RegisterRoutes(app, testScopeMiddleware("tnt_test", "test"))
 
 	password := "RecoverySecret123!"
 

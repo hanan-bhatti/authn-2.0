@@ -12,50 +12,19 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 )
 
-// seedRoles creates the system roles and returns them keyed by slug.
+// seedRoles installs the system roles for the seeded tenant and returns them
+// keyed by slug.
+//
+// The definitions live in internal/rbac so that every tenant gets the same set,
+// however it was created; this only names the tenant to install them into.
 //
 // Returns an error when a role cannot be created, because the user and
 // organization steps assign these roles by the IDs recorded here.
 func seedRoles(ctx context.Context, client *ent.Client) (map[string]*ent.Role, error) {
-	definitions := []struct {
-		ID   string
-		Name string
-		Slug string
-	}{
-		{"role_tenant_admin", "Tenant Administrator", "tenant_admin"},
-		{"role_org_admin", "Organization Administrator", "org_admin"},
-		{"role_editor", "Editor", "editor"},
-		{"role_viewer", "Viewer", "viewer"},
-	}
-
-	roles := make(map[string]*ent.Role, len(definitions))
-	for _, def := range definitions {
-		existing, err := client.Role.Query().
-			Where(role.TenantID(seedTenantID), role.Slug(def.Slug)).
-			Only(ctx)
-		if err == nil {
-			roles[def.Slug] = existing
-			continue
-		}
-
-		created, err := client.Role.Create().
-			SetID(def.ID).
-			SetTenantID(seedTenantID).
-			SetName(def.Name).
-			SetSlug(def.Slug).
-			SetDescription("System role for " + def.Name).
-			SetIsSystemRole(true).
-			Save(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("seeding role %s: %w", def.Slug, err)
-		}
-		roles[def.Slug] = created
-	}
-	return roles, nil
+	return rbac.EnsureSystemRoles(ctx, client, seedTenantID)
 }

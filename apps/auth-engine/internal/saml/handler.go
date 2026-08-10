@@ -21,15 +21,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 )
 
 const (
-	// defaultTenantID is the tenant assumed when a request carries no tenant
-	// context, which happens on single-tenant deployments where no tenant was
-	// ever explicitly provisioned.
-	defaultTenantID = "tnt_default"
-
 	// metadataCacheControl is sent on the service-provider metadata document.
 	// Identity providers refetch it periodically and it changes only when the
 	// deployment's own address does.
@@ -76,8 +72,15 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adm
 	}
 }
 
-// getTenantID returns the tenant the request is scoped to, accepting either
-// key the middleware chain may have used, and falling back to defaultTenantID.
+// getTenantID returns the tenant resolved by the authenticating middleware, or
+// "" when none was resolved.
+//
+// There is deliberately no default tenant: a request that reaches a handler with
+// no resolved tenant is not authenticated, and substituting one would turn a
+// middleware misconfiguration into a cross-tenant read or write.
+//
+// The two unauthenticated SAML protocol endpoints do not use this. They derive
+// their tenant from the protocol identifier they carry — see tenant_resolver.go.
 func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenantID").(string); ok && val != "" {
 		return val
@@ -85,7 +88,22 @@ func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val
 	}
-	return defaultTenantID
+	return ""
+}
+
+// requireTenantID returns the resolved tenant, or a written 401 response when
+// the tenant is unknown. Callers must return the response as-is when ok is false.
+//
+// Every route using it sits behind the publishable-key or admin middleware, both
+// of which set the tenant on success and reject the request otherwise, so an
+// empty tenant means the request was never authenticated.
+func requireTenantID(c *fiber.Ctx) (string, error, bool) {
+	tenantID := getTenantID(c)
+	if tenantID == "" {
+		return "", httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"tenant could not be resolved for this request"), false
+	}
+	return tenantID, nil, true
 }
 
 // getUserID returns the acting user's ID for audit attribution, or "" when the
@@ -132,7 +150,10 @@ func isDomainConflict(err error) bool {
 // Returns 409 when the organization already has a connection, 400 for invalid
 // configuration or a domain claimed by another connection, and 500 otherwise.
 func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, errResp, ok := requireTenantID(c)
+	if !ok {
+		return errResp
+	}
 	actorID := getUserID(c)
 	orgID := c.Params("orgId")
 
@@ -165,7 +186,10 @@ func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 //
 // Returns 404 when the organization has no connection and 500 otherwise.
 func (h *Handler) GetSAMLConnection(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, errResp, ok := requireTenantID(c)
+	if !ok {
+		return errResp
+	}
 	orgID := c.Params("orgId")
 
 	resp, err := h.service.GetSAMLConnection(c.UserContext(), tenantID, orgID)
@@ -185,7 +209,10 @@ func (h *Handler) GetSAMLConnection(c *fiber.Ctx) error {
 // Returns 404 when no connection exists, 400 for invalid configuration or a
 // domain claimed elsewhere, and 500 otherwise.
 func (h *Handler) UpdateSAMLConnection(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, errResp, ok := requireTenantID(c)
+	if !ok {
+		return errResp
+	}
 	actorID := getUserID(c)
 	orgID := c.Params("orgId")
 
@@ -213,7 +240,10 @@ func (h *Handler) UpdateSAMLConnection(c *fiber.Ctx) error {
 //
 // Returns 404 when no connection exists and 500 otherwise.
 func (h *Handler) DeleteSAMLConnection(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, errResp, ok := requireTenantID(c)
+	if !ok {
+		return errResp
+	}
 	actorID := getUserID(c)
 	orgID := c.Params("orgId")
 
@@ -269,8 +299,6 @@ func (h *Handler) LookupDomainSSO(c *fiber.Ctx) error {
 // XML" from "provisioning failed" would let anyone probe the tenant's SSO
 // configuration by posting crafted assertions.
 func (h *Handler) ProcessACS(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
-
 	var req ACSRequest
 	if err := c.BodyParser(&req); err != nil {
 		req.SAMLResponse = c.FormValue("SAMLResponse")
@@ -281,7 +309,9 @@ func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "missing SAMLResponse payload")
 	}
 
-	userObj, orgObj, err := h.service.ProcessACS(c.UserContext(), tenantID, req.SAMLResponse, c.IP(), c.Get("User-Agent"))
+	// The tenant is not passed in: this endpoint is unauthenticated, and the
+	// service derives the tenant from the assertion's issuer.
+	userObj, orgObj, err := h.service.ProcessACS(c.UserContext(), req.SAMLResponse, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		log.Printf("[error] %s %s saml.process_acs: %v", c.Method(), c.Path(), err)
 		return httperr.Forbidden(c, httperr.CodeForbidden,
@@ -315,11 +345,25 @@ func (h *Handler) ProcessACS(c *fiber.Ctx) error {
 //
 // Returns 404 when the organization has no SAML connection and 500 otherwise.
 func (h *Handler) GetSPMetadata(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
 	orgID := c.Params("orgId")
 
-	_, err := h.service.GetSAMLConnection(c.UserContext(), tenantID, orgID)
+	// This endpoint is fetched by the identity provider, which presents no Authn
+	// credential, so no middleware has established a tenant. The organization ID
+	// in the path is the only thing identifying the request, and it is resolved
+	// to its owning tenant before any scoped query runs.
+	tenantID, err := h.service.ResolveTenantByOrganization(c.UserContext(), orgID)
 	if err != nil {
+		if errors.Is(err, ErrSAMLNotFound) {
+			return httperr.NotFound(c, httperr.CodeNotFound, "SAML connection configuration not found for organization")
+		}
+		return httperr.SendInternal(c, "saml.get_sp_metadata", err)
+	}
+
+	// Install the scope the authenticating middleware would have set, now that
+	// the tenant is known. Everything below this line runs tenant-scoped.
+	c.SetUserContext(privacy.NewContext(c.UserContext(), tenantID, "", ""))
+
+	if _, err := h.service.GetSAMLConnection(c.UserContext(), tenantID, orgID); err != nil {
 		if errors.Is(err, ErrSAMLNotFound) {
 			return httperr.NotFound(c, httperr.CodeNotFound, "SAML connection configuration not found for organization")
 		}

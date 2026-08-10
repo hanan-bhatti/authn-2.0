@@ -45,6 +45,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoverycontact"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
@@ -218,6 +219,12 @@ func AttachPrivacyInterceptors(client *ent.Client) {
 					return nil, fmt.Errorf("%w: RecoveryRequest query requires active TenantID in context", ErrPrivacyViolation)
 				}
 				query.Where(recoveryrequest.HasUserWith(user.TenantID(p.TenantID)))
+
+			case *ent.SAMLConnectionQuery:
+				if !ok || p.TenantID == "" {
+					return nil, fmt.Errorf("%w: SAMLConnection query requires active TenantID in context", ErrPrivacyViolation)
+				}
+				query.Where(samlconnection.HasOrganizationWith(organization.TenantID(p.TenantID)))
 
 			case *ent.TrustedDeviceQuery:
 				if !ok || p.TenantID == "" {

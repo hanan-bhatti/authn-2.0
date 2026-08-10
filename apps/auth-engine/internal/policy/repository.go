@@ -20,11 +20,20 @@ package policy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
+
+// ErrTenantNotFound reports a policy write against a tenant that was never
+// provisioned.
+//
+// Writing a policy used to create the tenant, which meant a typo in a tenant ID
+// produced a workspace with no roles, no application and no owner. Tenants are
+// created deliberately, so the write is refused instead.
+var ErrTenantNotFound = errors.New("tenant not found")
 
 // policyPoolEnvironment is the environment passed when selecting a connection
 // pool for policy queries.
@@ -118,24 +127,14 @@ func (r *Repository) UpdatePasswordPolicy(ctx context.Context, tenantID string, 
 	if err != nil {
 		return p, fmt.Errorf("failed checking tenant existence: %w", err)
 	}
-
 	if !exists {
-		_, err = client.Tenant.Create().
-			SetID(tenantID).
-			SetName("Default Workspace").
-			SetSlug(tenantID).
-			SetPasswordPolicy(policyMap).
-			Save(ctx)
-		if err != nil {
-			return p, fmt.Errorf("failed creating tenant with password policy: %w", err)
-		}
-	} else {
-		_, err = client.Tenant.UpdateOneID(tenantID).
-			SetPasswordPolicy(policyMap).
-			Save(ctx)
-		if err != nil {
-			return p, fmt.Errorf("failed updating tenant password policy: %w", err)
-		}
+		return p, ErrTenantNotFound
+	}
+
+	if _, err = client.Tenant.UpdateOneID(tenantID).
+		SetPasswordPolicy(policyMap).
+		Save(ctx); err != nil {
+		return p, fmt.Errorf("failed updating tenant password policy: %w", err)
 	}
 
 	return p, nil
@@ -197,24 +196,14 @@ func (r *Repository) UpdateSecurityPolicy(ctx context.Context, tenantID string, 
 	if err != nil {
 		return sp, fmt.Errorf("failed checking tenant existence: %w", err)
 	}
-
 	if !exists {
-		_, err = client.Tenant.Create().
-			SetID(tenantID).
-			SetName("Default Workspace").
-			SetSlug(tenantID).
-			SetSecurityPolicy(policyMap).
-			Save(ctx)
-		if err != nil {
-			return sp, fmt.Errorf("failed creating tenant with security policy: %w", err)
-		}
-	} else {
-		_, err = client.Tenant.UpdateOneID(tenantID).
-			SetSecurityPolicy(policyMap).
-			Save(ctx)
-		if err != nil {
-			return sp, fmt.Errorf("failed updating tenant security policy: %w", err)
-		}
+		return sp, ErrTenantNotFound
+	}
+
+	if _, err = client.Tenant.UpdateOneID(tenantID).
+		SetSecurityPolicy(policyMap).
+		Save(ctx); err != nil {
+		return sp, fmt.Errorf("failed updating tenant security policy: %w", err)
 	}
 
 	return sp, nil
@@ -270,24 +259,14 @@ func (r *Repository) UpdateRecoveryPolicy(ctx context.Context, tenantID string, 
 	if err != nil {
 		return rp, fmt.Errorf("failed checking tenant existence: %w", err)
 	}
-
 	if !exists {
-		_, err = client.Tenant.Create().
-			SetID(tenantID).
-			SetName("Default Workspace").
-			SetSlug(tenantID).
-			SetRecoveryPolicy(policyMap).
-			Save(ctx)
-		if err != nil {
-			return rp, fmt.Errorf("failed creating tenant with recovery policy: %w", err)
-		}
-	} else {
-		_, err = client.Tenant.UpdateOneID(tenantID).
-			SetRecoveryPolicy(policyMap).
-			Save(ctx)
-		if err != nil {
-			return rp, fmt.Errorf("failed updating tenant recovery policy: %w", err)
-		}
+		return rp, ErrTenantNotFound
+	}
+
+	if _, err = client.Tenant.UpdateOneID(tenantID).
+		SetRecoveryPolicy(policyMap).
+		Save(ctx); err != nil {
+		return rp, fmt.Errorf("failed updating tenant recovery policy: %w", err)
 	}
 
 	return rp, nil

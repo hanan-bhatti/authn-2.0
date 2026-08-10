@@ -13,7 +13,6 @@
 package auth_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -33,7 +32,7 @@ func TestMandatoryAdmin2FA(t *testing.T) {
 	require.NoError(t, err)
 	defer factory.Close()
 
-	sysCtx := privacy.NewBypassContext(context.Background())
+	sysCtx := privacy.NewBypassContext(testCtx())
 	client := factory.GetClient(sysCtx, "", "")
 
 	tnt, err := client.Tenant.Create().SetID("tnt_m2fa").SetName("Mandatory 2FA Tenant").SetSlug("tnt-m2fa").Save(sysCtx)

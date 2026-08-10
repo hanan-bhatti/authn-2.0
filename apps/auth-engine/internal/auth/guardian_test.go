@@ -12,7 +12,6 @@
 package auth_test
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"testing"
@@ -36,10 +35,10 @@ func setupTestGuardianService(t *testing.T) (*auth.GuardianService, *auth.Reposi
 	repo := auth.NewRepository(factory)
 
 	tenantID := "tnt_test_gdn"
-	err = repo.EnsureTenantExists(context.Background(), tenantID)
+	err = repo.EnsureTenantExists(testCtx(), tenantID)
 	require.NoError(t, err)
 
-	client := factory.GetClient(context.Background(), tenantID, "test")
+	client := factory.GetClient(testCtx(), tenantID, "test")
 
 	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
 	_, err = client.User.Create().
@@ -47,7 +46,7 @@ func setupTestGuardianService(t *testing.T) (*auth.GuardianService, *auth.Reposi
 		SetTenantID(tenantID).
 		SetEmail("owner@example.com").
 		SetPasswordHash("hashed_password").
-		Save(context.Background())
+		Save(testCtx())
 	require.NoError(t, err)
 
 	policyRepo := policy.NewRepository(factory)
@@ -57,7 +56,7 @@ func setupTestGuardianService(t *testing.T) (*auth.GuardianService, *auth.Reposi
 
 func TestGuardian_Enrollment_1To5Flexible(t *testing.T) {
 	svc, _, userID := setupTestGuardianService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	// Invite 3 guardians
 	inputs := []auth.InviteGuardianInput{
@@ -83,7 +82,7 @@ func TestGuardian_Enrollment_1To5Flexible(t *testing.T) {
 
 func TestGuardian_MaxLimit_Exceeded(t *testing.T) {
 	svc, _, userID := setupTestGuardianService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	inputs := make([]auth.InviteGuardianInput, 6)
 	for i := 0; i < 6; i++ {
@@ -99,7 +98,7 @@ func TestGuardian_MaxLimit_Exceeded(t *testing.T) {
 
 func TestGuardian_AcceptInvitation(t *testing.T) {
 	svc, repo, userID := setupTestGuardianService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	res, err := svc.InviteGuardians(ctx, userID, []auth.InviteGuardianInput{{Email: "alice@example.com", Name: "Alice"}}, "http://localhost:8080")
 	require.NoError(t, err)
@@ -123,7 +122,7 @@ func TestGuardian_AcceptInvitation(t *testing.T) {
 
 func TestGuardian_ListGuardians_NoSecretExposure(t *testing.T) {
 	svc, _, userID := setupTestGuardianService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	_, err := svc.InviteGuardians(ctx, userID, []auth.InviteGuardianInput{
 		{Email: "alice@example.com", Name: "Alice"},
@@ -145,7 +144,7 @@ func TestGuardian_ListGuardians_NoSecretExposure(t *testing.T) {
 
 func TestGuardian_Revocation_ReKeyAndReSplit(t *testing.T) {
 	svc, repo, userID := setupTestGuardianService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	// Invite 3 guardians (2-of-3)
 	res, err := svc.InviteGuardians(ctx, userID, []auth.InviteGuardianInput{

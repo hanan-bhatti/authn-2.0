@@ -66,7 +66,7 @@ func TestConcurrentFirstAdminSignup(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			role := assignRole(context.Background(), "tnt_test")
+			role := assignRole(testCtx(), "tnt_test")
 			if role == "tenant_admin" {
 				adminCount.Add(1)
 			} else {
@@ -99,7 +99,7 @@ func TestSequentialFirstAdminSignup(t *testing.T) {
 	claimer := &mockAtomicClaimer{}
 
 	// First signup → should claim admin
-	claimed1, err := claimer.Claim(context.Background(), "tnt_test")
+	claimed1, err := claimer.Claim(testCtx(), "tnt_test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestSequentialFirstAdminSignup(t *testing.T) {
 
 	// All subsequent signups → should NOT claim admin
 	for i := 1; i < 10; i++ {
-		claimed, err := claimer.Claim(context.Background(), "tnt_test")
+		claimed, err := claimer.Claim(testCtx(), "tnt_test")
 		if err != nil {
 			t.Fatalf("unexpected error on signup %d: %v", i, err)
 		}

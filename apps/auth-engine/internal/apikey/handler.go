@@ -5,9 +5,15 @@
  *
  * HTTP routes for issuing, listing and revoking an application's API keys.
  *
- * Every route sits behind secret-key authentication, so managing keys requires
- * a key that already carries administrative authority. A publishable key can
- * never mint a secret one.
+ * Every route sits behind admin authentication, so managing keys requires a
+ * credential that already carries administrative authority — either an sk_
+ * secret key or a tenant_admin console token. A publishable key can never mint
+ * a secret one.
+ *
+ * The two credential kinds differ in reach, which is why the handlers resolve
+ * the target application rather than reading it from one place: an sk_ key is
+ * bound to a single application, while a console token is tenant-wide and must
+ * name the application, subject to a tenant check.
  *
  * Environments are isolated in both directions: a caller authenticated with a
  * test-mode key cannot create or see live-mode keys, and the reverse holds too.
@@ -31,6 +37,11 @@ import (
 
 // CreateKeyRequest is the body of a key issuance request.
 type CreateKeyRequest struct {
+	// ApplicationID names the application the key is issued for. It is required
+	// of a tenant-wide caller such as the console, and optional for a backend
+	// authenticated with an sk_ key, whose application is already known — such a
+	// caller may only name its own.
+	ApplicationID string `json:"application_id,omitempty" example:"app_test123"`
 	// Name is an operator-facing label for the key.
 	Name string `json:"name" example:"Production Stripe Webhook Key"`
 	// Type is the requested scope: "publishable" or "secret".
@@ -90,35 +101,89 @@ func NewHandler(service *Service) *Handler {
 
 // RegisterRoutes mounts the key management routes under /v1/admin/keys.
 //
-// secretKeyMiddleware authenticates the caller and populates the application
-// and environment the handlers read. It is applied when non-nil; passing nil
-// leaves the routes unauthenticated and suits only a test that supplies those
-// values itself.
-func (h *Handler) RegisterRoutes(app *fiber.App, secretKeyMiddleware fiber.Handler) {
+// adminMiddleware authenticates the caller and populates the tenant,
+// environment, and — for an application-bound credential — the application the
+// handlers read. It is applied when non-nil; passing nil leaves the routes
+// unauthenticated and suits only a test that supplies those values itself.
+func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware fiber.Handler) {
 	group := app.Group("/v1/admin/keys")
-	if secretKeyMiddleware != nil {
-		group.Use(secretKeyMiddleware)
+	if adminMiddleware != nil {
+		group.Use(adminMiddleware)
 	}
 	group.Post("/", h.CreateKey)
 	group.Get("/", h.ListKeys)
 	group.Post("/:id/revoke", h.RevokeKey)
 }
 
-// CreateKey issues a key for the caller's application and returns it once.
+// resolveApplicationID determines which application a key request acts on.
 //
-// Responds 401 when the middleware left no application context, 400 for an
-// unparseable body, an unrecognised type, or an environment differing from the
-// caller's, 500 when issuance fails, and 201 with the key on success.
+// Two kinds of caller reach these routes. A backend holding an sk_ key is bound
+// to the application that issued it, and the middleware puts that application in
+// the request locals; such a caller may not name a different one. The console
+// holds a tenant_admin JWT instead, which is tenant-wide and application-less,
+// so it must name the application — and that value, coming from the request, is
+// checked against the caller's tenant before it is used.
+//
+// Returns the resolved application id, or a ready-to-return error response.
+func (h *Handler) resolveApplicationID(c *fiber.Ctx, requested string) (string, error) {
+	tenantID, okTenant := c.Locals("tenant_id").(string)
+	if !okTenant || tenantID == "" {
+		return "", httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: tenant context missing")
+	}
+
+	localAppID, _ := c.Locals("application_id").(string)
+	requested = strings.TrimSpace(requested)
+
+	// An application-bound credential ignores the request's value, but refuses
+	// rather than silently overriding when the two disagree: a caller asking for
+	// an application it cannot act on has made a mistake worth reporting.
+	if localAppID != "" {
+		if requested != "" && requested != localAppID {
+			return "", httperr.BadRequest(c, httperr.CodeValidationFailed,
+				"application_id does not match the authenticating key's application")
+		}
+		return localAppID, nil
+	}
+
+	if requested == "" {
+		return "", httperr.BadRequest(c, httperr.CodeMissingParameter,
+			"application_id is required: a tenant-wide admin credential must name the application to act on")
+	}
+
+	ok, err := h.service.ApplicationInTenant(c.UserContext(), requested, tenantID)
+	if err != nil {
+		return "", httperr.SendInternal(c, "apikey.resolve_application", err)
+	}
+	if !ok {
+		// A foreign application and an absent one answer identically, so the
+		// response cannot be used to discover which applications exist.
+		return "", httperr.NotFound(c, httperr.CodeNotFound, "application not found")
+	}
+	return requested, nil
+}
+
+// CreateKey issues a key for an application in the caller's tenant and returns
+// it once.
+//
+// Responds 401 when the middleware left no tenant context, 400 for an
+// unparseable body, an unrecognised type, a missing or mismatched
+// application_id, or an environment differing from the caller's, 404 when the
+// named application is not in the caller's tenant, 500 when issuance fails, and
+// 201 with the key on success.
 func (h *Handler) CreateKey(c *fiber.Ctx) error {
-	appID, okApp := c.Locals("application_id").(string)
 	callerEnv, okEnv := c.Locals("environment").(string)
-	if !okApp || appID == "" || !okEnv || callerEnv == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: application context missing")
+	if !okEnv || callerEnv == "" {
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: environment context missing")
 	}
 
 	var req CreateKeyRequest
 	if err := c.BodyParser(&req); err != nil {
 		return httperr.InvalidBody(c)
+	}
+
+	appID, err := h.resolveApplicationID(c, req.ApplicationID)
+	if err != nil {
+		return err
 	}
 
 	keyType := KeyType(strings.ToLower(strings.TrimSpace(req.Type)))
@@ -150,7 +215,6 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 	if err != nil {
 		return httperr.SendInternal(c, "apikey.create_key", err)
 	}
-
 	dto := KeyDTO{
 		ID:            gen.ID,
 		ApplicationID: appID,
@@ -171,16 +235,20 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 	})
 }
 
-// ListKeys returns the metadata of every key belonging to the caller's
-// application, revoked and expired ones included.
+// ListKeys returns the metadata of every key belonging to an application in the
+// caller's tenant, revoked and expired ones included.
 //
-// Responds 401 when the middleware left no application context, 500 if the
-// query fails, and 200 with the list — never containing key material — on
-// success.
+// A backend authenticated with an sk_ key lists that key's own application; the
+// console names one via ?application_id=, checked against its tenant.
+//
+// Responds 401 when the middleware left no tenant context, 400 when a
+// tenant-wide caller names no application, 404 when the named application is
+// not in the caller's tenant, 500 if the query fails, and 200 with the list —
+// never containing key material — on success.
 func (h *Handler) ListKeys(c *fiber.Ctx) error {
-	appID, okApp := c.Locals("application_id").(string)
-	if !okApp || appID == "" {
-		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: application context missing")
+	appID, err := h.resolveApplicationID(c, c.Query("application_id"))
+	if err != nil {
+		return err
 	}
 
 	keys, err := h.service.ListKeys(c.UserContext(), appID)
@@ -198,17 +266,26 @@ func (h *Handler) ListKeys(c *fiber.Ctx) error {
 
 // RevokeKey marks a key unusable.
 //
-// Responds 400 when the id is missing or names no revocable key, and 200 on
-// success. The failure is reported as a 400 with fixed wording, because the
-// underlying error distinguishes "no such key" from "already revoked" and
-// relaying that would let a caller probe which identifiers exist.
+// Revocation is confined to the caller's own tenant, so a key id belonging to
+// another tenant is refused exactly as an unknown one is.
+//
+// Responds 401 when the middleware left no tenant context, 400 when the id is
+// missing or names no revocable key in that tenant, and 200 on success. The
+// failure is reported as a 400 with fixed wording, because the underlying error
+// distinguishes "no such key" from "already revoked" from "another tenant's
+// key", and relaying that would let a caller probe which identifiers exist.
 func (h *Handler) RevokeKey(c *fiber.Ctx) error {
+	tenantID, okTenant := c.Locals("tenant_id").(string)
+	if !okTenant || tenantID == "" {
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: tenant context missing")
+	}
+
 	keyID := c.Params("id")
 	if keyID == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "key id is required")
 	}
 
-	if err := h.service.RevokeKey(c.UserContext(), keyID); err != nil {
+	if err := h.service.RevokeKey(c.UserContext(), keyID, tenantID); err != nil {
 		// The repository wraps the ent failure together with the key id, so the
 		// detail is logged rather than returned.
 		log.Printf("[error] %s %s apikey.revoke_key: %v", c.Method(), c.Path(), err)

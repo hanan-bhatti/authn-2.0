@@ -77,9 +77,34 @@ func (r *Repository) GetUserByID(ctx context.Context, userID string) (*ent.User,
 	return client.User.Get(ctx, userID)
 }
 
+// TenantExists reports whether tenantID names a provisioned tenant.
+//
+// The probe runs under a bypass because it answers a question that precedes
+// tenant scoping: a scoped query would filter by the very tenant whose
+// existence is in doubt. It reads nothing but the presence of one row.
+//
+// Returns an error only when the query fails; a missing tenant is (false, nil).
+func (r *Repository) TenantExists(ctx context.Context, tenantID string) (bool, error) {
+	if tenantID == "" {
+		return false, nil
+	}
+	sysCtx := privacy.NewBypassContext(ctx)
+	exists, err := r.factory.GetClient(sysCtx, tenantID, "test").Tenant.Query().
+		Where(tenant.ID(tenantID)).
+		Exist(sysCtx)
+	if err != nil {
+		return false, fmt.Errorf("failed checking tenant existence: %w", err)
+	}
+	return exists, nil
+}
+
 // EnsureTenantExists creates tenantID as a default workspace if no such tenant
-// row exists, and is a no-op when one already does. Intended for test fixtures
-// and local bootstrap binaries, not for request-path use.
+// row exists, and is a no-op when one already does.
+//
+// This is for test fixtures and bootstrap binaries only, and is deliberately
+// not reachable from the request path: a signup naming an unknown tenant is
+// refused rather than silently creating one. A tenant made here has no roles,
+// no application and no keys, so it is not a substitute for provisioning.
 //
 // Returns an error only if the existence probe fails or the insert fails for a
 // reason other than a uniqueness conflict; a conflict means a concurrent caller

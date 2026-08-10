@@ -9,7 +9,6 @@
 package auth_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
@@ -43,9 +42,10 @@ func TestAuthService_ValidateApiKey_Invalid(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := context.Background()
+	ctx := testCtx()
 	_, err = svc.ValidateApiKey(ctx, "invalid_key_prefix_999")
 	assert.ErrorIs(t, err, auth.ErrInvalidApiKey)
 }
@@ -60,9 +60,10 @@ func TestAuthService_SignUpAndLogin(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := privacy.NewContext(context.Background(), "tnt_test", "", "test")
+	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	// 1. Test Signup
 	u, accessTok, refreshTok, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "testuser@example.com", "MyPassword123!", "Test User", "Mozilla/5.0", "127.0.0.1")

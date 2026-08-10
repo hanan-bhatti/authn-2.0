@@ -414,7 +414,7 @@ func TestProcessACSAcceptsSignedAssertion(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(
 		[]byte(idp.sign(t, buildACSResponse(acsResponseOptions{}))))
 
-	userObj, orgObj, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent")
+	userObj, orgObj, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("a correctly signed assertion must be accepted, got: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestProcessACSRejectsUnverifiableAssertions(t *testing.T) {
 
 			payload := base64.StdEncoding.EncodeToString([]byte(tc.build(t, idp)))
 
-			userObj, _, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent")
+			userObj, _, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent")
 			if err == nil {
 				t.Fatalf("assertion was accepted but must be rejected; it authenticated %v", userObj)
 			}
@@ -529,10 +529,10 @@ func TestProcessACSRejectsReplayedAssertion(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(
 		[]byte(idp.sign(t, buildACSResponse(acsResponseOptions{assertionID: "assertion-replay-1"}))))
 
-	if _, _, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent"); err != nil {
+	if _, _, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent"); err != nil {
 		t.Fatalf("first presentation must succeed, got: %v", err)
 	}
-	if _, _, err := svc.ProcessACS(ctx, "tnt_test", payload, "127.0.0.1", "TestAgent"); err == nil {
+	if _, _, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent"); err == nil {
 		t.Fatal("replaying the same assertion must be rejected")
 	}
 }

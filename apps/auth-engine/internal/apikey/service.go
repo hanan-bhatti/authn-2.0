@@ -19,6 +19,7 @@ package apikey
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -138,11 +139,10 @@ func (s *Service) ValidateKey(ctx context.Context, rawKey string, expectedType K
 
 // CreateKey generates a key for an application and persists its hash.
 //
-// An empty id is derived from the tail of the generated key, which keeps
-// identifiers unique without a second random draw. Note that this places
-// twelve hex characters of the key into an identifier that later appears in
-// listings; callers wanting the identifier fully independent of the secret
-// should pass one.
+// An empty id is filled with a freshly drawn random value. It is deliberately
+// not derived from the generated key: an identifier appears in listings, logs
+// and revocation URLs, so seeding it from the secret would publish part of the
+// secret everywhere the identifier travels.
 //
 // A nil expiresAt means the key does not expire. Returns the generated key —
 // the only time its raw value is available — or an error if generation or
@@ -154,7 +154,11 @@ func (s *Service) CreateKey(ctx context.Context, id string, applicationID string
 	}
 
 	if id == "" {
-		id = fmt.Sprintf("key_%s", gen.RawKey[len(gen.RawKey)-12:])
+		idBytes := make([]byte, 9)
+		if _, err := rand.Read(idBytes); err != nil {
+			return nil, fmt.Errorf("generating api key id: %w", err)
+		}
+		id = fmt.Sprintf("key_%s", hex.EncodeToString(idBytes))
 	}
 
 	_, err = s.repo.CreateApiKey(ctx, id, applicationID, name, keyType, gen.Prefix, gen.KeyHash, env, expiresAt)
@@ -164,6 +168,17 @@ func (s *Service) CreateKey(ctx context.Context, id string, applicationID string
 
 	gen.ID = id
 	return gen, nil
+}
+
+// ApplicationInTenant reports whether applicationID belongs to tenantID.
+//
+// Handlers call it before acting on a caller-supplied application identifier,
+// so that a tenant-wide credential cannot reach across the tenant boundary by
+// naming someone else's application.
+//
+// Returns false with no error when the application is absent or foreign.
+func (s *Service) ApplicationInTenant(ctx context.Context, applicationID string, tenantID string) (bool, error) {
+	return s.repo.ApplicationInTenant(ctx, applicationID, tenantID)
 }
 
 // ListKeys returns an application's keys, including revoked and expired ones so
@@ -176,9 +191,12 @@ func (s *Service) ListKeys(ctx context.Context, applicationID string) ([]*ent.Ap
 
 // RevokeKey marks a key unusable, effective on its next validation.
 //
+// tenantID confines the revocation to the caller's own tenant; it is required,
+// and a key belonging to any other tenant is reported as not found.
+//
 // The record is kept rather than deleted, so the key remains in the audit trail
 // and its identifier cannot be reissued. Returns an error if the key does not
-// exist or the update fails.
-func (s *Service) RevokeKey(ctx context.Context, id string) error {
-	return s.repo.RevokeApiKey(ctx, id)
+// exist within tenantID or the update fails.
+func (s *Service) RevokeKey(ctx context.Context, id string, tenantID string) error {
+	return s.repo.RevokeApiKey(ctx, id, tenantID)
 }

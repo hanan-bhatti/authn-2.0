@@ -184,6 +184,13 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		if errors.Is(err, ErrUserAlreadyExists) {
 			return httperr.Conflict(c, httperr.CodeAlreadyExists, ErrUserAlreadyExists.Error())
 		}
+		// An unknown tenant is a misconfigured client, not a server fault: the
+		// publishable key names the tenant, so reaching here means the key and
+		// the request disagree, or no tenant was ever provisioned.
+		if errors.Is(err, ErrTenantNotFound) {
+			return httperr.BadRequest(c, httperr.CodeValidationFailed,
+				"unknown tenant: no tenant has been provisioned for this request")
+		}
 		return httperr.SendInternal(c, "auth.signup", err)
 	}
 

@@ -85,12 +85,17 @@ func TestImpersonationHTTPHandlers(t *testing.T) {
 	// Setup Fiber App with middleware mock context
 	app := fiber.New()
 	adminMwMock := func(c *fiber.Ctx) error {
+		// The real admin middleware installs the privacy scope alongside these
+		// locals; without it every downstream query is refused for want of a
+		// tenant and the handler reports the target user as missing.
+		c.SetUserContext(privacy.NewContext(c.UserContext(), tnt.ID, "", "test"))
 		c.Locals("tenant_id", tnt.ID)
 		c.Locals("environment", "test")
 		c.Locals("console_user_id", adminUser.ID)
 		return c.Next()
 	}
 	clientMwMock := func(c *fiber.Ctx) error {
+		c.SetUserContext(privacy.NewContext(c.UserContext(), tnt.ID, "", "test"))
 		return c.Next()
 	}
 	handler.RegisterRoutes(app, adminMwMock, clientMwMock, nil)

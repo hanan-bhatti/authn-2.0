@@ -12,7 +12,6 @@
 package auth_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -80,7 +79,7 @@ func TestTelemetryService_TrustEvaluationAndRecord(t *testing.T) {
 	repo := auth.NewRepository(factory)
 	policyRepo := policy.NewRepository(factory)
 	svc := auth.NewTelemetryService(repo, kmsKey, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	tenantID := "tnt_test_telemetry"
 	err = repo.EnsureTenantExists(ctx, tenantID)
@@ -129,7 +128,7 @@ func TestTelemetryService_PurgeExpiredTelemetry(t *testing.T) {
 	repo := auth.NewRepository(factory)
 	policyRepo := policy.NewRepository(factory)
 	svc := auth.NewTelemetryService(repo, kmsKey, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	tenantID := "tnt_test_purge"
 	err = repo.EnsureTenantExists(ctx, tenantID)

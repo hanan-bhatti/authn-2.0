@@ -21,6 +21,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/database"
 )
 
@@ -98,11 +99,15 @@ func NewFromURL(databaseURL string, opts PoolOptions) (*ClientFactory, error) {
 	client := ent.NewClient(ent.Driver(pool))
 
 	if opts.AutoMigrate {
+		// Migration runs before the interceptors are installed, so the DDL is not
+		// subject to a tenant scope it could never satisfy.
 		if err := client.Schema.Create(context.Background()); err != nil {
 			client.Close()
 			return nil, fmt.Errorf("creating %s schema: %w", driver.Dialect, err)
 		}
 	}
+
+	privacy.AttachPrivacyInterceptors(client)
 
 	return &ClientFactory{
 		defaultClient: client,
@@ -129,6 +134,8 @@ func NewClientFactory(driverName string, dataSourceName string) (*ClientFactory,
 		client.Close()
 		return nil, fmt.Errorf("failed creating schema resources: %w", err)
 	}
+
+	privacy.AttachPrivacyInterceptors(client)
 
 	return &ClientFactory{
 		defaultClient: client,
@@ -167,7 +174,13 @@ func (f *ClientFactory) Ping(ctx context.Context) error {
 	if f == nil || f.defaultClient == nil {
 		return fmt.Errorf("database client uninitialized")
 	}
-	_, err := f.defaultClient.Tenant.Query().Limit(1).IDs(ctx)
+	// A health probe belongs to no tenant, so it runs under a bypass context.
+	// Without one the privacy interceptor refuses the query for want of a scope
+	// and readiness fails permanently — every instance would leave the load
+	// balancer while the database was perfectly healthy. The bypass is safe here
+	// because the query selects at most one identifier and discards it.
+	sysCtx := privacy.NewBypassContext(ctx)
+	_, err := f.defaultClient.Tenant.Query().Limit(1).IDs(sysCtx)
 	return err
 }
 

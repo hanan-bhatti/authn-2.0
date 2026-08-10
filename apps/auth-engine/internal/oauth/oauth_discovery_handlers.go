@@ -72,9 +72,14 @@ type createApplicationRequest struct {
 //
 // Returns 400 when id or name is missing and 500 when the write fails.
 func (h *Handler) CreateApplication(c *fiber.Ctx) error {
+	// This route sits behind the admin middleware, which sets the tenant on
+	// success. An empty value means the request was never authenticated, so it
+	// is refused rather than assigned a default tenant — creating an application
+	// under the wrong tenant would hand its API keys to the wrong customer.
 	tenantID, _ := c.Locals("tenant_id").(string)
 	if tenantID == "" {
-		tenantID = defaultTenantID
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"tenant could not be resolved for this request")
 	}
 
 	var req createApplicationRequest

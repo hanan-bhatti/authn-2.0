@@ -23,6 +23,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 )
 
 // ProcessACS consumes a SAML response posted to the Assertion Consumer Service
@@ -41,7 +42,7 @@ import (
 // Returns ErrInvalidAssertion when the payload is unparseable or carries no
 // usable email, an error when no connection claims the domain, or a wrapped
 // storage error from provisioning.
-func (s *Service) ProcessACS(ctx context.Context, tenantID, rawSAMLPayload string, ip, userAgent string) (*ent.User, *ent.Organization, error) {
+func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload string, ip, userAgent string) (*ent.User, *ent.Organization, error) {
 	rawSAMLPayload = strings.TrimSpace(rawSAMLPayload)
 	if rawSAMLPayload == "" {
 		return nil, nil, ErrInvalidAssertion
@@ -60,9 +61,24 @@ func (s *Service) ProcessACS(ctx context.Context, tenantID, rawSAMLPayload strin
 	}
 
 	// The Issuer is read from unverified XML, so it serves purely as a lookup
-	// key: it selects which certificate the signature is tested against and
-	// grants nothing on its own. Every field used after this point is read from
-	// bytes that certificate has proven.
+	// key: it selects which tenant and which certificate the signature is tested
+	// against and grants nothing on its own. Every field used after this point is
+	// read from bytes that certificate has proven.
+	//
+	// The tenant is derived here rather than supplied by the caller. This request
+	// carries no Authn credential — the assertion arrives from the user's browser
+	// — so there is no authenticated tenant to inherit, and defaulting to one
+	// would provision every identity provider's users into the same tenant.
+	tenantID, err := s.ResolveTenantByIssuer(ctx, doc.issuer())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Scope the rest of this call to the resolved tenant. The request reached no
+	// authenticating middleware, so nothing has installed a scope yet, and every
+	// query below depends on one.
+	ctx = privacy.NewContext(ctx, tenantID, "", "")
+
 	client := s.factory.GetClient(ctx, tenantID, "")
 	conn, err := client.SAMLConnection.Query().
 		Where(samlconnection.IdpEntityID(doc.issuer())).

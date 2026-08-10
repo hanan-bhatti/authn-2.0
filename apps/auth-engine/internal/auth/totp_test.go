@@ -15,7 +15,6 @@ package auth_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -61,9 +60,10 @@ func TestTOTP_Enrollment_PendingState(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := privacy.NewContext(context.Background(), "tnt_test", "", "test")
+	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "totpuser@example.com", "Password123!", "TOTP User", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
@@ -96,9 +96,10 @@ func TestTOTP_FullLifecycle_And_SkewTolerance(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := privacy.NewContext(context.Background(), "tnt_test", "", "test")
+	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "lifecycle@example.com", "MySecretPass123!", "Lifecycle User", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
@@ -163,9 +164,10 @@ func TestTOTP_LoginIntegration_And_ChallengeFlow(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := privacy.NewContext(context.Background(), "tnt_test", "", "test")
+	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	// 1. Create User & Activate TOTP
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "totplogin@example.com", "Password123!", "TOTP Login", "Mozilla/5.0", "127.0.0.1")
@@ -207,9 +209,10 @@ func TestTOTP_Disable_ReVerification_And_SessionRevocation(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 
-	ctx := privacy.NewContext(context.Background(), "tnt_test", "", "test")
+	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	// 1. Create user, activate TOTP, and issue extra active sessions
 	password := "HighSecurityPass123!"
@@ -253,11 +256,12 @@ func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
 	defer factory.Close()
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	svc := auth.NewService(repo, cfg, nil)
 	handler := auth.NewHandler(svc, nil, nil)
 
 	app := fiber.New()
-	handler.RegisterRoutes(app, nil)
+	handler.RegisterRoutes(app, testScopeMiddleware("tnt_test", "test"))
 
 	// 1. Signup
 	signUpPayload := map[string]string{

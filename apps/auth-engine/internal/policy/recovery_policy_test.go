@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -111,9 +112,18 @@ func TestGetAndUpdateRecoveryPolicy_Repository(t *testing.T) {
 	t.Cleanup(func() { factory.Close() })
 
 	repo := policy.NewRepository(factory)
-	ctx := context.Background()
+	// The privacy interceptors require a scope, and policy writes no longer
+	// create a missing tenant, so the fixture provisions one up front.
+	ctx := privacy.NewBypassContext(context.Background())
 
 	tenantID := "tnt_policy_test"
+
+	_, err = factory.GetClient(ctx, tenantID, "test").Tenant.Create().
+		SetID(tenantID).
+		SetName("Policy Test Workspace").
+		SetSlug(tenantID).
+		Save(ctx)
+	require.NoError(t, err)
 
 	// 1. Default Fallback
 	pDef, err := repo.GetRecoveryPolicy(ctx, tenantID)

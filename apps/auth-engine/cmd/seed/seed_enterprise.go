@@ -18,6 +18,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 )
 
 // seedOrganization creates the demo organization, adds the administrator and
@@ -44,8 +45,8 @@ func seedOrganization(ctx context.Context, client *ent.Client, users map[string]
 		email        string
 		roleID       string
 	}{
-		{"mem_admin_acme", "admin@authn.local", "role_org_admin"},
-		{"mem_user_acme", "user.orgmember@authn.local", "role_editor"},
+		{"mem_admin_acme", "admin@authn.local", rbac.SystemRoleID(seedTenantID, "org_admin")},
+		{"mem_user_acme", "user.orgmember@authn.local", rbac.SystemRoleID(seedTenantID, "editor")},
 	}
 
 	for _, m := range memberships {

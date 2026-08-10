@@ -25,6 +25,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -109,22 +110,73 @@ func (r *Repository) ListByApplication(ctx context.Context, applicationID string
 	return keys, nil
 }
 
-// RevokeApiKey stamps a key's revocation time.
+// RevokeApiKey stamps a key's revocation time, confined to tenantID.
 //
 // The record is retained rather than deleted, keeping the key in the audit
-// trail and preventing its identifier from being reused. Returns an error if no
-// such key exists or the update fails.
-func (r *Repository) RevokeApiKey(ctx context.Context, id string) error {
-	client := r.factory.GetClient(ctx, "", "")
+// trail and preventing its identifier from being reused.
+//
+// The tenant predicate is written here rather than left to the privacy
+// interceptor, which cannot supply it: the interceptor wraps Querier, so it
+// scopes reads only, and every write predicate in this codebase must therefore
+// be explicit. api_keys carries no tenant_id of its own, so the boundary is
+// reached through the owning application — the same join the read path applies.
+// Without it an UpdateOneID would revoke by bare identifier and let any
+// authenticated admin disable another tenant's key.
+//
+// Returns an error when no key in tenantID has that id, or when the update
+// fails. Callers must not distinguish the two for the client, since doing so
+// would confirm which identifiers exist in other tenants.
+func (r *Repository) RevokeApiKey(ctx context.Context, id string, tenantID string) error {
+	if tenantID == "" {
+		return fmt.Errorf("refusing to revoke api key %s: no tenant scope", id)
+	}
+
+	client := r.factory.GetClient(ctx, tenantID, "")
 	now := time.Now()
-	_, err := client.ApiKey.UpdateOneID(id).
+	n, err := client.ApiKey.Update().
+		Where(
+			apikey.ID(id),
+			apikey.HasApplicationWith(application.TenantID(tenantID)),
+		).
 		SetRevokedAt(now).
 		Save(ctx)
 
 	if err != nil {
 		return fmt.Errorf("failed revoking api key %s: %w", id, err)
 	}
+	if n == 0 {
+		return fmt.Errorf("no api key %s in tenant %s", id, tenantID)
+	}
 	return nil
+}
+
+// ApplicationInTenant reports whether applicationID names an application owned
+// by tenantID.
+//
+// It exists so a handler can accept an application identifier from the request
+// — which the console must supply, holding a tenant-wide credential rather than
+// an application-bound one — without trusting it. The tenant predicate is what
+// stops a caller naming another tenant's application and issuing keys against
+// it.
+//
+// Returns false with no error when the application does not exist or belongs to
+// another tenant; the two are deliberately indistinguishable to the caller.
+func (r *Repository) ApplicationInTenant(ctx context.Context, applicationID string, tenantID string) (bool, error) {
+	if applicationID == "" || tenantID == "" {
+		return false, nil
+	}
+
+	client := r.factory.GetClient(ctx, tenantID, "")
+	exists, err := client.Application.Query().
+		Where(
+			application.ID(applicationID),
+			application.TenantID(tenantID),
+		).
+		Exist(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed checking application %s in tenant %s: %w", applicationID, tenantID, err)
+	}
+	return exists, nil
 }
 
 // EnsureDefaultApiKeyExists creates a known development key if it is not

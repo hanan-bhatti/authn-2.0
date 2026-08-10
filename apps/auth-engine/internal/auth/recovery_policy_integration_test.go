@@ -12,7 +12,6 @@
 package auth_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -37,7 +36,7 @@ func TestRecoveryPolicy_TenantBehaviorCustomization(t *testing.T) {
 	telemetry := auth.NewTelemetryService(repo, kmsKey, policyRepo)
 	recSvc := auth.NewRecoveryService(repo, telemetry, policyRepo)
 	gdnSvc := auth.NewGuardianService(repo, policyRepo)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	// Tenant A: Custom policy with GuardiansEnabled = false
 	tenantA := "tnt_custom_no_guardians"

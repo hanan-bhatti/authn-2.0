@@ -17,7 +17,6 @@ package auth_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -48,12 +47,13 @@ func setupWebAuthnTestEnvironment(t *testing.T) (*fiber.App, *auth.Service, *aut
 	require.NoError(t, err)
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_test"))
 	polRepo := policy.NewRepository(factory)
 	svc := auth.NewService(repo, cfg, nil)
 	handler := auth.NewHandler(svc, polRepo, nil)
 
 	app := fiber.New()
-	handler.RegisterRoutes(app, nil)
+	handler.RegisterRoutes(app, testScopeMiddleware("tnt_test", "test"))
 
 	password := "PasskeySecret123!"
 
@@ -135,7 +135,7 @@ func TestWebAuthn_BeginLogin_NoPasskeys(t *testing.T) {
 
 func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 	app, _, repo, token, password := setupWebAuthnTestEnvironment(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	// 1. Get User ID from session token
 	reqListInitial := httptest.NewRequest("GET", "/v1/client/2fa/webauthn/credentials", nil)
@@ -233,7 +233,7 @@ func TestLogin_MFAResponseMethods_SingleSourceOfTruth(t *testing.T) {
 	_ = token
 	_ = password
 
-	ctx := context.Background()
+	ctx := testCtx()
 	u, err := repo.FindUserByEmail(ctx, "tnt_test", "test", "passkeyuser@example.com")
 	require.NoError(t, err)
 

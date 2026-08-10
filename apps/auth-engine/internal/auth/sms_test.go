@@ -13,7 +13,6 @@
 package auth_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -43,6 +42,7 @@ func setupSMSTestEnv(t *testing.T) (*auth.Service, *auth.Repository, func()) {
 	require.NoError(t, err)
 
 	repo := auth.NewRepository(factory)
+	require.NoError(t, repo.EnsureTenantExists(testCtx(), "tnt_default"))
 	noopSMS, _ := sms.NewSMSProvider(cfg)
 	svc := auth.NewService(repo, cfg, nil, noopSMS)
 
@@ -56,7 +56,7 @@ func setupSMSTestEnv(t *testing.T) (*auth.Service, *auth.Repository, func()) {
 func TestSMS_Enroll_Confirm_Validation(t *testing.T) {
 	svc, repo, cleanup := setupSMSTestEnv(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := testCtx()
 
 	// 1. Create test user
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_default", "test", "smstest@example.com", "UserPassword123!", "SMS User", "UserAgent", "127.0.0.1")
@@ -86,7 +86,7 @@ func TestSMS_Enroll_Confirm_Validation(t *testing.T) {
 func TestSMS_AmbiguityCheck_MultipleMethods(t *testing.T) {
 	svc, _, cleanup := setupSMSTestEnv(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := testCtx()
 
 	// 1. Create user
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_default", "test", "multimethod@example.com", "UserPassword123!", "Multi 2FA User", "UserAgent", "127.0.0.1")
@@ -126,7 +126,7 @@ func TestSMS_AmbiguityCheck_MultipleMethods(t *testing.T) {
 func TestSMS_RateLimit_3RequestsPer10Mins(t *testing.T) {
 	svc, _, cleanup := setupSMSTestEnv(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := testCtx()
 
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_default", "test", "smsratelimit@example.com", "UserPassword123!", "Rate Limit User", "UserAgent", "127.0.0.1")
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestSMS_RateLimit_3RequestsPer10Mins(t *testing.T) {
 func TestSMS_Disable_ReVerification_And_SessionRevocation(t *testing.T) {
 	svc, repo, cleanup := setupSMSTestEnv(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := testCtx()
 
 	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_default", "test", "smsdisable@example.com", "UserPassword123!", "Disable User", "UserAgent", "127.0.0.1")
 	require.NoError(t, err)

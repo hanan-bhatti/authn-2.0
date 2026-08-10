@@ -12,7 +12,6 @@
 package auth_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -31,7 +30,7 @@ import (
 
 func TestRecoveryFreezeStateTransition(t *testing.T) {
 	svc, telemetry, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -75,7 +74,7 @@ func TestRecoveryFreezeStateTransition(t *testing.T) {
 
 func TestProcessExpiredFreezes_BackgroundWorker(t *testing.T) {
 	svc, telemetry, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -126,7 +125,7 @@ func TestProcessExpiredFreezes_BackgroundWorker(t *testing.T) {
 
 func TestClaimAccount_FullExecution(t *testing.T) {
 	svc, telemetry, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 

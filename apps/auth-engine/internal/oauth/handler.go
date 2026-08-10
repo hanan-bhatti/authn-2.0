@@ -18,11 +18,6 @@ import (
 )
 
 const (
-	// defaultTenantID is the tenant assumed when a request carries no tenant
-	// context, which happens on single-tenant deployments where no tenant was
-	// ever explicitly provisioned.
-	defaultTenantID = "tnt_default"
-
 	// refreshTokenCookieName is the canonical cookie the engine writes rotated
 	// refresh tokens to.
 	refreshTokenCookieName = "authn_refresh_token"

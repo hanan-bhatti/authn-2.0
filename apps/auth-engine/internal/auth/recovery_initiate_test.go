@@ -13,7 +13,6 @@
 package auth_test
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"testing"
@@ -41,7 +40,7 @@ func setupTestRecoveryService(t *testing.T) (*auth.RecoveryService, *auth.Teleme
 	svc := auth.NewRecoveryService(repo, telemetry, policyRepo)
 
 	tenantID := "tnt_test_rec"
-	err = repo.EnsureTenantExists(context.Background(), tenantID)
+	err = repo.EnsureTenantExists(testCtx(), tenantID)
 	require.NoError(t, err)
 
 	return svc, telemetry, repo, tenantID
@@ -49,7 +48,7 @@ func setupTestRecoveryService(t *testing.T) (*auth.RecoveryService, *auth.Teleme
 
 func TestRecoveryInitiate_PriorityOrder(t *testing.T) {
 	svc, _, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -84,7 +83,7 @@ func TestRecoveryInitiate_PriorityOrder(t *testing.T) {
 
 func TestRecoveryInitiate_OldPasswordUnlockedOnTrust(t *testing.T) {
 	svc, telemetry, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -125,7 +124,7 @@ func TestRecoveryInitiate_OldPasswordUnlockedOnTrust(t *testing.T) {
 
 func TestRecoveryInitiate_SecurityQuestionsFallback(t *testing.T) {
 	svc, _, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -162,7 +161,7 @@ func TestRecoveryInitiate_SecurityQuestionsFallback(t *testing.T) {
 
 func TestRecoveryInitiate_ZeroMethodsDeadEnd_Returns400(t *testing.T) {
 	svc, _, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
@@ -191,7 +190,7 @@ func TestRecoveryInitiate_ZeroMethodsDeadEnd_Returns400(t *testing.T) {
 
 func TestRecoveryInitiate_TimingSafeNonExistentUser(t *testing.T) {
 	svc, _, repo, tenantID := setupTestRecoveryService(t)
-	ctx := context.Background()
+	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 

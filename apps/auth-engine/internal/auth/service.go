@@ -63,6 +63,10 @@ var (
 	// ErrUserAlreadyExists reports a signup for an address already registered in this tenant and
 	// environment.
 	ErrUserAlreadyExists = errors.New("user with this email already exists")
+	// ErrTenantNotFound reports a request naming a tenant that was never
+	// provisioned. Tenants are created deliberately, so this is a misconfigured
+	// client rather than a condition the engine should repair by creating one.
+	ErrTenantNotFound = errors.New("tenant not found")
 	// ErrInvalidApiKey reports an API key that is unknown, revoked, or past its expiry.
 	ErrInvalidApiKey = errors.New("invalid or expired api key")
 	// ErrInvalidToken reports a single-use token (email verification, magic link, MFA challenge,
@@ -426,8 +430,16 @@ func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKe
 // environment, and a wrapped error when tenant setup, password hashing, entropy, account
 // creation, session creation, or token signing fails — in which case no account exists.
 func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env string, email string, password string, name string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
-	if err := s.repo.EnsureTenantExists(ctx, tenantID); err != nil {
+	// The tenant is deliberately not created here. It is established by
+	// provisioning, before any credential for it exists; a signup that names an
+	// unknown tenant is a misconfigured client or a typo, and materialising a
+	// workspace for it produced ghost tenants with no roles and no owner.
+	exists, err := s.repo.TenantExists(ctx, tenantID)
+	if err != nil {
 		return nil, "", "", err
+	}
+	if !exists {
+		return nil, "", "", ErrTenantNotFound
 	}
 
 	existing, err := s.repo.FindUserByEmail(ctx, tenantID, env, email)
