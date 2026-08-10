@@ -47,6 +47,7 @@ func (c *Config) Validate() error {
 	c.validateDelivery(add)
 	c.validateProduction(add)
 	c.validateLifetimes(add)
+	c.validatePlatformTenant(add)
 
 	if len(problems) == 0 {
 		return nil
@@ -207,5 +208,39 @@ func (c *Config) validateLifetimes(add func(string, ...any)) {
 	if c.OAuthCodeTTL > maxOAuthCodeTTL {
 		add("OAUTH_CODE_TTL (%s) exceeds the %s maximum recommended by RFC 6749",
 			c.OAuthCodeTTL, maxOAuthCodeTTL)
+	}
+}
+
+// validatePlatformTenant checks the hosted control plane's configuration.
+//
+// The two settings are all-or-nothing. An ID without a slug would leave the
+// slug unreserved, so a customer could provision a tenant claiming it — and
+// because provisioning is idempotent by slug, that caller would be handed the
+// control-plane tenant instead of a new one. A slug without an ID is a
+// half-finished configuration that silently leaves the platform routes disabled.
+func (c *Config) validatePlatformTenant(add func(string, ...any)) {
+	id := strings.TrimSpace(c.PlatformTenantID)
+	slug := strings.TrimSpace(c.PlatformTenantSlug)
+
+	if id == "" && slug == "" {
+		return // no control plane on this deployment; the platform routes 404
+	}
+
+	if id == "" || slug == "" {
+		add("PLATFORM_TENANT_ID and PLATFORM_TENANT_SLUG must be set together: " +
+			"the slug is what stops a customer provisioning over the control plane")
+		return
+	}
+
+	if !strings.HasPrefix(id, "tnt_") {
+		add("PLATFORM_TENANT_ID (%q) must be a tenant identifier beginning with \"tnt_\"", id)
+	}
+
+	// tnt_default is the development seeder's tenant, which ships with published
+	// demo credentials. Pointing the control plane at it would put those
+	// credentials in front of the tenant-provisioning API.
+	if id == "tnt_default" {
+		add("PLATFORM_TENANT_ID must not be \"tnt_default\": that tenant is created by " +
+			"the development seeder with credentials published in source control")
 	}
 }

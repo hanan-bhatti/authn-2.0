@@ -28,8 +28,10 @@ import (
 	"context"
 	"log"
 
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/provisioning"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/database"
 )
@@ -72,7 +74,10 @@ func main() {
 	ctx := privacy.NewBypassContext(context.Background())
 	client := factory.GetClient(ctx, seedTenantID, "")
 
-	if err := seedTenantAndApplication(ctx, factory); err != nil {
+	apiKeyService := apikey.NewService(apikey.NewRepository(factory), cfg.APIKeyPepper)
+	provisioner := provisioning.NewService(factory, apiKeyService)
+
+	if err := seedTenantAndApplication(ctx, provisioner); err != nil {
 		log.Fatalf("seed: %v", err)
 	}
 	if err := seedAPIKeys(ctx, factory, cfg.APIKeyPepper); err != nil {

@@ -169,6 +169,23 @@ type Config struct {
 	JWTSigningKeyPath string
 
 	// ---------------------------------------------------------------------
+	// Tenant provisioning and the hosted control plane
+	// ---------------------------------------------------------------------
+
+	// PlatformTenantID is the tenant whose end users are the operators of a
+	// hosted deployment — the control plane, running as a tenant of itself.
+	//
+	// Empty disables the hosted front door entirely, which is the self-hosted
+	// default: the platform routes answer 404 rather than 403, so a deployment
+	// that has no control plane does not advertise one.
+	PlatformTenantID string
+	// PlatformTenantSlug is that tenant's slug, reserved so no customer can
+	// provision over the control plane. Idempotency-by-slug makes this matter:
+	// without the reservation, a caller naming it would be handed the existing
+	// control-plane tenant rather than a new one.
+	PlatformTenantSlug string
+
+	// ---------------------------------------------------------------------
 	// Token and session lifetimes
 	// ---------------------------------------------------------------------
 

@@ -161,6 +161,11 @@ func Load() (*Config, error) {
 		cfg.APIKeyPepper = r.str("AUTHN_API_KEY_PEPPER", "")
 	}
 
+	// Both are empty on a self-hosted deployment, which disables the hosted
+	// control plane rather than defaulting it to some tenant.
+	cfg.PlatformTenantID = r.str("PLATFORM_TENANT_ID", "")
+	cfg.PlatformTenantSlug = r.str("PLATFORM_TENANT_SLUG", "")
+
 	if err := r.err(); err != nil {
 		return nil, err
 	}
