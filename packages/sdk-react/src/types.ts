@@ -6,11 +6,33 @@ import type {
   AuthnSession,
   AuthnUser,
   AuthResult,
+  BeginPasskeyLoginParams,
+  BeginPasskeyLoginResult,
+  BeginPasskeyRegistrationResult,
+  Confirm2FAResult,
+  ConfirmSMSParams,
+  ConfirmTOTPParams,
+  DisableSMSParams,
+  DisableTOTPParams,
+  EnrollSMSParams,
+  EnrollSMSResult,
+  EnrollTOTPResult,
+  FinishPasskeyLoginParams,
+  FinishPasskeyLoginResult,
+  FinishPasskeyRegistrationParams,
+  ListWebAuthnCredentialsResult,
   LoginParams,
   MagicLinkParams,
+  RecoveryCodesStatusResult,
+  RegenerateRecoveryCodesParams,
+  RegenerateRecoveryCodesResult,
+  RevokeWebAuthnCredentialParams,
   SignUpParams,
   VerifyMagicLinkParams,
+  VerifyTOTPParams,
+  VerifyTOTPResult,
   VoidResult,
+  WebAuthnPasskey,
 } from "@authn/js";
 
 /**
@@ -61,6 +83,46 @@ export interface UseSignOutReturn {
 export interface UseMagicLinkReturn {
   sendMagicLink: (params: MagicLinkParams) => Promise<VoidResult>;
   verifyMagicLink: (params: VerifyMagicLinkParams) => Promise<AuthResult>;
+  isLoading: boolean;
+  error: AuthnError | null;
+  reset: () => void;
+}
+
+export interface UseTOTPReturn {
+  enrollTOTP: () => Promise<EnrollTOTPResult>;
+  confirmTOTP: (params: ConfirmTOTPParams) => Promise<Confirm2FAResult>;
+  disableTOTP: (params: DisableTOTPParams) => Promise<VoidResult>;
+  verifyTOTP: (params: VerifyTOTPParams) => Promise<VerifyTOTPResult>;
+  enrollSMS: (params: EnrollSMSParams) => Promise<EnrollSMSResult>;
+  confirmSMS: (params: ConfirmSMSParams) => Promise<Confirm2FAResult>;
+  disableSMS: (params: DisableSMSParams) => Promise<VoidResult>;
+  regenerateRecoveryCodes: (
+    params: RegenerateRecoveryCodesParams,
+  ) => Promise<RegenerateRecoveryCodesResult>;
+  getRecoveryCodesStatus: () => Promise<RecoveryCodesStatusResult>;
+  isLoading: boolean;
+  error: AuthnError | null;
+  reset: () => void;
+}
+
+export interface UsePasskeysReturn {
+  registerPasskey: (name?: string) => Promise<Confirm2FAResult>;
+  loginWithPasskey: (mfaToken: string) => Promise<FinishPasskeyLoginResult>;
+  listCredentials: () => Promise<ListWebAuthnCredentialsResult>;
+  revokeCredential: (
+    params: RevokeWebAuthnCredentialParams,
+  ) => Promise<VoidResult>;
+  beginRegistration: () => Promise<BeginPasskeyRegistrationResult>;
+  finishRegistration: (
+    params: FinishPasskeyRegistrationParams,
+  ) => Promise<Confirm2FAResult>;
+  beginLogin: (
+    params: BeginPasskeyLoginParams,
+  ) => Promise<BeginPasskeyLoginResult>;
+  finishLogin: (
+    params: FinishPasskeyLoginParams,
+  ) => Promise<FinishPasskeyLoginResult>;
+  credentials: WebAuthnPasskey[];
   isLoading: boolean;
   error: AuthnError | null;
   reset: () => void;
