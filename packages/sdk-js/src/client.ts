@@ -27,10 +27,13 @@
 import { HttpClient } from "./core/http";
 import { DefaultLogger } from "./core/logger";
 import type {
+  AcceptGuardianInviteParams,
+  AcceptGuardianInviteResult,
   AcceptOrgInvitationParams,
   AcceptOrgInvitationResult,
   AuthnClientConfig,
   AuthnDeviceSession,
+  AuthnGuardian,
   AuthnLogger,
   AuthnOrg,
   AuthnOrgInvitation,
@@ -43,6 +46,12 @@ import type {
   BeginPasskeyLoginParams,
   BeginPasskeyLoginResult,
   BeginPasskeyRegistrationResult,
+  CancelRecoveryParams,
+  CancelRecoveryResult,
+  CancelRecoveryTokenParams,
+  CancelRecoveryTokenResult,
+  ClaimAccountParams,
+  ClaimAccountResult,
   Confirm2FAResult,
   ConfirmSMSParams,
   ConfirmTOTPParams,
@@ -58,8 +67,13 @@ import type {
   FinishPasskeyLoginResult,
   FinishPasskeyRegistrationParams,
   GetOrgResult,
+  InitiateRecoveryParams,
+  InitiateRecoveryResult,
+  InviteGuardiansParams,
+  InviteGuardiansResult,
   InviteOrgMemberParams,
   InviteOrgMemberResult,
+  ListGuardiansResult,
   ListOrgMembersResult,
   ListOrgsResult,
   ListWebAuthnCredentialsResult,
@@ -72,12 +86,19 @@ import type {
   RegenerateRecoveryCodesParams,
   RegenerateRecoveryCodesResult,
   ResendVerificationParams,
+  RevokeGuardianResult,
   RevokeSessionsResult,
   RevokeWebAuthnCredentialParams,
   SessionListResult,
   SessionResult,
   SignUpParams,
   SocialAccountsResult,
+  SubmitGuardianProofParams,
+  SubmitGuardianProofResult,
+  SubmitOldPasswordProofParams,
+  SubmitOldPasswordProofResult,
+  SubmitSecurityQuestionsProofParams,
+  SubmitSecurityQuestionsProofResult,
   UpdateOrgMemberRoleParams,
   UpdateOrgMemberRoleResult,
   UpdateOrgParams,
@@ -255,6 +276,27 @@ interface ServerOrgInvitationResponse {
   status: string;
   expires_at: string;
   created_at: string;
+}
+
+/** Mirrors auth.GuardianDTO in the Go backend. */
+interface ServerGuardianResponse {
+  id: string;
+  guardian_email: string;
+  guardian_name: string;
+  share_index: number;
+  status: string;
+  created_at: string;
+}
+
+function mapGuardian(raw: ServerGuardianResponse): AuthnGuardian {
+  return {
+    id: raw.id,
+    guardianEmail: raw.guardian_email,
+    guardianName: raw.guardian_name,
+    shareIndex: raw.share_index,
+    status: raw.status,
+    createdAt: raw.created_at,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2010,6 +2052,290 @@ export class AuthnClient {
       return { ok: true, member: mapMember(res.data) };
     } catch (err) {
       return this.handleError(err, "updateOrgMemberRole");
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Guardian Roster Management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Invites 1 to 5 trusted social recovery guardians for the calling user.
+   * POST /v1/client/account/guardians/invite
+   */
+  async inviteGuardians(
+    params: InviteGuardiansParams,
+  ): Promise<InviteGuardiansResult> {
+    try {
+      if (!Array.isArray(params.guardians) || params.guardians.length === 0) {
+        assertValid(
+          validateToken("", "guardians"),
+        );
+      }
+      for (const g of params.guardians) {
+        assertValid(validateEmail(g.email));
+        assertValid(validateToken(g.name, "name"));
+      }
+      const res = await this.http.post<{
+        enrolled_count: number;
+        threshold_k: number;
+        guardians: ServerGuardianResponse[];
+        invite_urls?: string[];
+      }>("/v1/client/account/guardians/invite", {
+        guardians: params.guardians,
+      });
+      return {
+        ok: true,
+        enrolledCount: res.data.enrolled_count,
+        thresholdK: res.data.threshold_k,
+        guardians: res.data.guardians.map(mapGuardian),
+        inviteUrls: res.data.invite_urls,
+      };
+    } catch (err) {
+      return this.handleError(err, "inviteGuardians");
+    }
+  }
+
+  /**
+   * Redeems a guardian invitation token.
+   * POST /v1/client/account/guardians/accept
+   */
+  async acceptGuardianInvite(
+    params: AcceptGuardianInviteParams,
+  ): Promise<AcceptGuardianInviteResult> {
+    try {
+      assertValid(validateToken(params.contactId, "contactId"));
+      assertValid(validateToken(params.token, "token"));
+      const res = await this.http.post<{ message: string }>(
+        "/v1/client/account/guardians/accept",
+        {
+          contact_id: params.contactId,
+          token: params.token,
+        },
+      );
+      return { ok: true, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "acceptGuardianInvite");
+    }
+  }
+
+  /**
+   * Returns the guardian roster for the calling user.
+   * GET /v1/client/account/guardians
+   */
+  async listGuardians(): Promise<ListGuardiansResult> {
+    try {
+      const res = await this.http.get<{ guardians: ServerGuardianResponse[] }>(
+        "/v1/client/account/guardians",
+      );
+      return { ok: true, guardians: res.data.guardians.map(mapGuardian) };
+    } catch (err) {
+      return this.handleError(err, "listGuardians");
+    }
+  }
+
+  /**
+   * Revokes/removes a guardian by contact ID and re-keys Shamir shares.
+   * DELETE /v1/client/account/guardians/:id
+   */
+  async revokeGuardian(contactId: string): Promise<RevokeGuardianResult> {
+    try {
+      assertValid(validateToken(contactId, "contactId"));
+      const res = await this.http.del<{ message: string }>(
+        `/v1/client/account/guardians/${contactId}`,
+      );
+      return { ok: true, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "revokeGuardian");
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Account Recovery
+  // -------------------------------------------------------------------------
+
+  /**
+   * Initiates account recovery for a locked-out user address.
+   * POST /v1/client/auth/recovery/initiate
+   */
+  async initiateRecovery(
+    params: InitiateRecoveryParams,
+  ): Promise<InitiateRecoveryResult> {
+    try {
+      assertValid(validateEmail(params.email));
+      const body: Record<string, unknown> = {
+        email: params.email,
+        tenant_id: this.resolveTenantId(params.tenantId),
+        environment: this.resolveEnvironment(
+          params.environment as "test" | "live" | undefined,
+        ),
+      };
+      const res = await this.http.post<{
+        recovery_request_id: string;
+        status: string;
+        is_trusted_device_origin: boolean;
+        available_methods: string[];
+      }>("/v1/client/auth/recovery/initiate", body);
+      return {
+        ok: true,
+        recoveryRequestId: res.data.recovery_request_id,
+        status: res.data.status,
+        isTrustedDeviceOrigin: res.data.is_trusted_device_origin,
+        availableMethods: res.data.available_methods,
+      };
+    } catch (err) {
+      return this.handleError(err, "initiateRecovery");
+    }
+  }
+
+  /**
+   * Submits a guardian Shamir share proof for a recovery request.
+   * POST /v1/client/auth/recovery/proof/guardian
+   */
+  async submitGuardianProof(
+    params: SubmitGuardianProofParams,
+  ): Promise<SubmitGuardianProofResult> {
+    try {
+      assertValid(
+        validateToken(params.recoveryRequestId, "recoveryRequestId"),
+      );
+      assertValid(validateToken(params.sharePayload, "sharePayload"));
+      const res = await this.http.post<{
+        threshold_reached: boolean;
+        status: string;
+      }>("/v1/client/auth/recovery/proof/guardian", {
+        recovery_request_id: params.recoveryRequestId,
+        share_payload: params.sharePayload,
+      });
+      return {
+        ok: true,
+        thresholdReached: res.data.threshold_reached,
+        status: res.data.status,
+      };
+    } catch (err) {
+      return this.handleError(err, "submitGuardianProof");
+    }
+  }
+
+  /**
+   * Submits an old password proof for a recovery request.
+   * POST /v1/client/auth/recovery/proof/old-password
+   */
+  async submitOldPasswordProof(
+    params: SubmitOldPasswordProofParams,
+  ): Promise<SubmitOldPasswordProofResult> {
+    try {
+      assertValid(
+        validateToken(params.recoveryRequestId, "recoveryRequestId"),
+      );
+      assertValid(validateToken(params.password, "password"));
+      const res = await this.http.post<{ status: string; message: string }>(
+        "/v1/client/auth/recovery/proof/old-password",
+        {
+          recovery_request_id: params.recoveryRequestId,
+          password: params.password,
+        },
+      );
+      return { ok: true, status: res.data.status, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "submitOldPasswordProof");
+    }
+  }
+
+  /**
+   * Submits security questions answers for a recovery request.
+   * POST /v1/client/auth/recovery/proof/security-questions
+   */
+  async submitSecurityQuestionsProof(
+    params: SubmitSecurityQuestionsProofParams,
+  ): Promise<SubmitSecurityQuestionsProofResult> {
+    try {
+      assertValid(
+        validateToken(params.recoveryRequestId, "recoveryRequestId"),
+      );
+      const res = await this.http.post<{ status: string; message: string }>(
+        "/v1/client/auth/recovery/proof/security-questions",
+        {
+          recovery_request_id: params.recoveryRequestId,
+          answers: params.answers,
+        },
+      );
+      return { ok: true, status: res.data.status, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "submitSecurityQuestionsProof");
+    }
+  }
+
+  /**
+   * Redeems a claim token, resets account password, and returns new recovery codes.
+   * POST /v1/client/auth/recovery/claim
+   */
+  async claimAccount(params: ClaimAccountParams): Promise<ClaimAccountResult> {
+    try {
+      assertValid(validateToken(params.requestId, "requestId"));
+      assertValid(validateToken(params.claimToken, "claimToken"));
+      assertValid(validatePassword(params.newPassword));
+      const res = await this.http.post<{
+        status: string;
+        message: string;
+        recovery_codes: string[];
+        device_cookie?: string;
+      }>("/v1/client/auth/recovery/claim", {
+        request_id: params.requestId,
+        claim_token: params.claimToken,
+        new_password: params.newPassword,
+      });
+      return {
+        ok: true,
+        status: res.data.status,
+        message: res.data.message,
+        recoveryCodes: res.data.recovery_codes,
+        deviceCookie: res.data.device_cookie,
+      };
+    } catch (err) {
+      return this.handleError(err, "claimAccount");
+    }
+  }
+
+  /**
+   * Cancels a recovery request via authenticated session.
+   * POST /v1/client/auth/recovery/cancel
+   */
+  async cancelRecovery(
+    params: CancelRecoveryParams,
+  ): Promise<CancelRecoveryResult> {
+    try {
+      assertValid(
+        validateToken(params.recoveryRequestId, "recoveryRequestId"),
+      );
+      const res = await this.http.post<{ status: string; message: string }>(
+        "/v1/client/auth/recovery/cancel",
+        { recovery_request_id: params.recoveryRequestId },
+      );
+      return { ok: true, status: res.data.status, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "cancelRecovery");
+    }
+  }
+
+  /**
+   * Cancels a recovery request via signed link token.
+   * POST /v1/client/auth/recovery/cancel/token
+   */
+  async cancelRecoveryToken(
+    params: CancelRecoveryTokenParams,
+  ): Promise<CancelRecoveryTokenResult> {
+    try {
+      assertValid(
+        validateToken(params.cancellationToken, "cancellationToken"),
+      );
+      const res = await this.http.post<{ status: string; message: string }>(
+        "/v1/client/auth/recovery/cancel/token",
+        { cancellation_token: params.cancellationToken },
+      );
+      return { ok: true, status: res.data.status, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "cancelRecoveryToken");
     }
   }
 

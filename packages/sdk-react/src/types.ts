@@ -130,3 +130,5 @@ export interface UsePasskeysReturn {
 
 export type { UseOrganizationReturn } from "./hooks/useOrganization";
 export type { UseOrgMembersReturn } from "./hooks/useOrgMembers";
+export type { UseGuardiansReturn } from "./hooks/useGuardians";
+export type { UseAccountRecoveryReturn } from "./hooks/useAccountRecovery";

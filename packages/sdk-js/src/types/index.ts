@@ -13,3 +13,5 @@ export * from "./user";
 export * from "./mfa";
 export * from "./webauthn";
 export * from "./org";
+export * from "./guardians";
+export * from "./recovery";

@@ -20,6 +20,8 @@ export {
   usePasskeys,
   useOrganization,
   useOrgMembers,
+  useGuardians,
+  useAccountRecovery,
 } from "./hooks";
 export type {
   AuthnProviderProps,
@@ -33,4 +35,6 @@ export type {
   UsePasskeysReturn,
   UseOrganizationReturn,
   UseOrgMembersReturn,
+  UseGuardiansReturn,
+  UseAccountRecoveryReturn,
 } from "./types";

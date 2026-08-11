@@ -30,13 +30,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
+
+		"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userpasswordhistory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 )
 
@@ -154,6 +156,10 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 	// Deferred call arguments are evaluated here, so start is pinned to function entry.
 	defer padToFloor(time.Now(), recoveryInitiateFloor)
 
+	if p, ok := privacy.FromContext(ctx); !ok || p.TenantID == "" {
+		ctx = privacy.NewContext(ctx, input.TenantID, "", input.Environment)
+	}
+
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
 		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, input.TenantID)
@@ -161,12 +167,13 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 		recPolicy = policy.DefaultRecoveryPolicy()
 	}
 
-	u, err := s.repo.FindUserByEmail(ctx, input.TenantID, input.Environment, input.Email)
+	sysCtx := privacy.NewBypassContext(ctx)
+	u, err := s.repo.FindUserByEmail(sysCtx, input.TenantID, input.Environment, input.Email)
 	if err != nil || u == nil {
 		// Miss: answer in the shape of a hit. The deferred floor already covers the latency
 		// difference, so this path does no compensating work — padding here with real
 		// cryptographic work would only re-open a measurable gap in the other direction.
-		dummyReqID := fmt.Sprintf("req_%s", uuid.New().String()[:12])
+		dummyReqID := idgen.New("req")
 		return &InitiateRecoveryResponse{
 			RecoveryRequestID:     dummyReqID,
 			Status:                "initiated",
@@ -734,7 +741,7 @@ func (s *RecoveryService) ClaimAccount(ctx context.Context, input ClaimAccountIn
 
 	// The outgoing hash is archived before the update overwrites it, which is what keeps it usable
 	// as old-password proof in a later recovery.
-	histID := fmt.Sprintf("phist_%s", uuid.New().String()[:12])
+	histID := idgen.New("phist")
 	_ = client.UserPasswordHistory.Create().
 		SetID(histID).
 		SetUserID(u.ID).

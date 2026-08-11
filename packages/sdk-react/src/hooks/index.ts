@@ -10,3 +10,5 @@ export { useTOTP } from "./useTOTP";
 export { usePasskeys } from "./usePasskeys";
 export { useOrganization } from "./useOrganization";
 export { useOrgMembers } from "./useOrgMembers";
+export { useGuardians } from "./useGuardians";
+export { useAccountRecovery } from "./useAccountRecovery";

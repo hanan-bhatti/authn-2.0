@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -37,7 +38,7 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
 			tenantID = t
 		} else {
-			tenantID = "tnt_default"
+			tenantID = "tnt_00000000000000000000000000000001"
 		}
 	}
 	env := req.Environment
@@ -56,7 +57,7 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 		DeviceCookie: deviceCookie,
 	}
 
-	res, err := h.recoveryService.InitiateRecovery(c.Context(), input)
+	res, err := h.recoveryService.InitiateRecovery(c.UserContext(), input)
 	// These two branches previously returned an inverted envelope — the machine
 	// code in `error` and the prose in `message` — which is what forced the SDK
 	// to substring-match across both fields. The prose and the machine code keep
@@ -94,7 +95,7 @@ func (h *Handler) SubmitGuardianProof(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id and share_payload are required")
 	}
 
-	thresholdReached, err := h.recoveryService.SubmitGuardianShareProof(c.Context(), req.RecoveryRequestID, req.SharePayload)
+	thresholdReached, err := h.recoveryService.SubmitGuardianShareProof(c.UserContext(), req.RecoveryRequestID, req.SharePayload)
 	if err != nil {
 		return sendServiceError(c, "auth.recovery.proof_guardian", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
@@ -117,7 +118,7 @@ func (h *Handler) SubmitOldPasswordProof(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id and password are required")
 	}
 
-	if err := h.recoveryService.SubmitOldPasswordProof(c.Context(), req.RecoveryRequestID, req.Password); err != nil {
+	if err := h.recoveryService.SubmitOldPasswordProof(c.UserContext(), req.RecoveryRequestID, req.Password); err != nil {
 		return sendServiceError(c, "auth.recovery.proof_old_password", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
 	}
@@ -139,7 +140,7 @@ func (h *Handler) SubmitSecurityQuestionsProof(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "recovery_request_id is required")
 	}
 
-	if err := h.recoveryService.SubmitSecurityQuestionsProof(c.Context(), req.RecoveryRequestID, req.Answers); err != nil {
+	if err := h.recoveryService.SubmitSecurityQuestionsProof(c.UserContext(), req.RecoveryRequestID, req.Answers); err != nil {
 		return sendServiceError(c, "auth.recovery.proof_security_questions", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
 	}
@@ -161,7 +162,7 @@ func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 	req.UserAgent = c.Get("User-Agent")
 	req.AcceptLang = c.Get("Accept-Language")
 
-	res, err := h.recoveryService.ClaimAccount(c.Context(), req)
+	res, err := h.recoveryService.ClaimAccount(c.UserContext(), req)
 	if err != nil {
 		return sendServiceError(c, "auth.recovery.claim", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidToken, "invalid or expired account claim request")
@@ -207,8 +208,9 @@ func (h *Handler) CancelRecoveryAuth(c *fiber.Ctx) error {
 	}
 	userID := claims.Sub
 	sessionID := claims.SessionID
+	privacyCtx := privacy.NewContext(c.UserContext(), claims.TenantID, "", claims.Environment)
 
-	if err := h.recoveryService.CancelRecoveryRequestByAuthenticatedSession(c.Context(), userID, req.RecoveryRequestID, sessionID); err != nil {
+	if err := h.recoveryService.CancelRecoveryRequestByAuthenticatedSession(privacyCtx, userID, req.RecoveryRequestID, sessionID); err != nil {
 		return sendServiceError(c, "auth.recovery.cancel_authenticated", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidToken, ErrInvalidCancellationPoint.Error())
 	}
@@ -234,7 +236,7 @@ func (h *Handler) CancelRecoveryToken(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "cancellation_token is required")
 	}
 
-	if err := h.recoveryService.CancelRecoveryRequestBySignedToken(c.Context(), req.CancellationToken); err != nil {
+	if err := h.recoveryService.CancelRecoveryRequestBySignedToken(c.UserContext(), req.CancellationToken); err != nil {
 		return sendServiceError(c, "auth.recovery.cancel_token", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidToken, ErrInvalidCancellationPoint.Error())
 	}

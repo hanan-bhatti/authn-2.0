@@ -79,6 +79,10 @@ export type {
 // Domain 4 — B2B Organizations & Team Member Invitations
 export * from "./types/org";
 
+// Domain 5 — Guardian Roster & Account Recovery
+export * from "./types/guardians";
+export * from "./types/recovery";
+
 // WebAuthn Helpers
 export {
   bufferToBase64Url,

@@ -30,7 +30,7 @@ func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", c.Protocol(), c.Hostname())
-	res, err := h.guardianService.InviteGuardians(c.Context(), userID, req.Guardians, baseURL)
+	res, err := h.guardianService.InviteGuardians(c.UserContext(), userID, req.Guardians, baseURL)
 	if err != nil {
 		return sendServiceError(c, "auth.guardians.invite", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to invite the requested guardians")
@@ -49,7 +49,7 @@ func (h *Handler) AcceptGuardianInvite(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "contact_id and token are required")
 	}
 
-	if err := h.guardianService.AcceptGuardianInvite(c.Context(), req.ContactID, req.Token); err != nil {
+	if err := h.guardianService.AcceptGuardianInvite(c.UserContext(), req.ContactID, req.Token); err != nil {
 		return sendServiceError(c, "auth.guardians.accept", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidToken, "invalid or expired guardian invitation")
 	}
@@ -63,7 +63,7 @@ func (h *Handler) AcceptGuardianInvite(c *fiber.Ctx) error {
 func (h *Handler) ListGuardians(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
-	dtos, err := h.guardianService.ListGuardians(c.Context(), userID)
+	dtos, err := h.guardianService.ListGuardians(c.UserContext(), userID)
 	if err != nil {
 		return httperr.SendInternal(c, "auth.guardians.list", err)
 	}
@@ -82,7 +82,7 @@ func (h *Handler) RevokeGuardian(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "Guardian contact ID is required")
 	}
 
-	if err := h.guardianService.RevokeGuardian(c.Context(), userID, contactID); err != nil {
+	if err := h.guardianService.RevokeGuardian(c.UserContext(), userID, contactID); err != nil {
 		return sendServiceError(c, "auth.guardians.revoke", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to revoke this guardian")
 	}
