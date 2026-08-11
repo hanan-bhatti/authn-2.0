@@ -8,3 +8,5 @@ export { useSignOut } from "./useSignOut";
 export { useMagicLink } from "./useMagicLink";
 export { useTOTP } from "./useTOTP";
 export { usePasskeys } from "./usePasskeys";
+export { useOrganization } from "./useOrganization";
+export { useOrgMembers } from "./useOrgMembers";

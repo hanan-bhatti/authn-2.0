@@ -127,3 +127,6 @@ export interface UsePasskeysReturn {
   error: AuthnError | null;
   reset: () => void;
 }
+
+export type { UseOrganizationReturn } from "./hooks/useOrganization";
+export type { UseOrgMembersReturn } from "./hooks/useOrgMembers";

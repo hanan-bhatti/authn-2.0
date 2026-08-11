@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * @authn/react — Public API
  *
@@ -14,6 +16,10 @@ export {
   useSignUp,
   useSignOut,
   useMagicLink,
+  useTOTP,
+  usePasskeys,
+  useOrganization,
+  useOrgMembers,
 } from "./hooks";
 export type {
   AuthnProviderProps,
@@ -23,4 +29,8 @@ export type {
   UseSignUpReturn,
   UseSignOutReturn,
   UseMagicLinkReturn,
+  UseTOTPReturn,
+  UsePasskeysReturn,
+  UseOrganizationReturn,
+  UseOrgMembersReturn,
 } from "./types";

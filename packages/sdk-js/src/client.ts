@@ -27,9 +27,14 @@
 import { HttpClient } from "./core/http";
 import { DefaultLogger } from "./core/logger";
 import type {
+  AcceptOrgInvitationParams,
+  AcceptOrgInvitationResult,
   AuthnClientConfig,
   AuthnDeviceSession,
   AuthnLogger,
+  AuthnOrg,
+  AuthnOrgInvitation,
+  AuthnOrgMember,
   AuthnProfile,
   AuthnSession,
   AuthnUser,
@@ -41,6 +46,9 @@ import type {
   Confirm2FAResult,
   ConfirmSMSParams,
   ConfirmTOTPParams,
+  CreateOrgParams,
+  CreateOrgResult,
+  DeleteOrgResult,
   DisableSMSParams,
   DisableTOTPParams,
   EnrollSMSParams,
@@ -49,6 +57,11 @@ import type {
   FinishPasskeyLoginParams,
   FinishPasskeyLoginResult,
   FinishPasskeyRegistrationParams,
+  GetOrgResult,
+  InviteOrgMemberParams,
+  InviteOrgMemberResult,
+  ListOrgMembersResult,
+  ListOrgsResult,
   ListWebAuthnCredentialsResult,
   LoginParams,
   MagicLinkParams,
@@ -65,6 +78,10 @@ import type {
   SessionResult,
   SignUpParams,
   SocialAccountsResult,
+  UpdateOrgMemberRoleParams,
+  UpdateOrgMemberRoleResult,
+  UpdateOrgParams,
+  UpdateOrgResult,
   UpdateProfileParams,
   VerifyEmailParams,
   VerifyMagicLinkParams,
@@ -203,6 +220,109 @@ interface ServerBeginPasskeyLoginResponse {
 
 interface ServerListPasskeysResponse {
   credentials: WebAuthnPasskey[];
+}
+
+/** Mirrors org.OrgResponse in the Go backend. */
+interface ServerOrgResponse {
+  id: string;
+  tenant_id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+/** Mirrors org.OrgMemberResponse in the Go backend. */
+interface ServerOrgMemberResponse {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role_id: string;
+  assigned_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Mirrors org.OrgInvitationResponse in the Go backend. */
+interface ServerOrgInvitationResponse {
+  id: string;
+  organization_id: string;
+  email: string;
+  role_id: string;
+  invited_by_user_id?: string;
+  invitation_token?: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Org response mappers (snake_case → camelCase)
+// ---------------------------------------------------------------------------
+
+function mapOrg(raw: {
+  id: string;
+  tenant_id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}): AuthnOrg {
+  return {
+    id: raw.id,
+    tenantId: raw.tenant_id,
+    name: raw.name,
+    slug: raw.slug,
+    logoUrl: raw.logo_url,
+    metadata: raw.metadata,
+    createdAt: raw.created_at,
+  };
+}
+
+function mapMember(raw: {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role_id: string;
+  assigned_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
+}): AuthnOrgMember {
+  return {
+    id: raw.id,
+    organizationId: raw.organization_id,
+    userId: raw.user_id,
+    roleId: raw.role_id,
+    assignedByUserId: raw.assigned_by_user_id,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function mapInvitation(raw: {
+  id: string;
+  organization_id: string;
+  email: string;
+  role_id: string;
+  invited_by_user_id?: string;
+  invitation_token?: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+}): AuthnOrgInvitation {
+  return {
+    id: raw.id,
+    organizationId: raw.organization_id,
+    email: raw.email,
+    roleId: raw.role_id,
+    invitedByUserId: raw.invited_by_user_id,
+    invitationToken: raw.invitation_token,
+    status: raw.status as AuthnOrgInvitation["status"],
+    expiresAt: raw.expires_at,
+    createdAt: raw.created_at,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1696,6 +1816,200 @@ export class AuthnClient {
               : String(listenerErr),
         });
       }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // B2B Organizations
+  // -------------------------------------------------------------------------
+
+  /**
+   * Creates a new organization. The calling user becomes its first org_admin.
+   * POST /v1/client/organizations
+   */
+  async createOrganization(params: CreateOrgParams): Promise<CreateOrgResult> {
+    try {
+      assertValid(validateToken(params.name?.trim(), "name"));
+      const body: Record<string, unknown> = { name: params.name };
+      if (params.slug !== undefined) body["slug"] = params.slug;
+      if (params.logoUrl !== undefined) body["logo_url"] = params.logoUrl;
+      if (params.metadata !== undefined) body["metadata"] = params.metadata;
+      const res = await this.http.post<ServerOrgResponse>(
+        "/v1/client/organizations",
+        body,
+      );
+      return { ok: true, org: mapOrg(res.data) };
+    } catch (err) {
+      return this.handleError(err, "createOrganization");
+    }
+  }
+
+  /**
+   * Returns the organizations the calling user belongs to.
+   * GET /v1/client/organizations
+   */
+  async listOrganizations(): Promise<ListOrgsResult> {
+    try {
+      const res = await this.http.get<{
+        organizations: ServerOrgResponse[];
+        total: number;
+      }>("/v1/client/organizations");
+      return {
+        ok: true,
+        organizations: res.data.organizations.map(mapOrg),
+        total: res.data.total,
+      };
+    } catch (err) {
+      return this.handleError(err, "listOrganizations");
+    }
+  }
+
+  /**
+   * Returns a single organization by ID. The caller must be a member.
+   * GET /v1/client/organizations/:orgId
+   */
+  async getOrganization(orgId: string): Promise<GetOrgResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      const res = await this.http.get<ServerOrgResponse>(
+        `/v1/client/organizations/${orgId}`,
+      );
+      return { ok: true, org: mapOrg(res.data) };
+    } catch (err) {
+      return this.handleError(err, "getOrganization");
+    }
+  }
+
+  /**
+   * Applies a partial update to an organization. Requires org_admin role.
+   * PATCH /v1/client/organizations/:orgId
+   */
+  async updateOrganization(
+    orgId: string,
+    params: UpdateOrgParams,
+  ): Promise<UpdateOrgResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      const body: Record<string, unknown> = {};
+      if (params.name !== undefined) body["name"] = params.name;
+      if (params.slug !== undefined) body["slug"] = params.slug;
+      if (params.logoUrl !== undefined) body["logo_url"] = params.logoUrl;
+      if (params.metadata !== undefined) body["metadata"] = params.metadata;
+      const res = await this.http.patch<ServerOrgResponse>(
+        `/v1/client/organizations/${orgId}`,
+        body,
+      );
+      return { ok: true, org: mapOrg(res.data) };
+    } catch (err) {
+      return this.handleError(err, "updateOrganization");
+    }
+  }
+
+  /**
+   * Deletes an organization and all dependents. Requires org_admin role.
+   * DELETE /v1/client/organizations/:orgId
+   */
+  async deleteOrganization(orgId: string): Promise<DeleteOrgResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      const res = await this.http.del<{ message: string; org_id: string }>(
+        `/v1/client/organizations/${orgId}`,
+      );
+      return { ok: true, orgId: res.data.org_id, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "deleteOrganization");
+    }
+  }
+
+  /**
+   * Sends an invitation email to join an organization. Requires org_admin role.
+   * POST /v1/client/organizations/:orgId/invitations
+   */
+  async inviteOrgMember(
+    orgId: string,
+    params: InviteOrgMemberParams,
+  ): Promise<InviteOrgMemberResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      assertValid(validateEmail(params.email));
+      assertValid(validateToken(params.roleId, "roleId"));
+      const body: Record<string, unknown> = {
+        email: params.email,
+        role_id: params.roleId,
+      };
+      if (params.expiresHrs !== undefined) body["expires_hrs"] = params.expiresHrs;
+      const res = await this.http.post<ServerOrgInvitationResponse>(
+        `/v1/client/organizations/${orgId}/invitations`,
+        body,
+      );
+      return { ok: true, invitation: mapInvitation(res.data) };
+    } catch (err) {
+      return this.handleError(err, "inviteOrgMember");
+    }
+  }
+
+  /**
+   * Redeems an invitation token, adding the calling user to the organization.
+   * POST /v1/client/invitations/accept
+   */
+  async acceptOrgInvitation(
+    params: AcceptOrgInvitationParams,
+  ): Promise<AcceptOrgInvitationResult> {
+    try {
+      assertValid(validateToken(params.invitationToken, "invitationToken"));
+      const res = await this.http.post<{
+        message: string;
+        member: ServerOrgMemberResponse;
+      }>("/v1/client/invitations/accept", {
+        invitation_token: params.invitationToken,
+      });
+      return { ok: true, member: mapMember(res.data.member), message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "acceptOrgInvitation");
+    }
+  }
+
+  /**
+   * Lists members of an organization. The caller must be a member.
+   * GET /v1/client/organizations/:orgId/members
+   */
+  async listOrgMembers(orgId: string): Promise<ListOrgMembersResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      const res = await this.http.get<{
+        members: ServerOrgMemberResponse[];
+        total: number;
+      }>(`/v1/client/organizations/${orgId}/members`);
+      return {
+        ok: true,
+        members: res.data.members.map(mapMember),
+        total: res.data.total,
+      };
+    } catch (err) {
+      return this.handleError(err, "listOrgMembers");
+    }
+  }
+
+  /**
+   * Updates a member's role within an organization. Requires org_admin role.
+   * PATCH /v1/client/organizations/:orgId/members/:userId
+   */
+  async updateOrgMemberRole(
+    orgId: string,
+    userId: string,
+    params: UpdateOrgMemberRoleParams,
+  ): Promise<UpdateOrgMemberRoleResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      assertValid(validateToken(userId, "userId"));
+      assertValid(validateToken(params.roleId, "roleId"));
+      const res = await this.http.patch<ServerOrgMemberResponse>(
+        `/v1/client/organizations/${orgId}/members/${userId}`,
+        { role_id: params.roleId },
+      );
+      return { ok: true, member: mapMember(res.data) };
+    } catch (err) {
+      return this.handleError(err, "updateOrgMemberRole");
     }
   }
 

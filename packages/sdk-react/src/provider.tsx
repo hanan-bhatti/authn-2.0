@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthnClient, AuthnError, AuthnErrorCode } from "@authn/js";
 import type { AuthnSession, AuthnUser } from "@authn/js";
