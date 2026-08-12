@@ -36,7 +36,7 @@ func NewHandler(repo *Repository) *Handler {
 // GetPolicy handles GET /v1/tenant/password-policy, answering 200 with the
 // tenant's password policy or 500 when it cannot be read.
 func (h *Handler) GetPolicy(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id", "tnt_default")
+	tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 	p, err := h.repo.GetPasswordPolicy(c.Context(), tenantID)
 	if err != nil {
 		return httperr.SendInternal(c, "policy.get_password_policy", err)
@@ -48,7 +48,7 @@ func (h *Handler) GetPolicy(c *fiber.Ctx) error {
 // stored policy, 400 for an unparseable body, and 500 when the write fails.
 // Out-of-range lengths are clamped by the repository rather than rejected.
 func (h *Handler) UpdatePolicy(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id", "tnt_default")
+	tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 
 	var req PasswordPolicy
 	if err := c.BodyParser(&req); err != nil {
@@ -66,7 +66,7 @@ func (h *Handler) UpdatePolicy(c *fiber.Ctx) error {
 // GetSecurityPolicy handles GET /v1/tenant/security-policy, answering 200 with
 // the tenant's security policy or 500 when it cannot be read.
 func (h *Handler) GetSecurityPolicy(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id", "tnt_default")
+	tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 	sp, err := h.repo.GetSecurityPolicy(c.Context(), tenantID)
 	if err != nil {
 		return httperr.SendInternal(c, "policy.get_security_policy", err)
@@ -78,7 +78,7 @@ func (h *Handler) GetSecurityPolicy(c *fiber.Ctx) error {
 // with the stored policy, 400 for an unparseable body, and 500 when the write
 // fails. Unrecognised enum values fall back to their defaults.
 func (h *Handler) UpdateSecurityPolicy(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id", "tnt_default")
+	tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 
 	var req SecurityPolicy
 	if err := c.BodyParser(&req); err != nil {
@@ -96,7 +96,7 @@ func (h *Handler) UpdateSecurityPolicy(c *fiber.Ctx) error {
 // GetRecoveryPolicy handles GET /v1/tenant/recovery-policy, answering 200 with
 // the tenant's recovery policy or 500 when it cannot be read.
 func (h *Handler) GetRecoveryPolicy(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id", "tnt_default")
+	tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 	rp, err := h.repo.GetRecoveryPolicy(c.Context(), tenantID)
 	if err != nil {
 		return httperr.SendInternal(c, "policy.get_recovery_policy", err)
@@ -113,7 +113,7 @@ func (h *Handler) GetRecoveryPolicy(c *fiber.Ctx) error {
 // the log and the caller receives a fixed message pointing at the documented
 // limits.
 func (h *Handler) UpdateRecoveryPolicy(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id", "tnt_default")
+	tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 
 	var req RecoveryPolicy
 	if err := c.BodyParser(&req); err != nil {

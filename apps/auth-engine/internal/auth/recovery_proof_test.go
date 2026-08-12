@@ -15,10 +15,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
@@ -36,7 +36,7 @@ func TestSubmitGuardianProof_ShareAccumulation(t *testing.T) {
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -108,7 +108,7 @@ func TestSubmitOldPasswordProof_LockoutSchedule(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	passHash, _ := crypto.HashPasswordArgon2id("OldValidPass123!")
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -165,7 +165,7 @@ func TestSubmitSecurityQuestionsProof_EnforcesHigherTierExhaustion(t *testing.T)
 		},
 	}
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).

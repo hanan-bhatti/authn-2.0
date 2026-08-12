@@ -58,10 +58,10 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 	}
 
 	res, err := h.recoveryService.InitiateRecovery(c.UserContext(), input)
-	// These two branches previously returned an inverted envelope — the machine
-	// code in `error` and the prose in `message` — which is what forced the SDK
-	// to substring-match across both fields. The prose and the machine code keep
-	// their existing values; only the fields they live in are swapped back.
+	// Every branch below answers through the canonical envelope: the machine
+	// code in `code` and the prose in `error`. Keeping the two in their own
+	// fields is what lets the SDK branch on one identifier instead of
+	// substring-matching across both.
 	if errors.Is(err, ErrNoRecoveryMethodsAvailable) {
 		return httperr.Send(c, fiber.StatusBadRequest, httperr.Code("no_recovery_methods_available"),
 			"No account recovery methods are configured for this account. Please contact system support for administrative assistance.")

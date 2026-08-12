@@ -102,17 +102,3 @@ func main() {
 	log.Printf("seed: completed tenant=%s users=%d roles=%d", seedTenantID, len(users), len(roles))
 	printSummary(specs)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

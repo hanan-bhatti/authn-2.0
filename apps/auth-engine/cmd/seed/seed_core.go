@@ -68,11 +68,14 @@ func seedTenantAndApplication(ctx context.Context, svc *provisioning.Service) er
 func seedAPIKeys(ctx context.Context, factory *clientfactory.ClientFactory, pepper string) error {
 	apiKeyRepo := apikey.NewRepository(factory)
 
-	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_pk_demo123", seedAppID, demoPublishableKey, pepper); err != nil {
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000001", seedAppID, demoPublishableKey, pepper); err != nil {
 		return fmt.Errorf("seeding publishable key: %w", err)
 	}
-	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_sk_demo123", seedAppID, demoSecretKey, pepper); err != nil {
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000002", seedAppID, demoSecretKey, pepper); err != nil {
 		return fmt.Errorf("seeding secret key: %w", err)
+	}
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000003", seedAppID, "sk_test_170d8452ffc5f530aa52940f5db2e9b8bc579d45765a1c3c6e31883f779ef72f", pepper); err != nil {
+		return fmt.Errorf("seeding test secret key: %w", err)
 	}
 	return nil
 }

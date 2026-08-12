@@ -41,7 +41,7 @@ type CreateKeyRequest struct {
 	// of a tenant-wide caller such as the console, and optional for a backend
 	// authenticated with an sk_ key, whose application is already known — such a
 	// caller may only name its own.
-	ApplicationID string `json:"application_id,omitempty" example:"app_test123"`
+	ApplicationID string `json:"application_id,omitempty" example:"app_00000000000000000000000000000001"`
 	// Name is an operator-facing label for the key.
 	Name string `json:"name" example:"Production Stripe Webhook Key"`
 	// Type is the requested scope: "publishable" or "secret".
@@ -60,7 +60,7 @@ type KeyDTO struct {
 	// ID is the key's identifier, used to revoke it.
 	ID string `json:"id" example:"key_1a2b3c"`
 	// ApplicationID is the owning application.
-	ApplicationID string `json:"application_id" example:"app_test123"`
+	ApplicationID string `json:"application_id" example:"app_00000000000000000000000000000001"`
 	// Name is the operator-facing label.
 	Name string `json:"name" example:"Production Key"`
 	// Type is the key's scope.

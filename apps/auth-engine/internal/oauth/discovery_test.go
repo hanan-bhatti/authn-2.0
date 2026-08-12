@@ -126,10 +126,11 @@ func TestJWKSEndpoint(t *testing.T) {
 
 	keyObj := keysRaw[0].(map[string]interface{})
 
-	// CRITICAL SECURITY AUDIT: Zero private key parameters allowed
+	// A JWKS response carries public parameters only. Any private parameter
+	// here would publish the signing key itself.
 	for _, forbiddenParam := range []string{"d", "p", "q", "dp", "dq", "qi"} {
 		if _, exists := keyObj[forbiddenParam]; exists {
-			t.Fatalf("CRITICAL SECURITY FAILURE: Private key parameter '%s' found in JWKS response!", forbiddenParam)
+			t.Fatalf("private key parameter %q found in JWKS response", forbiddenParam)
 		}
 	}
 

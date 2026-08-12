@@ -13,6 +13,7 @@ package auth_test
 
 import (
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"net/url"
 	"testing"
 
@@ -40,7 +41,7 @@ func setupTestGuardianService(t *testing.T) (*auth.GuardianService, *auth.Reposi
 
 	client := factory.GetClient(testCtx(), tenantID, "test")
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err = client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).

@@ -24,12 +24,12 @@ const (
 
 // Identifiers for the seeded tenant, application and organization.
 const (
-	seedTenantID = "tnt_default"
+	seedTenantID = "tnt_00000000000000000000000000000001"
 	// seedTenantSlug is the demo tenant's slug. It is on the reserved list, so
 	// only the seeder — which waives that guard — may claim it.
 	seedTenantSlug = "default"
-	seedAppID      = "app_test123"
-	seedOrgID    = "org_acme"
-	seedOrgName  = "Acme Corp"
-	seedOrgSlug  = "acme-corp"
+	seedAppID      = "app_00000000000000000000000000000001"
+	seedOrgID      = "org_00000000000000000000000000000001"
+	seedOrgName    = "Acme Corp"
+	seedOrgSlug    = "acme-corp"
 )

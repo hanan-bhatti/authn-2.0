@@ -45,8 +45,8 @@ func seedOrganization(ctx context.Context, client *ent.Client, users map[string]
 		email        string
 		roleID       string
 	}{
-		{"mem_admin_acme", "admin@authn.local", rbac.SystemRoleID(seedTenantID, "org_admin")},
-		{"mem_user_acme", "user.orgmember@authn.local", rbac.SystemRoleID(seedTenantID, "editor")},
+		{"mem_00000000000000000000000000000001", "admin@authn.local", rbac.SystemRoleID(seedTenantID, "org_admin")},
+		{"mem_00000000000000000000000000000002", "user.orgmember@authn.local", rbac.SystemRoleID(seedTenantID, "editor")},
 	}
 
 	for _, m := range memberships {
@@ -97,7 +97,7 @@ func seedSAMLConnection(ctx context.Context, client *ent.Client, orgID string) e
 	}
 
 	if _, err := client.SAMLConnection.Create().
-		SetID("saml_acme_corp").
+		SetID("saml_00000000000000000000000000000001").
 		SetOrganizationID(orgID).
 		SetIdpEntityID("https://idp.acme-corp.com/saml/metadata").
 		SetIdpSSOURL("https://idp.acme-corp.com/saml/sso").

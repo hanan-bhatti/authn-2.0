@@ -18,9 +18,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
@@ -80,7 +80,7 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 		return nil, fmt.Errorf("failed to generate secure invitation token: %w", err)
 	}
 
-	invID := fmt.Sprintf("inv_%s", uuid.New().String()[:12])
+	invID := idgen.New("inv")
 	expiresAt := time.Now().Add(time.Duration(req.ExpiresHrs) * time.Hour)
 
 	builder := client.OrgInvitation.Create().
@@ -276,7 +276,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 	if targetUser == nil {
 		newUserID := userID
 		if newUserID == "" {
-			newUserID = fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+			newUserID = idgen.New("usr")
 		}
 		// The address is treated as verified because reaching here required the
 		// token that was emailed to it.
@@ -313,7 +313,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 			return nil, fmt.Errorf("failed to update member role: %w", err)
 		}
 	} else {
-		memID := fmt.Sprintf("mem_%s", uuid.New().String()[:12])
+		memID := idgen.New("mem")
 		builder := client.OrgMember.Create().
 			SetID(memID).
 			SetOrganizationID(inv.OrganizationID).

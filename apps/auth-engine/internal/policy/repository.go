@@ -30,9 +30,9 @@ import (
 // ErrTenantNotFound reports a policy write against a tenant that was never
 // provisioned.
 //
-// Writing a policy used to create the tenant, which meant a typo in a tenant ID
-// produced a workspace with no roles, no application and no owner. Tenants are
-// created deliberately, so the write is refused instead.
+// A policy write never creates the tenant it addresses. Tenants are created
+// deliberately, with roles, an application and an owner; conjuring one from a
+// mistyped identifier would produce a workspace holding none of those.
 var ErrTenantNotFound = errors.New("tenant not found")
 
 // policyPoolEnvironment is the environment passed when selecting a connection

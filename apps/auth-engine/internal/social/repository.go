@@ -19,10 +19,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
@@ -229,7 +227,7 @@ func (r *Repository) UpsertIdentity(
 	}
 
 	return client.Identity.Create().
-		SetID(newID("idn")).
+		SetID(idgen.New("idn")).
 		SetUserID(userID).
 		SetProvider(provider).
 		SetProviderUserID(providerUserID).
@@ -281,7 +279,7 @@ func (r *Repository) CreateSocialUser(
 	client := r.factory.GetClient(ctx, tenantID, environment)
 
 	return client.User.Create().
-		SetID(newID("usr")).
+		SetID(idgen.New("usr")).
 		SetTenantID(tenantID).
 		SetEnvironment(user.Environment(environment)).
 		SetEmail(email).
@@ -482,5 +480,5 @@ func (r *Repository) GetDecryptedProviderConfig(ctx context.Context, tenantID, p
 
 // newID returns a prefixed record identifier such as "usr_1a2b3c4d5e6f".
 func newID(prefix string) string {
-	return fmt.Sprintf("%s_%s", prefix, uuid.New().String()[:idSuffixLength])
+	return idgen.New(prefix)
 }

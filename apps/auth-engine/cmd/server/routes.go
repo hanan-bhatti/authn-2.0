@@ -44,4 +44,5 @@ func registerRoutes(
 	w.impersonationHandler.RegisterRoutes(app, w.adminMiddleware, w.clientAuthMiddleware, w.pkMiddleware)
 	w.orgHandler.RegisterRoutes(app, w.clientAuthMiddleware, w.pkMiddleware, w.adminMiddleware)
 	w.samlHandler.RegisterRoutes(app, w.pkMiddleware, w.adminMiddleware)
+	w.auditHandler.RegisterRoutes(app, w.adminMiddleware)
 }

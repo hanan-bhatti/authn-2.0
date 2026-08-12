@@ -13,8 +13,8 @@ package org
 import (
 	"context"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
@@ -52,8 +52,8 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 		return nil, ErrOrgSlugExists
 	}
 
-	orgID := fmt.Sprintf("org_%s", uuid.New().String()[:12])
-	memID := fmt.Sprintf("mem_%s", uuid.New().String()[:12])
+	orgID := idgen.New("org")
+	memID := idgen.New("mem")
 
 	orgAdminRole, err := s.ensureDefaultRole(ctx, client, tenantID, "org_admin", "Organization Admin")
 	if err != nil {

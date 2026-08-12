@@ -42,7 +42,7 @@ type userSpec struct {
 func demoUsers() []userSpec {
 	return []userSpec{
 		{
-			ID:            "usr_admin_001",
+			ID:            "usr_00000000000000000000000000000001",
 			Email:         "admin@authn.local",
 			Password:      demoAdminPassword,
 			EmailVerified: true,
@@ -50,7 +50,7 @@ func demoUsers() []userSpec {
 			setUp:         assignTenantAdminRole,
 		},
 		{
-			ID:            "usr_totp_002",
+			ID:            "usr_00000000000000000000000000000002",
 			Email:         "user.totp@authn.local",
 			Password:      demoUserPassword,
 			EmailVerified: true,
@@ -58,21 +58,21 @@ func demoUsers() []userSpec {
 			setUp:         enrolTOTP,
 		},
 		{
-			ID:            "usr_unverified_003",
+			ID:            "usr_00000000000000000000000000000003",
 			Email:         "user.unverified@authn.local",
 			Password:      demoUserPassword,
 			EmailVerified: false,
 			State:         "email unverified",
 		},
 		{
-			ID:            "usr_orgmember_004",
+			ID:            "usr_00000000000000000000000000000004",
 			Email:         "user.orgmember@authn.local",
 			Password:      demoUserPassword,
 			EmailVerified: true,
 			State:         "organization member (Acme Corp, editor)",
 		},
 		{
-			ID:            "usr_guardians_005",
+			ID:            "usr_00000000000000000000000000000005",
 			Email:         "user.guardians@authn.local",
 			Password:      demoUserPassword,
 			EmailVerified: true,
@@ -80,7 +80,7 @@ func demoUsers() []userSpec {
 			setUp:         enrolRecoveryGuardian,
 		},
 		{
-			ID:            "usr_vanilla_007",
+			ID:            "usr_00000000000000000000000000000007",
 			Email:         "user.vanilla@authn.local",
 			Password:      demoUserPassword,
 			EmailVerified: true,

@@ -46,7 +46,7 @@ func newCookie(name, value string) *http.Cookie {
 // a client unable to list or revoke its own sessions.
 func TestGetUserIDAndSessionID_CookieAuthenticatedSession(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
-		"usr_cookie", "tnt_default", "test",
+		"usr_cookie", "tnt_00000000000000000000000000000001", "test",
 		"cookie@example.com", "Cookie User", "", "ses_cookie", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
@@ -92,7 +92,7 @@ func TestGetUserIDAndSessionID_CookieAuthenticatedSession(t *testing.T) {
 // another.
 func TestGetUserIDAndSessionID_BearerHeaderStillWorks(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
-		"usr_hdr", "tnt_default", "test",
+		"usr_hdr", "tnt_00000000000000000000000000000001", "test",
 		"hdr@example.com", "Header User", "", "ses_hdr", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
@@ -122,14 +122,14 @@ func TestGetUserIDAndSessionID_BearerHeaderStillWorks(t *testing.T) {
 // the calling handlers answer 401.
 func TestGetUserIDAndSessionID_RejectsUntrustedTokens(t *testing.T) {
 	valid, err := jwtpkg.IssueAccessTokenWithSession(
-		"usr_real", "tnt_default", "test",
+		"usr_real", "tnt_00000000000000000000000000000001", "test",
 		"real@example.com", "Real User", "", "ses_real", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)
 	}
 
 	forged, err := jwtpkg.IssueAccessTokenWithSession(
-		"usr_attacker", "tnt_default", "test",
+		"usr_attacker", "tnt_00000000000000000000000000000001", "test",
 		"attacker@example.com", "Attacker", "", "ses_attacker", "a-completely-different-secret-value!!", 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing forged token: %v", err)
@@ -177,7 +177,7 @@ func TestGetUserIDAndSessionID_RejectsUntrustedTokens(t *testing.T) {
 // authenticating middleware already established.
 func TestGetUserIDAndSessionID_LocalsWinOverToken(t *testing.T) {
 	token, err := jwtpkg.IssueAccessTokenWithSession(
-		"usr_from_token", "tnt_default", "test",
+		"usr_from_token", "tnt_00000000000000000000000000000001", "test",
 		"t@example.com", "T", "", "ses_from_token", testSigningSecret, 15*time.Minute)
 	if err != nil {
 		t.Fatalf("issuing token: %v", err)

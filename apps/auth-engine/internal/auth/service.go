@@ -30,6 +30,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"log"
 	"net/http"
 	"strings"
@@ -38,7 +39,6 @@ import (
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
@@ -471,7 +471,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 		return nil, "", "", err
 	}
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	u, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, passwordHash, name)
 	if err != nil {
 		return nil, "", "", err
@@ -486,7 +486,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	h := sha256.Sum256([]byte(rawRefreshToken))
 	tokenHash := hex.EncodeToString(h[:])
 
-	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+	sessionID := idgen.New("ses")
 	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
@@ -500,7 +500,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 
 	// Audit Log recording
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, tenantID, u.ID, "user.signed_up", ipAddress, userAgent, "")
 
 	// Send Email Verification (Non-blocking log on delivery error)
@@ -570,7 +570,7 @@ func (s *Service) VerifyEmailToken(ctx context.Context, rawToken string) (*ent.U
 	}
 
 	// Audit Log
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, u.TenantID, u.ID, "user.email_verified", "", "", "")
 
 	return u, nil
@@ -614,7 +614,7 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 
 	// Auto-provision user if not found (Option A)
 	if u == nil {
-		userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+		userID := idgen.New("usr")
 		createdUser, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, "", name)
 		if err != nil {
 			return fmt.Errorf("failed auto-provisioning user for magic link: %w", err)
@@ -661,7 +661,7 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 	}
 
 	// Audit Log
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, tenantID, u.ID, "user.magic_link_sent", ipAddress, userAgent, "")
 
 	return nil
@@ -701,7 +701,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Issue Session & Refresh Token
-	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+	sessionID := idgen.New("ses")
 	rawRefreshToken := hex.EncodeToString(func() []byte {
 		b := make([]byte, 32)
 		_, _ = rand.Read(b)
@@ -725,7 +725,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	_ = s.repo.UpdateUserLastSignIn(ctx, u.ID)
 
 	// Audit Log
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, u.TenantID, u.ID, "user.magic_link_login", ipAddress, userAgent, "")
 
 	return u, accessToken, rawRefreshToken, nil
@@ -803,7 +803,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	h := sha256.Sum256([]byte(rawRefreshToken))
 	tokenHash := hex.EncodeToString(h[:])
 
-	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+	sessionID := idgen.New("ses")
 	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
@@ -818,7 +818,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 
 	// Update last sign in & Audit Log
 	_ = s.repo.UpdateUserLastSignIn(ctx, u.ID)
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, tenantID, u.ID, "user.signed_in", ipAddress, userAgent, "")
 
 	return u, accessToken, rawRefreshToken, nil
@@ -879,7 +879,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		newHash := sha256.Sum256([]byte(newRawRefreshToken))
 		newTokenHash := hex.EncodeToString(newHash[:])
 
-		newSessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+		newSessionID := idgen.New("ses")
 		expiresAt := time.Now().Add(s.refreshTokenTTL())
 
 		// Create new active session
@@ -960,7 +960,7 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID string) (*TOTPEnrollRes
 		return nil, fmt.Errorf("failed encrypting TOTP secret: %w", err)
 	}
 
-	tfmID := fmt.Sprintf("tfm_%s", uuid.New().String()[:12])
+	tfmID := idgen.New("tfm")
 	_, err = s.repo.CreateOrUpdatePendingTOTPSecret(ctx, tfmID, u.ID, encryptedSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed saving pending TOTP secret: %w", err)
@@ -1006,7 +1006,7 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 		return nil, err
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(tfm.UserID), userID, "user.2fa_enabled", "", "", "")
 
 	// Check if user already has backup recovery codes
@@ -1115,7 +1115,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	h := sha256.Sum256([]byte(rawRefreshToken))
 	tokenHash := hex.EncodeToString(h[:])
 
-	sessionID := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+	sessionID := idgen.New("ses")
 	expiresAt := time.Now().Add(s.refreshTokenTTL())
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", err
@@ -1127,7 +1127,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	}
 
 	_ = s.repo.UpdateUserLastSignIn(ctx, u.ID)
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), u.ID, "user.signed_in_2fa", ipAddress, userAgent, "")
 
 	return u, accessToken, rawRefreshToken, nil
@@ -1208,7 +1208,7 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 		log.Printf("[AuthService] Warning: Failed revoking sessions on 2FA disable for user %s: %v", userID, err)
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_disabled", ipAddress, userAgent, "")
 
 	return nil
@@ -1378,7 +1378,7 @@ func (s *Service) ConfirmSMSEnrollment(ctx context.Context, userID string, code 
 		recoveryCodes = codes
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, "", userID, "user.sms_2fa_confirmed", "", "", "")
 
 	return &ConfirmTOTPResult{
@@ -1421,7 +1421,7 @@ func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password str
 		log.Printf("[AuthService] Warning: Failed revoking sessions on SMS 2FA disable for user %s: %v", userID, err)
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.sms_2fa_disabled", ipAddress, userAgent, "")
 
 	return nil
@@ -1607,7 +1607,7 @@ func (s *Service) VerifyRecoveryCode(ctx context.Context, userID string, rawCode
 		return err
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, "", userID, "user.recovery_code_used", "", "", "")
 
 	return nil
@@ -1636,7 +1636,7 @@ func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID string, pa
 		return nil, err
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.recovery_codes_regenerated", "", "", "")
 
 	return codes, nil
@@ -1755,7 +1755,7 @@ func (s *Service) BeginWebAuthnRegistration(ctx context.Context, userID string) 
 		return nil, "", fmt.Errorf("failed beginning WebAuthn registration: %w", err)
 	}
 
-	sessionID := fmt.Sprintf("wasess_%s", uuid.New().String()[:12])
+	sessionID := idgen.New("wasess")
 	s.webauthnSessions.Store(sessionID, sessionData)
 
 	return options, sessionID, nil
@@ -1835,7 +1835,7 @@ func (s *Service) FinishWebAuthnRegistration(ctx context.Context, userID string,
 		}
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.passkey_registered", "", "", "")
 
 	return &ConfirmTOTPResult{
@@ -1883,7 +1883,7 @@ func (s *Service) BeginWebAuthnLogin(ctx context.Context, mfaToken string) (*pro
 		return nil, "", "", fmt.Errorf("failed beginning WebAuthn login: %w", err)
 	}
 
-	sessionID := fmt.Sprintf("wasess_%s", uuid.New().String()[:12])
+	sessionID := idgen.New("wasess")
 	s.webauthnSessions.Store(sessionID, sessionData)
 
 	return options, sessionID, u.ID, nil
@@ -1966,7 +1966,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 	h := sha256.Sum256([]byte(rawRefreshToken))
 	tokenHash := hex.EncodeToString(h[:])
 
-	sessionIDStr := fmt.Sprintf("sess_%s", uuid.New().String()[:12])
+	sessionIDStr := idgen.New("sess")
 	sessionTTL := webAuthnLoginSessionTTL
 	now := time.Now()
 	expiresAt := now.Add(sessionTTL)
@@ -1980,7 +1980,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), u.ID, "user.login_webauthn", ipAddress, userAgent, "")
 
 	return u, accessToken, rawRefreshToken, nil
@@ -2064,7 +2064,7 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 		// Revoke all active sessions on 2FA disable for security
 		_ = s.repo.RevokeAllSessionsForUser(ctx, userID)
 
-		auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+		auditID := idgen.New("aud")
 		_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_disabled", "", "", "")
 		return nil
 	}
@@ -2074,7 +2074,7 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 		return err
 	}
 
-	auditID := fmt.Sprintf("aud_%s", uuid.New().String()[:12])
+	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, "", userID, "user.passkey_deleted", "", "", "")
 
 	return nil

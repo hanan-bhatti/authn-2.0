@@ -14,6 +14,7 @@ package auth_test
 
 import (
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"sort"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func TestRecoveryInitiate_PriorityOrder(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	// Create user with verified phone & email
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -87,7 +88,7 @@ func TestRecoveryInitiate_OldPasswordUnlockedOnTrust(t *testing.T) {
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -129,7 +130,7 @@ func TestRecoveryInitiate_SecurityQuestionsFallback(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	// User with NO phone, NO email verified, BUT has security questions metadata
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	meta := map[string]interface{}{
 		"security_questions": []interface{}{
 			map[string]interface{}{"question": "First pet name?", "answer_hash": "hash123"},
@@ -166,7 +167,7 @@ func TestRecoveryInitiate_ZeroMethodsDeadEnd_Returns400(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	// User with 0 methods (email unverified, no phone, no guardians, no security questions, unfamiliar device)
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -195,7 +196,7 @@ func TestRecoveryInitiate_TimingSafeNonExistentUser(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	// A real, recoverable user to measure the genuine code path against.
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).

@@ -13,6 +13,7 @@ package auth_test
 
 import (
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"testing"
 	"time"
 
@@ -87,7 +88,7 @@ func TestTelemetryService_TrustEvaluationAndRecord(t *testing.T) {
 
 	client := factory.GetClient(ctx, tenantID, "test")
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err = client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -136,7 +137,7 @@ func TestTelemetryService_PurgeExpiredTelemetry(t *testing.T) {
 
 	client := factory.GetClient(ctx, tenantID, "test")
 
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err = client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).

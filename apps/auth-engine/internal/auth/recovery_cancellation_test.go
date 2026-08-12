@@ -17,6 +17,7 @@ package auth_test
 
 import (
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"testing"
 	"time"
 
@@ -51,7 +52,7 @@ func TestRecoveryCancellation_AttackerScenario_AuthenticatedSessionCancel(t *tes
 	client := factory.GetClient(ctx, tenantID, "test")
 
 	// 1. Create legitimate user with 2 active sessions
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err = client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -170,7 +171,7 @@ func TestRecoveryCancellation_AttackerScenario_SignedTokenCancel(t *testing.T) {
 	client := factory.GetClient(ctx, tenantID, "test")
 
 	// 1. Create legitimate user
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err = client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).

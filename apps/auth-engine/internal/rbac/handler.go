@@ -138,7 +138,7 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
 			tenantID = t
 		} else {
-			tenantID = c.Query("tenant_id", "tnt_default")
+			tenantID = c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 		}
 	}
 
@@ -166,7 +166,7 @@ func (h *Handler) ListRoles(c *fiber.Ctx) error {
 		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
 			tenantID = t
 		} else {
-			tenantID = "tnt_default"
+			tenantID = "tnt_00000000000000000000000000000001"
 		}
 	}
 
@@ -189,7 +189,7 @@ func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
 			tenantID = t
 		} else {
-			tenantID = "tnt_default"
+			tenantID = "tnt_00000000000000000000000000000001"
 		}
 	}
 
@@ -223,7 +223,7 @@ func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
 			tenantID = t
 		} else {
-			tenantID = "tnt_default"
+			tenantID = "tnt_00000000000000000000000000000001"
 		}
 	}
 
@@ -265,7 +265,7 @@ func (h *Handler) RevokeUserRole(c *fiber.Ctx) error {
 		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
 			tenantID = t
 		} else {
-			tenantID = "tnt_default"
+			tenantID = "tnt_00000000000000000000000000000001"
 		}
 	}
 

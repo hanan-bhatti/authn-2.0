@@ -35,7 +35,7 @@ func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
 	if tenantID, ok := c.Locals("tenant_id").(string); ok && tenantID != "" {
 		req.TenantID = tenantID
 	} else if req.TenantID == "" {
-		req.TenantID = "tnt_default"
+		req.TenantID = "tnt_00000000000000000000000000000001"
 	}
 
 	if env, ok := c.Locals("environment").(string); ok && env != "" {
@@ -134,7 +134,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
 		req.TenantID = tID
 	} else if req.TenantID == "" {
-		req.TenantID = "tnt_default"
+		req.TenantID = "tnt_00000000000000000000000000000001"
 	}
 
 	if env, ok := c.Locals("environment").(string); ok && env != "" {
@@ -250,7 +250,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
 		req.TenantID = tID
 	} else if req.TenantID == "" {
-		req.TenantID = "tnt_default"
+		req.TenantID = "tnt_00000000000000000000000000000001"
 	}
 
 	if env, ok := c.Locals("environment").(string); ok && env != "" {
@@ -405,7 +405,7 @@ func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
 		req.TenantID = tID
 	} else if req.TenantID == "" {
-		req.TenantID = "tnt_default"
+		req.TenantID = "tnt_00000000000000000000000000000001"
 	}
 
 	if env, ok := c.Locals("environment").(string); ok && env != "" {

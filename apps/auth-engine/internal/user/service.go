@@ -161,9 +161,3 @@ func metadataUnixTime(meta map[string]interface{}, key string) (time.Time, bool)
 		return time.Time{}, false
 	}
 }
-
-
-
-
-
-

@@ -13,6 +13,7 @@ package auth_test
 
 import (
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"testing"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ func TestRecoveryPolicy_TenantBehaviorCustomization(t *testing.T) {
 	require.NoError(t, err)
 
 	clientA := factory.GetClient(ctx, tenantA, "test")
-	userA := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userA := idgen.New("usr")
 	_, err = clientA.User.Create().
 		SetID(userA).
 		SetTenantID(tenantA).
@@ -76,7 +77,7 @@ func TestRecoveryPolicy_TenantBehaviorCustomization(t *testing.T) {
 	require.NoError(t, err)
 
 	clientB := factory.GetClient(ctx, tenantB, "test")
-	userB := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userB := idgen.New("usr")
 	_, err = clientB.User.Create().
 		SetID(userB).
 		SetTenantID(tenantB).

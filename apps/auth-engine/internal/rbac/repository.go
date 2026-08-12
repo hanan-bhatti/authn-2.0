@@ -18,10 +18,9 @@ package rbac
 import (
 	"context"
 	"errors"
-	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/permission"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
@@ -84,7 +83,7 @@ func (r *Repository) CreateRole(ctx context.Context, tenantID, name, slug, descr
 		return nil, ErrRoleExists
 	}
 
-	roleID := fmt.Sprintf("rol_%s", uuid.New().String()[:12])
+	roleID := idgen.New("rol")
 	builder := client.Role.Create().
 		SetID(roleID).
 		SetTenantID(tenantID).
@@ -187,7 +186,7 @@ func (r *Repository) SetRolePermissions(ctx context.Context, roleID string, perm
 	}
 
 	for _, p := range perms {
-		prmID := fmt.Sprintf("prm_%s", uuid.New().String()[:12])
+		prmID := idgen.New("prm")
 		builder := client.Permission.Create().
 			SetID(prmID).
 			SetRoleID(roleID).
@@ -217,7 +216,7 @@ func (r *Repository) AssignRoleToUser(ctx context.Context, userID, roleID, actor
 		return nil, ErrUserRoleExists
 	}
 
-	urID := fmt.Sprintf("url_%s", uuid.New().String()[:12])
+	urID := idgen.New("url")
 	builder := client.UserRole.Create().
 		SetID(urID).
 		SetUserID(userID).

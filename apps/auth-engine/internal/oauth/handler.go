@@ -38,10 +38,6 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-
-
-
-
 // RegisterRoutes mounts the OAuth2 and OIDC endpoints on app.
 //
 // pkMiddleware guards the authorization and token endpoints when supplied.
@@ -73,5 +69,3 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adm
 		app.Post("/v1/tenant/applications", h.CreateApplication)
 	}
 }
-
-

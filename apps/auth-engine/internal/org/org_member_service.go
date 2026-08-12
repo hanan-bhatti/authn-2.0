@@ -13,8 +13,8 @@ package org
 import (
 	"context"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
@@ -105,7 +105,7 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 		return nil, fmt.Errorf("failed to resolve role: %w", err)
 	}
 
-	memID := fmt.Sprintf("mem_%s", uuid.New().String()[:12])
+	memID := idgen.New("mem")
 	builder := client.OrgMember.Create().
 		SetID(memID).
 		SetOrganizationID(orgID).

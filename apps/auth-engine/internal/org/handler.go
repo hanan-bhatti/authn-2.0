@@ -170,9 +170,3 @@ func badRequestLogged(c *fiber.Ctx, op string, err error, code httperr.Code, msg
 	}
 	return httperr.BadRequest(c, code, msg)
 }
-
-
-
-
-
-

@@ -6,11 +6,10 @@
  * Creates a tenant and everything it needs to be usable.
  *
  * A tenant is not one row. A tenant nobody can authenticate against, with no
- * roles for its administrator to hold, is indistinguishable from a broken one —
- * and that is precisely what the engine produced before this package existed,
- * because tenants were only ever created as a side effect of a signup or a
- * policy write. Provisioning is therefore a single operation that yields a
- * tenant, an application, one key pair, and the system roles together.
+ * roles for its administrator to hold, is indistinguishable from a broken one.
+ * Provisioning is therefore a single operation that yields a tenant, an
+ * application, one key pair and the system roles together, so no caller can end
+ * up holding a half-built one.
  *
  * Everything here runs under a privacy bypass, for the same reason the API key
  * lookup does: the tenant being created is what a scoped query would filter by,
@@ -34,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 )
 
 // Errors returned by Provision. Callers map these onto their own surface: the
@@ -222,11 +222,11 @@ func (s *Service) Provision(ctx context.Context, req Request, opts Options) (*Re
 
 	tenantID := opts.TenantID
 	if tenantID == "" {
-		tenantID = newID("tnt")
+		tenantID = idgen.New("tnt")
 	}
 	appID := opts.ApplicationID
 	if appID == "" {
-		appID = newID("app")
+		appID = idgen.New("app")
 	}
 	appName := strings.TrimSpace(req.ApplicationName)
 	if appName == "" {

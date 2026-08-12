@@ -17,10 +17,9 @@ package saml
 import (
 	"context"
 	"encoding/xml"
-	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
@@ -236,10 +235,6 @@ func connectionAllowsDomain(conn *ent.SAMLConnection, domain string) bool {
 	return false
 }
 
-
-
-
-
 // toSAMLResponse projects a stored connection onto its API representation,
 // returning nil for a nil connection.
 func (s *Service) toSAMLResponse(conn *ent.SAMLConnection) *SAMLConnectionResponse {
@@ -281,7 +276,7 @@ func (s *Service) logAudit(ctx context.Context, tenantID, actorID, eventType, ta
 	}
 
 	builder := client.AuditLog.Create().
-		SetID(newID("log")).
+		SetID(idgen.New("log")).
 		SetTenantID(tenantID).
 		SetActorType(actorType).
 		SetEventType(eventType).
@@ -302,5 +297,5 @@ func (s *Service) logAudit(ctx context.Context, tenantID, actorID, eventType, ta
 
 // newID returns a prefixed record identifier such as "saml_1a2b3c4d5e6f".
 func newID(prefix string) string {
-	return fmt.Sprintf("%s_%s", prefix, uuid.New().String()[:idSuffixLength])
+	return idgen.New(prefix)
 }

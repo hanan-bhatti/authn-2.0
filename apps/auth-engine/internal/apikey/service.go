@@ -19,7 +19,6 @@ package apikey
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -30,6 +29,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 )
 
 var (
@@ -154,11 +154,7 @@ func (s *Service) CreateKey(ctx context.Context, id string, applicationID string
 	}
 
 	if id == "" {
-		idBytes := make([]byte, 9)
-		if _, err := rand.Read(idBytes); err != nil {
-			return nil, fmt.Errorf("generating api key id: %w", err)
-		}
-		id = fmt.Sprintf("key_%s", hex.EncodeToString(idBytes))
+		id = idgen.New("key")
 	}
 
 	_, err = s.repo.CreateApiKey(ctx, id, applicationID, name, keyType, gen.Prefix, gen.KeyHash, env, expiresAt)

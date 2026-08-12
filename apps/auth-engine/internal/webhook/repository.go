@@ -13,8 +13,8 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookevent"
@@ -41,7 +41,7 @@ func (r *Repository) IsSecretHashExists(ctx context.Context, secretHash string) 
 func (r *Repository) CreateEndpoint(ctx context.Context, tenantID, rawURL, description, encryptedSecret, secretHash string, events []string) (*ent.WebhookEndpoint, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 
-	id := fmt.Sprintf("whe_%s", uuid.New().String()[:12])
+	id := idgen.New("whe")
 
 	return client.WebhookEndpoint.Create().
 		SetID(id).
@@ -199,7 +199,7 @@ func (r *Repository) DeleteEndpoint(ctx context.Context, tenantID, endpointID st
 func (r *Repository) CreateDelivery(ctx context.Context, endpointID, eventType string, payload map[string]interface{}, statusCode int, responseBody, errorMessage string, isSuccess bool) (*ent.WebhookEvent, error) {
 	client := r.factory.GetClient(ctx, "", "")
 
-	id := fmt.Sprintf("whd_%s", uuid.New().String()[:12])
+	id := idgen.New("whd")
 
 	statusVal := webhookevent.StatusFailed
 	if isSuccess {

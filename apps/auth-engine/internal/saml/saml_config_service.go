@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
@@ -70,7 +71,7 @@ func (s *Service) CreateSAMLConnection(ctx context.Context, tenantID, actorID st
 		}
 	}
 
-	samlID := newID("saml")
+	samlID := idgen.New("saml")
 
 	builder := client.SAMLConnection.Create().
 		SetID(samlID).

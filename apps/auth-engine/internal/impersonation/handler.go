@@ -329,12 +329,12 @@ func handleImpersonationError(c *fiber.Ctx, err error) error {
 }
 
 // getTenantID returns the tenant resolved by the auth middleware, or
-// "tnt_default" for single-tenant deployments that never set one.
+// "tnt_00000000000000000000000000000001" for single-tenant deployments that never set one.
 func getTenantID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
 		return val
 	}
-	return "tnt_default"
+	return "tnt_00000000000000000000000000000001"
 }
 
 // getEnvironment returns the environment resolved by the auth middleware,

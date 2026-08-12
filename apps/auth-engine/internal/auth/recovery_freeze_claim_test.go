@@ -14,11 +14,10 @@ package auth_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
@@ -35,7 +34,7 @@ func TestRecoveryFreezeStateTransition(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	passHash, _ := crypto.HashPasswordArgon2id("OldPass123!")
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -79,7 +78,7 @@ func TestProcessExpiredFreezes_BackgroundWorker(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	passHash, _ := crypto.HashPasswordArgon2id("OldPass123!")
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
@@ -130,7 +129,7 @@ func TestClaimAccount_FullExecution(t *testing.T) {
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
 
 	passHash, _ := crypto.HashPasswordArgon2id("OldPass123!")
-	userID := fmt.Sprintf("usr_%s", uuid.New().String()[:12])
+	userID := idgen.New("usr")
 	u, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).

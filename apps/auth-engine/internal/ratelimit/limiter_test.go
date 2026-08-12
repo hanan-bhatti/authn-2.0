@@ -166,9 +166,9 @@ func TestBuildKey_DimensionsCannotCollide(t *testing.T) {
 }
 
 // TestExtractAccountIdentifier covers the input that decides the per-account
-// bucket. Before this existed, Middleware keyed on the User-Agent header, so an
-// attacker who hit the 5-attempt block got an unlimited supply of fresh buckets
-// by changing one client-controlled header.
+// bucket. The identifier must come from the request body rather than from a
+// header: anything the client picks freely, such as the User-Agent, would hand
+// an attacker an unlimited supply of fresh buckets.
 func TestExtractAccountIdentifier(t *testing.T) {
 	cases := []struct {
 		name string
@@ -208,9 +208,9 @@ func TestExtractAccountIdentifier(t *testing.T) {
 	}
 }
 
-// TestMiddleware_UserAgentRotationCannotBypass is the regression test for the
-// live-verified bypass: exhaust the limit, then rotate the User-Agent and
-// confirm the request is still blocked.
+// TestMiddleware_UserAgentRotationCannotBypass pins that the limit survives a
+// rotating User-Agent: exhaust it, then send a different User-Agent and confirm
+// the request is still blocked.
 func TestMiddleware_UserAgentRotationCannotBypass(t *testing.T) {
 	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
@@ -250,8 +250,8 @@ func TestMiddleware_UserAgentRotationCannotBypass(t *testing.T) {
 	}
 }
 
-// TestMiddleware_AccountBucketSurvivesIPRotation covers the other new
-// dimension: a single target account cannot be hammered from rotating IPs.
+// TestMiddleware_AccountBucketSurvivesIPRotation covers the other dimension: a
+// single target account cannot be hammered from rotating IPs.
 func TestMiddleware_AccountBucketSurvivesIPRotation(t *testing.T) {
 	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
@@ -293,10 +293,9 @@ func TestMiddleware_AccountBucketSurvivesIPRotation(t *testing.T) {
 }
 
 // TestMiddleware_SharedNATNotCollateralBlocked pins the reason the per-IP
-// dimension carries a wider budget than the per-account one. Removing the
-// User-Agent from the key made the IP bucket effective for the first time; at
-// the same 5-attempt budget, one user's typos would lock out every colleague
-// behind the same NAT egress.
+// dimension carries a wider budget than the per-account one: a single office or
+// campus egress is one address for hundreds of people, so at the account budget
+// one user's typos would lock out every colleague behind it.
 func TestMiddleware_SharedNATNotCollateralBlocked(t *testing.T) {
 	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
@@ -336,9 +335,10 @@ func TestMiddleware_SharedNATNotCollateralBlocked(t *testing.T) {
 	}
 }
 
-// TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit ensures widening the IP
-// budget did not loosen endpoints that carry no account identifier — there is no
-// account bucket to fall back on there, so the IP dimension must stay strict.
+// TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit pins the strict per-IP
+// budget on endpoints that carry no account identifier. There is no account
+// bucket to fall back on there, so the IP dimension is the only ceiling and the
+// wider multiplier must not reach it.
 func TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit(t *testing.T) {
 	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
@@ -369,17 +369,17 @@ func TestMiddleware_TokenOnlyEndpointKeepsStrictIPLimit(t *testing.T) {
 	}
 }
 
-// TestMiddleware_MFAChallengeBucketSurvivesIPRotation pins the fix for audit
-// finding M5.
+// TestMiddleware_MFAChallengeBucketSurvivesIPRotation pins the account
+// dimension for second-factor verification.
 //
 // Second-factor verification posts {"code","mfa_token"} — no email, no
-// username. extractAccountIdentifier found no account field and returned "",
-// so the request got the per-IP dimension ALONE. An attacker who already holds
-// the password (they must, to possess an mfa_token) could rotate source IPs and
-// walk the 10^6 TOTP keyspace with no effective ceiling.
+// username. With no account field to extract, the request would carry the per-IP
+// dimension alone, and an attacker who already holds the password (they must, to
+// possess an mfa_token) could rotate source IPs and walk the 10^6 TOTP keyspace
+// with no effective ceiling.
 //
-// The challenge token is now the account dimension, so the budget follows the
-// login attempt rather than the network path.
+// The challenge token is therefore the account dimension, so the budget follows
+// the login attempt rather than the network path.
 func TestMiddleware_MFAChallengeBucketSurvivesIPRotation(t *testing.T) {
 	limiter := NewLimiter(Options{Redis: nil, Enabled: true, FailClosed: false, MaxAttempts: 5, Window: 900 * time.Second, IPBudgetMultiplier: 10, BackoffSchedule: nil, ViolationReset: 7 * 24 * time.Hour})
 
@@ -415,8 +415,7 @@ func TestMiddleware_MFAChallengeBucketSurvivesIPRotation(t *testing.T) {
 
 	// Sixth guess, yet another fresh IP: the challenge bucket must stop it.
 	if got := post("10.1.1.99", victimToken, "999999"); got != fiber.StatusTooManyRequests {
-		t.Fatalf("expected the challenge bucket to block a 6th IP, got %d "+
-			"(before M5 was fixed this returned 401 forever)", got)
+		t.Fatalf("expected the challenge bucket to block a 6th IP, got %d", got)
 	}
 
 	// A different login attempt is unaffected — the budget is per challenge,

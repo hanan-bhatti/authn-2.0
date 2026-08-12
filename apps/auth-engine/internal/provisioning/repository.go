@@ -24,8 +24,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
@@ -34,10 +32,6 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
-
-// idSuffixLength is how much of a UUID is kept in a generated identifier.
-// Twelve hex characters is the convention the rest of the engine follows.
-const idSuffixLength = 12
 
 // Service provisions tenants.
 type Service struct {
@@ -148,10 +142,4 @@ func (r *Repository) EnsureSystemRoles(ctx context.Context, tenantID string) (in
 		return 0, err
 	}
 	return len(roles), nil
-}
-
-// newID returns a prefixed record identifier such as "tnt_1a2b3c4d5e6f",
-// matching the convention used elsewhere in the engine.
-func newID(prefix string) string {
-	return fmt.Sprintf("%s_%s", prefix, uuid.New().String()[:idSuffixLength])
 }

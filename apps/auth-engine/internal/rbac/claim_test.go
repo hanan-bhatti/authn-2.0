@@ -3,7 +3,7 @@
  * File: apps/auth-engine/internal/rbac/claim_test.go
  * Tier: Security & Authorization Layer / Tests
  *
- * Description: Regression tests for JWT console role-claim resolution.
+ * Description: Tests for JWT console role-claim resolution.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -31,7 +31,7 @@ func newClaimTestEnv(t *testing.T, dsn string) (*ent.Client, context.Context) {
 	ctx := privacy.NewBypassContext(context.Background())
 
 	if _, err := client.Tenant.Create().
-		SetID("tnt_default").
+		SetID("tnt_00000000000000000000000000000001").
 		SetName("Claim Test Tenant").
 		SetSlug("claim-test").
 		Save(ctx); err != nil {
@@ -46,7 +46,7 @@ func seedUserWithRole(t *testing.T, client *ent.Client, ctx context.Context, use
 
 	if _, err := client.User.Create().
 		SetID(userID).
-		SetTenantID("tnt_default").
+		SetTenantID("tnt_00000000000000000000000000000001").
 		SetEnvironment("test").
 		SetEmail(userID + "@authn.local").
 		SetName(userID).
@@ -58,7 +58,7 @@ func seedUserWithRole(t *testing.T, client *ent.Client, ctx context.Context, use
 		SetID("rol_" + roleSlug).
 		SetName(roleSlug).
 		SetSlug(roleSlug).
-		SetTenantID("tnt_default").
+		SetTenantID("tnt_00000000000000000000000000000001").
 		Save(ctx)
 	if err != nil {
 		t.Fatalf("seed role %q: %v", roleSlug, err)

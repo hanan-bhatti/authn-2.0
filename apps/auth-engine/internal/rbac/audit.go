@@ -18,9 +18,8 @@ package rbac
 
 import (
 	"context"
-	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -70,7 +69,7 @@ func (a *AuditLogger) LogRBACEvent(ctx context.Context, tenantID, actorType, act
 		actorTypeEnum = auditlog.ActorTypeUser
 	}
 
-	logID := fmt.Sprintf("log_%s", uuid.New().String()[:12])
+	logID := idgen.New("log")
 
 	builder := client.AuditLog.Create().
 		SetID(logID).

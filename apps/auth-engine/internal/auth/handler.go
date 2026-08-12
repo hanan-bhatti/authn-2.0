@@ -384,9 +384,3 @@ func getUserID(c *fiber.Ctx) string {
 }
 
 // extractBearerToken resolves the caller's access token from the authn_access_token cookie, the
-
-
-
-
-
-

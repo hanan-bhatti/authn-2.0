@@ -17,11 +17,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
@@ -199,7 +199,7 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		return r, nil
 	}
 
-	roleID := fmt.Sprintf("role_%s", uuid.New().String()[:12])
+	roleID := idgen.New("role")
 	return client.Role.Create().
 		SetID(roleID).
 		SetTenantID(tenantID).
@@ -208,10 +208,6 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		SetDescription(fmt.Sprintf("Default %s role", roleName)).
 		Save(ctx)
 }
-
-
-
-
 
 // toOrgResponse converts an organization entity to its API representation,
 // returning nil for a nil entity.
@@ -266,7 +262,7 @@ func (s *Service) logAudit(ctx context.Context, tenantID, actorID, eventType, ta
 		metadata["target_id"] = targetID
 	}
 
-	logID := fmt.Sprintf("log_%s", uuid.New().String()[:12])
+	logID := idgen.New("log")
 
 	actorType := auditlog.ActorTypeUser
 	if strings.HasPrefix(actorID, "key_") || actorID == "system" {

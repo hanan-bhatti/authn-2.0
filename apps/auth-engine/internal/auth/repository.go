@@ -24,9 +24,9 @@ package auth
 import (
 	"context"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
@@ -782,7 +782,7 @@ func (r *Repository) CreateBatchRecoveryCodes(ctx context.Context, userID string
 	client := r.factory.GetClient(ctx, "", "")
 	bulk := make([]*ent.TwoFactorMethodCreate, len(argon2Hashes))
 	for i, hash := range argon2Hashes {
-		tfmID := fmt.Sprintf("tfm_%s", uuid.New().String()[:12])
+		tfmID := idgen.New("tfm")
 		bulk[i] = client.TwoFactorMethod.Create().
 			SetID(tfmID).
 			SetUserID(userID).
@@ -871,7 +871,7 @@ func (r *Repository) MarkRecoveryCodeConsumed(ctx context.Context, methodID stri
 // ceremony already proved possession, so the method is created enabled.
 func (r *Repository) CreateWebAuthnPasskey(ctx context.Context, userID string, name string, credentialID string, publicKey []byte, signCount uint32, metadata map[string]interface{}) (*ent.TwoFactorMethod, error) {
 	client := r.factory.GetClient(ctx, "", "")
-	tfmID := fmt.Sprintf("tfm_%s", uuid.New().String()[:12])
+	tfmID := idgen.New("tfm")
 	if name == "" {
 		name = "Passkey Authenticator"
 	}
@@ -1012,7 +1012,7 @@ func (r *Repository) CreateOrUpdatePendingSMSMethod(ctx context.Context, userID 
 		return updated, nil
 	}
 
-	methodID := fmt.Sprintf("2fa_%s", uuid.New().String()[:12])
+	methodID := idgen.New("2fa")
 	created, err := client.TwoFactorMethod.Create().
 		SetID(methodID).
 		SetUserID(userID).
@@ -1105,7 +1105,7 @@ func (r *Repository) UpdateUserPhone(ctx context.Context, userID string, phoneNu
 // and UpdateRecoveryContactStatus promotes the row to active.
 func (r *Repository) CreateRecoveryContact(ctx context.Context, userID, email, name string, shareIndex int, shareHash, inviteHash string, expiresAt time.Time) (*ent.RecoveryContact, error) {
 	client := r.factory.GetClient(ctx, "", "")
-	id := fmt.Sprintf("gdn_%s", uuid.New().String()[:12])
+	id := idgen.New("gdn")
 	contact, err := client.RecoveryContact.Create().
 		SetID(id).
 		SetUserID(userID).
@@ -1248,7 +1248,7 @@ func (r *Repository) CreateRecoveryRequest(ctx context.Context, userID, ip, subn
 		userAgent = "Mozilla/5.0 (Unknown)"
 	}
 	client := r.factory.GetClient(ctx, "", "")
-	id := fmt.Sprintf("req_%s", uuid.New().String()[:12])
+	id := idgen.New("req")
 	req, err := client.RecoveryRequest.Create().
 		SetID(id).
 		SetUserID(userID).
@@ -1326,7 +1326,7 @@ func (r *Repository) GetRecoveryRequestByCancellationHash(ctx context.Context, c
 // Returns the raw ent error unwrapped.
 func (r *Repository) CreateSecurityBlacklist(ctx context.Context, tenantID, userID, ipAddress, subnet, fpHash, reason string, expiresAt time.Time) (*ent.SecurityBlacklist, error) {
 	client := r.factory.GetClient(ctx, tenantID, "test")
-	id := fmt.Sprintf("blk_%s", uuid.New().String()[:12])
+	id := idgen.New("blk")
 	return client.SecurityBlacklist.Create().
 		SetID(id).
 		SetTenantID(tenantID).

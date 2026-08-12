@@ -112,7 +112,7 @@ func TestGetAndUpdateRecoveryPolicy_Repository(t *testing.T) {
 	t.Cleanup(func() { factory.Close() })
 
 	repo := policy.NewRepository(factory)
-	// The privacy interceptors require a scope, and policy writes no longer
+	// The privacy interceptors require a scope, and a policy write does not
 	// create a missing tenant, so the fixture provisions one up front.
 	ctx := privacy.NewBypassContext(context.Background())
 

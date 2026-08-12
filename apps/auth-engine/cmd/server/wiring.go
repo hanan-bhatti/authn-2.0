@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/audit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
@@ -49,6 +50,7 @@ type appWiring struct {
 	impersonationHandler *impersonation.Handler
 	orgHandler           *org.Handler
 	samlHandler          *saml.Handler
+	auditHandler         *audit.Handler
 	cleanup              func()
 }
 
@@ -119,6 +121,8 @@ func wireFeatures(
 	userHandler := user.NewHandler(userService)
 	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey)
 
+	auditHandler := audit.NewHandler(factory)
+
 	return &appWiring{
 		pkMiddleware:         pkMiddleware,
 		clientAuthMiddleware: clientAuthMiddleware,
@@ -135,6 +139,7 @@ func wireFeatures(
 		impersonationHandler: impersonationHandler,
 		orgHandler:           orgHandler,
 		samlHandler:          samlHandler,
+		auditHandler:         auditHandler,
 		cleanup: func() {
 			webhookDispatcher.Stop()
 		},

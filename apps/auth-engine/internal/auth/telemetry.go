@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"net"
 	"strings"
 	"time"
@@ -273,7 +274,7 @@ func (s *TelemetryService) RecordSuccessfulLoginTelemetry(ctx context.Context, u
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
-		id := fmt.Sprintf("sub_%s", uuid.New().String()[:12])
+		id := idgen.New("sub")
 		_ = client.UserIpSubnetHistory.Create().
 			SetID(id).
 			SetUserID(userID).
@@ -323,7 +324,7 @@ func (s *TelemetryService) RecordSuccessfulLoginTelemetry(ctx context.Context, u
 		return "", err
 	}
 
-	devID := fmt.Sprintf("trd_%s", uuid.New().String()[:12])
+	devID := idgen.New("trd")
 	deviceName := parseDeviceName(userAgent)
 
 	_, err = client.TrustedDevice.Create().

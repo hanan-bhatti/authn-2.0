@@ -383,7 +383,7 @@ func (l *Limiter) Middleware() fiber.Handler {
 			return c.Next()
 		}
 
-		tenantID := c.Query("tenant_id", "tnt_default")
+		tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
 		if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
 			tenantID = tID
 		}

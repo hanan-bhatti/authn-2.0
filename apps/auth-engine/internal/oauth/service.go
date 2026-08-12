@@ -90,7 +90,3 @@ func (s *Service) accessTokenExpiresIn() int {
 	}
 	return int(ttl.Seconds())
 }
-
-
-
-

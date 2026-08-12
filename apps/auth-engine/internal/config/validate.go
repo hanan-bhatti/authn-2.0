@@ -239,7 +239,7 @@ func (c *Config) validatePlatformTenant(add func(string, ...any)) {
 	// tnt_default is the development seeder's tenant, which ships with published
 	// demo credentials. Pointing the control plane at it would put those
 	// credentials in front of the tenant-provisioning API.
-	if id == "tnt_default" {
+	if id == "tnt_00000000000000000000000000000001" {
 		add("PLATFORM_TENANT_ID must not be \"tnt_default\": that tenant is created by " +
 			"the development seeder with credentials published in source control")
 	}

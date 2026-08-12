@@ -29,13 +29,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"io"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 )
@@ -241,7 +241,7 @@ func (d *Dispatcher) processTask(task DispatchTask) {
 	}
 
 	timestamp := time.Now().Unix()
-	eventID := fmt.Sprintf("evt_%s", uuid.New().String()[:12])
+	eventID := idgen.New("evt")
 
 	payloadObj := EventData{
 		ID:        eventID,
@@ -284,7 +284,7 @@ func (d *Dispatcher) deliverToEndpoint(ctx context.Context, ep *ent.WebhookEndpo
 	sig := SignPayload(rawSecret, timestamp, jsonBytes)
 	sigHeader := FormatSignatureHeader(timestamp, sig)
 
-	deliveryID := fmt.Sprintf("whd_%s", uuid.New().String()[:12])
+	deliveryID := idgen.New("whd")
 
 	var statusCode int
 	var respBodyStr string
@@ -364,7 +364,7 @@ func (d *Dispatcher) deliverToEndpoint(ctx context.Context, ep *ent.WebhookEndpo
 // is recorded in the returned delivery.
 func (d *Dispatcher) DeliverSync(ctx context.Context, ep *ent.WebhookEndpoint, eventType string, data map[string]interface{}) (*ent.WebhookEvent, error) {
 	timestamp := time.Now().Unix()
-	eventID := fmt.Sprintf("evt_%s", uuid.New().String()[:12])
+	eventID := idgen.New("evt")
 
 	payloadObj := EventData{
 		ID:        eventID,
@@ -386,7 +386,7 @@ func (d *Dispatcher) DeliverSync(ctx context.Context, ep *ent.WebhookEndpoint, e
 
 	sig := SignPayload(rawSecret, timestamp, jsonBytes)
 	sigHeader := FormatSignatureHeader(timestamp, sig)
-	deliveryID := fmt.Sprintf("whd_%s", uuid.New().String()[:12])
+	deliveryID := idgen.New("whd")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ep.URL, bytes.NewReader(jsonBytes))
 	if err != nil {

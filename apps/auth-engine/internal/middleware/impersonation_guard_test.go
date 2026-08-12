@@ -48,11 +48,11 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	})
 
 	// Standard User Token (Not Impersonated)
-	stdToken, err := jwtpkg.IssueAccessToken("usr_std123", "tnt_default", "test", "user@example.com", "User", "user", signingSecret, 15*time.Minute)
+	stdToken, err := jwtpkg.IssueAccessToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "user", signingSecret, 15*time.Minute)
 	require.NoError(t, err)
 
 	// Impersonated Token (IsImpersonated: true)
-	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_default", "test", "user@example.com", "User", "user", "usr_admin99", 15*time.Minute, signingSecret)
+	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "user", "usr_admin99", 15*time.Minute, signingSecret)
 	require.NoError(t, err)
 
 	// 1. Standard Token: GET Profile -> 200 OK
@@ -83,16 +83,16 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, resp4.StatusCode)
 
-	// 5. H7 regression — Impersonated Token: POST /2fa/totp/disable -> 403.
-	// The old substring matcher looked for "/2fa/disable" and missed this real
-	// route, letting an impersonator strip the victim's TOTP.
+	// 5. Impersonated token: POST /2fa/totp/disable -> 403. The route is matched
+	// on its real path, so an impersonator cannot strip the victim's TOTP by
+	// addressing a spelling the guard fails to recognise.
 	req5 := httptest.NewRequest("POST", "/v1/client/2fa/totp/disable", nil)
 	req5.Header.Set("Authorization", "Bearer "+impToken)
 	resp5, err := app.Test(req5)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, resp5.StatusCode)
 
-	// 6. H7 regression — param-tail route: DELETE webauthn credential -> 403.
+	// 6. A route ending in a variable segment: DELETE webauthn credential -> 403.
 	req6 := httptest.NewRequest("DELETE", "/v1/client/2fa/webauthn/credentials/cred_abc123", nil)
 	req6.Header.Set("Authorization", "Bearer "+impToken)
 	resp6, err := app.Test(req6)
@@ -109,7 +109,7 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, resp7.StatusCode)
 
-	// 8. H6 regression — same cookie name variant (access_token) is also honored.
+	// 8. The other cookie name (access_token) is honored the same way.
 	req8 := httptest.NewRequest("POST", "/v1/client/2fa/totp/disable", nil)
 	req8.AddCookie(&http.Cookie{Name: "access_token", Value: impToken})
 	resp8, err := app.Test(req8)
@@ -158,7 +158,7 @@ func TestImpersonationGuardLogsUnverifiableToken(t *testing.T) {
 
 	// A token signed with the WRONG secret: structurally a real JWT, so it gets
 	// past ExtractAccessToken and fails at signature verification.
-	foreignToken, err := jwtpkg.IssueAccessToken("usr_x", "tnt_default", "test", "x@example.com", "X", "user", "a_completely_different_signing_secret_1", 15*time.Minute)
+	foreignToken, err := jwtpkg.IssueAccessToken("usr_x", "tnt_00000000000000000000000000000001", "test", "x@example.com", "X", "user", "a_completely_different_signing_secret_1", 15*time.Minute)
 	require.NoError(t, err)
 
 	// 1. Unverifiable token -> request still proceeds (fail-open preserved) AND a
@@ -168,9 +168,10 @@ func TestImpersonationGuardLogsUnverifiableToken(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+foreignToken)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-		// Fail-open behavior is unchanged — downstream auth is what rejects this.
+		// An unverifiable token is not this guard's to reject: downstream auth is
+		// what refuses it. The guard's obligation here is the warning.
 		assert.Equal(t, http.StatusOK, resp.StatusCode,
-			"M8 is about observability; the fail-open behavior must NOT change")
+			"the guard observes an unverifiable token; it must not fail closed on one")
 	})
 
 	assert.Contains(t, out, "impersonation guard skipped",

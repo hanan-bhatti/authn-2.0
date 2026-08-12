@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
 	"time"
 
@@ -120,7 +121,7 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload string, ip, use
 		Only(ctx)
 	if err != nil {
 		created, err := client.User.Create().
-			SetID(newID("usr")).
+			SetID(idgen.New("usr")).
 			SetTenantID(tenantID).
 			SetEmail(email).
 			SetEmailVerified(true).
@@ -154,7 +155,7 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload string, ip, use
 		// access, which is recoverable by an administrator; it is not worth
 		// failing an otherwise valid authentication over.
 		_, _ = client.OrgMember.Create().
-			SetID(newID("mem")).
+			SetID(idgen.New("mem")).
 			SetOrganizationID(conn.OrganizationID).
 			SetUserID(usrObj.ID).
 			SetRoleID(roleID).

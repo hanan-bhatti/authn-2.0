@@ -32,7 +32,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 
-		"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"

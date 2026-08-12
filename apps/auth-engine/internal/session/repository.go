@@ -18,7 +18,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"time"
 
 	"github.com/google/uuid"
@@ -81,7 +81,7 @@ func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, u
 		rawToken = uuid.New().String() + uuid.New().String()
 	}
 	hash := HashRefreshToken(rawToken)
-	id := fmt.Sprintf("ses_%s", uuid.New().String()[:12])
+	id := idgen.New("ses")
 	now := time.Now()
 	expiresAt := now.Add(ttl)
 
