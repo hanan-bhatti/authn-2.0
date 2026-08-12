@@ -20,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -65,7 +66,7 @@ func ExtractAccessToken(c *fiber.Ctx) string {
 // leaks nothing, but an application could no longer assume its users belong to
 // its customer, which is what user counts, per-tenant limits and the isolation
 // promise all rest on.
-func RequireClientAuth(signingSecret string) fiber.Handler {
+func RequireClientAuth(signingSecret string, bl *tokenblocklist.Blocklist) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenStr := ExtractAccessToken(c)
 
@@ -76,6 +77,14 @@ func RequireClientAuth(signingSecret string) fiber.Handler {
 
 		claims, err := jwtpkg.VerifyAccessToken(tokenStr, signingSecret)
 		if err != nil {
+			return httperr.Unauthorized(c, httperr.CodeInvalidToken,
+				"invalid or expired access token")
+		}
+
+		// A token whose JTI appears in the blocklist was explicitly revoked —
+		// most commonly via ExitImpersonation — and must not be admitted even
+		// though its signature and expiry are still valid.
+		if bl.IsBlocked(c.UserContext(), claims.Jti) {
 			return httperr.Unauthorized(c, httperr.CodeInvalidToken,
 				"invalid or expired access token")
 		}

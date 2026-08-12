@@ -20,10 +20,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 )
 
 // SignUpRequest defines the HTTP payload for user registration.
@@ -79,6 +81,11 @@ type Handler struct {
 	policyRepo      *policy.Repository
 	rateLimiter     *ratelimit.Limiter
 	resendLimiter   *ratelimit.Limiter
+	// cookies builds every session cookie this handler writes. It is never nil:
+	// NewHandler installs one backed by default tenant policy, and
+	// WithSessionPolicyResolver replaces it with one that reads live policy.
+	cookies   *authcookie.Writer
+	blocklist *tokenblocklist.Blocklist
 }
 
 // NewHandler constructs a new Auth Handler instance.
@@ -95,7 +102,28 @@ func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ra
 		policyRepo:      policyRepo,
 		rateLimiter:     rateLimiter,
 		resendLimiter:   rLimiter,
+		cookies:         authcookie.NewWriter(service.config, nil),
 	}
+}
+
+// WithBlocklist sets the JTI revocation store used by routes this handler
+// protects with RequireClientAuth. It returns the handler for chaining.
+func (h *Handler) WithBlocklist(bl *tokenblocklist.Blocklist) *Handler {
+	h.blocklist = bl
+	return h
+}
+
+
+// WithSessionPolicyResolver points cookie construction at a live source of tenant
+// session policy, and returns the handler for chaining.
+//
+// Without it, cookies are built from policy.DefaultSessionPolicy — correct, but
+// deaf to a customer who has configured SameSite or a token lifetime. It is a
+// separate method rather than a constructor parameter so the handler stays
+// constructible in tests that have no database or cache behind them.
+func (h *Handler) WithSessionPolicyResolver(r authcookie.SessionPolicyResolver) *Handler {
+	h.cookies = authcookie.NewWriter(h.service.config, r)
+	return h
 }
 
 // RegisterRoutes mounts every client authentication endpoint under /v1/client.
@@ -129,7 +157,7 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 
 	// The signing secret is the same one the handlers used to verify with inline, so a token
 	// accepted before is accepted now.
-	clientAuth := middleware.RequireClientAuth(h.service.config.EncryptionKey)
+	clientAuth := middleware.RequireClientAuth(h.service.config.EncryptionKey, h.blocklist)
 
 	public := func(handler fiber.Handler) []fiber.Handler {
 		return append(append([]fiber.Handler{}, mws...), handler)
@@ -378,6 +406,17 @@ func getUserID(c *fiber.Ctx) string {
 		return val
 	}
 	if val, ok := c.Locals("user_id").(string); ok && val != "" {
+		return val
+	}
+	return ""
+}
+
+// getTenantID returns the tenant the publishable-key middleware resolved for this
+// request. An empty string is not an error here: it only means cookie attributes
+// fall back to default session policy, which is what a route reached without key
+// resolution should get.
+func getTenantID(c *fiber.Ctx) string {
+	if val, ok := c.Locals("tenant_id").(string); ok {
 		return val
 	}
 	return ""

@@ -29,9 +29,11 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
+	"github.com/redis/go-redis/v9"
 )
 
 type appWiring struct {
@@ -60,7 +62,9 @@ func wireFeatures(
 	factory *clientfactory.ClientFactory,
 	rateLimiter *ratelimit.Limiter,
 	resendLimiter *ratelimit.Limiter,
+	redisClient *redis.Client,
 ) *appWiring {
+	bl := tokenblocklist.New(redisClient)
 	apiKeyRepo := apikey.NewRepository(factory)
 	apiKeyService := apikey.NewService(apiKeyRepo, cfg.APIKeyPepper)
 	apiKeyHandler := apikey.NewHandler(apiKeyService)
@@ -78,7 +82,7 @@ func wireFeatures(
 
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider)
-	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter)
+	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).WithBlocklist(bl)
 
 	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
 	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
@@ -109,7 +113,7 @@ func wireFeatures(
 	webhookHandler := webhook.NewHandler(webhookService)
 
 	impersonationService := impersonation.NewService(factory, cfg, webhookDispatcher, emailProvider, rbacService)
-	impersonationHandler := impersonation.NewHandler(impersonationService, policyRepo, authService)
+	impersonationHandler := impersonation.NewHandler(impersonationService, policyRepo, authService, bl)
 
 	orgService := org.NewService(factory, webhookDispatcher, cfg)
 	orgHandler := org.NewHandler(orgService)
@@ -119,7 +123,7 @@ func wireFeatures(
 
 	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher, cfg)
 	userHandler := user.NewHandler(userService)
-	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey)
+	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey, bl)
 
 	auditHandler := audit.NewHandler(factory)
 

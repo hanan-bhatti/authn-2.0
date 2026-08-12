@@ -172,6 +172,9 @@ func (h *Handler) CreateSAMLConnection(c *fiber.Ctx) error {
 			return httperr.Conflict(c, httperr.CodeAlreadyExists,
 				"SAML connection already exists for this organization")
 		}
+		if errors.Is(err, ErrOrgNotFound) {
+			return httperr.NotFound(c, httperr.CodeNotFound, "organization not found")
+		}
 		if errors.Is(err, ErrInvalidEntityID) || errors.Is(err, ErrInvalidSSOURL) || errors.Is(err, ErrInvalidCert) || errors.Is(err, ErrInvalidDomains) || isDomainConflict(err) {
 			return sendConfigValidationError(c, err)
 		}

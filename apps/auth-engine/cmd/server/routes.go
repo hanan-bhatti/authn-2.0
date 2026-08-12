@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/redis/go-redis/v9"
 )
@@ -26,12 +27,13 @@ func registerRoutes(
 	redisClient *redis.Client,
 	w *appWiring,
 ) {
+	bl := tokenblocklist.New(redisClient)
 	// 6. System & Feature Routes
 	app.Get("/v1/health", HealthCheckHandler(cfg.AppVersion))
 	app.Get("/v1/ready", ReadinessCheckHandler(factory, redisClient))
 	app.Get("/healthz", HealthCheckHandler(cfg.AppVersion))
 	app.Get("/readyz", ReadinessCheckHandler(factory, redisClient))
-	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.EncryptionKey))
+	app.Use("/v1/client", middleware.PreventImpersonatedMutations(cfg.EncryptionKey, bl))
 	w.authHandler.RegisterRoutes(app, w.pkMiddleware)
 	w.userHandler.RegisterRoutes(app, w.clientAuthMiddleware, w.pkMiddleware)
 	w.policyHandler.RegisterRoutes(app, w.adminMiddleware) // sk_ OR console JWT

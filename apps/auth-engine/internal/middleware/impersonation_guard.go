@@ -23,6 +23,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -142,7 +143,9 @@ func tokenFailureReason(err error) string {
 // PreventImpersonatedMutations returns a Fiber middleware that answers 403 to a
 // destructive account mutation whenever the caller's access token is marked
 // impersonated. Every other request continues down the chain unchanged.
-// signingSecret verifies the access-token signature.
+// signingSecret verifies the access-token signature. bl additionally refuses
+// tokens whose JTI was explicitly revoked, even if they are still within their
+// natural lifetime.
 //
 // Token extraction goes through ExtractAccessToken, so this guard applies the
 // same cookie-then-header precedence as RequireClientAuth. The two MUST agree: a
@@ -156,7 +159,7 @@ func tokenFailureReason(err error) string {
 // downstream and is what actually rejects a bad token; rejecting here would
 // return the wrong status from the wrong layer. Fail-open is only safe while it
 // is observable, hence the log line on every skip.
-func PreventImpersonatedMutations(signingSecret string) fiber.Handler {
+func PreventImpersonatedMutations(signingSecret string, bl *tokenblocklist.Blocklist) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenStr := ExtractAccessToken(c)
 		if strings.TrimSpace(tokenStr) == "" {
@@ -171,6 +174,14 @@ func PreventImpersonatedMutations(signingSecret string) fiber.Handler {
 		if err != nil || claims == nil {
 			log.Printf("[warn] impersonation guard skipped: token failed verification (reason=%s) %s %s",
 				tokenFailureReason(err), c.Method(), c.Path())
+			return c.Next()
+		}
+
+		// A revoked token cannot be impersonated — and cannot be anything else
+		// useful. RequireClientAuth downstream will also reject it; returning
+		// early here avoids a 403/impersonation_read_only_restricted response
+		// when the correct response is 401/invalid_token.
+		if bl.IsBlocked(c.UserContext(), claims.Jti) {
 			return c.Next()
 		}
 

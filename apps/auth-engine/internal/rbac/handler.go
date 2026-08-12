@@ -272,6 +272,9 @@ func (h *Handler) RevokeUserRole(c *fiber.Ctx) error {
 	actorID := h.getActorID(c)
 	err := h.svc.RevokeUserRole(c.UserContext(), tenantID, targetUserID, roleSlug, actorID, c.IP(), c.Get("User-Agent"))
 	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) || errors.Is(err, ErrUserNotFound) {
+			return httperr.NotFound(c, httperr.CodeNotFound, "user or role not found")
+		}
 		return httperr.SendInternal(c, "rbac.revoke_user_role", err)
 	}
 

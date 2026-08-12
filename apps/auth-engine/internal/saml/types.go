@@ -53,6 +53,9 @@ var DomainRegex = regexp.MustCompile(`^(?i)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(
 var (
 	// ErrSAMLNotFound reports that the organization has no SAML connection.
 	ErrSAMLNotFound = errors.New("SAML connection configuration not found")
+	// ErrOrgNotFound reports that the addressed organization does not exist
+	// within the requesting tenant.
+	ErrOrgNotFound = errors.New("organization not found")
 	// ErrSAMLExists reports that the organization already has a connection.
 	ErrSAMLExists = errors.New("SAML connection already exists for this organization")
 	// ErrInvalidEntityID reports an entity ID outside the accepted length range.

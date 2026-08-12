@@ -102,7 +102,7 @@ func main() {
 	rateLimiter, resendLimiter := setupMiddleware(app, cfg, redisClient)
 
 	// 6. Wire Repositories, Services, and Handlers
-	wiring := wireFeatures(cfg, factory, rateLimiter, resendLimiter)
+	wiring := wireFeatures(cfg, factory, rateLimiter, resendLimiter, redisClient)
 	defer wiring.cleanup()
 
 	// 7. System & Feature Routes

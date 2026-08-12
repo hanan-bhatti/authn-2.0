@@ -157,11 +157,22 @@ func (s *Service) AssignUserRole(ctx context.Context, tenantID, targetUserID, ro
 }
 
 // RevokeUserRole removes the role named by roleSlug from targetUserID. It
-// returns ErrRoleNotFound when the slug names no role in the tenant; revoking a
-// role the user does not hold is not an error.
+// returns ErrRoleNotFound when the slug names no role in the tenant,
+// ErrUserNotFound when the target user does not belong to the tenant, and no
+// error when the user simply did not hold the role.
 func (s *Service) RevokeUserRole(ctx context.Context, tenantID, targetUserID, roleSlug, actorID, ip, ua string) error {
+	// The role slug is resolved first: if the slug is unknown in this tenant
+	// the rest of the operation is moot regardless of whether the user is valid.
 	roleObj, err := s.repo.GetRoleBySlug(ctx, tenantID, roleSlug)
 	if err != nil {
+		return err
+	}
+
+	// Verify the target user exists in this tenant before performing the delete.
+	// Without this check a caller could silently revoke a role from a user in
+	// another tenant (the UserRole.Delete predicate filters only by userID and
+	// roleID, not by the user's tenant).
+	if err := s.repo.CheckUserBelongsToTenant(ctx, tenantID, targetUserID); err != nil {
 		return err
 	}
 

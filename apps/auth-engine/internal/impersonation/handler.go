@@ -20,10 +20,12 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -99,15 +101,20 @@ type Handler struct {
 	policyRepo PolicyRepository
 	// verifier performs step-up verification; nil skips it.
 	verifier StepUpVerifier
+	// blocklist records revoked token JTIs so middleware can reject replays
+	// within the remaining lifetime of the original token.
+	blocklist *tokenblocklist.Blocklist
 }
 
 // NewHandler returns an impersonation handler. A nil policyRepo makes every
-// request fall back to policy.DefaultImpersonationPolicy.
-func NewHandler(svc *Service, policyRepo PolicyRepository, verifier StepUpVerifier) *Handler {
+// request fall back to policy.DefaultImpersonationPolicy. A nil blocklist
+// leaves exit revocation server-side-only when Redis is unconfigured.
+func NewHandler(svc *Service, policyRepo PolicyRepository, verifier StepUpVerifier, bl *tokenblocklist.Blocklist) *Handler {
 	return &Handler{
 		svc:        svc,
 		policyRepo: policyRepo,
 		verifier:   verifier,
+		blocklist:  bl,
 	}
 }
 
@@ -243,6 +250,12 @@ func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 	if !claims.IsImpersonated {
 		return httperr.BadRequest(c, codeNotImpersonationSession, "active session is not an impersonation session")
 	}
+
+	// Record the JTI so middleware rejects this token if the bearer replays it
+	// before natural expiry. The TTL matches the token's remaining lifetime so
+	// the blocklist key self-expires when the token would have anyway.
+	remainingTTL := time.Until(time.Unix(claims.Exp, 0).UTC())
+	h.blocklist.Block(c.UserContext(), claims.Jti, remainingTTL)
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message":         "impersonation session exited successfully",

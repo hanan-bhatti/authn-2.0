@@ -12,7 +12,6 @@ package saml
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
@@ -43,7 +42,7 @@ func (s *Service) CreateSAMLConnection(ctx context.Context, tenantID, actorID st
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, errors.New("organization not found")
+			return nil, ErrOrgNotFound
 		}
 		return nil, fmt.Errorf("failed to query organization: %w", err)
 	}

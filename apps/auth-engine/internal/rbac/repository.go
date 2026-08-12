@@ -24,6 +24,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/permission"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -38,6 +39,8 @@ var (
 	ErrSystemRoleDelete = errors.New("built-in system roles cannot be deleted")
 	// ErrUserRoleExists reports that the user already holds the role.
 	ErrUserRoleExists = errors.New("user already possesses this role")
+	// ErrUserNotFound reports that the target user does not exist in the tenant.
+	ErrUserNotFound = errors.New("user not found")
 )
 
 // Repository reads and writes RBAC entities.
@@ -49,6 +52,24 @@ type Repository struct {
 // NewRepository returns an RBAC repository backed by the given client factory.
 func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
+}
+
+// CheckUserBelongsToTenant reports whether a user exists within tenantID.
+// It returns ErrUserNotFound when the user does not exist or belongs to a
+// different tenant, so callers can refuse cross-tenant mutations without
+// exposing whether the user ID is valid in some other tenant.
+func (r *Repository) CheckUserBelongsToTenant(ctx context.Context, tenantID, userID string) error {
+	client := r.factory.GetClient(ctx, tenantID, "")
+	exists, err := client.User.Query().
+		Where(user.ID(userID), user.TenantID(tenantID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 // CreateRole inserts a role, deriving name from slug or slug from name when
