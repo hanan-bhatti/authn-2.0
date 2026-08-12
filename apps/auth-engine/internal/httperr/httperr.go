@@ -8,9 +8,6 @@
  *              error text (database driver output, JWT parse failures, wrapped Go
  *              errors) server-side instead of returning it to callers.
  *
- * Audit: M9 (inconsistent envelopes, err.Error() leaked to clients), H8 (sentinel
- *        comparison), and the SDK's AuthnError.fromResponse contract.
- *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
 
@@ -48,6 +45,12 @@ const (
 	CodeInsufficientScope    Code = "insufficient_permissions"
 	CodeTenantAdminRequired  Code = "tenant_admin_required"
 	CodeImpersonationBlocked Code = "impersonation_blocked"
+
+	// Tenant and origin binding. Both mean the credential is individually valid
+	// but does not belong with the rest of the request: a session from another
+	// tenant, or a browser origin the application never registered.
+	CodeTenantMismatch   Code = "tenant_mismatch"
+	CodeOriginNotAllowed Code = "origin_not_allowed"
 
 	// Resource state.
 	CodeNotFound      Code = "not_found"

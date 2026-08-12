@@ -147,8 +147,7 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	// --- The fallback is REMOVED on ordinary routes -------------------------
 
 	// 1. A VALID key in ?publishable_key= on a non-allowlisted GET -> 401.
-	//    This is the core M6 assertion: a key that would have been accepted
-	//    before is now rejected because it arrived in the query string.
+	//    The key itself is good; where it arrived from is what disqualifies it.
 	req := httptest.NewRequest("GET", "/v1/client/user/profile?publishable_key="+rawKey, nil)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -169,8 +168,8 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
 		"query fallback must not apply to POST routes")
 
-	// 4. The header still works on those same routes — the change scopes the
-	//    fallback, it does not break header auth.
+	// 4. The header still works on those same routes — the allowlist scopes
+	//    where a key may be read from, not whether header auth works.
 	req = httptest.NewRequest("GET", "/v1/client/user/profile", nil)
 	req.Header.Set("X-Authn-Publishable-Key", rawKey)
 	resp, err = app.Test(req)

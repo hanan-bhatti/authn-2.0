@@ -97,6 +97,16 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 				return httperr.Unauthorized(c, httperr.CodeInvalidToken,
 					"invalid or expired console session token")
 			}
+
+			// A key middleware may have resolved a tenant ahead of this one. When
+			// it did, the console token must agree with it — see the same check in
+			// RequireClientAuth for why a token's tenant is not trusted alone.
+			if keyTenant := GetTenantID(c); keyTenant != "" && keyTenant != claims.TenantID {
+				return httperr.Unauthorized(c, httperr.CodeTenantMismatch,
+					"this console session belongs to a different tenant than the API key used for this request — "+
+						"sign in again as an administrator of this tenant")
+			}
+
 			if claims.Role != "tenant_admin" {
 				return httperr.Forbidden(c, httperr.CodeTenantAdminRequired,
 					"forbidden: tenant_admin role required — regular user JWTs cannot access admin routes")

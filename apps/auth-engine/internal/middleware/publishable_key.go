@@ -102,6 +102,13 @@ func allowsPublishableKeyInQuery(method, path string) bool {
 // is absent, and 401 when it is invalid, expired, revoked, or of the wrong type;
 // the two are distinguished by message only, since neither should tell an
 // unauthenticated caller which keys exist.
+//
+// It also enforces the application's own browser-origin allowlist, which the
+// deployment-wide CORS middleware cannot: that middleware runs before any key is
+// read, so it knows nothing about which application is calling. See
+// originAllowedForApplication. The refusal names the problem but never echoes
+// the configured list back — a caller holding a public key must not be able to
+// enumerate a customer's registered origins.
 func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		rawKey := c.Get("X-Authn-Publishable-Key")
@@ -125,6 +132,12 @@ func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 				"invalid, expired, or revoked publishable API key")
 		}
 
+		if !originAllowedForApplication(c, app.AllowedCorsOrigins) {
+			return httperr.Forbidden(c, httperr.CodeOriginNotAllowed,
+				"this origin is not registered for the application this publishable key belongs to — "+
+					"add it to the application's allowed origins")
+		}
+
 		envStr := string(key.Environment)
 		privacyCtx := privacy.NewContext(c.UserContext(), app.TenantID, app.ID, envStr)
 		c.SetUserContext(privacyCtx)
@@ -135,4 +148,50 @@ func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 
 		return c.Next()
 	}
+}
+
+// originAllowedForApplication reports whether a browser request's Origin is one
+// the application registered.
+//
+// This is the per-application half of CORS. The global middleware is the coarse
+// deployment gate — it bounds what the whole engine will ever serve — but it
+// runs before any key is resolved, so it cannot tell one customer's application
+// from another's. A publishable key ships in a browser bundle and is therefore
+// public; without this check, anyone who copies one out of a page can call the
+// API from their own site with it. What that alone gets them is limited (the
+// browser still refuses to hand them a cross-origin response the global policy
+// did not allow), but the request has already run by then, so writes and rate
+// budget are spent. Refusing it before the handler is what makes the allowlist a
+// control rather than a hint.
+//
+// It answers true in two cases deliberately:
+//
+//   - An empty allowlist means "not configured": an application that registered
+//     no origin is not governed by one. A default-deny would instead make the
+//     field mandatory for every deployment.
+//   - A request with no Origin header is not a browser cross-origin request:
+//     server-to-server calls, mobile SDKs and emailed-link landings never send
+//     one, and they are not what an origin allowlist governs.
+//
+// It reports a bool rather than returning an error because the httperr helpers
+// return the result of c.JSON, which is nil on success. A caller writing
+// `if err := check(c); err != nil` would therefore read a written rejection as a
+// pass and continue into the handler.
+func originAllowedForApplication(c *fiber.Ctx, allowedOrigins []string) bool {
+	if len(allowedOrigins) == 0 {
+		return true
+	}
+
+	origin := strings.TrimSpace(c.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+
+	requested := normalizeOrigin(origin)
+	for _, allowed := range allowedOrigins {
+		if normalizeOrigin(allowed) == requested {
+			return true
+		}
+	}
+	return false
 }

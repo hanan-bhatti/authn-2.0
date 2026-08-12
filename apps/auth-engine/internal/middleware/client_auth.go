@@ -56,6 +56,15 @@ func ExtractAccessToken(c *fiber.Ctx) string {
 // answers 401 when no token is present and 401 when the token fails
 // verification, distinguished by error code so a client can tell "sign in" from
 // "refresh your session".
+//
+// When RequirePublishableKey ran first — the normal arrangement on /v1/client —
+// the token's tenant must equal the tenant the key resolved, or the request is
+// refused with CodeTenantMismatch. Without that check a user of tenant B could
+// present their own token alongside tenant A's publishable key and be admitted
+// as an authenticated user of A's application. They would still act as B, so it
+// leaks nothing, but an application could no longer assume its users belong to
+// its customer, which is what user counts, per-tenant limits and the isolation
+// promise all rest on.
 func RequireClientAuth(signingSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		tokenStr := ExtractAccessToken(c)
@@ -71,7 +80,20 @@ func RequireClientAuth(signingSecret string) fiber.Handler {
 				"invalid or expired access token")
 		}
 
-		privacyCtx := privacy.NewContext(c.UserContext(), claims.TenantID, "", claims.Environment)
+		// Empty means no key middleware preceded this one, so there is nothing to
+		// compare against and the token is the only tenant authority.
+		if keyTenant := GetTenantID(c); keyTenant != "" && keyTenant != claims.TenantID {
+			return httperr.Unauthorized(c, httperr.CodeTenantMismatch,
+				"this session belongs to a different tenant than the API key used for this request — "+
+					"sign in again through this application, or check that the publishable key matches "+
+					"the account the user signed into")
+		}
+
+		// The application, when a key resolved one, is carried through: the token
+		// itself has no application claim, and dropping the ID here would erase
+		// which application the request arrived through.
+		appID, _ := c.Locals("application_id").(string)
+		privacyCtx := privacy.NewContext(c.UserContext(), claims.TenantID, appID, claims.Environment)
 		c.SetUserContext(privacyCtx)
 
 		// Both spellings of the user-ID local are set: handlers across the engine

@@ -33,6 +33,12 @@ import (
 // credentials would let any site a signed-in user visits call this API with
 // their cookies attached and read the replies. config.Validate refuses that
 // combination at startup, and this middleware never reflects an unlisted origin.
+//
+// This is the outer bound for the whole deployment, not the per-customer policy.
+// It runs before any API key is read, so it cannot know which application is
+// calling; each application's own allowlist is enforced once the key resolves it,
+// in originAllowedForApplication. A request must satisfy both, which is what
+// stops one tenant's settings from widening the deployment's exposure.
 func CORS(cfg *config.Config) fiber.Handler {
 	allowed := make(map[string]struct{}, len(cfg.CORSAllowedOrigins))
 	wildcard := false
