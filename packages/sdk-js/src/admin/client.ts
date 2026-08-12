@@ -75,20 +75,34 @@ export class AuthnAdminClient {
         "AuthnAdminClient Error: AuthnAdminClient uses secret key authentication and must ONLY be instantiated in Node.js / server-side environments."
       );
     }
-    if (!config || !config.secretKey) {
+    const secretKey =
+      config?.secretKey ||
+      (typeof process !== "undefined" ? process.env?.AUTHN_SECRET_KEY : undefined);
+
+    if (!secretKey) {
       throw new Error(
-        "AuthnAdminClient Error: secretKey is required (must start with 'sk_')"
+        "AuthnAdminClient Error: secretKey is required (must start with 'sk_'). Pass secretKey in config or set AUTHN_SECRET_KEY in environment."
       );
     }
-    if (!config.secretKey.startsWith("sk_")) {
+    if (!secretKey.startsWith("sk_")) {
       throw new Error(
         "AuthnAdminClient Error: Invalid secret key format. Secret keys must start with 'sk_'"
       );
     }
 
-    this.secretKey = config.secretKey;
-    this.publishableKey = config.publishableKey || "pk_test_demo12345678901234567890123456789012";
-    const endpoint = config.endpoint || "http://127.0.0.1:8080";
+    this.secretKey = secretKey;
+    this.publishableKey =
+      config?.publishableKey ||
+      (typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY : undefined) ||
+      "pk_test_demo12345678901234567890123456789012";
+
+    const endpoint =
+      config?.endpoint ||
+      (typeof process !== "undefined"
+        ? process.env?.NEXT_PUBLIC_AUTHN_API_URL || process.env?.AUTHN_API_URL
+        : undefined) ||
+      "http://127.0.0.1:8080";
+
 
     this.http = new HttpClient({
       baseUrl: endpoint,
