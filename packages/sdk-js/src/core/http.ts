@@ -50,8 +50,9 @@ export class HttpClient {
   async post<T>(
     path: string,
     body?: Record<string, unknown>,
+    extraHeaders?: Record<string, string>,
   ): Promise<HttpResponse<T>> {
-    return this.request<T>("POST", path, body);
+    return this.request<T>("POST", path, body, 0, false, extraHeaders);
   }
 
   async get<T>(
@@ -97,6 +98,7 @@ export class HttpClient {
     body?: Record<string, unknown>,
     attempt = 0,
     isRetryAfterRefresh = false,
+    extraHeaders?: Record<string, string>,
   ): Promise<HttpResponse<T>> {
     const url = `${this.baseUrl}${path}`;
 
@@ -118,9 +120,18 @@ export class HttpClient {
       "X-Authn-Client-Type": "web",
     };
 
+    if (this.publishableKey && this.publishableKey.startsWith("sk_")) {
+      headers["Authorization"] = `Bearer ${this.publishableKey}`;
+      headers["X-Authn-Secret-Key"] = this.publishableKey;
+    }
+
     const accessToken = this.getAccessToken?.();
     if (accessToken) {
       headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+
+    if (extraHeaders) {
+      Object.assign(headers, extraHeaders);
     }
 
     let response: Response;
