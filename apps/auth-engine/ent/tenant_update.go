@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
@@ -202,6 +203,18 @@ func (tu *TenantUpdate) ClearRolePolicy() *TenantUpdate {
 	return tu
 }
 
+// SetSessionPolicy sets the "session_policy" field.
+func (tu *TenantUpdate) SetSessionPolicy(m map[string]interface{}) *TenantUpdate {
+	tu.mutation.SetSessionPolicy(m)
+	return tu
+}
+
+// ClearSessionPolicy clears the value of the "session_policy" field.
+func (tu *TenantUpdate) ClearSessionPolicy() *TenantUpdate {
+	tu.mutation.ClearSessionPolicy()
+	return tu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tu *TenantUpdate) SetUpdatedAt(t time.Time) *TenantUpdate {
 	tu.mutation.SetUpdatedAt(t)
@@ -296,6 +309,21 @@ func (tu *TenantUpdate) AddAuditLogs(a ...*AuditLog) *TenantUpdate {
 		ids[i] = a[i].ID
 	}
 	return tu.AddAuditLogIDs(ids...)
+}
+
+// AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by IDs.
+func (tu *TenantUpdate) AddManagedTenantIDs(ids ...string) *TenantUpdate {
+	tu.mutation.AddManagedTenantIDs(ids...)
+	return tu
+}
+
+// AddManagedTenants adds the "managed_tenants" edges to the ManagedTenant entity.
+func (tu *TenantUpdate) AddManagedTenants(m ...*ManagedTenant) *TenantUpdate {
+	ids := make([]string, len(m))
+	for i := range m {
+		ids[i] = m[i].ID
+	}
+	return tu.AddManagedTenantIDs(ids...)
 }
 
 // Mutation returns the TenantMutation object of the builder.
@@ -429,6 +457,27 @@ func (tu *TenantUpdate) RemoveAuditLogs(a ...*AuditLog) *TenantUpdate {
 	return tu.RemoveAuditLogIDs(ids...)
 }
 
+// ClearManagedTenants clears all "managed_tenants" edges to the ManagedTenant entity.
+func (tu *TenantUpdate) ClearManagedTenants() *TenantUpdate {
+	tu.mutation.ClearManagedTenants()
+	return tu
+}
+
+// RemoveManagedTenantIDs removes the "managed_tenants" edge to ManagedTenant entities by IDs.
+func (tu *TenantUpdate) RemoveManagedTenantIDs(ids ...string) *TenantUpdate {
+	tu.mutation.RemoveManagedTenantIDs(ids...)
+	return tu
+}
+
+// RemoveManagedTenants removes "managed_tenants" edges to ManagedTenant entities.
+func (tu *TenantUpdate) RemoveManagedTenants(m ...*ManagedTenant) *TenantUpdate {
+	ids := make([]string, len(m))
+	for i := range m {
+		ids[i] = m[i].ID
+	}
+	return tu.RemoveManagedTenantIDs(ids...)
+}
+
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (tu *TenantUpdate) Save(ctx context.Context) (int, error) {
 	tu.defaults()
@@ -551,6 +600,12 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if tu.mutation.RolePolicyCleared() {
 		_spec.ClearField(tenant.FieldRolePolicy, field.TypeJSON)
+	}
+	if value, ok := tu.mutation.SessionPolicy(); ok {
+		_spec.SetField(tenant.FieldSessionPolicy, field.TypeJSON, value)
+	}
+	if tu.mutation.SessionPolicyCleared() {
+		_spec.ClearField(tenant.FieldSessionPolicy, field.TypeJSON)
 	}
 	if value, ok := tu.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -825,6 +880,51 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if tu.mutation.ManagedTenantsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tu.mutation.RemovedManagedTenantsIDs(); len(nodes) > 0 && !tu.mutation.ManagedTenantsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tu.mutation.ManagedTenantsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if n, err = sqlgraph.UpdateNodes(ctx, tu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{tenant.Label}
@@ -1013,6 +1113,18 @@ func (tuo *TenantUpdateOne) ClearRolePolicy() *TenantUpdateOne {
 	return tuo
 }
 
+// SetSessionPolicy sets the "session_policy" field.
+func (tuo *TenantUpdateOne) SetSessionPolicy(m map[string]interface{}) *TenantUpdateOne {
+	tuo.mutation.SetSessionPolicy(m)
+	return tuo
+}
+
+// ClearSessionPolicy clears the value of the "session_policy" field.
+func (tuo *TenantUpdateOne) ClearSessionPolicy() *TenantUpdateOne {
+	tuo.mutation.ClearSessionPolicy()
+	return tuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (tuo *TenantUpdateOne) SetUpdatedAt(t time.Time) *TenantUpdateOne {
 	tuo.mutation.SetUpdatedAt(t)
@@ -1107,6 +1219,21 @@ func (tuo *TenantUpdateOne) AddAuditLogs(a ...*AuditLog) *TenantUpdateOne {
 		ids[i] = a[i].ID
 	}
 	return tuo.AddAuditLogIDs(ids...)
+}
+
+// AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by IDs.
+func (tuo *TenantUpdateOne) AddManagedTenantIDs(ids ...string) *TenantUpdateOne {
+	tuo.mutation.AddManagedTenantIDs(ids...)
+	return tuo
+}
+
+// AddManagedTenants adds the "managed_tenants" edges to the ManagedTenant entity.
+func (tuo *TenantUpdateOne) AddManagedTenants(m ...*ManagedTenant) *TenantUpdateOne {
+	ids := make([]string, len(m))
+	for i := range m {
+		ids[i] = m[i].ID
+	}
+	return tuo.AddManagedTenantIDs(ids...)
 }
 
 // Mutation returns the TenantMutation object of the builder.
@@ -1238,6 +1365,27 @@ func (tuo *TenantUpdateOne) RemoveAuditLogs(a ...*AuditLog) *TenantUpdateOne {
 		ids[i] = a[i].ID
 	}
 	return tuo.RemoveAuditLogIDs(ids...)
+}
+
+// ClearManagedTenants clears all "managed_tenants" edges to the ManagedTenant entity.
+func (tuo *TenantUpdateOne) ClearManagedTenants() *TenantUpdateOne {
+	tuo.mutation.ClearManagedTenants()
+	return tuo
+}
+
+// RemoveManagedTenantIDs removes the "managed_tenants" edge to ManagedTenant entities by IDs.
+func (tuo *TenantUpdateOne) RemoveManagedTenantIDs(ids ...string) *TenantUpdateOne {
+	tuo.mutation.RemoveManagedTenantIDs(ids...)
+	return tuo
+}
+
+// RemoveManagedTenants removes "managed_tenants" edges to ManagedTenant entities.
+func (tuo *TenantUpdateOne) RemoveManagedTenants(m ...*ManagedTenant) *TenantUpdateOne {
+	ids := make([]string, len(m))
+	for i := range m {
+		ids[i] = m[i].ID
+	}
+	return tuo.RemoveManagedTenantIDs(ids...)
 }
 
 // Where appends a list predicates to the TenantUpdate builder.
@@ -1392,6 +1540,12 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if tuo.mutation.RolePolicyCleared() {
 		_spec.ClearField(tenant.FieldRolePolicy, field.TypeJSON)
+	}
+	if value, ok := tuo.mutation.SessionPolicy(); ok {
+		_spec.SetField(tenant.FieldSessionPolicy, field.TypeJSON, value)
+	}
+	if tuo.mutation.SessionPolicyCleared() {
+		_spec.ClearField(tenant.FieldSessionPolicy, field.TypeJSON)
 	}
 	if value, ok := tuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -1659,6 +1813,51 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(auditlog.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if tuo.mutation.ManagedTenantsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tuo.mutation.RemovedManagedTenantsIDs(); len(nodes) > 0 && !tuo.mutation.ManagedTenantsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tuo.mutation.ManagedTenantsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

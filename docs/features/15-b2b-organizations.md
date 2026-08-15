@@ -10,9 +10,9 @@
 
 The organization system relies on three Ent ORM schemas in `apps/auth-engine/ent/schema`:
 
-- [`organization.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/ent/schema/organization.go): Workspace entity (`id`: `org_...`, `tenant_id`, `name`, `slug`, `logo_url`, `metadata` JSON).
-- [`org_member.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/ent/schema/org_member.go): Membership join table (`id`: `mem_...`, `organization_id`, `user_id`, `role_id`, `assigned_by_user_id`).
-- [`org_invitation.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/ent/schema/org_invitation.go): Pending invitations (`id`: `inv_...`, `organization_id`, `email`, `role_id`, `invitation_token`, `status`: `pending` | `accepted` | `expired`, `expires_at`).
+- [`organization.go`](../../apps/auth-engine/ent/schema/organization.go): Workspace entity (`id`: `org_...`, `tenant_id`, `name`, `slug`, `logo_url`, `metadata` JSON).
+- [`org_member.go`](../../apps/auth-engine/ent/schema/org_member.go): Membership join table (`id`: `mem_...`, `organization_id`, `user_id`, `role_id`, `assigned_by_user_id`).
+- [`org_invitation.go`](../../apps/auth-engine/ent/schema/org_invitation.go): Pending invitations (`id`: `inv_...`, `organization_id`, `email`, `role_id`, `invitation_token`, `status`: `pending` | `accepted` | `expired`, `expires_at`).
 
 ---
 
@@ -80,4 +80,4 @@ Run automated Go tests:
 go test -v ./internal/org/...
 ```
 
-Or open [`org-proof.html`](file:///home/hanan-bhatti/authn/org-proof.html) in any web browser to execute live HTTP verification requests.
+Or open [`org-proof.html`](../../org-proof.html) in any web browser to execute live HTTP verification requests.

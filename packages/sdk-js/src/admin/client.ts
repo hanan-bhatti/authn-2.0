@@ -45,6 +45,19 @@ import type {
   RevokeAPIKeyResult,
   ListAuditLogsParams,
   ListAuditLogsResult,
+  PasswordPolicyDTO,
+  GetPasswordPolicyResult,
+  UpdatePasswordPolicyParams,
+  UpdatePasswordPolicyResult,
+  SecurityPolicyDTO,
+  GetSecurityPolicyResult,
+  UpdateSecurityPolicyParams,
+  UpdateSecurityPolicyResult,
+  RecoveryPolicyDTO,
+  GetRecoveryPolicyResult,
+  UpdateRecoveryPolicyParams,
+  UpdateRecoveryPolicyResult,
+  RotateJWKSResult,
   RoleDTO,
   ImpersonationPolicyDTO,
   WebhookEndpointDTO,
@@ -70,44 +83,42 @@ export class AuthnAdminClient {
   private publishableKey: string;
 
   constructor(config: AuthnAdminConfig) {
-    if (typeof window !== "undefined") {
-      throw new Error(
-        "AuthnAdminClient Error: AuthnAdminClient uses secret key authentication and must ONLY be instantiated in Node.js / server-side environments."
-      );
-    }
-    const secretKey =
+    const rawSecretKey =
       config?.secretKey ||
       (typeof process !== "undefined" ? process.env?.AUTHN_SECRET_KEY : undefined);
 
-    if (!secretKey) {
+    const isBrowser = typeof window !== "undefined";
+
+    // In browser environments, throw if a raw secret key (sk_...) is provided to prevent key leakage
+    if (isBrowser && rawSecretKey && rawSecretKey.startsWith("sk_")) {
       throw new Error(
-        "AuthnAdminClient Error: secretKey is required (must start with 'sk_'). Pass secretKey in config or set AUTHN_SECRET_KEY in environment."
-      );
-    }
-    if (!secretKey.startsWith("sk_")) {
-      throw new Error(
-        "AuthnAdminClient Error: Invalid secret key format. Secret keys must start with 'sk_'"
+        "AuthnAdminClient Error: Secret keys (sk_...) must NOT be exposed or used in browser environments. Use session JWT token authentication for client-side admin operations."
       );
     }
 
-    this.secretKey = secretKey;
-    this.publishableKey =
+    const secretKey = isBrowser ? undefined : rawSecretKey;
+
+    const publishableKey =
       config?.publishableKey ||
       (typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY : undefined) ||
-      "pk_test_demo12345678901234567890123456789012";
+      "";
 
     const endpoint =
       config?.endpoint ||
       (typeof process !== "undefined"
-        ? process.env?.NEXT_PUBLIC_AUTHN_API_URL || process.env?.AUTHN_API_URL
+        ? process.env?.NEXT_PUBLIC_AUTHN_API_URL || process.env?.APP_BASE_URL
         : undefined) ||
       "http://127.0.0.1:8080";
+
+    this.secretKey = secretKey || publishableKey;
+    this.publishableKey = publishableKey;
 
 
     this.http = new HttpClient({
       baseUrl: endpoint,
       publishableKey: this.secretKey, // passed as header fallback
       timeout: config.timeout || 10000,
+      customHeaders: config.headers,
       logger: noopLogger,
     });
   }
@@ -428,13 +439,16 @@ export class AuthnAdminClient {
     });
   }
 
-  public async listWebhookDeliveries(): Promise<
+  public async listWebhookDeliveries(params?: { endpointId?: string; limit?: number }): Promise<
     ListWebhookDeliveriesResult | { ok: false; error: AuthnError }
   > {
     return this.safeCall(async () => {
-      const res = await this.http.get<WebhookDeliveryDTO[]>(
-        "/v1/admin/webhooks/deliveries"
-      );
+      const queryParams = new URLSearchParams();
+      if (params?.endpointId) queryParams.set("endpoint_id", params.endpointId);
+      if (params?.limit) queryParams.set("limit", String(params.limit));
+      const qs = queryParams.toString();
+      const path = `/v1/admin/webhooks/deliveries${qs ? `?${qs}` : ""}`;
+      const res = await this.http.get<WebhookDeliveryDTO[]>(path);
       return { ok: true, deliveries: Array.isArray(res.data) ? res.data : [] };
     });
   }
@@ -580,6 +594,100 @@ export class AuthnAdminClient {
         ok: true,
         logs: Array.isArray(res.data.logs) ? res.data.logs : [],
         total: res.data.total || 0,
+      };
+    });
+  }
+
+  // --- Password Policy ---
+  public async getPasswordPolicy(): Promise<
+    GetPasswordPolicyResult | { ok: false; error: AuthnError }
+  > {
+    return this.safeCall(async () => {
+      const res = await this.http.get<PasswordPolicyDTO>("/v1/tenant/password-policy");
+      return { ok: true, policy: res.data };
+    });
+  }
+
+  public async updatePasswordPolicy(
+    params: UpdatePasswordPolicyParams
+  ): Promise<UpdatePasswordPolicyResult | { ok: false; error: AuthnError }> {
+    return this.safeCall(async () => {
+      const res = await this.http.put<PasswordPolicyDTO>("/v1/tenant/password-policy", {
+        min_length: params.minLength,
+        require_uppercase: params.requireUppercase,
+        require_lowercase: params.requireLowercase,
+        require_numbers: params.requireNumbers,
+        require_symbols: params.requireSymbols,
+        max_age_days: params.maxAgeDays,
+        prevent_reuse_count: params.preventReuseCount,
+      });
+      return { ok: true, policy: res.data };
+    });
+  }
+
+  // --- Security Policy ---
+  public async getSecurityPolicy(): Promise<
+    GetSecurityPolicyResult | { ok: false; error: AuthnError }
+  > {
+    return this.safeCall(async () => {
+      const res = await this.http.get<SecurityPolicyDTO>("/v1/tenant/security-policy");
+      return { ok: true, policy: res.data };
+    });
+  }
+
+  public async updateSecurityPolicy(
+    params: UpdateSecurityPolicyParams
+  ): Promise<UpdateSecurityPolicyResult | { ok: false; error: AuthnError }> {
+    return this.safeCall(async () => {
+      const res = await this.http.put<SecurityPolicyDTO>("/v1/tenant/security-policy", {
+        require_mfa_admins: params.requireMfaAdmins,
+        require_mfa_all: params.requireMfaAll,
+        session_timeout_minutes: params.sessionTimeoutMinutes,
+        max_failed_attempts: params.maxFailedAttempts,
+        lockout_duration_minutes: params.lockoutDurationMinutes,
+        allowed_ip_ranges: params.allowedIpRanges,
+      });
+      return { ok: true, policy: res.data };
+    });
+  }
+
+  // --- Recovery Policy ---
+  public async getRecoveryPolicy(): Promise<
+    GetRecoveryPolicyResult | { ok: false; error: AuthnError }
+  > {
+    return this.safeCall(async () => {
+      const res = await this.http.get<RecoveryPolicyDTO>("/v1/tenant/recovery-policy");
+      return { ok: true, policy: res.data };
+    });
+  }
+
+  public async updateRecoveryPolicy(
+    params: UpdateRecoveryPolicyParams
+  ): Promise<UpdateRecoveryPolicyResult | { ok: false; error: AuthnError }> {
+    return this.safeCall(async () => {
+      const res = await this.http.put<RecoveryPolicyDTO>("/v1/tenant/recovery-policy", {
+        allow_guardian_recovery: params.allowGuardianRecovery,
+        min_guardians: params.minGuardians,
+        allow_security_questions: params.allowSecurityQuestions,
+        allow_old_password: params.allowOldPassword,
+        recovery_delay_hours: params.recoveryDelayHours,
+      });
+      return { ok: true, policy: res.data };
+    });
+  }
+
+  // --- JWKS Key Rotation ---
+  public async rotateJWKS(): Promise<
+    RotateJWKSResult | { ok: false; error: AuthnError }
+  > {
+    return this.safeCall(async () => {
+      const res = await this.http.post<{ message?: string; active_kid?: string }>(
+        "/v1/admin/jwks/rotate"
+      );
+      return {
+        ok: true,
+        message: res.data?.message || "JWKS signing key rotated successfully",
+        activeKid: res.data?.active_kid,
       };
     });
   }

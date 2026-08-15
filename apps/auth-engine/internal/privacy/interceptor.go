@@ -37,6 +37,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
@@ -147,6 +148,19 @@ func AttachPrivacyInterceptors(client *ent.Client) {
 					return nil, fmt.Errorf("%w: SocialAuthState query requires active TenantID in context", ErrPrivacyViolation)
 				}
 				query.Where(socialauthstate.TenantID(p.TenantID))
+
+			// ManagedTenant is control-plane data: its tenant_id is the platform
+			// tenant, not the customer tenant the row describes. Filtering on
+			// tenant_id therefore confines these rows to the control plane, which
+			// is what stops one hosted customer reading another's ownership
+			// records. The managed_tenant_id it points at is deliberately not
+			// filtered here — resolving that to a Tenant row requires a confined
+			// bypass, performed only after this scope has authorized the caller.
+			case *ent.ManagedTenantQuery:
+				if !ok || p.TenantID == "" {
+					return nil, fmt.Errorf("%w: ManagedTenant query requires active TenantID in context", ErrPrivacyViolation)
+				}
+				query.Where(managedtenant.TenantID(p.TenantID))
 
 			// Entities with no tenant_id of their own, reached through the
 			// parent that has one. The join is the boundary: a row is visible

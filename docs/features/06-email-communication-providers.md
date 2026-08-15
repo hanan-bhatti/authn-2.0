@@ -14,7 +14,7 @@ The **Email & Communication Provider Driver Engine** implements pluggable email 
 
 ## 2. Pluggable Architecture & Drivers
 
-### 2.1 `EmailProvider` Interface ([`internal/email/provider.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/provider.go))
+### 2.1 `EmailProvider` Interface ([`internal/email/provider.go`](../../apps/auth-engine/internal/email/provider.go))
 ```go
 type EmailProvider interface {
 	Send(ctx context.Context, to string, subject string, htmlBody string, textBody string) error
@@ -22,14 +22,14 @@ type EmailProvider interface {
 ```
 
 ### 2.2 Implemented Drivers & Factory
-1. **SMTP Driver ([`internal/email/smtp.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/smtp.go))**: Formats RFC 2046 `multipart/alternative` MIME messages (HTML + Plain text fallback) and transmits via standard SMTP over `net/smtp`.
-2. **Resend Driver ([`internal/email/resend.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/resend.go))**: Integrates with Resend REST API (`https://api.resend.com/emails`) using `RESEND_API_KEY`.
-3. **SendGrid Driver ([`internal/email/sendgrid.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/sendgrid.go))**: Integrates with SendGrid v3 API (`https://api.sendgrid.com/v3/mail/send`) using `SENDGRID_API_KEY`.
-4. **Postmark Driver ([`internal/email/postmark.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/postmark.go))**: Integrates with Postmark REST API (`https://api.postmarkapp.com/email`) using `POSTMARK_SERVER_TOKEN`.
-5. **AWS SES Driver ([`internal/email/aws_ses.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/aws_ses.go))**: Integrates with AWS SES v2 Outbound API using `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
-6. **No-op Driver ([`internal/email/noop.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/noop.go))**: Fallback logger for unconfigured or test environments.
+1. **SMTP Driver ([`internal/email/smtp.go`](../../apps/auth-engine/internal/email/smtp.go))**: Formats RFC 2046 `multipart/alternative` MIME messages (HTML + Plain text fallback) and transmits via standard SMTP over `net/smtp`.
+2. **Resend Driver ([`internal/email/resend.go`](../../apps/auth-engine/internal/email/resend.go))**: Integrates with Resend REST API (`https://api.resend.com/emails`) using `RESEND_API_KEY`.
+3. **SendGrid Driver ([`internal/email/sendgrid.go`](../../apps/auth-engine/internal/email/sendgrid.go))**: Integrates with SendGrid v3 API (`https://api.sendgrid.com/v3/mail/send`) using `SENDGRID_API_KEY`.
+4. **Postmark Driver ([`internal/email/postmark.go`](../../apps/auth-engine/internal/email/postmark.go))**: Integrates with Postmark REST API (`https://api.postmarkapp.com/email`) using `POSTMARK_SERVER_TOKEN`.
+5. **AWS SES Driver ([`internal/email/aws_ses.go`](../../apps/auth-engine/internal/email/aws_ses.go))**: Integrates with AWS SES v2 Outbound API using `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
+6. **No-op Driver ([`internal/email/noop.go`](../../apps/auth-engine/internal/email/noop.go))**: Fallback logger for unconfigured or test environments.
 
-### 2.3 Factory & Driver Selection ([`internal/email/factory.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/factory.go))
+### 2.3 Factory & Driver Selection ([`internal/email/factory.go`](../../apps/auth-engine/internal/email/factory.go))
 The driver is selected seamlessly via `EMAIL_DRIVER` in `.env`:
 ```bash
 EMAIL_DRIVER=smtp # "smtp" | "resend" | "sendgrid" | "postmark" | "aws_ses" | "noop"
@@ -39,7 +39,7 @@ EMAIL_DRIVER=smtp # "smtp" | "resend" | "sendgrid" | "postmark" | "aws_ses" | "n
 
 ## 3. Template Engine & Verification Tokens
 
-### 3.1 Template Rendering ([`internal/email/template.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/email/template.go))
+### 3.1 Template Rendering ([`internal/email/template.go`](../../apps/auth-engine/internal/email/template.go))
 Uses Go standard library `html/template` and `text/template` to compile dark-themed, responsive HTML emails with plain-text fallback:
 * **Dynamic variables**: `UserName`, `VerificationLink`, `AppName`, `ExpiresInHours`.
 
@@ -65,7 +65,7 @@ Tenant administrators can configure `security_policy` per tenant (`apps/auth-eng
 ## 5. API Endpoint Reference
 
 ### 5.1 Verify Email Address
-* **Endpoint**: `GET /v1/client/verify-email?token=raw_token_string`
+* **Endpoint**: `GET /v1/client/auth/verify-email?token=raw_token_string`
 * **Response (200 OK)**:
 ```json
 {
@@ -76,13 +76,13 @@ Tenant administrators can configure `security_policy` per tenant (`apps/auth-eng
 ```
 
 ### 5.2 Resend Verification Email
-* **Endpoint**: `POST /v1/client/resend-verification`
+* **Endpoint**: `POST /v1/client/auth/resend-verification`
 * **Rate Limiting**: Fail-closed sliding window (5 attempts per 15 min)
 * **Payload**:
 ```json
 {
   "email": "user@example.com",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "test"
 }
 ```
@@ -94,7 +94,7 @@ Tenant administrators can configure `security_policy` per tenant (`apps/auth-eng
 ```
 
 ### 5.3 Get Tenant Security Policy (Admin)
-* **Endpoint**: `GET /v1/tenant/security-policy?tenant_id=tnt_default`
+* **Endpoint**: `GET /v1/tenant/security-policy?tenant_id=tnt_00000000000000000000000000000001`
 * **Response (200 OK)**:
 ```json
 {
@@ -104,7 +104,7 @@ Tenant administrators can configure `security_policy` per tenant (`apps/auth-eng
 ```
 
 ### 5.4 Update Tenant Security Policy (Admin)
-* **Endpoint**: `PUT /v1/tenant/security-policy?tenant_id=tnt_default`
+* **Endpoint**: `PUT /v1/tenant/security-policy?tenant_id=tnt_00000000000000000000000000000001`
 * **Payload**:
 ```json
 {

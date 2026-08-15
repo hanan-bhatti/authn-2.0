@@ -75,7 +75,7 @@ func TestEmailVerificationRoundTrip(t *testing.T) {
 	}
 
 	verifyResp := env.do(t, http.MethodGet,
-		"/v1/client/verify-email?token="+url.QueryEscape(token), nil)
+		"/v1/client/auth/verify-email?token="+url.QueryEscape(token), nil)
 	if verifyResp.status != http.StatusOK {
 		t.Fatalf("verify-email: got status %d, want 200; body %s", verifyResp.status, verifyResp.body)
 	}
@@ -115,7 +115,7 @@ func TestEmailVerificationRejectsExpiredToken(t *testing.T) {
 		t.Fatalf("planting an expired verification token: %v", err)
 	}
 
-	resp := env.do(t, http.MethodGet, "/v1/client/verify-email?token="+url.QueryEscape(rawToken), nil)
+	resp := env.do(t, http.MethodGet, "/v1/client/auth/verify-email?token="+url.QueryEscape(rawToken), nil)
 	if resp.status != http.StatusBadRequest {
 		t.Fatalf("expired verification token: got status %d, want 400; body %s", resp.status, resp.body)
 	}
@@ -237,7 +237,7 @@ func TestHardModeUnlocksAfterVerification(t *testing.T) {
 	if !ok {
 		t.Fatalf("no verification email carrying a token was sent to %s", address)
 	}
-	if resp := env.do(t, http.MethodGet, "/v1/client/verify-email?token="+url.QueryEscape(token), nil); resp.status != http.StatusOK {
+	if resp := env.do(t, http.MethodGet, "/v1/client/auth/verify-email?token="+url.QueryEscape(token), nil); resp.status != http.StatusOK {
 		t.Fatalf("verify-email: got status %d, want 200; body %s", resp.status, resp.body)
 	}
 

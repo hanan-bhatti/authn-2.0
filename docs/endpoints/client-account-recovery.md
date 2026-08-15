@@ -1,4 +1,4 @@
-# Endpoint Specification: Account Recovery & 2FA Recovery Suite (`/v1/client/auth/recovery/*` & `/v1/client/2fa/recovery-codes/*`)
+# Endpoint Specification: Account Recovery & 2FA Recovery Suite (`/v1/client/auth/recovery/*` & `/v1/client/auth/2fa/recovery-codes/*`)
 
 ## Overview
 * **Routes**:
@@ -9,8 +9,8 @@
   * `POST /v1/client/auth/recovery/claim` — Claim account & set new password
   * `POST /v1/client/auth/recovery/cancel` — Cancel recovery (authenticated session)
   * `POST /v1/client/auth/recovery/cancel/token` — Cancel recovery (public signed cancellation link)
-  * `POST /v1/client/2fa/recovery-codes/regenerate` — Step-up re-generate 16 2FA recovery codes
-  * `GET /v1/client/2fa/recovery-codes/status` — Query remaining unused recovery codes count
+  * `POST /v1/client/auth/2fa/recovery-codes/regenerate` — Step-up re-generate 16 2FA recovery codes
+  * `GET /v1/client/auth/2fa/recovery-codes/status` — Query remaining unused recovery codes count
 * **HTTP Methods**: `POST`, `GET`
 * **Purpose**: Production account recovery engine supporting dynamic multi-factor identity proof (Guardians, Old Passwords, Email/Phone OTP, Security Questions), timing-safe user enumeration defense, trusted device gating, and 7-day origin IP blacklisting upon security cancellation.
 
@@ -18,7 +18,7 @@
 
 ## Authentication & Access Control
 * **Public Endpoints (`/v1/client/auth/recovery/initiate`, `/proof/*`, `/claim`, `/cancel/token`)**: Require Publishable Key (`X-Authn-Publishable-Key: pk_<env>_<hash>`).
-* **Authenticated Endpoints (`/v1/client/2fa/recovery-codes/*`, `/v1/client/auth/recovery/cancel`)**: Require valid Access Token JWT (`Authorization: Bearer <jwt>`).
+* **Authenticated Endpoints (`/v1/client/auth/2fa/recovery-codes/*`, `/v1/client/auth/recovery/cancel`)**: Require valid Access Token JWT (`Authorization: Bearer <jwt>`).
 
 ---
 

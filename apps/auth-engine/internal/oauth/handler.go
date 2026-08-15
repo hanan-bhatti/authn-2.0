@@ -15,12 +15,15 @@ package oauth
 
 import (
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
 )
 
 const (
 	// refreshTokenCookieName is the canonical cookie the engine writes rotated
 	// refresh tokens to.
-	refreshTokenCookieName = "authn_refresh_token"
+	refreshTokenCookieName = authcookie.RefreshTokenName
 
 	// metadataCacheControl is sent on the discovery and JWKS documents. Both are
 	// public, change only on rotation, and are fetched by every relying party.
@@ -31,18 +34,43 @@ const (
 type Handler struct {
 	// service performs the underlying OAuth2 and OIDC operations.
 	service *Service
+	// cookies builds the rotated refresh cookie. Never nil: NewHandler installs a
+	// writer backed by default tenant policy and WithSettings swaps in one that
+	// reads live policy.
+	cookies *authcookie.Writer
+	// settings is the runtime-settings cache. It is nil until WithSettings wires
+	// one, and every use is nil-checked: a missing resolver only means an
+	// application edit waits out the cache TTL instead of invalidating on the spot.
+	settings *settings.Resolver
 }
 
 // NewHandler constructs a Handler bound to service.
 func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{
+		service: service,
+		cookies: authcookie.NewWriter(service.cfg, nil),
+	}
+}
+
+// WithSettings points cookie construction and cache invalidation at the runtime
+// settings resolver, and returns the handler for chaining.
+//
+// One resolver serves both: the refresh cookie this handler rotates is the same
+// cookie /v1/client writes at sign-in, so both must read SameSite and lifetime
+// from the same place; and every application write here must drop that
+// application's cached settings so the change is visible on the next request
+// rather than after the TTL.
+func (h *Handler) WithSettings(r *settings.Resolver) *Handler {
+	h.settings = r
+	h.cookies = authcookie.NewWriter(h.service.cfg, r)
+	return h
 }
 
 // RegisterRoutes mounts the OAuth2 and OIDC endpoints on app.
 //
 // pkMiddleware guards the authorization and token endpoints when supplied.
-// adminMiddleware, when supplied, guards key rotation and application
-// registration; without it those routes are mounted unguarded, which is only
+// adminMiddleware, when supplied, guards key rotation and the application
+// management CRUD; without it those routes are mounted unguarded, which is only
 // appropriate for a test harness.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adminMiddleware ...fiber.Handler) {
 	app.Get("/.well-known/openid-configuration", h.GetOIDCDiscovery)
@@ -58,14 +86,31 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler, adm
 		group.Post("/token", h.TokenExchange)
 	}
 
-	if len(adminMiddleware) > 0 && adminMiddleware[0] != nil {
-		adminGroup := app.Group("/v1/admin", adminMiddleware[0])
+	registerAdmin := func(mw fiber.Handler) {
+		var adminGroup, tenantAdminGroup fiber.Router
+		if mw != nil {
+			adminGroup = app.Group("/v1/admin", mw)
+			tenantAdminGroup = app.Group("/v1/tenant", mw)
+		} else {
+			adminGroup = app.Group("/v1/admin")
+			tenantAdminGroup = app.Group("/v1/tenant")
+		}
+
 		adminGroup.Post("/jwks/rotate", h.RotateJWKS)
 
-		tenantAdminGroup := app.Group("/v1/tenant", adminMiddleware[0])
-		tenantAdminGroup.Post("/applications", h.CreateApplication)
+		// Application management (§1.3). Every route is tenant-scoped by the
+		// interceptor through the context adminMiddleware installs.
+		apps := tenantAdminGroup.Group("/applications")
+		apps.Post("/", h.CreateApplication)
+		apps.Get("/", h.ListApplications)
+		apps.Get("/:id", h.GetApplication)
+		apps.Patch("/:id", h.UpdateApplication)
+		apps.Delete("/:id", h.DeleteApplication)
+	}
+
+	if len(adminMiddleware) > 0 && adminMiddleware[0] != nil {
+		registerAdmin(adminMiddleware[0])
 	} else {
-		app.Post("/v1/admin/jwks/rotate", h.RotateJWKS)
-		app.Post("/v1/tenant/applications", h.CreateApplication)
+		registerAdmin(nil)
 	}
 }

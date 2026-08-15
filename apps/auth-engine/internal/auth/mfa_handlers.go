@@ -56,7 +56,7 @@ type SMSDisableRequest struct {
 	Password string `json:"password" example:"SuperSecret123!"`
 }
 
-// EnrollTOTP handles POST /v1/client/2fa/totp/enroll.
+// EnrollTOTP handles POST /v1/client/auth/2fa/totp/enroll.
 // Generates a new TOTP secret for the authenticated user and stores it in pending state (is_enabled = false).
 func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
 	userID := getUserID(c)
@@ -72,7 +72,7 @@ func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
 	})
 }
 
-// ConfirmTOTP handles POST /v1/client/2fa/totp/confirm.
+// ConfirmTOTP handles POST /v1/client/auth/2fa/totp/confirm.
 // Validates a 6-digit TOTP code against the pending secret and enables 2FA (is_enabled = true).
 func (h *Handler) ConfirmTOTP(c *fiber.Ctx) error {
 	userID := getUserID(c)
@@ -91,7 +91,7 @@ func (h *Handler) ConfirmTOTP(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(res)
 }
 
-// VerifyTOTP handles POST /v1/client/2fa/totp/verify and POST /v1/client/auth/2fa/verify.
+// VerifyTOTP handles POST /v1/client/auth/2fa/totp/verify and POST /v1/client/auth/2fa/verify.
 // Validates a 6-digit TOTP code during login challenge or within an authenticated session.
 func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	var req TOTPVerifyRequest
@@ -125,14 +125,8 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 		if clientType == "native" || clientType == "mobile" {
 			refreshTokenBody = refreshToken
 		} else {
-			c.Cookie(&fiber.Cookie{
-				Name:     "authn_refresh_token",
-				Value:    refreshToken,
-				HTTPOnly: true,
-				Secure:   h.service.config.CookieSecure(),
-				SameSite: "Lax",
-				Path:     "/v1/client",
-			})
+			h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
+				h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
 		}
 
 		return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -175,7 +169,7 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	})
 }
 
-// DisableTOTP handles POST /v1/client/2fa/totp/disable.
+// DisableTOTP handles POST /v1/client/auth/2fa/totp/disable.
 // Re-verifies current password using Argon2id, removes TOTP 2FA, and revokes all active user sessions for security.
 func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
 	userID := getUserID(c)
@@ -201,7 +195,7 @@ func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
 	})
 }
 
-// RegenerateRecoveryCodes handles POST /v1/client/2fa/recovery-codes/regenerate.
+// RegenerateRecoveryCodes handles POST /v1/client/auth/2fa/recovery-codes/regenerate.
 // Requires Argon2id password step-up, invalidates all old recovery codes, and issues 16 fresh codes.
 func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 	userID := getUserID(c)
@@ -226,7 +220,7 @@ func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 	})
 }
 
-// GetRecoveryCodesStatus handles GET /v1/client/2fa/recovery-codes/status.
+// GetRecoveryCodesStatus handles GET /v1/client/auth/2fa/recovery-codes/status.
 // Returns remaining unused count of recovery codes for the authenticated user without exposing code values.
 func (h *Handler) GetRecoveryCodesStatus(c *fiber.Ctx) error {
 	userID := getUserID(c)
@@ -239,7 +233,7 @@ func (h *Handler) GetRecoveryCodesStatus(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(res)
 }
 
-// EnrollSMS handles POST /v1/client/2fa/sms/enroll.
+// EnrollSMS handles POST /v1/client/auth/2fa/sms/enroll.
 func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -259,7 +253,7 @@ func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 	})
 }
 
-// ConfirmSMS handles POST /v1/client/2fa/sms/confirm.
+// ConfirmSMS handles POST /v1/client/auth/2fa/sms/confirm.
 func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -277,7 +271,7 @@ func (h *Handler) ConfirmSMS(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(res)
 }
 
-// DisableSMS handles DELETE /v1/client/2fa/sms/disable.
+// DisableSMS handles DELETE /v1/client/auth/2fa/sms/disable.
 func (h *Handler) DisableSMS(c *fiber.Ctx) error {
 	userID := getUserID(c)
 

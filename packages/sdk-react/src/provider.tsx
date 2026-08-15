@@ -46,6 +46,15 @@ export function AuthnProvider(props: AuthnProviderProps): React.JSX.Element {
       setIsLoading(false);
     });
 
+    if (!client.getSession()) {
+      setIsLoading(true);
+      client.refreshSession().finally(() => {
+        setIsLoading(false);
+      });
+    } else {
+      setIsLoading(false);
+    }
+
     return () => {
       unsubscribe();
       // Only destroy internal client instances created by this provider

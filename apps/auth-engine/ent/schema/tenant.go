@@ -75,6 +75,9 @@ func (Tenant) Fields() []ent.Field {
 		field.JSON("role_policy", map[string]interface{}{}).
 			Optional().
 			Comment("JSON blob containing tenant role & permission restrictions and assignment policies"),
+		field.JSON("session_policy", map[string]interface{}{}).
+			Optional().
+			Comment("JSON blob containing cookie SameSite mode and session/access token lifetimes. Lives here rather than in the environment because a customer changes it and it must take effect without a redeploy; the cookie Domain stays an env value because a server can only set cookies for a domain it is served from."),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
@@ -95,6 +98,12 @@ func (Tenant) Edges() []ent.Edge {
 		edge.To("roles", Role.Type),
 		edge.To("webhook_endpoints", WebhookEndpoint.Type),
 		edge.To("audit_logs", AuditLog.Type),
+		// managed_tenants are the control plane's ownership records, and exist only
+		// on the platform tenant: each row says "this platform user owns that
+		// customer tenant". The edge is declared so the join is generated, but the
+		// ManagedTenant side deliberately keeps managed_tenant_id and owner_user_id
+		// as plain strings — see ent/schema/managed_tenant.go.
+		edge.To("managed_tenants", ManagedTenant.Type),
 	}
 }
 

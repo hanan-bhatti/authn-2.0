@@ -16,6 +16,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
@@ -101,6 +102,7 @@ func checkColumn(table, column string) error {
 			application.Table:         application.ValidColumn,
 			auditlog.Table:            auditlog.ValidColumn,
 			identity.Table:            identity.ValidColumn,
+			managedtenant.Table:       managedtenant.ValidColumn,
 			orginvitation.Table:       orginvitation.ValidColumn,
 			orgmember.Table:           orgmember.ValidColumn,
 			organization.Table:        organization.ValidColumn,

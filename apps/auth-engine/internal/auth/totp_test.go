@@ -272,7 +272,7 @@ func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
 		"name":        "HTTP User",
 	}
 	bodyBytes, _ := json.Marshal(signUpPayload)
-	req := httptest.NewRequest("POST", "/v1/client/signup", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("POST", "/v1/client/auth/signup", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := app.Test(req, 10000)
 	require.NoError(t, err)
@@ -284,7 +284,7 @@ func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// 2. Enroll TOTP
-	reqEnroll := httptest.NewRequest("POST", "/v1/client/2fa/totp/enroll", nil)
+	reqEnroll := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/enroll", nil)
 	reqEnroll.Header.Set("Authorization", "Bearer "+token)
 	respEnroll, err := app.Test(reqEnroll, 10000)
 	require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
 
 	confirmPayload := map[string]string{"code": confirmCode}
 	cBytes, _ := json.Marshal(confirmPayload)
-	reqConfirm := httptest.NewRequest("POST", "/v1/client/2fa/totp/confirm", bytes.NewReader(cBytes))
+	reqConfirm := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/confirm", bytes.NewReader(cBytes))
 	reqConfirm.Header.Set("Authorization", "Bearer "+token)
 	reqConfirm.Header.Set("Content-Type", "application/json")
 	respConfirm, err := app.Test(reqConfirm, 10000)
@@ -319,7 +319,7 @@ func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
 		"password":    "HTTPPass123!",
 	}
 	lBytes, _ := json.Marshal(loginPayload)
-	reqLogin := httptest.NewRequest("POST", "/v1/client/login", bytes.NewReader(lBytes))
+	reqLogin := httptest.NewRequest("POST", "/v1/client/auth/login", bytes.NewReader(lBytes))
 	reqLogin.Header.Set("Content-Type", "application/json")
 	respLogin, err := app.Test(reqLogin, 10000)
 	require.NoError(t, err)
@@ -357,7 +357,7 @@ func TestTOTP_HTTPHandlers_E2E(t *testing.T) {
 		"password": "HTTPPass123!",
 	}
 	dBytes, _ := json.Marshal(disablePayload)
-	reqDisable := httptest.NewRequest("POST", "/v1/client/2fa/totp/disable", bytes.NewReader(dBytes))
+	reqDisable := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/disable", bytes.NewReader(dBytes))
 	reqDisable.Header.Set("Authorization", "Bearer "+finalAuthResp.AccessToken)
 	reqDisable.Header.Set("Content-Type", "application/json")
 	respDisable, err := app.Test(reqDisable, 10000)

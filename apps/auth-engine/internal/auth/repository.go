@@ -469,19 +469,128 @@ func (r *Repository) FindApplicationByID(ctx context.Context, appID string) (*en
 }
 
 // CreateApplication registers an OAuth client with an exact-match redirect URI
-// allow-list. The URIs are stored verbatim: validation and normalization belong
-// to the caller, and anything accepted here is later honored as a redirect target.
+// allow-list. The URIs and CORS origins are stored verbatim: validation and
+// normalization belong to the caller, and anything accepted here is later
+// honored as a redirect target or a browser-origin grant.
+//
+// env is "test" or "live"; an empty value takes the schema default of "test".
+// redirectURIs and corsOrigins may be empty — an empty CORS list means "not
+// configured", leaving origin checks to the deployment-wide policy.
 //
 // Returns the raw ent error unwrapped, unlike most methods in this file, so a
 // duplicate client_id arrives as an *ent.ConstraintError.
-func (r *Repository) CreateApplication(ctx context.Context, id, tenantID, name string, redirectURIs []string) (*ent.Application, error) {
-	client := r.factory.GetClient(ctx, tenantID, "")
-	return client.Application.Create().
+func (r *Repository) CreateApplication(ctx context.Context, id, tenantID, name, env string, redirectURIs, corsOrigins []string) (*ent.Application, error) {
+	client := r.factory.GetClient(ctx, tenantID, env)
+	builder := client.Application.Create().
 		SetID(id).
 		SetTenantID(tenantID).
 		SetName(name).
-		SetExactRedirectUris(redirectURIs).
-		Save(ctx)
+		SetExactRedirectUris(redirectURIs)
+	if env != "" {
+		builder = builder.SetEnvironment(application.Environment(env))
+	}
+	if len(corsOrigins) > 0 {
+		builder = builder.SetAllowedCorsOrigins(corsOrigins)
+	}
+	return builder.Save(ctx)
+}
+
+// ListApplications returns every application in the caller's tenant.
+//
+// The tenant is not a parameter: the privacy interceptor scopes the query to
+// whatever tenant the request context carries, so this cannot be pointed at
+// another tenant's applications by passing a different ID. Results are ordered
+// by creation time, oldest first, so a console list is stable across calls.
+func (r *Repository) ListApplications(ctx context.Context) ([]*ent.Application, error) {
+	client := r.factory.GetClient(ctx, "", "")
+	apps, err := client.Application.Query().
+		Order(ent.Asc(application.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed listing applications: %w", err)
+	}
+	return apps, nil
+}
+
+// GetApplicationByIDScoped loads one application, but only within the caller's
+// tenant.
+//
+// Unlike FindApplicationByID — which the authorize endpoint uses and which must
+// resolve a client_id regardless of scope — this is the read behind the admin
+// CRUD, so it is tenant-scoped by the interceptor. A cross-tenant ID is
+// therefore indistinguishable from an absent one: both return nil, nil, and the
+// caller answers 404 either way, never revealing that the ID exists elsewhere.
+func (r *Repository) GetApplicationByIDScoped(ctx context.Context, id string) (*ent.Application, error) {
+	client := r.factory.GetClient(ctx, "", "")
+	app, err := client.Application.Query().
+		Where(application.ID(id)).
+		Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed querying application %s: %w", id, err)
+	}
+	return app, nil
+}
+
+// UpdateApplication changes an application's mutable fields within the caller's
+// tenant, and returns the updated row, or nil when no such application exists in
+// this tenant.
+//
+// The scoped read is load-bearing, not a convenience: the write hook stamps
+// tenant_id on inserts but adds no tenant predicate to an UpdateOneID, whose SQL
+// filters on id alone. Confirming ownership through a scoped query first — which
+// the interceptor filters — is what stops one tenant editing another's
+// application by guessing its ID. A nil pointer argument leaves that field
+// unchanged; a non-nil one sets it, including to an empty slice to clear a list.
+func (r *Repository) UpdateApplication(ctx context.Context, id string, name *string, redirectURIs, corsOrigins *[]string) (*ent.Application, error) {
+	existing, err := r.GetApplicationByIDScoped(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, nil
+	}
+
+	upd := r.factory.GetClient(ctx, "", "").Application.UpdateOneID(id)
+	if name != nil {
+		upd = upd.SetName(*name)
+	}
+	if redirectURIs != nil {
+		upd = upd.SetExactRedirectUris(*redirectURIs)
+	}
+	if corsOrigins != nil {
+		upd = upd.SetAllowedCorsOrigins(*corsOrigins)
+	}
+
+	app, err := upd.Save(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed updating application %s: %w", id, err)
+	}
+	return app, nil
+}
+
+// DeleteApplication removes an application within the caller's tenant, reporting
+// whether a row was deleted.
+//
+// It performs the same scoped ownership read as UpdateApplication and for the
+// same reason — DeleteOneID filters on id alone — so a cross-tenant ID deletes
+// nothing and returns false rather than destroying another customer's
+// application.
+func (r *Repository) DeleteApplication(ctx context.Context, id string) (bool, error) {
+	existing, err := r.GetApplicationByIDScoped(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if existing == nil {
+		return false, nil
+	}
+
+	if err := r.factory.GetClient(ctx, "", "").Application.DeleteOneID(id).Exec(ctx); err != nil {
+		return false, fmt.Errorf("failed deleting application %s: %w", id, err)
+	}
+	return true, nil
 }
 
 // SetUserEmailVerificationToken stores the hash of a single-use verification

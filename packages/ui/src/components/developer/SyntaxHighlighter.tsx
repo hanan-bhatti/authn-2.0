@@ -8,7 +8,7 @@ export interface SyntaxHighlighterProps {
 }
 
 /**
- * Resend-style Monospaced Syntax Highlighter
+ * Monospaced Syntax Highlighter
  *
  * Rules:
  * - Iris Violet #9281f7 for strings & developer tokens
@@ -25,7 +25,7 @@ export const SyntaxHighlighter: React.FC<SyntaxHighlighterProps> = ({
     try {
       const parsed = typeof jsonStr === "string" ? JSON.parse(jsonStr) : jsonStr;
       const formatted = JSON.stringify(parsed, null, 2);
-      
+
       const lines = formatted.split("\n");
       return lines.map((line, i) => {
         // Regex to tokenize JSON keys, strings, numbers, booleans

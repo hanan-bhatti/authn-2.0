@@ -1,0 +1,2076 @@
+openapi: 3.0.3
+info:
+  title: Authn Engine - Chunk Admin System OpenAPI Fragment
+  version: 1.0.0
+  description: OpenAPI 3.0 fragment covering API Keys, Impersonation & Policy, RBAC, and Webhook endpoints for apps/auth-engine.
+paths:
+  # ============================================================================
+  # API Keys (internal/apikey/handler.go)
+  # ============================================================================
+  /v1/admin/keys:
+    post:
+      summary: Create API Key
+      description: Issues a new API key (publishable or secret) for an application in the caller's tenant. The raw key is returned only once in this response.
+      operationId: createApiKey
+      tags:
+        - API Keys (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKeyRequest'
+      responses:
+        '201':
+          description: API key issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateKeyResponse'
+        '400':
+          description: Invalid request body, unsupported key type, application mismatch, or environment mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Named application not found in tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: List API Keys
+      description: Returns metadata of all API keys belonging to an application in the tenant, including revoked and expired keys. Key secret material is never returned.
+      operationId: listApiKeys
+      tags:
+        - API Keys (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: application_id
+          schema:
+            type: string
+          description: Application ID filter (required when caller uses a tenant-wide console JWT)
+      responses:
+        '200':
+          description: List of API key metadata
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KeyDTO'
+        '400':
+          description: Missing application_id for tenant-wide admin credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Named application not found in tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/keys/{id}/revoke:
+    post:
+      summary: Revoke API Key
+      description: Marks an API key unusable. Revocation is confined to the caller's own tenant.
+      operationId: revokeApiKey
+      tags:
+        - API Keys (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique API Key ID identifier
+      responses:
+        '200':
+          description: Key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeKeyResponse'
+        '400':
+          description: Missing key ID, unknown key, or key already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # ============================================================================
+  # Impersonation & Policy (internal/impersonation/handler.go & internal/policy/handler.go)
+  # ============================================================================
+  /v1/admin/users/{user_id}/impersonate:
+    post:
+      summary: Initiate User Impersonation
+      description: Initiates a user support session. When tenant policy demands step-up auth, verification parameters (password, totp, or passkey) must be satisfied.
+      operationId: initiateImpersonation
+      tags:
+        - Impersonation (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: Unique target user ID to impersonate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImpersonateRequest'
+      responses:
+        '200':
+          description: Impersonation session token issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpersonationResult'
+        '400':
+          description: Missing user ID, invalid body, missing step-up credentials, user not active, or self-impersonation attempt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Failed step-up password/2FA verification or missing admin authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Impersonation disabled by policy, admin hierarchy violation, missing target opt-in, or missing users:impersonate scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Target user not found in tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Validation error against tenant impersonation policy limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/impersonation-policy:
+    get:
+      summary: Get Impersonation Policy
+      description: Returns the tenant's current user impersonation governance policy settings.
+      operationId: getImpersonationPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Tenant impersonation policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpersonationPolicy'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    put:
+      summary: Update Impersonation Policy
+      description: Updates and persists the tenant's user impersonation policy settings.
+      operationId: updateImpersonationPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImpersonationPolicy'
+      responses:
+        '200':
+          description: Updated impersonation policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpersonationPolicy'
+        '400':
+          description: Invalid request JSON body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Policy validation failed (e.g. max_duration_minutes outside 1-60 or invalid email_notification_policy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/impersonate/exit:
+    post:
+      summary: Exit Impersonation Session
+      description: Ends an active support impersonation session client-side and returns impersonator and target user IDs so the client can restore the admin session.
+      operationId: exitImpersonation
+      tags:
+        - Impersonation (Client)
+      security:
+        - PublishableKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Impersonation session exited successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExitImpersonationResponse'
+        '400':
+          description: Active session is not an impersonation session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, invalid, or expired session token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/password-policy:
+    get:
+      summary: Get Password Policy
+      description: Returns the tenant-level password complexity requirements.
+      operationId: getPasswordPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      responses:
+        '200':
+          description: Tenant password policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordPolicy'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    put:
+      summary: Update Password Policy
+      description: Configures tenant-level password complexity requirements.
+      operationId: updatePasswordPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordPolicy'
+      responses:
+        '200':
+          description: Updated password policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordPolicy'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/security-policy:
+    get:
+      summary: Get Security Policy
+      description: Returns tenant-level security enforcement settings (email verification, token reuse policy).
+      operationId: getSecurityPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      responses:
+        '200':
+          description: Tenant security policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityPolicy'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    put:
+      summary: Update Security Policy
+      description: Updates tenant-level security enforcement settings.
+      operationId: updateSecurityPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityPolicy'
+      responses:
+        '200':
+          description: Updated security policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityPolicy'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/recovery-policy:
+    get:
+      summary: Get Recovery Policy
+      description: Returns tenant-level account recovery rules (proof methods, freeze windows, lockout schedule).
+      operationId: getRecoveryPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      responses:
+        '200':
+          description: Tenant recovery policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryPolicy'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    put:
+      summary: Update Recovery Policy
+      description: Configures tenant-level account recovery rules. Policy bounds are strictly validated.
+      operationId: updateRecoveryPolicy
+      tags:
+        - Policy (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryPolicy'
+      responses:
+        '200':
+          description: Updated recovery policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryPolicy'
+        '400':
+          description: Invalid request body or recovery policy bounds rejection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # ============================================================================
+  # RBAC (internal/rbac/handler.go)
+  # ============================================================================
+  /v1/tenant/roles:
+    post:
+      summary: Create Tenant Role
+      description: Creates a new custom RBAC role with permissions in a tenant.
+      operationId: createRole
+      tags:
+        - RBAC (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+          description: Target tenant ID (overridden if provided in request body)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Role created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Role with this name or slug already exists in tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Permission format, action verb, or tenant policy restriction validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: List Tenant Roles
+      description: Returns every role defined in a tenant alongside its permissions.
+      operationId: listRoles
+      tags:
+        - RBAC (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      responses:
+        '200':
+          description: List of tenant roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/roles/{role_id}/permissions:
+    put:
+      summary: Update Role Permissions
+      description: Replaces the complete permission set for a specified tenant role.
+      operationId: updateRolePermissions
+      tags:
+        - RBAC (Tenant)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: role_id
+          required: true
+          schema:
+            type: string
+          description: Unique role ID identifier
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRolePermissionsRequest'
+      responses:
+        '200':
+          description: Permissions updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateRolePermissionsResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Permission format, action verb, or tenant policy restriction validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/users/{user_id}/roles:
+    post:
+      summary: Assign User Role
+      description: Grants an RBAC role (by slug) to a target user within a tenant.
+      operationId: assignUserRole
+      tags:
+        - RBAC (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: Unique user ID to assign the role to
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignUserRoleRequest'
+      responses:
+        '200':
+          description: Role assigned to user successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignUserRoleResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Target user or role not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: User already possesses this role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/users/{user_id}/roles/{role_slug}:
+    delete:
+      summary: Revoke User Role
+      description: Revokes an assigned RBAC role (by slug) from a user within a tenant.
+      operationId: revokeUserRole
+      tags:
+        - RBAC (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: Unique user ID
+        - in: path
+          name: role_slug
+          required: true
+          schema:
+            type: string
+          description: Role slug identifier to revoke
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+            default: tnt_00000000000000000000000000000001
+          description: Target tenant ID
+      responses:
+        '200':
+          description: Role revoked from user successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeUserRoleResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/permissions:
+    get:
+      summary: Get User Permissions
+      description: Returns the authenticated calling user's assigned role slugs and effective permissions union.
+      operationId: getUserPermissions
+      tags:
+        - RBAC (Client)
+      security:
+        - PublishableKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Caller's roles and effective permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPermissionsResponse'
+        '401':
+          description: Missing publishable key or unauthenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # ============================================================================
+  # Webhooks (internal/webhook/handler.go)
+  # ============================================================================
+  /v1/admin/webhooks/endpoints:
+    post:
+      summary: Create Webhook Endpoint
+      description: Registers a new webhook endpoint. The generated signing secret is returned ONLY ONCE in this response.
+      operationId: createWebhookEndpoint
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEndpointRequest'
+      responses:
+        '201':
+          description: Webhook endpoint registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '400':
+          description: Invalid request JSON body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Invalid HTTPS URL, empty/invalid events, or unsupported event type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: List Webhook Endpoints
+      description: Returns every webhook endpoint registered by the tenant. Secrets are excluded.
+      operationId: listWebhookEndpoints
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of registered webhook endpoints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointListResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/webhooks/endpoints/{id}:
+    get:
+      summary: Get Webhook Endpoint
+      description: Retrieves details of a single registered webhook endpoint by ID.
+      operationId: getWebhookEndpoint
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique webhook endpoint ID
+      responses:
+        '200':
+          description: Webhook endpoint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Webhook endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    put:
+      summary: Update Webhook Endpoint
+      description: Modifies an existing webhook endpoint configuration (URL, description, events, active flag).
+      operationId: updateWebhookEndpoint
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique webhook endpoint ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEndpointRequest'
+      responses:
+        '200':
+          description: Webhook endpoint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '400':
+          description: Invalid request JSON body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Webhook endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Invalid HTTPS URL or subscribed event list validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Delete Webhook Endpoint
+      description: Deletes a webhook endpoint configuration permanently.
+      operationId: deleteWebhookEndpoint
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique webhook endpoint ID
+      responses:
+        '200':
+          description: Webhook endpoint deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteEndpointResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Webhook endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/webhooks/endpoints/{id}/ping:
+    post:
+      summary: Send Test Ping Webhook
+      description: Synchronously dispatches a synthetic 'ping' test event to verify HMAC signature generation and delivery.
+      operationId: sendTestPing
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique webhook endpoint ID
+      responses:
+        '200':
+          description: Test ping webhook event delivered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendTestPingResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Webhook endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/webhooks/endpoints/{id}/rotate-secret:
+    post:
+      summary: Rotate Webhook Signing Secret
+      description: Generates a fresh signing secret (whsec_...) for an endpoint. The new secret is returned ONLY ONCE in the response.
+      operationId: rotateWebhookSecret
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique webhook endpoint ID
+      responses:
+        '200':
+          description: Signing secret rotated successfully; response includes raw secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Webhook endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/webhooks/deliveries:
+    get:
+      summary: List Webhook Deliveries
+      description: Retrieves delivery history logs filtered by endpoint ID or event type.
+      operationId: listWebhookDeliveries
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: endpoint_id
+          schema:
+            type: string
+          description: Filter by target webhook endpoint ID
+        - in: query
+          name: event_type
+          schema:
+            type: string
+          description: Filter by event type (e.g. user.created, ping)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+          description: Maximum number of delivery records to return
+      responses:
+        '200':
+          description: Webhook delivery log history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryListResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/webhooks/deliveries/{id}/redeliver:
+    post:
+      summary: Redeliver Webhook Event
+      description: Re-triggers a synchronous delivery attempt for a past webhook delivery event log.
+      operationId: redeliverWebhookEvent
+      tags:
+        - Webhooks (Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Unique delivery log record ID
+      responses:
+        '200':
+          description: Webhook re-delivery executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedeliverResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Delivery record or target endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    SecretKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Secret-Key
+      description: Backend server / SDK secret key (sk_test_... or sk_live_...)
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Client-side publishable key (pk_test_... or pk_live_...)
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: End-user JWT access token or Tenant Admin console JWT token
+
+  schemas:
+    # --------------------------------------------------------------------------
+    # API Keys Schemas
+    # --------------------------------------------------------------------------
+    CreateKeyRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        application_id:
+          type: string
+          example: app_00000000000000000000000000000001
+          description: Owning application ID. Required for console JWT callers, optional for sk_ callers.
+        name:
+          type: string
+          example: Production Stripe Webhook Key
+          description: Operator-facing label for the key
+        type:
+          type: string
+          enum: [publishable, secret]
+          example: publishable
+          description: Scope of the key
+        environment:
+          type: string
+          enum: [test, live]
+          example: test
+          description: Mode environment matching the caller
+        expires_in_days:
+          type: integer
+          example: 30
+          description: Optional validity duration in days
+
+    KeyDTO:
+      type: object
+      required:
+        - id
+        - application_id
+        - name
+        - type
+        - key_prefix
+        - environment
+        - created_at
+      properties:
+        id:
+          type: string
+          example: key_1a2b3c
+        application_id:
+          type: string
+          example: app_00000000000000000000000000000001
+        name:
+          type: string
+          example: Production Key
+        type:
+          type: string
+          example: publishable
+        key_prefix:
+          type: string
+          example: pk_test_
+        environment:
+          type: string
+          example: test
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-01T12:00:00Z'
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-08-31T12:00:00Z'
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    CreateKeyResponse:
+      type: object
+      required:
+        - key
+        - raw_key
+      properties:
+        key:
+          $ref: '#/components/schemas/KeyDTO'
+        raw_key:
+          type: string
+          example: pk_test_12345678901234567890123456789012
+          description: Usable API key string; returned only once on creation
+
+    RevokeKeyResponse:
+      type: object
+      required:
+        - status
+        - id
+      properties:
+        status:
+          type: string
+          example: revoked
+        id:
+          type: string
+          example: key_1a2b3c
+
+    # --------------------------------------------------------------------------
+    # Impersonation & Policy Schemas
+    # --------------------------------------------------------------------------
+    ImpersonateRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          example: Investigating billing issue reported in support ticket
+          description: Justification string (10 to 500 characters)
+        duration_minutes:
+          type: integer
+          example: 15
+          description: Requested session length in minutes (clamped to tenant policy max)
+        ticket_id:
+          type: string
+          example: TICKET-10492
+          description: Optional support ticket reference (3 to 100 characters)
+        verification_method:
+          type: string
+          enum: [password, totp, webauthn, passkey]
+          example: password
+          description: Step-up authentication method presented by the admin
+        mfa_code:
+          type: string
+          example: '123456'
+          description: TOTP 2FA verification code
+        admin_password:
+          type: string
+          example: AdminSecretPassword123!
+          description: Admin's own password for step-up verification
+        credential_id:
+          type: string
+          example: cred_webauthn_99
+          description: WebAuthn passkey credential identifier
+
+    UserInfo:
+      type: object
+      required:
+        - id
+        - email
+        - status
+        - email_verified
+      properties:
+        id:
+          type: string
+          example: usr_1a2b3c
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        name:
+          type: string
+          nullable: true
+          example: Jane Doe
+        status:
+          type: string
+          example: active
+        email_verified:
+          type: boolean
+          example: true
+
+    ImpersonationResult:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - impersonated_user
+        - impersonator_id
+        - session_id
+      properties:
+        access_token:
+          type: string
+          description: Impersonated JWT access token
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          example: 900
+          description: Token lifetime in seconds
+        impersonated_user:
+          $ref: '#/components/schemas/UserInfo'
+        impersonator_id:
+          type: string
+          example: usr_admin_99
+        session_id:
+          type: string
+          example: ses_imp_1750000000000000000
+
+    ImpersonationPolicy:
+      type: object
+      required:
+        - enabled
+        - max_duration_minutes
+        - require_step_up_auth
+        - require_ticket_id
+        - require_user_opt_in
+        - email_notification_policy
+        - read_only_default
+        - restrict_admin_impersonation
+        - allowed_roles
+      properties:
+        enabled:
+          type: boolean
+          example: true
+        max_duration_minutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          example: 15
+        require_step_up_auth:
+          type: boolean
+          example: true
+        require_ticket_id:
+          type: boolean
+          example: false
+        require_user_opt_in:
+          type: boolean
+          example: false
+        email_notification_policy:
+          type: string
+          enum: [IMMEDIATE, POST_SESSION, DISABLED]
+          example: IMMEDIATE
+        read_only_default:
+          type: boolean
+          example: false
+        restrict_admin_impersonation:
+          type: boolean
+          example: true
+        allowed_roles:
+          type: array
+          items:
+            type: string
+          example: [tenant_admin, support_admin]
+
+    ExitImpersonationResponse:
+      type: object
+      required:
+        - message
+        - impersonated_id
+        - impersonator_id
+      properties:
+        message:
+          type: string
+          example: impersonation session exited successfully
+        impersonated_id:
+          type: string
+          example: usr_target_123
+        impersonator_id:
+          type: string
+          example: usr_admin_99
+
+    PasswordPolicy:
+      type: object
+      required:
+        - enforcement_mode
+        - require_uppercase
+        - require_lowercase
+        - require_numeric
+        - require_special
+        - force_upgrade_on_signin
+        - min_length
+        - max_length
+      properties:
+        enforcement_mode:
+          type: string
+          enum: [require, notify]
+          example: require
+        require_uppercase:
+          type: boolean
+          example: false
+        require_lowercase:
+          type: boolean
+          example: false
+        require_numeric:
+          type: boolean
+          example: true
+        require_special:
+          type: boolean
+          example: false
+        force_upgrade_on_signin:
+          type: boolean
+          example: false
+        min_length:
+          type: integer
+          minimum: 8
+          example: 8
+        max_length:
+          type: integer
+          maximum: 4096
+          example: 4096
+
+    SecurityPolicy:
+      type: object
+      required:
+        - require_email_verification
+        - email_verification_mode
+        - token_reuse_policy
+      properties:
+        require_email_verification:
+          type: boolean
+          example: false
+        email_verification_mode:
+          type: string
+          enum: [hard, soft]
+          example: soft
+        token_reuse_policy:
+          type: string
+          enum: [global_revoke, session_revoke]
+          example: global_revoke
+
+    RecoveryPolicy:
+      type: object
+      required:
+        - guardians_enabled
+        - phone_otp_enabled
+        - email_otp_enabled
+        - old_password_enabled
+        - security_questions_enabled
+        - freeze_window_hours
+        - claim_token_ttl_minutes
+        - lockout_schedule
+        - lockout_reset_days
+        - trusted_device_window_days
+        - min_guardians
+        - max_guardians
+        - ipv4_subnet_bits
+        - ipv6_subnet_bits
+        - max_proof_attempts_per_window
+      properties:
+        guardians_enabled:
+          type: boolean
+          example: true
+        phone_otp_enabled:
+          type: boolean
+          example: true
+        email_otp_enabled:
+          type: boolean
+          example: true
+        old_password_enabled:
+          type: boolean
+          example: true
+        security_questions_enabled:
+          type: boolean
+          example: true
+        freeze_window_hours:
+          type: integer
+          minimum: 24
+          maximum: 168
+          example: 48
+        claim_token_ttl_minutes:
+          type: integer
+          minimum: 5
+          maximum: 60
+          example: 15
+        lockout_schedule:
+          type: array
+          items:
+            type: string
+          example: [24h, 3d, 7d, 14d, 4w, 8w, 12w, permanent]
+        lockout_reset_days:
+          type: integer
+          minimum: 7
+          maximum: 90
+          example: 30
+        trusted_device_window_days:
+          type: integer
+          minimum: 30
+          maximum: 365
+          example: 90
+        min_guardians:
+          type: integer
+          minimum: 1
+          example: 1
+        max_guardians:
+          type: integer
+          maximum: 5
+          example: 5
+        ipv4_subnet_bits:
+          type: integer
+          minimum: 16
+          maximum: 30
+          example: 24
+        ipv6_subnet_bits:
+          type: integer
+          minimum: 32
+          maximum: 64
+          example: 48
+        max_proof_attempts_per_window:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 3
+
+    # --------------------------------------------------------------------------
+    # RBAC Schemas
+    # --------------------------------------------------------------------------
+    CreateRoleRequest:
+      type: object
+      required:
+        - name
+      properties:
+        tenant_id:
+          type: string
+          example: tnt_1a2b3c
+          description: Optional target tenant ID
+        name:
+          type: string
+          example: Support Agent
+        slug:
+          type: string
+          example: support_agent
+        description:
+          type: string
+          example: Customer support team role with limited administrative scope
+        permissions:
+          type: array
+          items:
+            type: string
+          example: [users:read, users:impersonate]
+
+    Role:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - name
+        - slug
+        - is_system_role
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          example: rol_1a2b3c
+        tenant_id:
+          type: string
+          example: tnt_1a2b3c
+        name:
+          type: string
+          example: Support Agent
+        slug:
+          type: string
+          example: support_agent
+        description:
+          type: string
+          example: Support team role
+        is_system_role:
+          type: boolean
+          example: false
+        created_by_user_id:
+          type: string
+          nullable: true
+          example: usr_admin_1
+        updated_by_user_id:
+          type: string
+          nullable: true
+          example: usr_admin_1
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-01T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-08-01T12:00:00Z'
+
+    RoleListResponse:
+      type: object
+      required:
+        - roles
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+
+    UpdateRolePermissionsRequest:
+      type: object
+      required:
+        - permissions
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+          example: [users:read, users:impersonate, audit:read]
+
+    UpdateRolePermissionsResponse:
+      type: object
+      required:
+        - message
+        - role_id
+      properties:
+        message:
+          type: string
+          example: permissions updated successfully
+        role_id:
+          type: string
+          example: rol_1a2b3c
+
+    AssignUserRoleRequest:
+      type: object
+      properties:
+        role_slug:
+          type: string
+          example: support_agent
+          description: Role slug identifier to assign
+        role:
+          type: string
+          example: support_agent
+          description: Fallback role slug parameter
+
+    AssignUserRoleResponse:
+      type: object
+      required:
+        - message
+        - user_id
+        - role
+      properties:
+        message:
+          type: string
+          example: role assigned to user successfully
+        user_id:
+          type: string
+          example: usr_1a2b3c
+        role:
+          type: string
+          example: support_agent
+
+    RevokeUserRoleResponse:
+      type: object
+      required:
+        - message
+        - user_id
+        - role
+      properties:
+        message:
+          type: string
+          example: role revoked from user successfully
+        user_id:
+          type: string
+          example: usr_1a2b3c
+        role:
+          type: string
+          example: support_agent
+
+    UserPermissionsResponse:
+      type: object
+      required:
+        - user_id
+        - roles
+        - permissions
+      properties:
+        user_id:
+          type: string
+          example: usr_1a2b3c
+        roles:
+          type: array
+          items:
+            type: string
+          example: [support_admin]
+        permissions:
+          type: array
+          items:
+            type: string
+          example: [users:read, users:impersonate]
+
+    # --------------------------------------------------------------------------
+    # Webhook Schemas
+    # --------------------------------------------------------------------------
+    CreateEndpointRequest:
+      type: object
+      required:
+        - url
+        - description
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+          example: https://api.example.com/webhooks/authn
+        description:
+          type: string
+          example: Primary Webhook Receiver
+        events:
+          type: array
+          items:
+            type: string
+          example: [user.created, user.updated, session.revoked]
+
+    UpdateEndpointRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          example: https://api.example.com/webhooks/authn-v2
+        description:
+          type: string
+          example: Updated Primary Webhook Receiver
+        events:
+          type: array
+          items:
+            type: string
+          example: [user.created, user.deleted]
+        is_active:
+          type: boolean
+          example: true
+
+    EndpointResponse:
+      type: object
+      required:
+        - id
+        - url
+        - description
+        - subscribed_events
+        - is_active
+        - failure_count
+        - created_at
+      properties:
+        id:
+          type: string
+          example: whep_1a2b3c
+        url:
+          type: string
+          format: uri
+          example: https://api.example.com/webhooks/authn
+        description:
+          type: string
+          example: Primary Webhook Receiver
+        secret:
+          type: string
+          example: whsec_12345678901234567890123456789012
+          description: Signing secret string (returned only on creation or rotation)
+        subscribed_events:
+          type: array
+          items:
+            type: string
+          example: [user.created, user.updated]
+        is_active:
+          type: boolean
+          example: true
+        failure_count:
+          type: integer
+          example: 0
+        last_triggered_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-08-01T14:30:00Z'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-01T12:00:00Z'
+
+    WebhookEndpointListResponse:
+      type: object
+      required:
+        - endpoints
+      properties:
+        endpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointResponse'
+
+    DeleteEndpointResponse:
+      type: object
+      required:
+        - message
+        - endpoint_id
+      properties:
+        message:
+          type: string
+          example: webhook endpoint deleted successfully
+        endpoint_id:
+          type: string
+          example: whep_1a2b3c
+
+    DeliveryResponse:
+      type: object
+      required:
+        - id
+        - endpoint_id
+        - event_type
+        - payload
+        - status_code
+        - response_body
+        - error_message
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          example: whdel_1a2b3c
+        endpoint_id:
+          type: string
+          example: whep_1a2b3c
+        event_type:
+          type: string
+          example: user.created
+        payload:
+          type: object
+          additionalProperties: true
+          example:
+            event: user.created
+            user_id: usr_1a2b3c
+        status_code:
+          type: integer
+          example: 200
+        response_body:
+          type: string
+          example: '{"status":"ok"}'
+        error_message:
+          type: string
+          example: ''
+        status:
+          type: string
+          example: success
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-01T14:30:00Z'
+
+    SendTestPingResponse:
+      type: object
+      required:
+        - message
+        - delivery
+      properties:
+        message:
+          type: string
+          example: test ping webhook event delivered
+        delivery:
+          $ref: '#/components/schemas/DeliveryResponse'
+
+    DeliveryListResponse:
+      type: object
+      required:
+        - deliveries
+      properties:
+        deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryResponse'
+
+    RedeliverResponse:
+      type: object
+      required:
+        - message
+        - delivery
+      properties:
+        message:
+          type: string
+          example: webhook re-delivery executed
+        delivery:
+          $ref: '#/components/schemas/DeliveryResponse'
+
+    # --------------------------------------------------------------------------
+    # Common Error Envelope
+    # --------------------------------------------------------------------------
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: unauthorized access
+        code:
+          type: string
+          description: Machine-readable error code
+          example: unauthorized

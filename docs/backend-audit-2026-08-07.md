@@ -337,9 +337,9 @@ The token *is* signature-verified (`jwtpkg.VerifyAccessToken`, line 71), so this
 
 Additionally it reads no cookie, so a cookie-authenticated web session cannot list or revoke its own sessions.
 
-### M3 — Silent `tnt_default` tenant fallback
+### M3 — Silent `tnt_00000000000000000000000000000001` tenant fallback
 
-`internal/org/handler.go` `getTenantID` falls back to the literal `"tnt_default"` when no tenant is resolvable. A misconfigured or unauthenticated request does not fail — it silently operates against a real tenant. Combined with C1/C2 this widens the blast radius; independently it turns configuration errors into cross-tenant data operations. Fail closed instead.
+`internal/org/handler.go` `getTenantID` falls back to the literal `"tnt_00000000000000000000000000000001"` when no tenant is resolvable. A misconfigured or unauthenticated request does not fail — it silently operates against a real tenant. Combined with C1/C2 this widens the blast radius; independently it turns configuration errors into cross-tenant data operations. Fail closed instead.
 
 ### M4 — `pkMiddleware` executes twice on every protected user route
 
@@ -477,7 +477,7 @@ and the integration suite pass.
 | H8 | `errorsIs` deleted; 117 `errors.Is` call sites, 0 string comparisons |
 | M1 | Routes moved behind `RequireClientAuth`; 7 documented exceptions remain where the route cannot sit behind it |
 | M2 | Session handler uses the shared extractor; cookie sessions work |
-| M3 | `tnt_default` fallback replaced by `requireTenantID`, fails closed |
+| M3 | `tnt_00000000000000000000000000000001` fallback replaced by `requireTenantID`, fails closed |
 | M4 | One group on `/v1/client/user`, auth attached per route |
 | M5 | Second-factor verification keys its bucket on the hashed challenge token, so IP rotation cannot escape it |
 | M6 | Query fallback restricted to a closed allowlist of redirect landings |

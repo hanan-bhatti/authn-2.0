@@ -1,4 +1,4 @@
-# MFA Enrollment & Verification Suite (`/v1/client/2fa/*`)
+# MFA Enrollment & Verification Suite (`/v1/client/auth/2fa/*`)
 
 > **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server using `pyotp` for RFC 6238 TOTP validation.
 
@@ -9,7 +9,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 
 ## Endpoint Specifications
 
-### 1. Enroll TOTP Authenticator (`POST /v1/client/2fa/totp/enroll`)
+### 1. Enroll TOTP Authenticator (`POST /v1/client/auth/2fa/totp/enroll`)
 * **Headers**: `X-Authn-Publishable-Key: pk_test_...`, `Authorization: Bearer <sessionToken>`
 * **Response (`200 OK`)**:
 ```json
@@ -19,7 +19,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 }
 ```
 
-### 2. Confirm TOTP Enrollment (`POST /v1/client/2fa/totp/confirm`)
+### 2. Confirm TOTP Enrollment (`POST /v1/client/auth/2fa/totp/confirm`)
 * **Request**:
 ```json
 {
@@ -39,7 +39,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 ```
 * **Security Behavior**: Garbage or expired codes are rejected with `400 Bad Request` (`invalid 6-digit TOTP code`). Valid code activates TOTP and automatically provisions 16 single-use recovery codes.
 
-### 3. Check Recovery Codes Status (`GET /v1/client/2fa/recovery-codes/status`)
+### 3. Check Recovery Codes Status (`GET /v1/client/auth/2fa/recovery-codes/status`)
 * **Headers**: `Authorization: Bearer <sessionToken>`
 * **Response (`200 OK`)**:
 ```json
@@ -50,7 +50,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 }
 ```
 
-### 4. Regenerate Recovery Codes (`POST /v1/client/2fa/recovery-codes/regenerate`)
+### 4. Regenerate Recovery Codes (`POST /v1/client/auth/2fa/recovery-codes/regenerate`)
 * **Request**:
 ```json
 {
@@ -66,7 +66,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 ```
 * **Security Guard**: Requires password step-up confirmation (`400 Bad Request` if password is omitted or invalid).
 
-### 5. Disable TOTP Authenticator (`POST /v1/client/2fa/totp/disable`)
+### 5. Disable TOTP Authenticator (`POST /v1/client/auth/2fa/totp/disable`)
 * **Request**:
 ```json
 {
@@ -81,7 +81,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 ```
 * **Security Guard**: Requires password step-up confirmation (`400 Bad Request` if password omitted). Disabling 2FA revokes all active user sessions to prevent session hijacking.
 
-### 6. SMS 2FA Enrollment (`POST /v1/client/2fa/sms/enroll`)
+### 6. SMS 2FA Enrollment (`POST /v1/client/auth/2fa/sms/enroll`)
 * **Request**:
 ```json
 {
@@ -97,7 +97,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 ```
 * **Driver Note**: E2E tested via code path. When AWS SNS or Twilio credentials are not configured in `.env`, the engine falls back to the safe SMS Log Driver (`[SMS NO-OP DRIVER] To: +15551234567 | Message: ...`).
 
-### 7. WebAuthn Register Begin (`POST /v1/client/2fa/webauthn/register/begin`)
+### 7. WebAuthn Register Begin (`POST /v1/client/auth/2fa/webauthn/register/begin`)
 * **Response (`200 OK`)**:
 ```json
 {
@@ -113,8 +113,8 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 }
 ```
 
-### 8. List WebAuthn Passkeys (`GET /v1/client/2fa/webauthn/credentials`)
+### 8. List WebAuthn Passkeys (`GET /v1/client/auth/2fa/webauthn/credentials`)
 * **Response (`200 OK`)**: `{"credentials":[]}`
 
-### 9. Revoke WebAuthn Passkey (`DELETE /v1/client/2fa/webauthn/credentials/:id`)
+### 9. Revoke WebAuthn Passkey (`DELETE /v1/client/auth/2fa/webauthn/credentials/:id`)
 * **Security Guard (IDOR Protection)**: Attempts to delete non-existent or foreign credentials return `400 Bad Request` (`passkey not found or does not belong to user`).

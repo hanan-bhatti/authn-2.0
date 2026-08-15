@@ -39,7 +39,7 @@ $ curl -i -H "Authorization: Bearer <access_token>" http://localhost:8080/v1/oau
   "email": "user@example.com",
   "email_verified": true,
   "name": "Alex Smith",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "test",
   "updated_at": "2026-08-06T03:43:46Z"
 }
@@ -61,7 +61,7 @@ $ curl -i -H "Authorization: Bearer <access_token>" http://localhost:8080/v1/oau
 ```json
 {
   "id": "usr_cae8e146-a3b",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "email": "user@example.com",
   "email_verified": true,
   "name": "Alex Smith",

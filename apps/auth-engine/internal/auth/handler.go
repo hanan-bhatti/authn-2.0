@@ -113,7 +113,6 @@ func (h *Handler) WithBlocklist(bl *tokenblocklist.Blocklist) *Handler {
 	return h
 }
 
-
 // WithSessionPolicyResolver points cookie construction at a live source of tenant
 // session policy, and returns the handler for chaining.
 //
@@ -167,10 +166,15 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	}
 
 	// Registration, password sign-in and email verification.
-	api.Post("/signup", public(h.SignUp)...)
-	api.Post("/login", public(h.Login)...)
-	api.Get("/verify-email", public(h.VerifyEmail)...)
-	api.Post("/resend-verification", public(h.ResendVerification)...)
+	//
+	// Every client authentication route lives under /v1/client/auth/. The prefix
+	// is the whole grouping rule: a reader looking for "how does one authenticate"
+	// finds the complete set in one place, and a route that mutates credentials
+	// cannot be mistaken for /v1/client/user profile management beside it.
+	api.Post("/auth/signup", public(h.SignUp)...)
+	api.Post("/auth/login", public(h.Login)...)
+	api.Get("/auth/verify-email", public(h.VerifyEmail)...)
+	api.Post("/auth/resend-verification", public(h.ResendVerification)...)
 
 	// Passwordless magic link (FR-15). The emailed token is the credential.
 	api.Post("/auth/magic-link", public(h.SendMagicLink)...)
@@ -179,28 +183,30 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 
 	// TOTP second factor (FR-4). Verification is public because it also serves the login
 	// challenge, where the caller holds an mfa_token rather than a session.
-	api.Post("/2fa/totp/enroll", protected(h.EnrollTOTP)...)
-	api.Post("/2fa/totp/confirm", protected(h.ConfirmTOTP)...)
-	api.Post("/2fa/totp/disable", protected(h.DisableTOTP)...)
-	api.Post("/2fa/totp/verify", public(h.VerifyTOTP)...)
+	api.Post("/auth/2fa/totp/enroll", protected(h.EnrollTOTP)...)
+	api.Post("/auth/2fa/totp/confirm", protected(h.ConfirmTOTP)...)
+	api.Post("/auth/2fa/totp/disable", protected(h.DisableTOTP)...)
+	api.Post("/auth/2fa/totp/verify", public(h.VerifyTOTP)...)
+	// Method-agnostic alias for the login challenge: a caller holding an mfa_token
+	// posts the code here without needing to know which factor issued it.
 	api.Post("/auth/2fa/verify", public(h.VerifyTOTP)...)
 
 	// SMS OTP second factor (FR-4).
-	api.Post("/2fa/sms/enroll", protected(h.EnrollSMS)...)
-	api.Post("/2fa/sms/confirm", protected(h.ConfirmSMS)...)
-	api.Delete("/2fa/sms/disable", protected(h.DisableSMS)...)
+	api.Post("/auth/2fa/sms/enroll", protected(h.EnrollSMS)...)
+	api.Post("/auth/2fa/sms/confirm", protected(h.ConfirmSMS)...)
+	api.Delete("/auth/2fa/sms/disable", protected(h.DisableSMS)...)
 
 	// Backup recovery codes (FR-4).
-	api.Post("/2fa/recovery-codes/regenerate", protected(h.RegenerateRecoveryCodes)...)
-	api.Get("/2fa/recovery-codes/status", protected(h.GetRecoveryCodesStatus)...)
+	api.Post("/auth/2fa/recovery-codes/regenerate", protected(h.RegenerateRecoveryCodes)...)
+	api.Get("/auth/2fa/recovery-codes/status", protected(h.GetRecoveryCodesStatus)...)
 
 	// WebAuthn passkeys (FR-4). Registration needs a session; login is authorized by mfa_token.
-	api.Post("/2fa/webauthn/register/begin", protected(h.BeginWebAuthnRegistration)...)
-	api.Post("/2fa/webauthn/register/finish", protected(h.FinishWebAuthnRegistration)...)
-	api.Post("/2fa/webauthn/login/begin", public(h.BeginWebAuthnLogin)...)
-	api.Post("/2fa/webauthn/login/finish", public(h.FinishWebAuthnLogin)...)
-	api.Get("/2fa/webauthn/credentials", protected(h.ListWebAuthnPasskeys)...)
-	api.Delete("/2fa/webauthn/credentials/:id", protected(h.DeleteWebAuthnPasskey)...)
+	api.Post("/auth/2fa/webauthn/register/begin", protected(h.BeginWebAuthnRegistration)...)
+	api.Post("/auth/2fa/webauthn/register/finish", protected(h.FinishWebAuthnRegistration)...)
+	api.Post("/auth/2fa/webauthn/login/begin", public(h.BeginWebAuthnLogin)...)
+	api.Post("/auth/2fa/webauthn/login/finish", public(h.FinishWebAuthnLogin)...)
+	api.Get("/auth/2fa/webauthn/credentials", protected(h.ListWebAuthnPasskeys)...)
+	api.Delete("/auth/2fa/webauthn/credentials/:id", protected(h.DeleteWebAuthnPasskey)...)
 
 	// Guardian roster management (FR-5). Accepting an invitation is public: the invitee is a
 	// different person from the account holder and generally has no session here.

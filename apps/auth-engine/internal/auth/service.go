@@ -534,7 +534,7 @@ func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error 
 		return err
 	}
 
-	verifyURL := fmt.Sprintf("%s/v1/client/verify-email?token=%s", s.config.AppBaseURL, rawToken)
+	verifyURL := fmt.Sprintf("%s/v1/client/auth/verify-email?token=%s", s.config.AppBaseURL, rawToken)
 
 	htmlBody, textBody, err := emailPkg.RenderVerificationEmail(emailPkg.VerificationEmailData{
 		UserName:         u.Name,

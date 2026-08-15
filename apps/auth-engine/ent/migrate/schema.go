@@ -166,6 +166,46 @@ var (
 			},
 		},
 	}
+	// ManagedTenantsColumns holds the columns for the "managed_tenants" table.
+	ManagedTenantsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "managed_tenant_id", Type: field.TypeString},
+		{Name: "owner_user_id", Type: field.TypeString},
+		{Name: "role", Type: field.TypeEnum, Enums: []string{"owner", "member"}, Default: "owner"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "tenant_id", Type: field.TypeString},
+	}
+	// ManagedTenantsTable holds the schema information for the "managed_tenants" table.
+	ManagedTenantsTable = &schema.Table{
+		Name:       "managed_tenants",
+		Columns:    ManagedTenantsColumns,
+		PrimaryKey: []*schema.Column{ManagedTenantsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "managed_tenants_tenants_managed_tenants",
+				Columns:    []*schema.Column{ManagedTenantsColumns[5]},
+				RefColumns: []*schema.Column{TenantsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "managedtenant_tenant_id_owner_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{ManagedTenantsColumns[5], ManagedTenantsColumns[2]},
+			},
+			{
+				Name:    "managedtenant_owner_user_id_managed_tenant_id",
+				Unique:  true,
+				Columns: []*schema.Column{ManagedTenantsColumns[2], ManagedTenantsColumns[1]},
+			},
+			{
+				Name:    "managedtenant_managed_tenant_id",
+				Unique:  false,
+				Columns: []*schema.Column{ManagedTenantsColumns[1]},
+			},
+		},
+	}
 	// OrgInvitationsColumns holds the columns for the "org_invitations" table.
 	OrgInvitationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -646,6 +686,7 @@ var (
 		{Name: "recovery_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "social_providers", Type: field.TypeJSON, Nullable: true},
 		{Name: "role_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "session_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -981,6 +1022,7 @@ var (
 		ApplicationsTable,
 		AuditLogsTable,
 		IdentitiesTable,
+		ManagedTenantsTable,
 		OrgInvitationsTable,
 		OrgMembersTable,
 		OrganizationsTable,
@@ -1010,6 +1052,7 @@ func init() {
 	ApplicationsTable.ForeignKeys[0].RefTable = TenantsTable
 	AuditLogsTable.ForeignKeys[0].RefTable = TenantsTable
 	IdentitiesTable.ForeignKeys[0].RefTable = UsersTable
+	ManagedTenantsTable.ForeignKeys[0].RefTable = TenantsTable
 	OrgInvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	OrgMembersTable.ForeignKeys[0].RefTable = OrganizationsTable
 	OrgMembersTable.ForeignKeys[1].RefTable = RolesTable

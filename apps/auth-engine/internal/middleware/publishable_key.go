@@ -54,7 +54,7 @@ type pkQueryFallbackRoute struct {
 var pkQueryFallbackRoutes = []pkQueryFallbackRoute{
 	// Emailed-link landings: the link is opened from a mail client, and no
 	// JavaScript runs before the request is issued.
-	{prefix: "/v1/client/verify-email"},
+	{prefix: "/v1/client/auth/verify-email"},
 	{prefix: "/v1/client/auth/magic-link/verify"},
 	{prefix: "/v1/client/user/email/verify"},
 	{prefix: "/v1/client/user/recovery-email/verify"},
@@ -187,9 +187,9 @@ func originAllowedForApplication(c *fiber.Ctx, allowedOrigins []string) bool {
 		return true
 	}
 
-	requested := normalizeOrigin(origin)
+	requested := NormalizeOrigin(origin)
 	for _, allowed := range allowedOrigins {
-		if normalizeOrigin(allowed) == requested {
+		if NormalizeOrigin(allowed) == requested {
 			return true
 		}
 	}

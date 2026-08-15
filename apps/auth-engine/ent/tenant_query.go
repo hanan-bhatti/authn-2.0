@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
@@ -35,6 +36,7 @@ type TenantQuery struct {
 	withRoles            *RoleQuery
 	withWebhookEndpoints *WebhookEndpointQuery
 	withAuditLogs        *AuditLogQuery
+	withManagedTenants   *ManagedTenantQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -196,6 +198,28 @@ func (tq *TenantQuery) QueryAuditLogs() *AuditLogQuery {
 			sqlgraph.From(tenant.Table, tenant.FieldID, selector),
 			sqlgraph.To(auditlog.Table, auditlog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, tenant.AuditLogsTable, tenant.AuditLogsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryManagedTenants chains the current query on the "managed_tenants" edge.
+func (tq *TenantQuery) QueryManagedTenants() *ManagedTenantQuery {
+	query := (&ManagedTenantClient{config: tq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := tq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := tq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenant.Table, tenant.FieldID, selector),
+			sqlgraph.To(managedtenant.Table, managedtenant.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tenant.ManagedTenantsTable, tenant.ManagedTenantsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
 		return fromU, nil
@@ -401,6 +425,7 @@ func (tq *TenantQuery) Clone() *TenantQuery {
 		withRoles:            tq.withRoles.Clone(),
 		withWebhookEndpoints: tq.withWebhookEndpoints.Clone(),
 		withAuditLogs:        tq.withAuditLogs.Clone(),
+		withManagedTenants:   tq.withManagedTenants.Clone(),
 		// clone intermediate query.
 		sql:  tq.sql.Clone(),
 		path: tq.path,
@@ -470,6 +495,17 @@ func (tq *TenantQuery) WithAuditLogs(opts ...func(*AuditLogQuery)) *TenantQuery 
 		opt(query)
 	}
 	tq.withAuditLogs = query
+	return tq
+}
+
+// WithManagedTenants tells the query-builder to eager-load the nodes that are connected to
+// the "managed_tenants" edge. The optional arguments are used to configure the query builder of the edge.
+func (tq *TenantQuery) WithManagedTenants(opts ...func(*ManagedTenantQuery)) *TenantQuery {
+	query := (&ManagedTenantClient{config: tq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	tq.withManagedTenants = query
 	return tq
 }
 
@@ -551,13 +587,14 @@ func (tq *TenantQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Tenan
 	var (
 		nodes       = []*Tenant{}
 		_spec       = tq.querySpec()
-		loadedTypes = [6]bool{
+		loadedTypes = [7]bool{
 			tq.withApplications != nil,
 			tq.withUsers != nil,
 			tq.withOrganizations != nil,
 			tq.withRoles != nil,
 			tq.withWebhookEndpoints != nil,
 			tq.withAuditLogs != nil,
+			tq.withManagedTenants != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -617,6 +654,13 @@ func (tq *TenantQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Tenan
 		if err := tq.loadAuditLogs(ctx, query, nodes,
 			func(n *Tenant) { n.Edges.AuditLogs = []*AuditLog{} },
 			func(n *Tenant, e *AuditLog) { n.Edges.AuditLogs = append(n.Edges.AuditLogs, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := tq.withManagedTenants; query != nil {
+		if err := tq.loadManagedTenants(ctx, query, nodes,
+			func(n *Tenant) { n.Edges.ManagedTenants = []*ManagedTenant{} },
+			func(n *Tenant, e *ManagedTenant) { n.Edges.ManagedTenants = append(n.Edges.ManagedTenants, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -788,6 +832,36 @@ func (tq *TenantQuery) loadAuditLogs(ctx context.Context, query *AuditLogQuery, 
 	}
 	query.Where(predicate.AuditLog(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(tenant.AuditLogsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TenantID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "tenant_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (tq *TenantQuery) loadManagedTenants(ctx context.Context, query *ManagedTenantQuery, nodes []*Tenant, init func(*Tenant), assign func(*Tenant, *ManagedTenant)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Tenant)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(managedtenant.FieldTenantID)
+	}
+	query.Where(predicate.ManagedTenant(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(tenant.ManagedTenantsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

@@ -27,9 +27,9 @@ To prevent **Cross-Site Scripting (XSS)** token theft vulnerabilities in web app
 
 ## 3. Live Verified Payloads
 
-### 3.1 Web Browser Response (`POST /v1/client/login`)
+### 3.1 Web Browser Response (`POST /v1/client/auth/login`)
 ```bash
-curl -i -X POST http://localhost:8080/v1/client/login \
+curl -i -X POST http://localhost:8080/v1/client/auth/login \
   -H "Content-Type: application/json" \
   -d '{"tenant_id":"tnt_prod","environment":"test","email":"sarah@example.com","password":"SuperSecretPassword123!"}'
 ```
@@ -53,9 +53,9 @@ Set-Cookie: authn_refresh_token=eef8114e...; path=/v1/client; HttpOnly; SameSite
 
 ---
 
-### 3.2 Native Mobile Response (`POST /v1/client/login` + `X-Authn-Client-Type: native`)
+### 3.2 Native Mobile Response (`POST /v1/client/auth/login` + `X-Authn-Client-Type: native`)
 ```bash
-curl -i -X POST http://localhost:8080/v1/client/login \
+curl -i -X POST http://localhost:8080/v1/client/auth/login \
   -H "Content-Type: application/json" \
   -H "X-Authn-Client-Type: native" \
   -d '{"tenant_id":"tnt_prod","environment":"test","email":"sarah@example.com","password":"SuperSecretPassword123!"}'

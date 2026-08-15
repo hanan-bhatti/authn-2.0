@@ -15,6 +15,7 @@
 package middleware
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -47,7 +48,7 @@ func CORS(cfg *config.Config) fiber.Handler {
 			wildcard = true
 			continue
 		}
-		allowed[normalizeOrigin(origin)] = struct{}{}
+		allowed[NormalizeOrigin(origin)] = struct{}{}
 	}
 
 	return cors.New(cors.Config{
@@ -57,7 +58,7 @@ func CORS(cfg *config.Config) fiber.Handler {
 			if wildcard {
 				return true
 			}
-			_, ok := allowed[normalizeOrigin(origin)]
+			_, ok := allowed[NormalizeOrigin(origin)]
 			return ok
 		},
 		AllowMethods:     strings.Join(cfg.CORSAllowedMethods, ","),
@@ -67,9 +68,51 @@ func CORS(cfg *config.Config) fiber.Handler {
 	})
 }
 
-// normalizeOrigin lowercases an origin and drops any trailing slash, so that
+// NormalizeOrigin lowercases an origin and drops any trailing slash, so that
 // "https://App.Example.com/" and "https://app.example.com" compare equal.
 // Origin comparison is otherwise exact: no wildcards, no suffix matching.
-func normalizeOrigin(origin string) string {
+//
+// Exported because per-application origin storage must normalize with the very
+// same function the request-path matcher uses. A stored origin normalized one
+// way and matched another would silently never match, and an application would
+// reject a browser it was configured to allow.
+func NormalizeOrigin(origin string) string {
 	return strings.ToLower(strings.TrimRight(strings.TrimSpace(origin), "/"))
+}
+
+// ValidateOrigin reports whether raw is a usable CORS origin and returns its
+// normalized form.
+//
+// A CORS origin is a scheme, host and optional port — never a path, query or
+// fragment. The browser sends exactly that in the Origin header, so anything
+// carrying more cannot match one and is a configuration mistake worth catching
+// at write time rather than discovering as a login that silently fails to
+// persist. "*" is accepted only as a deployment-wide setting, never per
+// application, so it is refused here.
+func ValidateOrigin(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "*" {
+		return "", false
+	}
+
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return "", false
+	}
+	// A scheme and host are mandatory; a path, query or fragment, or embedded
+	// credentials, mean the value is a URL rather than an origin.
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", false
+	}
+	if u.Host == "" || u.User != nil {
+		return "", false
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return "", false
+	}
+	if path := strings.TrimRight(u.Path, "/"); path != "" {
+		return "", false
+	}
+
+	return NormalizeOrigin(trimmed), true
 }

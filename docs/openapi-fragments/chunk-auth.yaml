@@ -1,0 +1,739 @@
+openapi: 3.0.3
+info:
+  title: Authn Engine - Chunk Auth OpenAPI Fragment
+  version: 1.0.0
+  description: OpenAPI 3.0 fragment covering system probes and client authentication endpoints for apps/auth-engine.
+paths:
+  /v1/health:
+    get:
+      summary: Health Check Probe
+      description: Process liveness probe. Reports that the server process is running and serving HTTP requests without checking backing dependencies.
+      operationId: healthCheckV1
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Process is live and serving traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /v1/ready:
+    get:
+      summary: Readiness Check Probe
+      description: Process readiness probe. Checks backing database and Redis connections to ensure the instance is ready to receive traffic.
+      operationId: readinessCheckV1
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Instance is ready and all backing dependencies are operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Instance is not ready due to database or Redis failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+  /healthz:
+    get:
+      summary: Health Check Probe (Kubernetes alias)
+      description: Process liveness probe alias. Reports that the server process is running and serving HTTP requests.
+      operationId: healthz
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Process is live and serving traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /readyz:
+    get:
+      summary: Readiness Check Probe (Kubernetes alias)
+      description: Process readiness probe alias. Checks backing database and Redis connections.
+      operationId: readyz
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Instance is ready and all backing dependencies are operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Instance is not ready due to database or Redis failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+  /v1/client/auth/signup:
+    post:
+      summary: Client User Registration
+      description: Registers a new user identity with email and password, subject to password policy enforcement and rate limiting.
+      operationId: clientSignUp
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Identifies the client platform type. Native/mobile clients receive the refresh token in the response body; web clients receive it via an HttpOnly cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUpRequest'
+      responses:
+        '201':
+          description: User registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid request body, missing required fields, invalid email format, name exceeding 255 chars, or password policy violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: User with the specified email address already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Request throttled due to rate limiting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/login:
+    post:
+      summary: Client Password Login
+      description: Authenticates a user identity with email and password. Returns access and refresh tokens or an MFA challenge requirement.
+      operationId: clientLogin
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Identifies the client platform type. Native/mobile clients receive the refresh token in the response body; web clients receive it via an HttpOnly cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful or MFA challenge required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid JSON body, missing parameters, or invalid email format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Invalid credentials or missing/invalid publishable key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Email verification required before sign in (when hard mode is enabled)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Account rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/verify-email:
+    get:
+      summary: Verify User Email Address
+      description: Validates an email verification token received via email link and marks the user's email address as verified.
+      operationId: clientVerifyEmail
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Verification token passed in the query string from the emailed link.
+        - in: query
+          name: publishable_key
+          required: false
+          schema:
+            type: string
+          description: Query string fallback for X-Authn-Publishable-Key header on top-level browser navigation.
+        - in: query
+          name: pk
+          required: false
+          schema:
+            type: string
+          description: Shortened query string fallback for X-Authn-Publishable-Key header.
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: email successfully verified
+                  email:
+                    type: string
+                    example: user@example.com
+                  email_verified:
+                    type: boolean
+                    example: true
+                required:
+                  - message
+                  - email
+                  - email_verified
+        '400':
+          description: Missing token parameter or invalid/expired verification token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Request throttled due to rate limiting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/resend-verification:
+    post:
+      summary: Resend Email Verification Link
+      description: Triggers a new email verification link to the specified email address if an account exists.
+      operationId: clientResendVerification
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+                  example: tnt_demo123
+                environment:
+                  type: string
+                  example: test
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+              required:
+                - email
+      responses:
+        '200':
+          description: Verification email request processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: if an account exists with this email address, a verification link has been sent
+                required:
+                  - message
+        '400':
+          description: Invalid request body or invalid email address format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Too many verification requests for this email address
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Rate limit service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/magic-link:
+    post:
+      summary: Send Magic Login Link
+      description: Sends a passwordless magic login link to the user's email address.
+      operationId: clientSendMagicLink
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMagicLinkDTO'
+      responses:
+        '200':
+          description: Magic login link dispatched successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: a magic login link has been sent to your email address
+                required:
+                  - message
+        '400':
+          description: Invalid request body or invalid email format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Request throttled due to rate limiting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/magic-link/verify:
+    get:
+      summary: Verify Magic Link Token (GET)
+      description: Validates a magic login link token passed via query parameter, authenticates the user, and issues session tokens.
+      operationId: clientVerifyMagicLinkGet
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Identifies client platform type.
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Magic link token.
+        - in: query
+          name: publishable_key
+          required: false
+          schema:
+            type: string
+          description: Query string fallback for X-Authn-Publishable-Key header.
+        - in: query
+          name: pk
+          required: false
+          schema:
+            type: string
+          description: Shortened query string fallback for X-Authn-Publishable-Key header.
+      responses:
+        '200':
+          description: Magic link verified and session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Missing token parameter, unrecognized X-Authn-Client-Type header, or invalid/expired magic link token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Request throttled due to rate limiting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    post:
+      summary: Verify Magic Link Token (POST)
+      description: Validates a magic login link token passed via JSON body (or query fallback), authenticates the user, and issues session tokens.
+      operationId: clientVerifyMagicLinkPost
+      tags:
+        - Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Identifies client platform type.
+        - in: query
+          name: token
+          required: false
+          schema:
+            type: string
+          description: Fallback token query parameter if body is not supplied.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyMagicLinkDTO'
+      responses:
+        '200':
+          description: Magic link verified and session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Missing token field/parameter, unrecognized X-Authn-Client-Type header, or invalid/expired magic link token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Request throttled due to rate limiting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Publishable API key identifying the tenant application (pk_test_... / pk_live_...)
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        version:
+          type: string
+          example: 0.1.0
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-08-01T16:55:00Z
+      required:
+        - status
+        - version
+        - timestamp
+
+    ReadinessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ready
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            database: ok
+            redis: ok
+      required:
+        - status
+        - checks
+
+    SignUpRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          example: tnt_demo123
+        environment:
+          type: string
+          example: test
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: SuperSecret123!
+        name:
+          type: string
+          maxLength: 255
+          example: Alex Smith
+      required:
+        - email
+        - password
+
+    LoginRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          example: tnt_demo123
+        environment:
+          type: string
+          example: test
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: SuperSecret123!
+      required:
+        - email
+        - password
+
+    SendMagicLinkDTO:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          example: tnt_demo
+        environment:
+          type: string
+          example: test
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        name:
+          type: string
+          example: Alex Smith
+      required:
+        - email
+
+    VerifyMagicLinkDTO:
+      type: object
+      properties:
+        token:
+          type: string
+          example: raw_token_string
+      required:
+        - token
+
+    UserDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          example: usr_1a2b3c
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        email_verified:
+          type: boolean
+          example: false
+        name:
+          type: string
+          nullable: true
+          example: Alex Smith
+        status:
+          type: string
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-08-01T12:00:00Z
+      required:
+        - id
+        - email
+        - email_verified
+
+    PolicyWarningDTO:
+      type: object
+      properties:
+        requires_password_upgrade:
+          type: boolean
+        requires_email_verification:
+          type: boolean
+        missing_criteria:
+          type: array
+          items:
+            type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDTO'
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          example: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        policy_warning:
+          $ref: '#/components/schemas/PolicyWarningDTO'
+        mfa_required:
+          type: boolean
+          example: false
+        mfa_token:
+          type: string
+        methods:
+          type: array
+          items:
+            type: string
+          example:
+            - totp
+      required:
+        - user
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: invalid credentials provided
+        code:
+          type: string
+          description: Stable machine-readable error code
+          example: invalid_credentials
+      required:
+        - error
+        - code

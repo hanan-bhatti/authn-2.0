@@ -91,7 +91,7 @@ func TestTokenTenantMustMatchKeyTenant(t *testing.T) {
 	app := fiber.New()
 	app.Get("/v1/client/me",
 		middleware.RequirePublishableKey(apiKeySvc),
-		middleware.RequireClientAuth(secret),
+		middleware.RequireClientAuth(secret, nil),
 		func(c *fiber.Ctx) error {
 			p, _ := privacy.FromContext(c.UserContext())
 			return c.JSON(fiber.Map{
@@ -138,7 +138,7 @@ func TestTokenTenantMustMatchKeyTenant(t *testing.T) {
 	//    authority and is accepted on its own: the rule compares two credentials
 	//    when both are present, and never requires a key that a route did not.
 	solo := fiber.New()
-	solo.Get("/v1/client/solo", middleware.RequireClientAuth(secret), func(c *fiber.Ctx) error {
+	solo.Get("/v1/client/solo", middleware.RequireClientAuth(secret, nil), func(c *fiber.Ctx) error {
 		return c.SendString(middleware.GetTenantID(c))
 	})
 	req = httptest.NewRequest("GET", "/v1/client/solo", nil)

@@ -18,4 +18,5 @@ export { useWebhooks } from "./useWebhooks";
 export { useSAML } from "./useSAML";
 export { useAPIKeys } from "./useAPIKeys";
 export { useAuditLogs } from "./useAuditLogs";
+export { useTenantPolicies } from "./useTenantPolicies";
 

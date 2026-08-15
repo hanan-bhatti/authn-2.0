@@ -66,7 +66,7 @@ func setupWebAuthnTestEnvironment(t *testing.T) (*fiber.App, *auth.Service, *aut
 		"name":        "Passkey User",
 	}
 	sBytes, _ := json.Marshal(signUpPayload)
-	reqSignUp := httptest.NewRequest("POST", "/v1/client/signup", bytes.NewReader(sBytes))
+	reqSignUp := httptest.NewRequest("POST", "/v1/client/auth/signup", bytes.NewReader(sBytes))
 	reqSignUp.Header.Set("Content-Type", "application/json")
 	respSignUp, err := app.Test(reqSignUp, 10000)
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func setupWebAuthnTestEnvironment(t *testing.T) (*fiber.App, *auth.Service, *aut
 func TestWebAuthn_BeginRegistration(t *testing.T) {
 	app, _, _, token, _ := setupWebAuthnTestEnvironment(t)
 
-	req := httptest.NewRequest("POST", "/v1/client/2fa/webauthn/register/begin", nil)
+	req := httptest.NewRequest("POST", "/v1/client/auth/2fa/webauthn/register/begin", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := app.Test(req, 10000)
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func TestWebAuthn_BeginLogin_NoPasskeys(t *testing.T) {
 
 	// Login to get mfa_token (must enroll a 2FA method first so login returns MFA challenge)
 	// Enroll & confirm TOTP first
-	reqEnroll := httptest.NewRequest("POST", "/v1/client/2fa/webauthn/register/begin", nil)
+	reqEnroll := httptest.NewRequest("POST", "/v1/client/auth/2fa/webauthn/register/begin", nil)
 	reqEnroll.Header.Set("Authorization", "Bearer "+token)
 	respEnroll, err := app.Test(reqEnroll, 10000)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestWebAuthn_BeginLogin_NoPasskeys(t *testing.T) {
 		"email":       "passkeyuser@example.com",
 		"password":    password,
 	})
-	reqLogin := httptest.NewRequest("POST", "/v1/client/login", bytes.NewReader(lBytes))
+	reqLogin := httptest.NewRequest("POST", "/v1/client/auth/login", bytes.NewReader(lBytes))
 	reqLogin.Header.Set("Content-Type", "application/json")
 	respLogin, err := app.Test(reqLogin, 10000)
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestWebAuthn_BeginLogin_NoPasskeys(t *testing.T) {
 
 	// Attempt begin login without passkeys registered -> Should fail
 	bBytes, _ := json.Marshal(map[string]string{"mfa_token": "dummy_mfa_token"})
-	reqBegin := httptest.NewRequest("POST", "/v1/client/2fa/webauthn/login/begin", bytes.NewReader(bBytes))
+	reqBegin := httptest.NewRequest("POST", "/v1/client/auth/2fa/webauthn/login/begin", bytes.NewReader(bBytes))
 	reqBegin.Header.Set("Content-Type", "application/json")
 	respBegin, err := app.Test(reqBegin, 10000)
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 	ctx := testCtx()
 
 	// 1. Get User ID from session token
-	reqListInitial := httptest.NewRequest("GET", "/v1/client/2fa/webauthn/credentials", nil)
+	reqListInitial := httptest.NewRequest("GET", "/v1/client/auth/2fa/webauthn/credentials", nil)
 	reqListInitial.Header.Set("Authorization", "Bearer "+token)
 	respListInitial, err := app.Test(reqListInitial, 10000)
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 	require.NoError(t, err)
 
 	// 3. List Passkeys -> Should return 2 items
-	reqList := httptest.NewRequest("GET", "/v1/client/2fa/webauthn/credentials", nil)
+	reqList := httptest.NewRequest("GET", "/v1/client/auth/2fa/webauthn/credentials", nil)
 	reqList.Header.Set("Authorization", "Bearer "+token)
 	respList, err := app.Test(reqList, 10000)
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 	assert.Equal(t, uint32(5), listRes.Credentials[0].SignCount)
 
 	// 4. Delete Passkey 1 (when 2 passkeys remain) -> MUST succeed WITHOUT password step-up
-	reqDel1 := httptest.NewRequest("DELETE", "/v1/client/2fa/webauthn/credentials/"+pk1.ID, nil)
+	reqDel1 := httptest.NewRequest("DELETE", "/v1/client/auth/2fa/webauthn/credentials/"+pk1.ID, nil)
 	reqDel1.Header.Set("Authorization", "Bearer "+token)
 	respDel1, err := app.Test(reqDel1, 10000)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 
 	// 5. Delete Passkey 2 (the LAST remaining 2FA method):
 	// 5a. Attempt WITHOUT password -> MUST fail with step-up required error
-	reqDel2NoPass := httptest.NewRequest("DELETE", "/v1/client/2fa/webauthn/credentials/"+pk2.ID, nil)
+	reqDel2NoPass := httptest.NewRequest("DELETE", "/v1/client/auth/2fa/webauthn/credentials/"+pk2.ID, nil)
 	reqDel2NoPass.Header.Set("Authorization", "Bearer "+token)
 	respDel2NoPass, err := app.Test(reqDel2NoPass, 10000)
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 
 	// 5b. Attempt with WRONG password -> MUST fail
 	wBytes, _ := json.Marshal(map[string]string{"password": "WrongPassword!"})
-	reqDel2Wrong := httptest.NewRequest("DELETE", "/v1/client/2fa/webauthn/credentials/"+pk2.ID, bytes.NewReader(wBytes))
+	reqDel2Wrong := httptest.NewRequest("DELETE", "/v1/client/auth/2fa/webauthn/credentials/"+pk2.ID, bytes.NewReader(wBytes))
 	reqDel2Wrong.Header.Set("Authorization", "Bearer "+token)
 	reqDel2Wrong.Header.Set("Content-Type", "application/json")
 	respDel2Wrong, err := app.Test(reqDel2Wrong, 10000)
@@ -206,7 +206,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 
 	// 5c. Attempt with VALID Argon2id password -> MUST succeed and disable 2FA
 	pBytes, _ := json.Marshal(map[string]string{"password": password})
-	reqDel2Valid := httptest.NewRequest("DELETE", "/v1/client/2fa/webauthn/credentials/"+pk2.ID, bytes.NewReader(pBytes))
+	reqDel2Valid := httptest.NewRequest("DELETE", "/v1/client/auth/2fa/webauthn/credentials/"+pk2.ID, bytes.NewReader(pBytes))
 	reqDel2Valid.Header.Set("Authorization", "Bearer "+token)
 	reqDel2Valid.Header.Set("Content-Type", "application/json")
 	respDel2Valid, err := app.Test(reqDel2Valid, 10000)
@@ -214,7 +214,7 @@ func TestWebAuthn_PasskeyManagement_And_ConditionalDeletion(t *testing.T) {
 	require.Equal(t, http.StatusOK, respDel2Valid.StatusCode)
 
 	// 6. Confirm passkey list is now empty
-	reqListEmpty := httptest.NewRequest("GET", "/v1/client/2fa/webauthn/credentials", nil)
+	reqListEmpty := httptest.NewRequest("GET", "/v1/client/auth/2fa/webauthn/credentials", nil)
 	reqListEmpty.Header.Set("Authorization", "Bearer "+token)
 	respListEmpty, err := app.Test(reqListEmpty, 10000)
 	require.NoError(t, err)
@@ -251,7 +251,7 @@ func TestLogin_MFAResponseMethods_SingleSourceOfTruth(t *testing.T) {
 		"password":    "PasskeySecret123!",
 	}
 	lBytes, _ := json.Marshal(loginPayload)
-	reqLogin := httptest.NewRequest("POST", "/v1/client/login", bytes.NewReader(lBytes))
+	reqLogin := httptest.NewRequest("POST", "/v1/client/auth/login", bytes.NewReader(lBytes))
 	reqLogin.Header.Set("Content-Type", "application/json")
 
 	respLogin, err := app.Test(reqLogin, 10000)

@@ -13,7 +13,6 @@ package auth
 import (
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
@@ -169,14 +168,7 @@ func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 	}
 
 	if res.DeviceCookie != "" {
-		c.Cookie(&fiber.Cookie{
-			Name:     "authn_td_token",
-			Value:    res.DeviceCookie,
-			Expires:  time.Now().Add(trustedDeviceCookieTTL),
-			HTTPOnly: true,
-			Secure:   h.service.config.CookieSecure(),
-			SameSite: "Lax",
-		})
+		h.cookies.SetTrustedDevice(c, getTenantID(c), res.DeviceCookie, trustedDeviceCookieTTL)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(res)

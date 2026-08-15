@@ -135,9 +135,9 @@ func TestLimiter_RedisExponentialBackoff(t *testing.T) {
 }
 
 func TestBuildKey(t *testing.T) {
-	key1 := BuildKey("tnt_demo", "127.0.0.1", "user@example.com", "/v1/client/login")
-	key2 := BuildKey("tnt_demo", "127.0.0.1", "user@example.com", "/v1/client/login")
-	key3 := BuildKey("tnt_demo", "192.168.1.1", "user@example.com", "/v1/client/login")
+	key1 := BuildKey("tnt_demo", "127.0.0.1", "user@example.com", "/v1/client/auth/login")
+	key2 := BuildKey("tnt_demo", "127.0.0.1", "user@example.com", "/v1/client/auth/login")
+	key3 := BuildKey("tnt_demo", "192.168.1.1", "user@example.com", "/v1/client/auth/login")
 
 	if key1 != key2 {
 		t.Fatalf("expected identical keys for identical inputs")
@@ -151,8 +151,8 @@ func TestBuildKey(t *testing.T) {
 // Middleware: an IP-only key and an account-only key must never hash equal,
 // or one dimension would silently consume the other's budget.
 func TestBuildKey_DimensionsCannotCollide(t *testing.T) {
-	ipOnly := BuildKey("tnt_demo", "127.0.0.1", "", "/v1/client/login")
-	accountOnly := BuildKey("tnt_demo", "", "127.0.0.1", "/v1/client/login")
+	ipOnly := BuildKey("tnt_demo", "127.0.0.1", "", "/v1/client/auth/login")
+	accountOnly := BuildKey("tnt_demo", "", "127.0.0.1", "/v1/client/auth/login")
 
 	if ipOnly == accountOnly {
 		t.Fatalf("IP-dimension and account-dimension keys collided: %s", ipOnly)
@@ -216,13 +216,13 @@ func TestMiddleware_UserAgentRotationCannotBypass(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(limiter.Middleware())
-	app.Post("/v1/client/login", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/login", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusUnauthorized) // wrong password
 	})
 
 	body := `{"email":"victim@example.com","password":"guess"}`
 	post := func(userAgent string) int {
-		req := httptest.NewRequest("POST", "/v1/client/login", strings.NewReader(body))
+		req := httptest.NewRequest("POST", "/v1/client/auth/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", userAgent)
 		resp, err := app.Test(req)
@@ -260,12 +260,12 @@ func TestMiddleware_AccountBucketSurvivesIPRotation(t *testing.T) {
 	// would explain the block, hiding whether the account bucket works at all.
 	app := fiber.New(fiber.Config{ProxyHeader: fiber.HeaderXForwardedFor})
 	app.Use(limiter.Middleware())
-	app.Post("/v1/client/login", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/login", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	})
 
 	post := func(ip, email string) int {
-		req := httptest.NewRequest("POST", "/v1/client/login",
+		req := httptest.NewRequest("POST", "/v1/client/auth/login",
 			strings.NewReader(`{"email":"`+email+`","password":"guess"}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Forwarded-For", ip)
@@ -301,12 +301,12 @@ func TestMiddleware_SharedNATNotCollateralBlocked(t *testing.T) {
 
 	app := fiber.New(fiber.Config{ProxyHeader: fiber.HeaderXForwardedFor})
 	app.Use(limiter.Middleware())
-	app.Post("/v1/client/login", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/login", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	})
 
 	post := func(email string) int {
-		req := httptest.NewRequest("POST", "/v1/client/login",
+		req := httptest.NewRequest("POST", "/v1/client/auth/login",
 			strings.NewReader(`{"email":"`+email+`","password":"guess"}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Forwarded-For", "203.0.113.7") // one office egress
@@ -385,12 +385,12 @@ func TestMiddleware_MFAChallengeBucketSurvivesIPRotation(t *testing.T) {
 
 	app := fiber.New(fiber.Config{ProxyHeader: fiber.HeaderXForwardedFor})
 	app.Use(limiter.Middleware())
-	app.Post("/v1/client/2fa/totp/verify", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/2fa/totp/verify", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	})
 
 	post := func(ip, mfaToken, code string) int {
-		req := httptest.NewRequest("POST", "/v1/client/2fa/totp/verify",
+		req := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/verify",
 			strings.NewReader(`{"code":"`+code+`","mfa_token":"`+mfaToken+`"}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Forwarded-For", ip)

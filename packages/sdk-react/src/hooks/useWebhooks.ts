@@ -27,7 +27,7 @@ export interface UseWebhooksReturn {
   deleteEndpoint: (endpointId: string) => Promise<boolean>;
   pingEndpoint: (endpointId: string) => Promise<boolean>;
   rotateSecret: (endpointId: string) => Promise<string | null>;
-  listDeliveries: () => Promise<void>;
+  listDeliveries: (params?: { endpointId?: string; limit?: number }) => Promise<void>;
   redeliver: (deliveryId: string) => Promise<boolean>;
   reset: () => void;
 }
@@ -257,12 +257,13 @@ export function useWebhooks(adminClient?: AuthnAdminClient): UseWebhooksReturn {
     [adminClient]
   );
 
-  const listDeliveries = useCallback(async () => {
-    if (!adminClient) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await adminClient.listWebhookDeliveries();
+  const listDeliveries = useCallback(
+    async (params?: { endpointId?: string; limit?: number }) => {
+      if (!adminClient) return;
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await adminClient.listWebhookDeliveries(params);
       if (!isMounted.current) return;
       if (res.ok) {
         setDeliveries(res.deliveries);

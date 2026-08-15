@@ -8,12 +8,12 @@ system — the enrollment half is documented in
 [`mfa-enrollment-verification.md`](./mfa-enrollment-verification.md).
 
 * **Routes**:
-  * `POST /v1/client/2fa/totp/verify` — Verify a TOTP/recovery code, completing login
+  * `POST /v1/client/auth/2fa/totp/verify` — Verify a TOTP/recovery code, completing login
   * `POST /v1/client/auth/2fa/verify` — Alias of the above, identical handler
-  * `POST /v1/client/2fa/sms/confirm` — Confirm an SMS 2FA enrollment with the delivered code
-  * `DELETE /v1/client/2fa/sms/disable` — Remove SMS 2FA (password re-verification required)
-  * `POST /v1/client/2fa/webauthn/login/begin` — Start a passkey login challenge
-  * `POST /v1/client/2fa/webauthn/login/finish` — Complete a passkey login challenge
+  * `POST /v1/client/auth/2fa/sms/confirm` — Confirm an SMS 2FA enrollment with the delivered code
+  * `DELETE /v1/client/auth/2fa/sms/disable` — Remove SMS 2FA (password re-verification required)
+  * `POST /v1/client/auth/2fa/webauthn/login/begin` — Start a passkey login challenge
+  * `POST /v1/client/auth/2fa/webauthn/login/finish` — Complete a passkey login challenge
 * **Auth**: Publishable key (`pk_...`) on every route, via `RequirePublishableKey`.
 
 ---
@@ -39,7 +39,7 @@ cannot be used against any other endpoint.
 
 ## The login → 2FA handshake
 
-When `POST /v1/client/login` succeeds against an account with an active second factor,
+When `POST /v1/client/auth/login` succeeds against an account with an active second factor,
 it returns `200 OK` with **no session**:
 
 ```json
@@ -57,7 +57,7 @@ this user actually has enrolled — use it to decide which verification route to
 
 ---
 
-## 1. Verify TOTP / recovery code (`POST /v1/client/2fa/totp/verify`)
+## 1. Verify TOTP / recovery code (`POST /v1/client/auth/2fa/totp/verify`)
 
 Also registered as `POST /v1/client/auth/2fa/verify` — same handler, same contract.
 Both names exist for backwards compatibility; prefer the `/2fa/totp/verify` form.
@@ -97,9 +97,9 @@ Both names exist for backwards compatibility; prefer the `/2fa/totp/verify` form
 
 ---
 
-## 2. Confirm SMS enrollment (`POST /v1/client/2fa/sms/confirm`)
+## 2. Confirm SMS enrollment (`POST /v1/client/auth/2fa/sms/confirm`)
 
-Completes the enrollment started by `POST /v1/client/2fa/sms/enroll`.
+Completes the enrollment started by `POST /v1/client/auth/2fa/sms/enroll`.
 
 **Request**
 ```json
@@ -113,7 +113,7 @@ Completes the enrollment started by `POST /v1/client/2fa/sms/enroll`.
 
 ---
 
-## 3. Disable SMS 2FA (`DELETE /v1/client/2fa/sms/disable`)
+## 3. Disable SMS 2FA (`DELETE /v1/client/auth/2fa/sms/disable`)
 
 Note the method: `DELETE`, not `POST`. Requires password re-verification, and is
 blocked during an active impersonation session.
@@ -137,7 +137,7 @@ blocked during an active impersonation session.
 
 ---
 
-## 4. Passkey login begin (`POST /v1/client/2fa/webauthn/login/begin`)
+## 4. Passkey login begin (`POST /v1/client/auth/2fa/webauthn/login/begin`)
 
 **Request**
 ```json
@@ -162,14 +162,14 @@ Pass `publicKey` to `navigator.credentials.get()` in the browser.
 
 ---
 
-## 5. Passkey login finish (`POST /v1/client/2fa/webauthn/login/finish`)
+## 5. Passkey login finish (`POST /v1/client/auth/2fa/webauthn/login/finish`)
 
 **This endpoint does not follow the usual body convention** (audit finding D4).
 The `go-webauthn` library requires the raw credential assertion JSON as the *entire*
 request body, so `mfa_token` and `session_id` are read from the **query string**:
 
 ```
-POST /v1/client/2fa/webauthn/login/finish?mfa_token=eyJ...&session_id=was_a1b2c3d4
+POST /v1/client/auth/2fa/webauthn/login/finish?mfa_token=eyJ...&session_id=was_a1b2c3d4
 Content-Type: application/json
 
 { "id": "...", "rawId": "...", "type": "public-key", "response": { ... } }

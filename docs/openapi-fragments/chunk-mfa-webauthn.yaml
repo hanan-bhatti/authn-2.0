@@ -1,0 +1,1079 @@
+openapi: 3.0.3
+info:
+  title: Authn Engine - Chunk MFA & WebAuthn OpenAPI Fragment
+  version: 1.0.0
+  description: OpenAPI 3.0 fragment covering TOTP, SMS OTP, Backup Recovery Codes, and WebAuthn Passkeys client endpoints for apps/auth-engine.
+paths:
+  /v1/client/auth/2fa/totp/enroll:
+    post:
+      summary: Enroll TOTP 2FA
+      description: Generates a new TOTP secret seed and QR provisioning URI for the authenticated user and stores it in pending state.
+      operationId: enrollTOTP
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: TOTP secret and provisioning URI successfully generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TOTPEnrollResponse'
+        '401':
+          description: Unauthorized session or missing publishable key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/totp/confirm:
+    post:
+      summary: Confirm TOTP 2FA Enrollment
+      description: Validates a 6-digit TOTP code against the pending secret, enables TOTP 2FA, and optionally returns generated backup recovery codes.
+      operationId: confirmTOTP
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TOTPConfirmRequest'
+      responses:
+        '200':
+          description: TOTP enrollment confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmTOTPResponse'
+        '400':
+          description: Missing code or invalid TOTP verification code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/totp/disable:
+    post:
+      summary: Disable TOTP 2FA
+      description: Re-verifies user password, removes TOTP 2FA, and revokes all active sessions for security.
+      operationId: disableTOTP
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TOTPDisableRequest'
+      responses:
+        '200':
+          description: TOTP 2FA disabled and sessions revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisableTOTPResponse'
+        '400':
+          description: Password missing or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid password confirmation or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden (e.g. 2FA is mandatory for admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/totp/verify:
+    post:
+      summary: Verify TOTP Code
+      description: Validates a 6-digit TOTP code during a login 2FA challenge (authorized by mfa_token) or within an active authenticated session.
+      operationId: verifyTOTP
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Client platform type. Controls whether refresh token is returned in response body or HttpOnly cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+      responses:
+        '200':
+          description: Verification successful. Returns AuthResponse for login challenge or validity status for session step-up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyTOTPResponse'
+        '400':
+          description: Missing code or invalid MFA code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Session expired, invalid token, or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/verify:
+    post:
+      summary: Verify 2FA Code (Auth Route Alias)
+      description: Route alias for verifying 2FA code during login challenge or inside an authenticated session.
+      operationId: verifyTOTPAuthAlias
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Client platform type. Controls whether refresh token is returned in response body or HttpOnly cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TOTPVerifyRequest'
+      responses:
+        '200':
+          description: Verification successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyTOTPResponse'
+        '400':
+          description: Missing code or invalid MFA code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Session expired, invalid token, or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/sms/enroll:
+    post:
+      summary: Enroll SMS 2FA
+      description: Sends a 6-digit OTP verification code via SMS to the provided phone number to begin SMS 2FA enrollment.
+      operationId: enrollSMS
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSEnrollRequest'
+      responses:
+        '200':
+          description: Verification code sent via SMS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSEnrollResponse'
+        '400':
+          description: Missing phone number or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded for SMS requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/sms/confirm:
+    post:
+      summary: Confirm SMS 2FA Enrollment
+      description: Validates the 6-digit SMS OTP code and completes SMS 2FA enrollment.
+      operationId: confirmSMS
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSConfirmRequest'
+      responses:
+        '200':
+          description: SMS enrollment confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmTOTPResponse'
+        '400':
+          description: Missing code or invalid/expired SMS OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/sms/disable:
+    delete:
+      summary: Disable SMS 2FA
+      description: Re-verifies user password, disables SMS 2FA, and clears registered phone number.
+      operationId: disableSMS
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSDisableRequest'
+      responses:
+        '200':
+          description: SMS 2FA disabled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSDisableResponse'
+        '400':
+          description: Password missing or disable failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized or invalid password confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/recovery-codes/regenerate:
+    post:
+      summary: Regenerate Backup Recovery Codes
+      description: Requires password step-up verification, invalidates old recovery codes, and issues 16 new codes.
+      operationId: regenerateRecoveryCodes
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryCodesRegenerateRequest'
+      responses:
+        '200':
+          description: Recovery codes successfully regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryCodesRegenerateResponse'
+        '400':
+          description: Password missing or regeneration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid password confirmation or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/recovery-codes/status:
+    get:
+      summary: Get Recovery Codes Status
+      description: Returns remaining count of unused backup recovery codes for the authenticated user without exposing code values.
+      operationId: getRecoveryCodesStatus
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: Recovery codes status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryCodesStatusResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/webauthn/register/begin:
+    post:
+      summary: Begin WebAuthn Passkey Registration
+      description: Generates WebAuthn publicKey credential creation options for registering a new passkey.
+      operationId: beginWebAuthnRegistration
+      tags:
+        - WebAuthn Passkeys
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: WebAuthn registration options generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BeginWebAuthnRegistrationResponse'
+        '400':
+          description: Validation failed or unable to begin registration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/webauthn/register/finish:
+    post:
+      summary: Finish WebAuthn Passkey Registration
+      description: Verifies authenticator attestation response and saves the new passkey credential.
+      operationId: finishWebAuthnRegistration
+      tags:
+        - WebAuthn Passkeys
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: query
+          name: session_id
+          required: false
+          schema:
+            type: string
+          description: Ceremony session ID (can alternatively be passed in request body)
+        - in: query
+          name: name
+          required: false
+          schema:
+            type: string
+          description: Optional human-readable passkey name label (can alternatively be passed in request body)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnRegisterFinishRequest'
+      responses:
+        '200':
+          description: Passkey successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmTOTPResponse'
+        '400':
+          description: Missing session_id or invalid attestation response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/webauthn/login/begin:
+    post:
+      summary: Begin WebAuthn Passkey Login
+      description: Generates WebAuthn assertion options to initiate passkey login for a user holding an mfa_token.
+      operationId: beginWebAuthnLogin
+      tags:
+        - WebAuthn Passkeys
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnLoginBeginRequest'
+      responses:
+        '200':
+          description: WebAuthn assertion options generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BeginWebAuthnLoginResponse'
+        '400':
+          description: Missing mfa_token or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/webauthn/login/finish:
+    post:
+      summary: Finish WebAuthn Passkey Login
+      description: Verifies authenticator assertion response and issues session tokens.
+      operationId: finishWebAuthnLogin
+      tags:
+        - WebAuthn Passkeys
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: header
+          name: X-Authn-Client-Type
+          required: false
+          schema:
+            type: string
+            enum: [web, native, mobile]
+            default: web
+          description: Client platform type. Controls whether refresh token is returned in response body or HttpOnly cookie.
+        - in: query
+          name: mfa_token
+          required: false
+          schema:
+            type: string
+          description: MFA token (can alternatively be passed in request body)
+        - in: query
+          name: session_id
+          required: false
+          schema:
+            type: string
+          description: Assertion ceremony session ID (can alternatively be passed in request body)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnLoginFinishRequest'
+      responses:
+        '200':
+          description: Passkey authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Missing mfa_token/session_id or invalid assertion response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/webauthn/credentials:
+    get:
+      summary: List WebAuthn Passkeys
+      description: Returns a list of all registered WebAuthn passkeys for the authenticated user.
+      operationId: listWebAuthnPasskeys
+      tags:
+        - WebAuthn Passkeys
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: List of registered passkeys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPasskeysResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/2fa/webauthn/credentials/{id}:
+    delete:
+      summary: Delete WebAuthn Passkey
+      description: Removes a registered WebAuthn passkey credential. Requires password step-up if deleting the last remaining 2FA method.
+      operationId: deleteWebAuthnPasskey
+      tags:
+        - WebAuthn Passkeys
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Internal 2FA method row ID
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyDeleteRequest'
+      responses:
+        '200':
+          description: Passkey successfully deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletePasskeyResponse'
+        '400':
+          description: Missing passkey ID or deletion failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid password confirmation or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Client Publishable API Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Client JWT access token
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          example: invalid two-factor authentication code
+        code:
+          type: string
+          example: invalid_mfa_code
+
+    UserDTO:
+      type: object
+      required:
+        - id
+        - email
+        - email_verified
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          example: usr_1a2b3c
+        email:
+          type: string
+          example: user@example.com
+        email_verified:
+          type: boolean
+          example: false
+        name:
+          type: string
+          nullable: true
+          example: Alex Smith
+        status:
+          type: string
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-08-01T12:00:00Z"
+
+    PolicyWarningDTO:
+      type: object
+      properties:
+        requires_password_upgrade:
+          type: boolean
+        requires_email_verification:
+          type: boolean
+        missing_criteria:
+          type: array
+          items:
+            type: string
+
+    AuthResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDTO'
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          example: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        policy_warning:
+          $ref: '#/components/schemas/PolicyWarningDTO'
+        mfa_required:
+          type: boolean
+        mfa_token:
+          type: string
+        methods:
+          type: array
+          items:
+            type: string
+
+    TOTPEnrollResponse:
+      type: object
+      required:
+        - secret
+        - uri
+      properties:
+        secret:
+          type: string
+          example: JBSWY3DPEHPK3PXP
+          description: Base32 TOTP secret seed
+        uri:
+          type: string
+          example: otpauth://totp/Authn:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Authn
+          description: Provisioning URI for QR code generation
+
+    TOTPConfirmRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          example: "123456"
+
+    ConfirmTOTPResponse:
+      type: object
+      required:
+        - message
+        - recovery_codes_created
+      properties:
+        message:
+          type: string
+          example: TOTP 2FA enabled successfully
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          description: Freshly generated recovery codes (returned only upon initial setup/regeneration)
+        recovery_codes_created:
+          type: boolean
+
+    TOTPDisableRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          example: SuperSecret123!
+
+    DisableTOTPResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: 2FA TOTP disabled. All active sessions have been revoked for security.
+
+    TOTPVerifyRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          example: "123456"
+        mfa_token:
+          type: string
+          description: MFA challenge token issued during password login
+        method:
+          type: string
+          description: MFA verification method (totp, sms, recovery_code)
+
+    VerifyTOTPResponse:
+      oneOf:
+        - $ref: '#/components/schemas/AuthResponse'
+        - type: object
+          required:
+            - valid
+          properties:
+            valid:
+              type: boolean
+              example: true
+
+    SMSEnrollRequest:
+      type: object
+      required:
+        - phone_number
+      properties:
+        phone_number:
+          type: string
+          example: "+12025550199"
+
+    SMSEnrollResponse:
+      type: object
+      required:
+        - message
+        - expires_in_seconds
+      properties:
+        message:
+          type: string
+          example: OTP verification code sent via SMS
+        expires_in_seconds:
+          type: integer
+          example: 300
+
+    SMSConfirmRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          example: "482910"
+
+    SMSDisableRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          example: SuperSecret123!
+
+    SMSDisableResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: SMS 2FA disabled successfully
+
+    RecoveryCodesRegenerateRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          example: SuperSecret123!
+
+    RecoveryCodesRegenerateResponse:
+      type: object
+      required:
+        - message
+        - recovery_codes
+      properties:
+        message:
+          type: string
+          example: recovery codes successfully regenerated
+        recovery_codes:
+          type: array
+          items:
+            type: string
+
+    RecoveryCodesStatusResponse:
+      type: object
+      required:
+        - remaining_count
+        - total_count
+        - has_recovery_codes
+      properties:
+        remaining_count:
+          type: integer
+          example: 16
+        total_count:
+          type: integer
+          example: 16
+        has_recovery_codes:
+          type: boolean
+          example: true
+
+    BeginWebAuthnRegistrationResponse:
+      type: object
+      required:
+        - options
+        - session_id
+      properties:
+        options:
+          type: object
+          description: WebAuthn CredentialCreationOptions protocol object
+          additionalProperties: true
+        session_id:
+          type: string
+          description: Registration ceremony session ID
+
+    WebAuthnRegisterFinishRequest:
+      type: object
+      properties:
+        session_id:
+          type: string
+          description: Ceremony session ID
+        name:
+          type: string
+          description: Human-readable passkey name label
+
+    WebAuthnLoginBeginRequest:
+      type: object
+      required:
+        - mfa_token
+      properties:
+        mfa_token:
+          type: string
+          description: MFA challenge token from login response
+
+    BeginWebAuthnLoginResponse:
+      type: object
+      required:
+        - options
+        - session_id
+        - user_id
+      properties:
+        options:
+          type: object
+          description: WebAuthn CredentialAssertionOptions protocol object
+          additionalProperties: true
+        session_id:
+          type: string
+          description: Assertion ceremony session ID
+        user_id:
+          type: string
+          description: User ID being authenticated
+
+    WebAuthnLoginFinishRequest:
+      type: object
+      properties:
+        mfa_token:
+          type: string
+          description: MFA token
+        session_id:
+          type: string
+          description: Assertion ceremony session ID
+
+    PasskeyDTO:
+      type: object
+      required:
+        - id
+        - name
+        - credential_id
+        - sign_count
+        - created_at
+      properties:
+        id:
+          type: string
+          example: mfa_passkey_1a2b3c
+        name:
+          type: string
+          example: Work YubiKey
+        credential_id:
+          type: string
+          example: dXNlck9wZW5JRA==
+        sign_count:
+          type: integer
+          example: 42
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-08-01T12:00:00Z"
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-08-05T14:30:00Z"
+        metadata:
+          type: object
+          description: Authenticator metadata (AAGUID, attestation type, transports, flags)
+          additionalProperties: true
+
+    ListPasskeysResponse:
+      type: object
+      required:
+        - credentials
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/PasskeyDTO'
+
+    PasskeyDeleteRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          description: Password step-up confirmation required if deleting the last remaining 2FA method
+
+    DeletePasskeyResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: passkey successfully deleted

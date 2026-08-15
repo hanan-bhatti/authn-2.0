@@ -43,7 +43,7 @@ Permissions are strictly validated against `^[a-z0-9_]+:([a-z0-9_]+|\*)(:([a-z0-
 ```json
 {
   "id": "rol_a87d51ff-021",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "name": "Content Manager",
   "slug": "content_manager",
   "description": "Manages articles and media",

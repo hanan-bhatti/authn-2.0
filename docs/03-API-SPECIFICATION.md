@@ -41,10 +41,10 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/oauth/token` — Token exchange (`authorization_code`, `refresh_token`)
 
 ### 2.4 Core Client Authentication
-- `POST /v1/client/signup` — User registration with email/password
-- `POST /v1/client/login` — User authentication with Argon2id check
-- `GET /v1/client/verify-email` — Single-use email verification link
-- `POST /v1/client/resend-verification` — Resend email verification link
+- `POST /v1/client/auth/signup` — User registration with email/password
+- `POST /v1/client/auth/login` — User authentication with Argon2id check
+- `GET /v1/client/auth/verify-email` — Single-use email verification link
+- `POST /v1/client/auth/resend-verification` — Resend email verification link
 
 ### 2.5 Session Management & Revocation (FR-8)
 - `POST /v1/client/auth/refresh` — Rotate refresh token with 10s grace window & issue new JWT access token
@@ -98,19 +98,19 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/admin/keys/:key_id/revoke` — Revoke API key
 
 ### 2.10 2FA Method Management & Verification (FR-4)
-- `POST /v1/client/2fa/totp/enroll` — Generate secret & QR code URI for TOTP setup
-- `POST /v1/client/2fa/totp/confirm` — Confirm TOTP setup with 6-digit code & activate
-- `POST /v1/client/2fa/totp/verify` — Verify TOTP code during active session
-- `POST /v1/client/2fa/totp/disable` — Disable TOTP 2FA (requires password confirmation)
-- `POST /v1/client/2fa/webauthn/register/begin` — Initiate WebAuthn passkey registration options
-- `POST /v1/client/2fa/webauthn/register/finish` — Finalize passkey registration with attestation
-- `POST /v1/client/2fa/webauthn/login/begin` — Initiate WebAuthn passkey login options
-- `POST /v1/client/2fa/webauthn/login/finish` — Finalize passkey login with assertion & issue JWT
-- `GET /v1/client/2fa/webauthn/credentials` — List user's registered WebAuthn passkeys
-- `DELETE /v1/client/2fa/webauthn/credentials/:id` — Delete a WebAuthn passkey (requires password)
-- `POST /v1/client/2fa/sms/enroll` — Initiate SMS 2FA enrollment & send verification OTP
-- `POST /v1/client/2fa/sms/confirm` — Confirm SMS 2FA with 6-digit OTP & activate
-- `DELETE /v1/client/2fa/sms/disable` — Disable SMS 2FA (requires password)
+- `POST /v1/client/auth/2fa/totp/enroll` — Generate secret & QR code URI for TOTP setup
+- `POST /v1/client/auth/2fa/totp/confirm` — Confirm TOTP setup with 6-digit code & activate
+- `POST /v1/client/auth/2fa/totp/verify` — Verify TOTP code during active session
+- `POST /v1/client/auth/2fa/totp/disable` — Disable TOTP 2FA (requires password confirmation)
+- `POST /v1/client/auth/2fa/webauthn/register/begin` — Initiate WebAuthn passkey registration options
+- `POST /v1/client/auth/2fa/webauthn/register/finish` — Finalize passkey registration with attestation
+- `POST /v1/client/auth/2fa/webauthn/login/begin` — Initiate WebAuthn passkey login options
+- `POST /v1/client/auth/2fa/webauthn/login/finish` — Finalize passkey login with assertion & issue JWT
+- `GET /v1/client/auth/2fa/webauthn/credentials` — List user's registered WebAuthn passkeys
+- `DELETE /v1/client/auth/2fa/webauthn/credentials/:id` — Delete a WebAuthn passkey (requires password)
+- `POST /v1/client/auth/2fa/sms/enroll` — Initiate SMS 2FA enrollment & send verification OTP
+- `POST /v1/client/auth/2fa/sms/confirm` — Confirm SMS 2FA with 6-digit OTP & activate
+- `DELETE /v1/client/auth/2fa/sms/disable` — Disable SMS 2FA (requires password)
 - `POST /v1/client/auth/2fa/verify` — Unified login 2FA verification endpoint (`totp`, `webauthn`, `sms`, `backup_code`)
 
 ### 2.11 Outgoing Real-Time Event Webhooks (FR-13)
@@ -227,7 +227,7 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 * **Response (200 OK — Ready)**:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<EntityDescriptor entityID="https://authn.com/saml/sp/org_acme" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
+<EntityDescriptor entityID="https://authn.com/saml/sp/org_00000000000000000000000000000001" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
   <SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
     <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>
     <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="http://localhost:8080/v1/saml/acs" index="1"/>
@@ -235,7 +235,7 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 </EntityDescriptor>
 ```
 
-### 3.1 Core Authentication (`POST /v1/client/signup`)
+### 3.1 Core Authentication (`POST /v1/client/auth/signup`)
 
 > **Last Verified**: `2026-08-06` — live `curl` against running server.
 > See full endpoint doc: [`docs/endpoints/client-signup.md`](endpoints/client-signup.md)
@@ -303,7 +303,7 @@ Deliberate design choice matching standard B2C auth practice (Firebase, Clerk, A
 }
 ```
 
-#### `POST /v1/client/login`
+#### `POST /v1/client/auth/login`
 
 > **Last Verified**: `2026-08-06` — live `curl` against running server.
 > See full endpoint doc: [`docs/endpoints/client-login.md`](endpoints/client-login.md)
@@ -376,7 +376,7 @@ Constant-time CPU execution (~190ms) using `DummyArgon2idHash` when user not fou
 { "error": "rate limit service unavailable" }
 ```
 
-### 3.2 Email Verification (`GET /v1/client/verify-email` & `POST /v1/client/resend-verification`)
+### 3.2 Email Verification (`GET /v1/client/auth/verify-email` & `POST /v1/client/auth/resend-verification`)
 
 
 > **Last Verified**: `2026-08-06` — live `curl` + real token extracted from Mailpit SMTP catcher.
@@ -386,7 +386,7 @@ Constant-time CPU execution (~190ms) using `DummyArgon2idHash` when user not fou
 * 32-byte `crypto/rand` → 64-char hex raw token. Only **SHA-256 hash** stored in DB.
 * **24-hour expiry**. **Single-use**: token + expiry cleared from DB on first successful verification.
 
-#### `GET /v1/client/verify-email?token=<raw_token>`
+#### `GET /v1/client/auth/verify-email?token=<raw_token>`
 ```json
 // 200 OK — success
 {
@@ -400,7 +400,7 @@ Constant-time CPU execution (~190ms) using `DummyArgon2idHash` when user not fou
 // 405 — wrong verb (Allow: GET, HEAD): {"error": {"code": 405, "message": "Method Not Allowed"}}
 ```
 
-#### `POST /v1/client/resend-verification`
+#### `POST /v1/client/auth/resend-verification`
 Enumeration-safe — unknown emails, already-verified accounts, and valid unverified accounts all return identical `200`. Dedicated per-email rate limiting (default: 3 requests / 3600s window) configurable via `AUTHN_RESEND_RATELIMIT_*`.
 ```json
 // Request body
@@ -626,7 +626,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 ```json
 {
   "id": "org_9038723e-062",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "name": "Acme Corporation",
   "slug": "acme-corp-101",
   "logo_url": "https://acme.local/logo.png",
@@ -690,7 +690,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 {
   "key": {
     "id": "key_1e3d11488ab3",
-    "application_id": "app_test123",
+    "application_id": "app_00000000000000000000000000000001",
     "name": "Stripe Webhook Handler",
     "type": "secret",
     "key_prefix": "sk_test_",
@@ -707,19 +707,19 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 ```
 *(Note: Full secret key value is returned ONCE on creation and never stored in plaintext)*
 
-### 3.8 2FA Method Management & Verification (`/v1/client/2fa/*` & `/v1/client/auth/2fa/verify`)
+### 3.8 2FA Method Management & Verification (`/v1/client/auth/2fa/*` & `/v1/client/auth/2fa/verify`)
 - **Description**: Comprehensive setup, verification, listing, and disabling for TOTP, WebAuthn Passkeys, SMS 2FA, and unified login challenge verification.
-- **TOTP Setup (`POST /v1/client/2fa/totp/enroll` & `/confirm`)**:
-  - `POST /v1/client/2fa/totp/enroll`: Generates RFC 6238 TOTP secret. Returns `{"secret": "JBSWY3DPEHPK3PXP", "uri": "otpauth://totp/Authn:user@example.com?secret=..."}`.
-  - `POST /v1/client/2fa/totp/confirm`: Body `{"code": "123456"}`. Activates TOTP and returns single-use backup recovery codes.
-- **WebAuthn / Passkeys (`/v1/client/2fa/webauthn/*`)**:
-  - Registration: `POST /v1/client/2fa/webauthn/register/begin` returns WebAuthn creation options. `POST /v1/client/2fa/webauthn/register/finish` validates attestation response and stores credential public key.
-  - Login: `POST /v1/client/2fa/webauthn/login/begin` returns assertion options. `POST /v1/client/2fa/webauthn/login/finish` validates signature assertion and issues JWT session.
-  - List & Delete: `GET /v1/client/2fa/webauthn/credentials` lists registered passkeys; `DELETE /v1/client/2fa/webauthn/credentials/:id` deletes passkey requiring password confirmation.
-- **SMS 2FA (`/v1/client/2fa/sms/*`)**:
-  - `POST /v1/client/2fa/sms/enroll`: Body `{"phone_number": "+15551234567"}`. Sends 6-digit OTP via configured SMS driver.
-  - `POST /v1/client/2fa/sms/confirm`: Body `{"code": "123456"}`. Activates SMS 2FA.
-  - `DELETE /v1/client/2fa/sms/disable`: Body `{"password": "..."}`. Disables SMS 2FA requiring password confirmation.
+- **TOTP Setup (`POST /v1/client/auth/2fa/totp/enroll` & `/confirm`)**:
+  - `POST /v1/client/auth/2fa/totp/enroll`: Generates RFC 6238 TOTP secret. Returns `{"secret": "JBSWY3DPEHPK3PXP", "uri": "otpauth://totp/Authn:user@example.com?secret=..."}`.
+  - `POST /v1/client/auth/2fa/totp/confirm`: Body `{"code": "123456"}`. Activates TOTP and returns single-use backup recovery codes.
+- **WebAuthn / Passkeys (`/v1/client/auth/2fa/webauthn/*`)**:
+  - Registration: `POST /v1/client/auth/2fa/webauthn/register/begin` returns WebAuthn creation options. `POST /v1/client/auth/2fa/webauthn/register/finish` validates attestation response and stores credential public key.
+  - Login: `POST /v1/client/auth/2fa/webauthn/login/begin` returns assertion options. `POST /v1/client/auth/2fa/webauthn/login/finish` validates signature assertion and issues JWT session.
+  - List & Delete: `GET /v1/client/auth/2fa/webauthn/credentials` lists registered passkeys; `DELETE /v1/client/auth/2fa/webauthn/credentials/:id` deletes passkey requiring password confirmation.
+- **SMS 2FA (`/v1/client/auth/2fa/sms/*`)**:
+  - `POST /v1/client/auth/2fa/sms/enroll`: Body `{"phone_number": "+15551234567"}`. Sends 6-digit OTP via configured SMS driver.
+  - `POST /v1/client/auth/2fa/sms/confirm`: Body `{"code": "123456"}`. Activates SMS 2FA.
+  - `DELETE /v1/client/auth/2fa/sms/disable`: Body `{"password": "..."}`. Disables SMS 2FA requiring password confirmation.
 - **Unified Login 2FA Verification (`POST /v1/client/auth/2fa/verify`)**:
   - **Request Body**:
 ```json
@@ -827,7 +827,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `403 Forbidden` (`impersonation_hierarchy_violation`): Admin attempting to impersonate another administrative user (`tenant_admin`, `admin`, `super_admin`).
   - `403 Forbidden` (`user_opt_in_required`): Target user has not granted support access opt-in permission.
   - `403 Forbidden` (`insufficient_permissions`): Admin lacks `users:impersonate` RBAC permission.
-  - `403 Forbidden` (`impersonation_read_only_restricted`): Impersonation session attempting destructive mutation on `/v1/client/user/password`, `/v1/client/2fa`, or `/v1/client/account`.
+  - `403 Forbidden` (`impersonation_read_only_restricted`): Impersonation session attempting destructive mutation on `/v1/client/user/password`, `/v1/client/auth/2fa`, or `/v1/client/account`.
 
 ### 3.14 User Profile, Secondary Recovery Email & OIDC UserInfo (`/v1/client/user/*` & `/v1/oauth/userinfo`)
 
@@ -850,7 +850,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - `403 Forbidden` (`cannot_unlink_last_auth`): Attempting to unlink a social provider when no password is set and no other login method exists.
   - `409 Conflict`: Primary email change request specifies an email already registered to another user in the tenant.
 
-### 3.15 MFA Enrollment & Verification Suite (`/v1/client/2fa/*`)
+### 3.15 MFA Enrollment & Verification Suite (`/v1/client/auth/2fa/*`)
 
 > **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server using `pyotp` RFC 6238 generation.
 > See full endpoint doc: [`docs/endpoints/mfa-enrollment-verification.md`](endpoints/mfa-enrollment-verification.md)
@@ -878,12 +878,9 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 
 - **Description**: Cross-origin post-authentication redirection to client applications (e.g. `http://localhost:3000/callback`), maintaining authorization code and caller state parameters intact.
 
-### 3.19 FR-5 Phase 6: Consolidated Lockout Engine (`POST /v1/client/login`)
+### 3.19 FR-5 Phase 6: Consolidated Lockout Engine (`POST /v1/client/auth/login`)
 
 > **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
 > See full endpoint doc: [`docs/endpoints/lockout-engine.md`](endpoints/lockout-engine.md)
 
 - **Description**: Multi-dimensional lockout enforcement after 5 failed password attempts, rejecting attempt #6 with the **CORRECT** password with `HTTP 429 Too Many Requests` and `Retry-After: 900`.
-
-
-

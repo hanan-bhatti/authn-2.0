@@ -1,16 +1,18 @@
 import React from "react";
 import { cn } from "../../utils/cn.js";
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "ghost" | "primary" | "secondary" | "destructive" | "outline";
-  size?: "sm" | "md" | "lg";
-  isLoading?: boolean;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
-}
+export type ButtonProps = React.PropsWithChildren<
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: "ghost" | "primary" | "secondary" | "destructive" | "outline";
+    size?: "sm" | "md" | "lg";
+    isLoading?: boolean;
+    leftIcon?: React.ReactNode;
+    rightIcon?: React.ReactNode;
+  }
+>;
 
 /**
- * Resend-style Ghost & Action Button
+ * Ghost & Action Button
  *
  * Rules:
  * - 6px border-radius

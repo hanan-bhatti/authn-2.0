@@ -18,6 +18,9 @@ type AuditLog func(*sql.Selector)
 // Identity is the predicate function for identity builders.
 type Identity func(*sql.Selector)
 
+// ManagedTenant is the predicate function for managedtenant builders.
+type ManagedTenant func(*sql.Selector)
+
 // OrgInvitation is the predicate function for orginvitation builders.
 type OrgInvitation func(*sql.Selector)
 

@@ -9,7 +9,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 /**
- * Resend-style Form Input
+ * Form Input
  *
  * Rules:
  * - 6px border radius

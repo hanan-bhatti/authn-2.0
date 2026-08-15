@@ -391,7 +391,7 @@ describe("AuthnClient 401 Refresh-Then-Retry Interceptor", () => {
       authHeadersSent.push(authHeader);
 
       // Initial login
-      if (url.endsWith("/v1/client/login")) {
+      if (url.endsWith("/v1/client/auth/login")) {
         return {
           ok: true,
           status: 200,
@@ -412,7 +412,7 @@ describe("AuthnClient 401 Refresh-Then-Retry Interceptor", () => {
       }
 
       // Resource call with expired token -> returns 401
-      if (url.includes("/v1/client/verify-email") && authHeader === "Bearer expired_token_123") {
+      if (url.includes("/v1/client/auth/verify-email") && authHeader === "Bearer expired_token_123") {
         return {
           ok: false,
           status: 401,
@@ -443,7 +443,7 @@ describe("AuthnClient 401 Refresh-Then-Retry Interceptor", () => {
       }
 
       // Retried resource call with new token -> returns 200
-      if (url.includes("/v1/client/verify-email") && authHeader === "Bearer new_refreshed_token_456") {
+      if (url.includes("/v1/client/auth/verify-email") && authHeader === "Bearer new_refreshed_token_456") {
         return {
           ok: true,
           status: 200,
@@ -476,7 +476,7 @@ describe("AuthnClient 401 Refresh-Then-Retry Interceptor", () => {
         "Authorization"
       ] ?? null;
 
-      if (url.endsWith("/v1/client/login")) {
+      if (url.endsWith("/v1/client/auth/login")) {
         return {
           ok: true,
           status: 200,
@@ -562,7 +562,7 @@ describe("AuthnClient 401 Refresh-Then-Retry Interceptor", () => {
         "Authorization"
       ] ?? null;
 
-      if (url.endsWith("/v1/client/login")) {
+      if (url.endsWith("/v1/client/auth/login")) {
         return {
           ok: true,
           status: 200,

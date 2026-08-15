@@ -1,0 +1,1268 @@
+paths:
+  /v1/client/organizations:
+    post:
+      summary: Create Organization
+      description: Creates a new organization owned by the calling user, who becomes its first org_admin.
+      tags:
+        - Organization (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrgRequest'
+      responses:
+        '201':
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+        '400':
+          description: Validation error or tenant organization limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: List User Organizations
+      description: Returns the list of organizations the authenticated calling user belongs to.
+      tags:
+        - Organization (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Maximum number of organizations to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Number of organizations to skip
+      responses:
+        '200':
+          description: List of user organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgListResponse'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/organizations/{orgId}:
+    get:
+      summary: Get Organization
+      description: Returns details of a specific organization if the calling user is a member or tenant admin.
+      tags:
+        - Organization (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      responses:
+        '200':
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - caller is not a member of this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    patch:
+      summary: Update Organization
+      description: Applies a partial update to organization details. Requires org_admin permission.
+      tags:
+        - Organization (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrgRequest'
+      responses:
+        '200':
+          description: Updated organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+        '400':
+          description: Validation failure or invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Delete Organization
+      description: Deletes an organization and its associated resources. Requires org_admin permission.
+      tags:
+        - Organization (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      responses:
+        '200':
+          description: Organization deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgDeleteResponse'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/organizations/{orgId}/members:
+    get:
+      summary: List Organization Members
+      description: Returns members of an organization. Requires organization membership.
+      tags:
+        - Organization Members (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Maximum number of members to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Number of members to skip
+      responses:
+        '200':
+          description: List of organization members
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberListResponse'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - caller is not a member of this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    post:
+      summary: Add Member to Organization
+      description: Places a user directly into an organization without sending an invitation. Requires org_admin permission.
+      tags:
+        - Organization Members (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+      responses:
+        '201':
+          description: Member added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgMemberResponse'
+        '400':
+          description: Validation error, user already a member, invalid role, or max members limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/organizations/{orgId}/members/{userId}:
+    patch:
+      summary: Update Member Role
+      description: Changes an existing organization member's role. Requires org_admin permission.
+      tags:
+        - Organization Members (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: Target user ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRoleRequest'
+      responses:
+        '200':
+          description: Member role updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgMemberResponse'
+        '400':
+          description: Validation failure or invalid role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization membership not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Remove Member from Organization
+      description: Removes a user from an organization. Requires org_admin permission.
+      tags:
+        - Organization Members (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: Target user ID
+      responses:
+        '200':
+          description: Member removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberDeleteResponse'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization membership not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/organizations/{orgId}/invitations:
+    post:
+      summary: Create Organization Invitation
+      description: Issues an invitation to join an organization and returns it with a single-use token. Requires org_admin permission.
+      tags:
+        - Organization Invitations (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+      responses:
+        '201':
+          description: Invitation created successfully (includes redemption token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgInvitationResponse'
+        '400':
+          description: Validation failure (invalid email, role, expiry hours, or restricted domain)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: List Pending Invitations
+      description: Returns outstanding invitations for an organization (omits sensitive tokens). Requires organization membership.
+      tags:
+        - Organization Invitations (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Maximum number of invitations to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Number of invitations to skip
+      responses:
+        '200':
+          description: List of pending invitations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationListResponse'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - caller is not a member of this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/organizations/{orgId}/invitations/{invitationId}:
+    delete:
+      summary: Revoke Invitation
+      description: Cancels a pending invitation. Requires org_admin permission.
+      tags:
+        - Organization Invitations (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+        - in: path
+          name: invitationId
+          required: true
+          schema:
+            type: string
+          description: Unique invitation ID identifier
+      responses:
+        '200':
+          description: Invitation revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationRevokeResponse'
+        '400':
+          description: Invitation cannot be revoked in its current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - insufficient permissions (org_admin role required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/invitations/accept:
+    post:
+      summary: Accept Invitation
+      description: Redeems a single-use invitation token into an organization membership for the calling authenticated user.
+      tags:
+        - Organization Invitations (Client)
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationRequest'
+      responses:
+        '200':
+          description: Invitation accepted successfully and membership created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptResponse'
+        '400':
+          description: Validation failure, invitation expired, or invitation already accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Invitation token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/organizations:
+    get:
+      summary: Tenant List Organizations
+      description: Returns every organization in the tenant for administrative review.
+      tags:
+        - Organization (Tenant Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Maximum number of organizations to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Number of organizations to skip
+      responses:
+        '200':
+          description: List of all tenant organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgListResponse'
+        '401':
+          description: Missing or invalid secret key or admin JWT session token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - tenant_admin role or admin 2FA required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    post:
+      summary: Tenant Create Organization
+      description: Creates an organization on the tenant-admin tier attributed to the admin actor.
+      tags:
+        - Organization (Tenant Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrgRequest'
+      responses:
+        '201':
+          description: Organization created successfully on tenant-admin tier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+        '400':
+          description: Validation error or tenant organization limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin JWT session token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - tenant_admin role or admin 2FA required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/organizations/{orgId}:
+    get:
+      summary: Tenant Get Organization
+      description: Returns details of any organization in the tenant on the tenant-admin tier without requiring membership.
+      tags:
+        - Organization (Tenant Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      responses:
+        '200':
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+        '401':
+          description: Missing or invalid secret key or admin JWT session token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - tenant_admin role or admin 2FA required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Tenant Delete Organization
+      description: Deletes an organization on the tenant-admin tier.
+      tags:
+        - Organization (Tenant Admin)
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: orgId
+          required: true
+          schema:
+            type: string
+          description: Unique organization ID identifier
+      responses:
+        '200':
+          description: Organization deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgDeleteResponse'
+        '401':
+          description: Missing or invalid secret key or admin JWT session token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - tenant_admin role or admin 2FA required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Publishable key (pk_test_... or pk_live_...) identifying application & tenant scope
+    SecretKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Secret-Key
+      description: Secret API key (sk_test_... or sk_live_...) for backend tenant admin authentication
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: End-user or console administrator JWT access token
+
+  schemas:
+    CreateOrgRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Workspace display name
+          example: Acme Corp
+        slug:
+          type: string
+          minLength: 2
+          maxLength: 50
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+          description: URL-friendly identifier unique within tenant (derived from name if omitted)
+          example: acme-corp
+        logo_url:
+          type: string
+          maxLength: 2048
+          format: uri
+          description: Optional workspace logo or avatar URL
+          example: https://cdn.example.com/logos/acme.png
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Caller-defined attribute bag (max 10KB serialized)
+
+    UpdateOrgRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Replacement workspace display name
+        slug:
+          type: string
+          minLength: 2
+          maxLength: 50
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+          description: Replacement URL-friendly identifier
+        logo_url:
+          type: string
+          maxLength: 2048
+          format: uri
+          description: Replacement workspace logo or avatar URL
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Replacement attribute bag (replaces metadata wholesale)
+
+    AddMemberRequest:
+      type: object
+      required:
+        - user_id
+        - role_id
+      properties:
+        user_id:
+          type: string
+          description: Identifier of the user to place in the organization
+          example: usr_1a2b3c
+        role_id:
+          type: string
+          description: Role ID or role slug to assign
+          example: role_org_admin
+
+    UpdateMemberRoleRequest:
+      type: object
+      required:
+        - role_id
+      properties:
+        role_id:
+          type: string
+          description: Replacement role ID or role slug
+          example: role_org_member
+
+    CreateInvitationRequest:
+      type: object
+      required:
+        - email
+        - role_id
+      properties:
+        email:
+          type: string
+          format: email
+          description: Target invitee email address
+          example: user@example.com
+        role_id:
+          type: string
+          description: Role granted upon invitation acceptance
+          example: role_org_member
+        expires_hrs:
+          type: integer
+          default: 168
+          minimum: 1
+          maximum: 720
+          description: Custom invitation validity lifetime in hours (default 7 days / 168 hrs)
+          example: 168
+
+    AcceptInvitationRequest:
+      type: object
+      required:
+        - invitation_token
+      properties:
+        invitation_token:
+          type: string
+          description: Single-use redemption token from the invitation
+          example: inv_tok_9x8v7c6b5a4
+
+    OrgResponse:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - name
+        - slug
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique organization ID identifier
+          example: org_1a2b3c
+        tenant_id:
+          type: string
+          description: Owning tenant identifier
+          example: tnt_live_1234
+        name:
+          type: string
+          description: Workspace display name
+          example: Acme Corp
+        slug:
+          type: string
+          description: URL-friendly identifier unique within tenant
+          example: acme-corp
+        logo_url:
+          type: string
+          description: Workspace logo image URL (omitted if not set)
+          example: https://cdn.example.com/logos/acme.png
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Custom metadata attributes
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+
+    OrgMemberResponse:
+      type: object
+      required:
+        - id
+        - organization_id
+        - user_id
+        - role_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique OrgMember ID identifier
+          example: mem_1a2b3c
+        organization_id:
+          type: string
+          description: Owning organization identifier
+          example: org_1a2b3c
+        user_id:
+          type: string
+          description: Member user identifier
+          example: usr_1a2b3c
+        role_id:
+          type: string
+          description: Assigned role identifier
+          example: role_org_member
+        assigned_by_user_id:
+          type: string
+          description: User ID of admin who assigned this role initially (omitted if null)
+          example: usr_admin_999
+        created_at:
+          type: string
+          format: date-time
+          description: Membership creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Membership last updated timestamp
+
+    OrgInvitationResponse:
+      type: object
+      required:
+        - id
+        - organization_id
+        - email
+        - role_id
+        - status
+        - expires_at
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique invitation ID identifier
+          example: inv_1a2b3c
+        organization_id:
+          type: string
+          description: Organization being joined
+          example: org_1a2b3c
+        email:
+          type: string
+          format: email
+          description: Invitee email address
+          example: user@example.com
+        role_id:
+          type: string
+          description: Role granted on acceptance
+          example: role_org_member
+        invited_by_user_id:
+          type: string
+          description: User ID of admin who created invitation
+          example: usr_admin_999
+        invitation_token:
+          type: string
+          description: Single-use redemption secret token (returned only on creation, omitted in listings)
+          example: inv_tok_9x8v7c6b5a4
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - expired
+          description: Lifecycle state of the invitation
+          example: pending
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+
+    OrgListResponse:
+      type: object
+      required:
+        - organizations
+        - total
+      properties:
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrgResponse'
+        total:
+          type: integer
+          description: Number of organizations in current page
+          example: 1
+
+    MemberListResponse:
+      type: object
+      required:
+        - members
+        - total
+      properties:
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrgMemberResponse'
+        total:
+          type: integer
+          description: Number of members in current page
+          example: 1
+
+    InvitationListResponse:
+      type: object
+      required:
+        - invitations
+        - total
+      properties:
+        invitations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrgInvitationResponse'
+        total:
+          type: integer
+          description: Number of invitations in current page
+          example: 1
+
+    OrgDeleteResponse:
+      type: object
+      required:
+        - message
+        - org_id
+      properties:
+        message:
+          type: string
+          example: organization deleted successfully
+        org_id:
+          type: string
+          example: org_1a2b3c
+
+    MemberDeleteResponse:
+      type: object
+      required:
+        - message
+        - user_id
+        - org_id
+      properties:
+        message:
+          type: string
+          example: member removed successfully
+        user_id:
+          type: string
+          example: usr_1a2b3c
+        org_id:
+          type: string
+          example: org_1a2b3c
+
+    InvitationRevokeResponse:
+      type: object
+      required:
+        - message
+        - invitation_id
+      properties:
+        message:
+          type: string
+          example: invitation revoked successfully
+        invitation_id:
+          type: string
+          example: inv_1a2b3c
+
+    InvitationAcceptResponse:
+      type: object
+      required:
+        - message
+        - member
+      properties:
+        message:
+          type: string
+          example: invitation accepted successfully
+        member:
+          $ref: '#/components/schemas/OrgMemberResponse'
+
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: organization not found
+        code:
+          type: string
+          description: Machine-readable error code
+          example: not_found

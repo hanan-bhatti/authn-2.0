@@ -1,7 +1,7 @@
-# Endpoint Specification: `POST /v1/client/login`
+# Endpoint Specification: `POST /v1/client/auth/login`
 
 ## Overview
-* **Route**: `POST /v1/client/login`
+* **Route**: `POST /v1/client/auth/login`
 * **HTTP Method**: `POST`
 * **Purpose**: Primary User Authentication Endpoint. Authenticates users using email and password credentials, validates active 2FA/MFA enrollment, issues 15-minute JWT access tokens and HttpOnly refresh token cookies, and enforces constant-time CPU hashing to prevent timing-based user enumeration side-channel attacks.
 
@@ -16,13 +16,13 @@
 
 ---
 
-## Request Payload (`POST /v1/client/login`)
+## Request Payload (`POST /v1/client/auth/login`)
 
 ```json
 {
   "email": "user.vanilla@authn.local",
   "password": "UserPass123!",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "test"
 }
 ```
@@ -30,7 +30,7 @@
 ### Request Fields
 * `email` (string, required) — Registered user email address. Validated against RFC email format.
 * `password` (string, required) — User password string. Checked via Argon2id hash comparison.
-* `tenant_id` (string, optional) — Target tenant identifier (defaults to `tnt_default`).
+* `tenant_id` (string, optional) — Target tenant identifier (defaults to `tnt_00000000000000000000000000000001`).
 * `environment` (string, optional) — Application environment mode (defaults to `test`).
 
 ---
@@ -54,7 +54,7 @@ $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -H "X-Authn-Client-Type: web" \
   -d '{"email":"user.vanilla@authn.local","password":"UserPass123!"}' \
-  http://localhost:8080/v1/client/login
+  http://localhost:8080/v1/client/auth/login
 
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -75,13 +75,13 @@ X-Authn-Degraded-Mode: false
 ```
 
 ### `200 OK` — 2FA / MFA Challenge Required
-Returned when the user has an active 2FA method (TOTP, Passkey, SMS, Backup Codes). **No access token or refresh token is issued** until second-factor verification is completed via `POST /v1/client/2fa/totp/verify` or `POST /v1/client/auth/2fa/verify`.
+Returned when the user has an active 2FA method (TOTP, Passkey, SMS, Backup Codes). **No access token or refresh token is issued** until second-factor verification is completed via `POST /v1/client/auth/2fa/totp/verify` or `POST /v1/client/auth/2fa/verify`.
 
 ```bash
 $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -d '{"email":"user.totp@authn.local","password":"UserPass123!"}' \
-  http://localhost:8080/v1/client/login
+  http://localhost:8080/v1/client/auth/login
 
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -111,7 +111,7 @@ Returned for both wrong password and non-existent email address. Byte-for-byte i
 $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -d '{"email":"nonexistent.user@authn.local","password":"WrongPassword123!"}' \
-  http://localhost:8080/v1/client/login
+  http://localhost:8080/v1/client/auth/login
 
 HTTP/1.1 401 Unauthorized
 Content-Type: application/json
@@ -168,7 +168,7 @@ Returned during Redis outages when rate limiting cannot be enforced. Prevents un
 ## Rate Limiting & Outage Behavior
 * **Sliding-Window Rate Limiter**: 5 attempts per 900s (15-minute) window per IP address + endpoint.
 * **Escalation Backoff**: Violations trigger exponential backoff: 1st violation (15m block), 2nd (1h), 3rd (6h), 4th+ (24h cap).
-* **Fail-CLOSED Security Guard**: During Redis outages, login requests **FAIL-CLOSED** with `503 Service Unavailable` and `X-Authn-Degraded-Mode: true`. See [`docs/ARCHITECTURE-DEGRADED-MODE.md`](file:///home/hanan-bhatti/authn/docs/ARCHITECTURE-DEGRADED-MODE.md).
+* **Fail-CLOSED Security Guard**: During Redis outages, login requests **FAIL-CLOSED** with `503 Service Unavailable` and `X-Authn-Degraded-Mode: true`. See [`docs/ARCHITECTURE-DEGRADED-MODE.md`](../ARCHITECTURE-DEGRADED-MODE.md).
 
 ---
 

@@ -64,14 +64,14 @@ func TestResendVerificationRateLimited(t *testing.T) {
 	// throttled": whether a resend succeeds or reports an already-verified
 	// account is not what this test is about.
 	for attempt := 1; attempt <= resendBudget; attempt++ {
-		resp := env.do(t, http.MethodPost, "/v1/client/resend-verification", payload)
+		resp := env.do(t, http.MethodPost, "/v1/client/auth/resend-verification", payload)
 		if resp.status == http.StatusTooManyRequests {
 			t.Fatalf("attempt %d of %d was throttled before the budget was spent; body %s",
 				attempt, resendBudget, resp.body)
 		}
 	}
 
-	throttled := env.do(t, http.MethodPost, "/v1/client/resend-verification", payload)
+	throttled := env.do(t, http.MethodPost, "/v1/client/auth/resend-verification", payload)
 	if throttled.status != http.StatusTooManyRequests {
 		t.Fatalf("resend past the budget: got status %d, want 429; body %s",
 			throttled.status, throttled.body)
@@ -102,11 +102,11 @@ func TestRateLimiterFailsClosedWithUnreachableStore(t *testing.T) {
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	app.Use(limiter.Middleware())
-	app.Post("/v1/client/login", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/login", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	})
 
-	req, err := http.NewRequest(http.MethodPost, "/v1/client/login",
+	req, err := http.NewRequest(http.MethodPost, "/v1/client/auth/login",
 		strings.NewReader(`{"email":"user@example.com","password":"guess"}`))
 	if err != nil {
 		t.Fatalf("building the login request: %v", err)
@@ -143,11 +143,11 @@ func TestRateLimiterOpenWhenStoreUnreachableAndFailOpen(t *testing.T) {
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	app.Use(limiter.Middleware())
-	app.Post("/v1/client/login", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/login", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	})
 
-	req, err := http.NewRequest(http.MethodPost, "/v1/client/login",
+	req, err := http.NewRequest(http.MethodPost, "/v1/client/auth/login",
 		strings.NewReader(`{"email":"failopen@example.com","password":"guess"}`))
 	if err != nil {
 		t.Fatalf("building the login request: %v", err)

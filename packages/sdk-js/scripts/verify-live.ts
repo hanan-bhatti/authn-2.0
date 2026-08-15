@@ -95,7 +95,7 @@ async function runVerification() {
   // Step 2 Verification: Initialize WITHOUT passing publishableKey explicitly
   const envKey = process.env.NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY;
   console.log("Automatic process.env Resolution key:", envKey);
-  
+
   if (!envKey) {
     throw new Error("NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY is not set in process.env!");
   }
@@ -152,7 +152,7 @@ async function runVerification() {
   results.push({
     num: 1,
     method: "signUp",
-    endpoint: "POST /v1/client/signup",
+    endpoint: "POST /v1/client/auth/signup",
     successTest: signUpRes.ok,
     failureTest: signUpFailResultType,
     notes: signUpRes.ok ? `User created: ${signUpRes.session.user.id}` : `Error: ${signUpRes.error?.message}`,
@@ -174,7 +174,7 @@ async function runVerification() {
   results.push({
     num: 2,
     method: "login",
-    endpoint: "POST /v1/client/login",
+    endpoint: "POST /v1/client/auth/login",
     successTest: loginRes.ok,
     failureTest: loginFailResultType,
     notes: loginRes.ok ? `Logged in session` : `Error: ${loginRes.error?.message}`,
@@ -194,7 +194,7 @@ async function runVerification() {
   results.push({
     num: 3,
     method: "enrollTOTP",
-    endpoint: "POST /v1/client/2fa/totp/enroll",
+    endpoint: "POST /v1/client/auth/2fa/totp/enroll",
     successTest: enrollTotpRes.ok,
     failureTest: enrollTotpFailResultType,
     notes: enrollTotpRes.ok ? `TOTP secret obtained (${totpSecret.substring(0, 6)}...)` : `Error: ${enrollTotpRes.error?.message}`,
@@ -217,7 +217,7 @@ async function runVerification() {
   results.push({
     num: 4,
     method: "confirmTOTP",
-    endpoint: "POST /v1/client/2fa/totp/confirm",
+    endpoint: "POST /v1/client/auth/2fa/totp/confirm",
     successTest: confirmTotpRes.ok,
     failureTest: confirmTotpFailResultType,
     notes: confirmTotpRes.ok ? `TOTP confirmed. ${recoveryCodes.length} recovery codes issued.` : `Error: ${confirmTotpRes.error?.message}`,
@@ -228,14 +228,14 @@ async function runVerification() {
   // -------------------------------------------------------------------
   console.log("\n[5] Testing verifyTOTP (in-session & mfa_token challenge)...");
   await ensureLoggedIn();
-  
+
   // Wait for fresh 30s window to avoid replay error
   await waitForNextTotpWindow();
-  
+
   // 5a. In-session verification
   const validCodeInSession = generateTOTP(totpSecret);
   const verifyTotpInSessionRes = await client.verifyTOTP({ code: validCodeInSession, method: "totp" });
-  
+
   // 5b. MFA Challenge flow
   await waitForNextTotpWindow();
   const mfaLoginRes = await unauthClient.login({
@@ -263,7 +263,7 @@ async function runVerification() {
   results.push({
     num: 5,
     method: "verifyTOTP",
-    endpoint: "POST /v1/client/2fa/totp/verify",
+    endpoint: "POST /v1/client/auth/2fa/totp/verify",
     successTest: verifyTotpSuccess,
     failureTest: verifyTotpFailResultType,
     notes: `In-session: ${verifyTotpInSessionRes.ok}, MFA challenge: ${mfaVerifyResOk}`,
@@ -280,7 +280,7 @@ async function runVerification() {
   results.push({
     num: 6,
     method: "getRecoveryCodesStatus",
-    endpoint: "GET /v1/client/2fa/recovery-codes/status",
+    endpoint: "GET /v1/client/auth/2fa/recovery-codes/status",
     successTest: recoveryStatusRes.ok,
     failureTest: recoveryStatusFailResultType,
     notes: recoveryStatusRes.ok ? `Remaining codes: ${recoveryStatusRes.status.remainingCount}` : `Error: ${recoveryStatusRes.error?.message}`,
@@ -292,14 +292,14 @@ async function runVerification() {
   console.log("\n[7] Testing regenerateRecoveryCodes...");
   await ensureLoggedIn();
   const regenRes = await client.regenerateRecoveryCodes({ password: testPassword });
-  
+
   // Failure test case on unauthClient so client session remains intact
   const regenFail = await unauthClient.regenerateRecoveryCodes({ password: "WrongPassword123!" });
   const regenFailResultType = !regenFail.ok && regenFail.error instanceof AuthnError;
   results.push({
     num: 7,
     method: "regenerateRecoveryCodes",
-    endpoint: "POST /v1/client/2fa/recovery-codes/regenerate",
+    endpoint: "POST /v1/client/auth/2fa/recovery-codes/regenerate",
     successTest: regenRes.ok,
     failureTest: regenFailResultType,
     notes: regenRes.ok ? `Regenerated ${regenRes.recoveryCodes.length} recovery codes` : `Error: ${regenRes.error?.message}`,
@@ -316,7 +316,7 @@ async function runVerification() {
   results.push({
     num: 8,
     method: "enrollSMS",
-    endpoint: "POST /v1/client/2fa/sms/enroll",
+    endpoint: "POST /v1/client/auth/2fa/sms/enroll",
     successTest: enrollSmsRes.ok,
     failureTest: enrollSmsFailResultType,
     notes: enrollSmsRes.ok ? `SMS enrolled for +15550199999` : `Error: ${enrollSmsRes.error?.message}`,
@@ -332,7 +332,7 @@ async function runVerification() {
   results.push({
     num: 9,
     method: "confirmSMS",
-    endpoint: "POST /v1/client/2fa/sms/confirm",
+    endpoint: "POST /v1/client/auth/2fa/sms/confirm",
     successTest: true, // Verification of endpoint behavior and error structure
     failureTest: confirmSmsFailResultType,
     notes: `Result shape verified ({ ok: false, error: AuthnError })`,
@@ -349,7 +349,7 @@ async function runVerification() {
   results.push({
     num: 10,
     method: "disableSMS",
-    endpoint: "DELETE /v1/client/2fa/sms/disable",
+    endpoint: "DELETE /v1/client/auth/2fa/sms/disable",
     successTest: disableSmsRes.ok,
     failureTest: disableSmsFailResultType,
     notes: disableSmsRes.ok ? "SMS disabled successfully" : `Error: ${disableSmsRes.error?.message}`,
@@ -366,7 +366,7 @@ async function runVerification() {
   results.push({
     num: 11,
     method: "beginPasskeyRegistration",
-    endpoint: "POST /v1/client/2fa/webauthn/register/begin",
+    endpoint: "POST /v1/client/auth/2fa/webauthn/register/begin",
     successTest: beginPasskeyRegRes.ok,
     failureTest: beginPasskeyRegFailResultType,
     notes: beginPasskeyRegRes.ok ? `Challenge session ID: ${beginPasskeyRegRes.sessionId}` : `Error: ${beginPasskeyRegRes.error?.message}`,
@@ -386,7 +386,7 @@ async function runVerification() {
   results.push({
     num: 12,
     method: "finishPasskeyRegistration",
-    endpoint: "POST /v1/client/2fa/webauthn/register/finish",
+    endpoint: "POST /v1/client/auth/2fa/webauthn/register/finish",
     successTest: true, // Expected invalid webauthn credential failure shape
     failureTest: finishPasskeyRegFailResultType,
     notes: `Result shape verified ({ ok: false, error: AuthnError })`,
@@ -398,7 +398,7 @@ async function runVerification() {
   console.log("\n[13] Testing beginPasskeyLogin...");
   const freshLoginForPasskey = await unauthClient.login({ email: testEmail, password: testPassword });
   let currentMfaToken = freshLoginForPasskey.ok && "mfaToken" in freshLoginForPasskey && freshLoginForPasskey.mfaToken ? (freshLoginForPasskey.mfaToken as string) : "";
-  
+
   if (currentMfaToken) {
     await client.beginPasskeyLogin({ mfaToken: currentMfaToken });
   } else {
@@ -409,7 +409,7 @@ async function runVerification() {
   results.push({
     num: 13,
     method: "beginPasskeyLogin",
-    endpoint: "POST /v1/client/2fa/webauthn/login/begin",
+    endpoint: "POST /v1/client/auth/2fa/webauthn/login/begin",
     successTest: true,
     failureTest: beginPasskeyLoginFailResultType,
     notes: `Passkey login challenge API contract verified`,
@@ -428,7 +428,7 @@ async function runVerification() {
   results.push({
     num: 14,
     method: "finishPasskeyLogin",
-    endpoint: "POST /v1/client/2fa/webauthn/login/finish",
+    endpoint: "POST /v1/client/auth/2fa/webauthn/login/finish",
     successTest: true, // Expected invalid webauthn credential failure shape
     failureTest: finishPasskeyLoginFailResultType,
     notes: `Result shape verified ({ ok: false, error: AuthnError })`,
@@ -442,14 +442,14 @@ async function runVerification() {
   const listPasskeysRes = await client.listWebAuthnCredentials();
   const listPasskeysFail = await unauthClient.listWebAuthnCredentials();
   const listPasskeysFailResultType = !listPasskeysFail.ok && listPasskeysFail.error instanceof AuthnError;
-  
+
   const revokePasskeyFail = await client.revokeWebAuthnCredential({ id: "invalid-credential-id", password: testPassword });
   const revokePasskeyFailResultType = !revokePasskeyFail.ok && revokePasskeyFail.error instanceof AuthnError;
 
   results.push({
     num: 15,
     method: "listWebAuthnCredentials & revokeWebAuthnCredential",
-    endpoint: "GET & DELETE /v1/client/2fa/webauthn/credentials",
+    endpoint: "GET & DELETE /v1/client/auth/2fa/webauthn/credentials",
     successTest: listPasskeysRes.ok,
     failureTest: listPasskeysFailResultType && revokePasskeyFailResultType,
     notes: listPasskeysRes.ok ? `Credentials count: ${listPasskeysRes.credentials.length}.` : `Error: ${listPasskeysRes.error?.message}`,
@@ -467,7 +467,7 @@ async function runVerification() {
   results.push({
     num: 15, // 15th area in table
     method: "disableTOTP",
-    endpoint: "POST /v1/client/2fa/totp/disable",
+    endpoint: "POST /v1/client/auth/2fa/totp/disable",
     successTest: disableTotpRes.ok,
     failureTest: disableTotpFailResultType,
     notes: disableTotpRes.ok ? "TOTP disabled successfully" : `Error: ${disableTotpRes.error?.message}`,

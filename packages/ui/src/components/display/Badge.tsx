@@ -2,13 +2,14 @@ import React from "react";
 import { cn } from "../../utils/cn.js";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  children?: React.ReactNode;
   variant?: "violet" | "green" | "red" | "amber" | "gray" | "blue";
   size?: "sm" | "md";
   dot?: boolean;
 }
 
 /**
- * Resend-style Monospaced Badge
+ * Monospaced Badge
  *
  * Rules:
  * - 6px border radius

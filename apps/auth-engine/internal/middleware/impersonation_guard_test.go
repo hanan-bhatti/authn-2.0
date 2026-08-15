@@ -28,7 +28,9 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	signingSecret := "test_encryption_key_32_bytes_12345"
 
 	app := fiber.New()
-	app.Use(middleware.PreventImpersonatedMutations(signingSecret))
+	// nil blocklist: this case asserts the guard's method/path matrix, not JTI
+	// revocation, and a nil *tokenblocklist.Blocklist is a documented no-op.
+	app.Use(middleware.PreventImpersonatedMutations(signingSecret, nil))
 
 	// These routes mirror the real registered API surface exactly. A test that
 	// asserts against paths the router does not serve passes while the actual
@@ -40,10 +42,10 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	app.Post("/v1/client/user/password", func(c *fiber.Ctx) error {
 		return c.SendString("password updated")
 	})
-	app.Post("/v1/client/2fa/totp/disable", func(c *fiber.Ctx) error {
+	app.Post("/v1/client/auth/2fa/totp/disable", func(c *fiber.Ctx) error {
 		return c.SendString("2fa disabled")
 	})
-	app.Delete("/v1/client/2fa/webauthn/credentials/:id", func(c *fiber.Ctx) error {
+	app.Delete("/v1/client/auth/2fa/webauthn/credentials/:id", func(c *fiber.Ctx) error {
 		return c.SendString("credential deleted")
 	})
 
@@ -86,14 +88,14 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	// 5. Impersonated token: POST /2fa/totp/disable -> 403. The route is matched
 	// on its real path, so an impersonator cannot strip the victim's TOTP by
 	// addressing a spelling the guard fails to recognise.
-	req5 := httptest.NewRequest("POST", "/v1/client/2fa/totp/disable", nil)
+	req5 := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/disable", nil)
 	req5.Header.Set("Authorization", "Bearer "+impToken)
 	resp5, err := app.Test(req5)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, resp5.StatusCode)
 
 	// 6. A route ending in a variable segment: DELETE webauthn credential -> 403.
-	req6 := httptest.NewRequest("DELETE", "/v1/client/2fa/webauthn/credentials/cred_abc123", nil)
+	req6 := httptest.NewRequest("DELETE", "/v1/client/auth/2fa/webauthn/credentials/cred_abc123", nil)
 	req6.Header.Set("Authorization", "Bearer "+impToken)
 	resp6, err := app.Test(req6)
 	require.NoError(t, err)
@@ -110,7 +112,7 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, resp7.StatusCode)
 
 	// 8. The other cookie name (access_token) is honored the same way.
-	req8 := httptest.NewRequest("POST", "/v1/client/2fa/totp/disable", nil)
+	req8 := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/disable", nil)
 	req8.AddCookie(&http.Cookie{Name: "access_token", Value: impToken})
 	resp8, err := app.Test(req8)
 	require.NoError(t, err)
@@ -138,7 +140,7 @@ func TestImpersonationGuardLogsUnverifiableToken(t *testing.T) {
 	signingSecret := "test_encryption_key_32_bytes_12345"
 
 	app := fiber.New()
-	app.Use(middleware.PreventImpersonatedMutations(signingSecret))
+	app.Use(middleware.PreventImpersonatedMutations(signingSecret, nil))
 	app.Post("/v1/client/user/password", func(c *fiber.Ctx) error {
 		return c.SendString("password updated")
 	})

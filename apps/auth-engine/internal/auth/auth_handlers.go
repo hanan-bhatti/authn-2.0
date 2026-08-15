@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
@@ -100,16 +99,8 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
 	} else {
-		cookie := new(fiber.Cookie)
-		cookie.Name = "authn_refresh_token"
-		cookie.Value = refreshToken
-		// The cookie must not expire before the token inside it, or the browser
-		// discards a still-valid refresh token and the session ends early.
-		cookie.Expires = time.Now().Add(h.service.refreshTokenTTL())
-		cookie.HTTPOnly = true
-		cookie.Secure = h.service.config.CookieSecure()
-		cookie.SameSite = "Lax"
-		c.Cookie(cookie)
+		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -215,14 +206,8 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
-		c.Cookie(&fiber.Cookie{
-			Name:     "authn_refresh_token",
-			Value:    refreshToken,
-			HTTPOnly: true,
-			Secure:   h.service.config.CookieSecure(),
-			SameSite: "Lax",
-			Path:     "/v1/client",
-		})
+		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
@@ -345,14 +330,8 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
-		c.Cookie(&fiber.Cookie{
-			Name:     "authn_refresh_token",
-			Value:    refreshToken,
-			HTTPOnly: true,
-			Secure:   h.service.config.CookieSecure(),
-			SameSite: "Lax",
-			Path:     "/v1/client",
-		})
+		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -370,7 +349,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	})
 }
 
-// VerifyEmail handles email verification link requests (GET /v1/client/verify-email?token=...).
+// VerifyEmail handles email verification link requests (GET /v1/client/auth/verify-email?token=...).
 func (h *Handler) VerifyEmail(c *fiber.Ctx) error {
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
@@ -390,7 +369,7 @@ func (h *Handler) VerifyEmail(c *fiber.Ctx) error {
 	})
 }
 
-// ResendVerification handles resending verification emails (POST /v1/client/resend-verification).
+// ResendVerification handles resending verification emails (POST /v1/client/auth/resend-verification).
 func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 	var req struct {
 		TenantID    string `json:"tenant_id"`

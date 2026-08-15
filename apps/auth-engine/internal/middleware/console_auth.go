@@ -5,7 +5,7 @@
  *
  * Console-only authentication for the Authn developer console.
  *
- * Console operators sign in through the same /v1/client/login endpoint as any
+ * Console operators sign in through the same /v1/client/auth/login endpoint as any
  * other user and call admin routes with the resulting JWT, so no sk_ secret key
  * is ever embedded in a browser. This middleware is the JWT-only counterpart to
  * RequireSecretKey; RequireAdminAuth accepts either credential on routes that

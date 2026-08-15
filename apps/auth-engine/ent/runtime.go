@@ -9,6 +9,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
@@ -113,6 +114,24 @@ func init() {
 	identity.DefaultUpdatedAt = identityDescUpdatedAt.Default.(func() time.Time)
 	// identity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	identity.UpdateDefaultUpdatedAt = identityDescUpdatedAt.UpdateDefault.(func() time.Time)
+	managedtenantFields := schema.ManagedTenant{}.Fields()
+	_ = managedtenantFields
+	// managedtenantDescTenantID is the schema descriptor for tenant_id field.
+	managedtenantDescTenantID := managedtenantFields[1].Descriptor()
+	// managedtenant.TenantIDValidator is a validator for the "tenant_id" field. It is called by the builders before save.
+	managedtenant.TenantIDValidator = managedtenantDescTenantID.Validators[0].(func(string) error)
+	// managedtenantDescManagedTenantID is the schema descriptor for managed_tenant_id field.
+	managedtenantDescManagedTenantID := managedtenantFields[2].Descriptor()
+	// managedtenant.ManagedTenantIDValidator is a validator for the "managed_tenant_id" field. It is called by the builders before save.
+	managedtenant.ManagedTenantIDValidator = managedtenantDescManagedTenantID.Validators[0].(func(string) error)
+	// managedtenantDescOwnerUserID is the schema descriptor for owner_user_id field.
+	managedtenantDescOwnerUserID := managedtenantFields[3].Descriptor()
+	// managedtenant.OwnerUserIDValidator is a validator for the "owner_user_id" field. It is called by the builders before save.
+	managedtenant.OwnerUserIDValidator = managedtenantDescOwnerUserID.Validators[0].(func(string) error)
+	// managedtenantDescCreatedAt is the schema descriptor for created_at field.
+	managedtenantDescCreatedAt := managedtenantFields[5].Descriptor()
+	// managedtenant.DefaultCreatedAt holds the default value on creation for the created_at field.
+	managedtenant.DefaultCreatedAt = managedtenantDescCreatedAt.Default.(func() time.Time)
 	orginvitationFields := schema.OrgInvitation{}.Fields()
 	_ = orginvitationFields
 	// orginvitationDescOrganizationID is the schema descriptor for organization_id field.
@@ -414,11 +433,11 @@ func init() {
 	// tenant.DefaultFirstAdminClaimed holds the default value on creation for the first_admin_claimed field.
 	tenant.DefaultFirstAdminClaimed = tenantDescFirstAdminClaimed.Default.(bool)
 	// tenantDescCreatedAt is the schema descriptor for created_at field.
-	tenantDescCreatedAt := tenantFields[13].Descriptor()
+	tenantDescCreatedAt := tenantFields[14].Descriptor()
 	// tenant.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tenant.DefaultCreatedAt = tenantDescCreatedAt.Default.(func() time.Time)
 	// tenantDescUpdatedAt is the schema descriptor for updated_at field.
-	tenantDescUpdatedAt := tenantFields[14].Descriptor()
+	tenantDescUpdatedAt := tenantFields[15].Descriptor()
 	// tenant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	tenant.DefaultUpdatedAt = tenantDescUpdatedAt.Default.(func() time.Time)
 	// tenant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

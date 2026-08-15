@@ -12,7 +12,7 @@ export interface StatCardProps {
 }
 
 /**
- * Resend-style Dashboard Metric Card
+ * Dashboard Metric Card
  *
  * Rules:
  * - 16px border radius

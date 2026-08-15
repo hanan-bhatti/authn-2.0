@@ -17,6 +17,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -40,11 +41,25 @@ const msgSessionAuthRequired = "session authentication required: missing or inva
 type Handler struct {
 	// svc carries out the session operations behind each route.
 	svc *Service
+	// cookies builds the rotated refresh cookie. Never nil: NewHandler installs a
+	// writer backed by default tenant policy, and WithSessionPolicyResolver swaps
+	// in one that reads live policy.
+	cookies *authcookie.Writer
 }
 
 // NewHandler constructs a session Handler over svc.
 func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+	return &Handler{
+		svc:     svc,
+		cookies: authcookie.NewWriter(svc.cfg, nil),
+	}
+}
+
+// WithSessionPolicyResolver points cookie construction at live tenant session
+// policy and returns the handler for chaining.
+func (h *Handler) WithSessionPolicyResolver(r authcookie.SessionPolicyResolver) *Handler {
+	h.cookies = authcookie.NewWriter(h.svc.cfg, r)
+	return h
 }
 
 // RegisterRoutes mounts the client, refresh and admin session routes.
@@ -203,9 +218,16 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 	}
 	_ = c.BodyParser(&req)
 
+	// fromCookie records how the caller presented the token, because that decides
+	// where the rotated one has to be returned. A browser that sent the cookie
+	// cannot read the JSON body into an HttpOnly cookie itself, so if this handler
+	// does not rewrite it the browser keeps the token that was just rotated out —
+	// and the next refresh trips reuse detection and destroys the session.
 	rawToken := req.RefreshToken
+	fromCookie := false
 	if rawToken == "" {
-		rawToken = c.Cookies("authn_refresh_token")
+		rawToken = c.Cookies(authcookie.RefreshTokenName)
+		fromCookie = rawToken != ""
 	}
 	if rawToken == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "refresh_token required")
@@ -239,6 +261,14 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 			return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired refresh token")
 		}
 		return httperr.SendInternal(c, "session.refresh", err)
+	}
+
+	// A grace-window replay leaves RefreshToken empty on purpose: the rotated
+	// secret is not handed out twice, and the cookie the browser already holds is
+	// still the live one, so it must be left alone.
+	if fromCookie && res.RefreshToken != "" {
+		h.cookies.SetRefreshToken(c, tenantID, res.RefreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), tenantID))
 	}
 
 	return c.JSON(res)

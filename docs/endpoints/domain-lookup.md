@@ -10,7 +10,7 @@ The Domain Lookup endpoint allows login UIs to inspect an email domain (e.g. `us
 ## Enumeration Safety & Security Controls
 * **Enumeration Evasion**: Querying a domain that is NOT configured for SSO returns `{"has_sso": false, "enforce_sso": false}` (`200 OK`). It **never** reveals whether an organization exists, avoiding tenant enumeration vectors.
 * **Rate Limiting**: Rate limited to prevent automated domain scanning attacks.
-* **SSO Enforcement Guard**: When `enforce_sso: true`, standard email/password authentication endpoints (`POST /v1/client/login`) reject password login attempts for domain-matched users with `403 Forbidden` (`SSO login is enforced for domain 'acme.com'`).
+* **SSO Enforcement Guard**: When `enforce_sso: true`, standard email/password authentication endpoints (`POST /v1/client/auth/login`) reject password login attempts for domain-matched users with `403 Forbidden` (`SSO login is enforced for domain 'acme.com'`).
 
 ---
 

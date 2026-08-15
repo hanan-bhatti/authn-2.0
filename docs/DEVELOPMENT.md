@@ -48,15 +48,15 @@ When `go run ./cmd/seed` completes, the following test fixtures are provisioned:
 * **Secret Key (`sk_...`)**: `sk_test_demo12345678901234567890123456789012`
 
 ### Organizations
-* **Acme Corp**: ID `org_acme`, Slug `acme-corp`
+* **Acme Corp**: ID `org_00000000000000000000000000000001`, Slug `acme-corp`
 
 ### User Fixtures Table
 
 | Email | Password | Role | Fixture Test Purpose / State |
 | :--- | :--- | :--- | :--- |
-| `admin@authn.local` | `AdminPass123!` | `tenant_admin` | System Admin & `org_admin` of `org_acme` |
+| `admin@authn.local` | `AdminPass123!` | `tenant_admin` | System Admin & `org_admin` of `org_00000000000000000000000000000001` |
 | `user.totp@authn.local` | `UserPass123!` | `viewer` | TOTP 2FA Enrolled (Secret: `JBSWY3DPEHPK3PXP`) |
 | `user.unverified@authn.local` | `UserPass123!` | `viewer` | Email Unverified (`email_verified: false`) |
-| `user.orgmember@authn.local` | `UserPass123!` | `editor` | Organization Member of `org_acme` |
+| `user.orgmember@authn.local` | `UserPass123!` | `editor` | Organization Member of `org_00000000000000000000000000000001` |
 | `user.guardians@authn.local` | `UserPass123!` | `viewer` | Recovery Guardians Configured (`guardian@authn.local`) |
 | `user.vanilla@authn.local` | `UserPass123!` | `viewer` | Standard / Vanilla Active User |

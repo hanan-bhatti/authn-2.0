@@ -18,6 +18,7 @@ export interface HttpClientConfig {
   timeout: number;
   logger: AuthnLogger;
   customFetch?: typeof globalThis.fetch;
+  customHeaders?: Record<string, string>;
   getAccessToken?: () => string | null;
   onRefreshToken?: () => Promise<SessionResult>;
 }
@@ -37,12 +38,15 @@ export class HttpClient {
   private readonly getAccessToken?: () => string | null;
   private readonly onRefreshToken?: () => Promise<SessionResult>;
 
+  private readonly customHeaders?: Record<string, string>;
+
   constructor(config: HttpClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.publishableKey = config.publishableKey;
     this.timeout = config.timeout;
     this.logger = config.logger;
     this.fetchFn = config.customFetch ?? globalThis.fetch.bind(globalThis);
+    this.customHeaders = config.customHeaders;
     this.getAccessToken = config.getAccessToken;
     this.onRefreshToken = config.onRefreshToken;
   }
@@ -132,6 +136,9 @@ export class HttpClient {
 
     if (extraHeaders) {
       Object.assign(headers, extraHeaders);
+    }
+    if (this.customHeaders) {
+      Object.assign(headers, this.customHeaders);
     }
 
     let response: Response;

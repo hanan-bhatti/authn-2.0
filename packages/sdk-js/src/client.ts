@@ -479,7 +479,7 @@ export class AuthnClient {
 
     try {
       const res = await this.http.post<ServerAuthResponse>(
-        "/v1/client/signup",
+        "/v1/client/auth/signup",
         {
           email: params.email,
           password: params.password,
@@ -532,7 +532,7 @@ export class AuthnClient {
 
     try {
       const res = await this.http.post<ServerAuthResponse>(
-        "/v1/client/login",
+        "/v1/client/auth/login",
         {
           email: params.email,
           password: params.password,
@@ -641,7 +641,7 @@ export class AuthnClient {
 
     try {
       await this.http.get<ServerMessageResponse>(
-        "/v1/client/verify-email",
+        "/v1/client/auth/verify-email",
         { token: params.token },
       );
 
@@ -679,7 +679,7 @@ export class AuthnClient {
 
     try {
       await this.http.post<ServerMessageResponse>(
-        "/v1/client/resend-verification",
+        "/v1/client/auth/resend-verification",
         {
           email: params.email,
           tenant_id: this.resolveTenantId(params.tenantId),
@@ -1445,12 +1445,12 @@ export class AuthnClient {
 
   /**
    * Enroll a new TOTP 2FA secret for the authenticated user.
-   * Target Route: POST /v1/client/2fa/totp/enroll
+   * Target Route: POST /v1/client/auth/2fa/totp/enroll
    */
   async enrollTOTP(): Promise<EnrollTOTPResult> {
     this.guardDestroyed();
     try {
-      const res = await this.http.post<ServerEnrollTOTPResponse>("/v1/client/2fa/totp/enroll");
+      const res = await this.http.post<ServerEnrollTOTPResponse>("/v1/client/auth/2fa/totp/enroll");
       return {
         ok: true,
         secret: res.data.secret,
@@ -1463,13 +1463,13 @@ export class AuthnClient {
 
   /**
    * Confirm TOTP enrollment with a 6-digit verification code.
-   * Target Route: POST /v1/client/2fa/totp/confirm
+   * Target Route: POST /v1/client/auth/2fa/totp/confirm
    */
   async confirmTOTP(params: ConfirmTOTPParams): Promise<Confirm2FAResult> {
     this.guardDestroyed();
     try {
       assertValid(validateTOTPCode(params?.code));
-      const res = await this.http.post<ServerConfirmTOTPResponse>("/v1/client/2fa/totp/confirm", {
+      const res = await this.http.post<ServerConfirmTOTPResponse>("/v1/client/auth/2fa/totp/confirm", {
         code: params.code,
       });
       return {
@@ -1485,13 +1485,13 @@ export class AuthnClient {
 
   /**
    * Disable TOTP 2FA requiring password step-up confirmation.
-   * Target Route: POST /v1/client/2fa/totp/disable
+   * Target Route: POST /v1/client/auth/2fa/totp/disable
    */
   async disableTOTP(params: DisableTOTPParams): Promise<VoidResult> {
     this.guardDestroyed();
     try {
       assertValid(validatePassword(params?.password));
-      const res = await this.http.post<ServerMessageResponse>("/v1/client/2fa/totp/disable", {
+      const res = await this.http.post<ServerMessageResponse>("/v1/client/auth/2fa/totp/disable", {
         password: params.password,
       });
       return {
@@ -1505,14 +1505,14 @@ export class AuthnClient {
 
   /**
    * Verify TOTP code during login challenge or inside an active session.
-   * Target Route: POST /v1/client/2fa/totp/verify
+   * Target Route: POST /v1/client/auth/2fa/totp/verify
    */
   async verifyTOTP(params: VerifyTOTPParams): Promise<VerifyTOTPResult> {
     this.guardDestroyed();
     try {
       assertValid(validateTOTPCode(params?.code));
       if (params.mfaToken) {
-        const res = await this.http.post<ServerAuthResponse>("/v1/client/2fa/totp/verify", {
+        const res = await this.http.post<ServerAuthResponse>("/v1/client/auth/2fa/totp/verify", {
           code: params.code,
           mfa_token: params.mfaToken,
           method: params.method,
@@ -1521,7 +1521,7 @@ export class AuthnClient {
         this.setSession(session);
         return { ok: true, session };
       } else {
-        const res = await this.http.post<{ valid: boolean }>("/v1/client/2fa/totp/verify", {
+        const res = await this.http.post<{ valid: boolean }>("/v1/client/auth/2fa/totp/verify", {
           code: params.code,
           method: params.method,
         });
@@ -1534,13 +1534,13 @@ export class AuthnClient {
 
   /**
    * Enroll a phone number for SMS 2FA.
-   * Target Route: POST /v1/client/2fa/sms/enroll
+   * Target Route: POST /v1/client/auth/2fa/sms/enroll
    */
   async enrollSMS(params: EnrollSMSParams): Promise<EnrollSMSResult> {
     this.guardDestroyed();
     try {
       assertValid(validatePhoneNumber(params?.phoneNumber));
-      const res = await this.http.post<ServerEnrollSMSResponse>("/v1/client/2fa/sms/enroll", {
+      const res = await this.http.post<ServerEnrollSMSResponse>("/v1/client/auth/2fa/sms/enroll", {
         phone_number: params.phoneNumber,
       });
       return {
@@ -1555,13 +1555,13 @@ export class AuthnClient {
 
   /**
    * Confirm SMS 2FA enrollment with the received OTP code.
-   * Target Route: POST /v1/client/2fa/sms/confirm
+   * Target Route: POST /v1/client/auth/2fa/sms/confirm
    */
   async confirmSMS(params: ConfirmSMSParams): Promise<Confirm2FAResult> {
     this.guardDestroyed();
     try {
       assertValid(validateTOTPCode(params?.code));
-      const res = await this.http.post<ServerConfirmTOTPResponse>("/v1/client/2fa/sms/confirm", {
+      const res = await this.http.post<ServerConfirmTOTPResponse>("/v1/client/auth/2fa/sms/confirm", {
         code: params.code,
       });
       return {
@@ -1577,13 +1577,13 @@ export class AuthnClient {
 
   /**
    * Disable SMS 2FA with password step-up confirmation.
-   * Target Route: DELETE /v1/client/2fa/sms/disable
+   * Target Route: DELETE /v1/client/auth/2fa/sms/disable
    */
   async disableSMS(params: DisableSMSParams): Promise<VoidResult> {
     this.guardDestroyed();
     try {
       assertValid(validatePassword(params?.password));
-      const res = await this.http.del<ServerMessageResponse>("/v1/client/2fa/sms/disable", {
+      const res = await this.http.del<ServerMessageResponse>("/v1/client/auth/2fa/sms/disable", {
         password: params.password,
       });
       return {
@@ -1597,7 +1597,7 @@ export class AuthnClient {
 
   /**
    * Regenerate backup recovery codes with password step-up confirmation.
-   * Target Route: POST /v1/client/2fa/recovery-codes/regenerate
+   * Target Route: POST /v1/client/auth/2fa/recovery-codes/regenerate
    */
   async regenerateRecoveryCodes(
     params: RegenerateRecoveryCodesParams,
@@ -1606,7 +1606,7 @@ export class AuthnClient {
     try {
       assertValid(validatePassword(params?.password));
       const res = await this.http.post<ServerRegenerateRecoveryCodesResponse>(
-        "/v1/client/2fa/recovery-codes/regenerate",
+        "/v1/client/auth/2fa/recovery-codes/regenerate",
         { password: params.password },
       );
       return {
@@ -1621,13 +1621,13 @@ export class AuthnClient {
 
   /**
    * Get current backup recovery codes status.
-   * Target Route: GET /v1/client/2fa/recovery-codes/status
+   * Target Route: GET /v1/client/auth/2fa/recovery-codes/status
    */
   async getRecoveryCodesStatus(): Promise<RecoveryCodesStatusResult> {
     this.guardDestroyed();
     try {
       const res = await this.http.get<ServerRecoveryCodesStatusResponse>(
-        "/v1/client/2fa/recovery-codes/status",
+        "/v1/client/auth/2fa/recovery-codes/status",
       );
       return {
         ok: true,
@@ -1644,13 +1644,13 @@ export class AuthnClient {
 
   /**
    * Begin WebAuthn passkey registration ceremony.
-   * Target Route: POST /v1/client/2fa/webauthn/register/begin
+   * Target Route: POST /v1/client/auth/2fa/webauthn/register/begin
    */
   async beginPasskeyRegistration(): Promise<BeginPasskeyRegistrationResult> {
     this.guardDestroyed();
     try {
       const res = await this.http.post<ServerBeginPasskeyRegistrationResponse>(
-        "/v1/client/2fa/webauthn/register/begin",
+        "/v1/client/auth/2fa/webauthn/register/begin",
       );
       return {
         ok: true,
@@ -1664,7 +1664,7 @@ export class AuthnClient {
 
   /**
    * Complete WebAuthn passkey registration ceremony.
-   * Target Route: POST /v1/client/2fa/webauthn/register/finish
+   * Target Route: POST /v1/client/auth/2fa/webauthn/register/finish
    */
   async finishPasskeyRegistration(
     params: FinishPasskeyRegistrationParams,
@@ -1679,7 +1679,7 @@ export class AuthnClient {
         queryParams["name"] = params.name;
       }
       const res = await this.http.postRaw<ServerConfirmTOTPResponse>(
-        "/v1/client/2fa/webauthn/register/finish",
+        "/v1/client/auth/2fa/webauthn/register/finish",
         params.credential,
         queryParams,
       );
@@ -1696,7 +1696,7 @@ export class AuthnClient {
 
   /**
    * Begin WebAuthn passkey login challenge ceremony.
-   * Target Route: POST /v1/client/2fa/webauthn/login/begin
+   * Target Route: POST /v1/client/auth/2fa/webauthn/login/begin
    */
   async beginPasskeyLogin(
     params: BeginPasskeyLoginParams,
@@ -1704,7 +1704,7 @@ export class AuthnClient {
     this.guardDestroyed();
     try {
       const res = await this.http.post<ServerBeginPasskeyLoginResponse>(
-        "/v1/client/2fa/webauthn/login/begin",
+        "/v1/client/auth/2fa/webauthn/login/begin",
         { mfa_token: params.mfaToken },
       );
       return {
@@ -1720,7 +1720,7 @@ export class AuthnClient {
 
   /**
    * Complete WebAuthn passkey login challenge ceremony.
-   * Target Route: POST /v1/client/2fa/webauthn/login/finish
+   * Target Route: POST /v1/client/auth/2fa/webauthn/login/finish
    */
   async finishPasskeyLogin(
     params: FinishPasskeyLoginParams,
@@ -1729,7 +1729,7 @@ export class AuthnClient {
     try {
       assertValid(validateWebAuthnCredential(params?.credential));
       const res = await this.http.postRaw<ServerAuthResponse>(
-        "/v1/client/2fa/webauthn/login/finish",
+        "/v1/client/auth/2fa/webauthn/login/finish",
         params.credential,
         {
           mfa_token: params.mfaToken ?? "",
@@ -1746,13 +1746,13 @@ export class AuthnClient {
 
   /**
    * List all registered WebAuthn passkeys for the current user.
-   * Target Route: GET /v1/client/2fa/webauthn/credentials
+   * Target Route: GET /v1/client/auth/2fa/webauthn/credentials
    */
   async listWebAuthnCredentials(): Promise<ListWebAuthnCredentialsResult> {
     this.guardDestroyed();
     try {
       const res = await this.http.get<ServerListPasskeysResponse>(
-        "/v1/client/2fa/webauthn/credentials",
+        "/v1/client/auth/2fa/webauthn/credentials",
       );
       return {
         ok: true,
@@ -1765,14 +1765,14 @@ export class AuthnClient {
 
   /**
    * Revoke (delete) a WebAuthn passkey.
-   * Target Route: DELETE /v1/client/2fa/webauthn/credentials/:id
+   * Target Route: DELETE /v1/client/auth/2fa/webauthn/credentials/:id
    */
   async revokeWebAuthnCredential(
     params: RevokeWebAuthnCredentialParams,
   ): Promise<VoidResult> {
     this.guardDestroyed();
     try {
-      const path = `/v1/client/2fa/webauthn/credentials/${encodeURIComponent(params.id)}`;
+      const path = `/v1/client/auth/2fa/webauthn/credentials/${encodeURIComponent(params.id)}`;
       const body = params.password ? { password: params.password } : undefined;
       const res = await this.http.del<ServerMessageResponse>(path, body);
       return {

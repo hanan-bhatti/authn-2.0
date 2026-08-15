@@ -185,6 +185,24 @@ type Config struct {
 	// control-plane tenant rather than a new one.
 	PlatformTenantSlug string
 
+	// CookieDomain scopes session cookies to a parent domain, so sibling apps on
+	// subdomains share one login — "auth.acme.com" issuing a cookie for
+	// ".acme.com" is sent by the browser to "app.acme.com" and
+	// "admin.acme.com" alike.
+	//
+	// This is the one session setting that stays in the environment rather than
+	// moving to the tenant row, and not for convenience: a browser only accepts a
+	// cookie for a domain the responding server is itself within. An engine
+	// served from api.authn.com physically cannot set a cookie for .acme.com, no
+	// matter what a customer configures. The value is bound to the deployment's
+	// DNS, so it belongs beside the deployment's other DNS-bound settings.
+	//
+	// Empty — the default — produces a host-only cookie, which is correct for a
+	// single-domain deployment and for local development. Customers whose apps
+	// live on genuinely unrelated domains are served by the OAuth redirect flow
+	// instead, which needs no shared cookie at all.
+	CookieDomain string
+
 	// ---------------------------------------------------------------------
 	// Token and session lifetimes
 	// ---------------------------------------------------------------------

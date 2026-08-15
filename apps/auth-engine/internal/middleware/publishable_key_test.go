@@ -135,14 +135,14 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 
 	// A normal API route — NOT on the allowlist.
 	app.Get("/v1/client/user/profile", pkMw, okHandler)
-	app.Post("/v1/client/login", pkMw, okHandler)
+	app.Post("/v1/client/auth/login", pkMw, okHandler)
 	// Allowlisted redirect landings.
-	app.Get("/v1/client/verify-email", pkMw, okHandler)
+	app.Get("/v1/client/auth/verify-email", pkMw, okHandler)
 	app.Get("/v1/client/auth/magic-link/verify", pkMw, okHandler)
 	app.Get("/v1/client/auth/social/:provider/callback", pkMw, okHandler)
 	app.Get("/v1/oauth/authorize", pkMw, okHandler)
 	// Allowlisted path, non-GET method.
-	app.Post("/v1/client/verify-email", pkMw, okHandler)
+	app.Post("/v1/client/auth/verify-email", pkMw, okHandler)
 
 	// --- The fallback is REMOVED on ordinary routes -------------------------
 
@@ -162,7 +162,7 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 		"pk query param must not authenticate a non-redirect route")
 
 	// 3. Same on a POST route — API calls always have a header available.
-	req = httptest.NewRequest("POST", "/v1/client/login?publishable_key="+rawKey, nil)
+	req = httptest.NewRequest("POST", "/v1/client/auth/login?publishable_key="+rawKey, nil)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
@@ -179,7 +179,7 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	// --- The fallback is PRESERVED on redirect landings ---------------------
 
 	for _, path := range []string{
-		"/v1/client/verify-email?token=abc&publishable_key=" + rawKey,
+		"/v1/client/auth/verify-email?token=abc&publishable_key=" + rawKey,
 		"/v1/client/auth/magic-link/verify?token=abc&pk=" + rawKey,
 		"/v1/client/auth/social/google/callback?code=abc&publishable_key=" + rawKey,
 		"/v1/oauth/authorize?response_type=code&pk=" + rawKey,
@@ -193,7 +193,7 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 
 	// 5. The allowlist is keyed on method as well as path: POSTing to an
 	//    allowlisted path does not inherit the exemption.
-	req = httptest.NewRequest("POST", "/v1/client/verify-email?publishable_key="+rawKey, nil)
+	req = httptest.NewRequest("POST", "/v1/client/auth/verify-email?publishable_key="+rawKey, nil)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
@@ -202,7 +202,7 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	// 6. An invalid key in the query on an allowlisted route is still rejected —
 	//    the exemption changes where the key may be read from, never whether it
 	//    is validated.
-	req = httptest.NewRequest("GET", "/v1/client/verify-email?publishable_key=pk_test_bogus_key_value_here", nil)
+	req = httptest.NewRequest("GET", "/v1/client/auth/verify-email?publishable_key=pk_test_bogus_key_value_here", nil)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)

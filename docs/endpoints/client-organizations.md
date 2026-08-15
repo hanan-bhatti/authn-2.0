@@ -38,7 +38,7 @@
 ```json
 {
   "id": "org_9038723e-062",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "name": "Acme Corporation",
   "slug": "acme-corp-101",
   "logo_url": "https://acme.local/logo.png",

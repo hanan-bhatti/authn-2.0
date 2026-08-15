@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
@@ -127,6 +128,12 @@ func (tc *TenantCreate) SetSocialProviders(m map[string]interface{}) *TenantCrea
 // SetRolePolicy sets the "role_policy" field.
 func (tc *TenantCreate) SetRolePolicy(m map[string]interface{}) *TenantCreate {
 	tc.mutation.SetRolePolicy(m)
+	return tc
+}
+
+// SetSessionPolicy sets the "session_policy" field.
+func (tc *TenantCreate) SetSessionPolicy(m map[string]interface{}) *TenantCreate {
+	tc.mutation.SetSessionPolicy(m)
 	return tc
 }
 
@@ -252,6 +259,21 @@ func (tc *TenantCreate) AddAuditLogs(a ...*AuditLog) *TenantCreate {
 		ids[i] = a[i].ID
 	}
 	return tc.AddAuditLogIDs(ids...)
+}
+
+// AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by IDs.
+func (tc *TenantCreate) AddManagedTenantIDs(ids ...string) *TenantCreate {
+	tc.mutation.AddManagedTenantIDs(ids...)
+	return tc
+}
+
+// AddManagedTenants adds the "managed_tenants" edges to the ManagedTenant entity.
+func (tc *TenantCreate) AddManagedTenants(m ...*ManagedTenant) *TenantCreate {
+	ids := make([]string, len(m))
+	for i := range m {
+		ids[i] = m[i].ID
+	}
+	return tc.AddManagedTenantIDs(ids...)
 }
 
 // Mutation returns the TenantMutation object of the builder.
@@ -420,6 +442,10 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
 		_node.RolePolicy = value
 	}
+	if value, ok := tc.mutation.SessionPolicy(); ok {
+		_spec.SetField(tenant.FieldSessionPolicy, field.TypeJSON, value)
+		_node.SessionPolicy = value
+	}
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(tenant.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -517,6 +543,22 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(auditlog.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := tc.mutation.ManagedTenantsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.ManagedTenantsTable,
+			Columns: []string{tenant.ManagedTenantsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(managedtenant.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

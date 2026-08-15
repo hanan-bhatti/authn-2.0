@@ -43,6 +43,8 @@ type Tenant struct {
 	SocialProviders map[string]interface{} `json:"social_providers,omitempty"`
 	// JSON blob containing tenant role & permission restrictions and assignment policies
 	RolePolicy map[string]interface{} `json:"role_policy,omitempty"`
+	// JSON blob containing cookie SameSite mode and session/access token lifetimes. Lives here rather than in the environment because a customer changes it and it must take effect without a redeploy; the cookie Domain stays an env value because a server can only set cookies for a domain it is served from.
+	SessionPolicy map[string]interface{} `json:"session_policy,omitempty"`
 	// Timestamp when the tenant was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when the tenant was last updated
@@ -67,9 +69,11 @@ type TenantEdges struct {
 	WebhookEndpoints []*WebhookEndpoint `json:"webhook_endpoints,omitempty"`
 	// AuditLogs holds the value of the audit_logs edge.
 	AuditLogs []*AuditLog `json:"audit_logs,omitempty"`
+	// ManagedTenants holds the value of the managed_tenants edge.
+	ManagedTenants []*ManagedTenant `json:"managed_tenants,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [7]bool
 }
 
 // ApplicationsOrErr returns the Applications value or an error if the edge
@@ -126,12 +130,21 @@ func (e TenantEdges) AuditLogsOrErr() ([]*AuditLog, error) {
 	return nil, &NotLoadedError{edge: "audit_logs"}
 }
 
+// ManagedTenantsOrErr returns the ManagedTenants value or an error if the edge
+// was not loaded in eager-loading.
+func (e TenantEdges) ManagedTenantsOrErr() ([]*ManagedTenant, error) {
+	if e.loadedTypes[6] {
+		return e.ManagedTenants, nil
+	}
+	return nil, &NotLoadedError{edge: "managed_tenants"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Tenant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy, tenant.FieldSocialProviders, tenant.FieldRolePolicy:
+		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy, tenant.FieldSocialProviders, tenant.FieldRolePolicy, tenant.FieldSessionPolicy:
 			values[i] = new([]byte)
 		case tenant.FieldDomainVerified, tenant.FieldFirstAdminClaimed:
 			values[i] = new(sql.NullBool)
@@ -245,6 +258,14 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field role_policy: %w", err)
 				}
 			}
+		case tenant.FieldSessionPolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field session_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &t.SessionPolicy); err != nil {
+					return fmt.Errorf("unmarshal field session_policy: %w", err)
+				}
+			}
 		case tenant.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -298,6 +319,11 @@ func (t *Tenant) QueryWebhookEndpoints() *WebhookEndpointQuery {
 // QueryAuditLogs queries the "audit_logs" edge of the Tenant entity.
 func (t *Tenant) QueryAuditLogs() *AuditLogQuery {
 	return NewTenantClient(t.config).QueryAuditLogs(t)
+}
+
+// QueryManagedTenants queries the "managed_tenants" edge of the Tenant entity.
+func (t *Tenant) QueryManagedTenants() *ManagedTenantQuery {
+	return NewTenantClient(t.config).QueryManagedTenants(t)
 }
 
 // Update returns a builder for updating this Tenant.
@@ -360,6 +386,9 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("role_policy=")
 	builder.WriteString(fmt.Sprintf("%v", t.RolePolicy))
+	builder.WriteString(", ")
+	builder.WriteString("session_policy=")
+	builder.WriteString(fmt.Sprintf("%v", t.SessionPolicy))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(t.CreatedAt.Format(time.ANSIC))

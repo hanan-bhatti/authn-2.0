@@ -14,7 +14,7 @@ The **SMS & WhatsApp Communication Driver Package** provides pluggable telephony
 
 ## 2. Pluggable Architecture & Drivers
 
-### 2.1 `SMSProvider` Interface ([`internal/sms/provider.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/sms/provider.go))
+### 2.1 `SMSProvider` Interface ([`internal/sms/provider.go`](../../apps/auth-engine/internal/sms/provider.go))
 ```go
 type SMSProvider interface {
 	SendSMS(ctx context.Context, toPhoneNumber string, message string) error
@@ -22,12 +22,12 @@ type SMSProvider interface {
 ```
 
 ### 2.2 Implemented Drivers & Factory
-1. **Twilio Driver ([`internal/sms/twilio.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/sms/twilio.go))**: Integrates with Twilio Programmable Messaging API using `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`.
-2. **MessageBird Driver ([`internal/sms/messagebird.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/sms/messagebird.go))**: Integrates with MessageBird REST API using `MESSAGEBIRD_ACCESS_KEY` and `MESSAGEBIRD_ORIGINATOR`.
-3. **AWS SNS Driver ([`internal/sms/aws_sns.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/sms/aws_sns.go))**: Integrates with AWS SNS Publish API using `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
-4. **No-op Driver ([`internal/sms/noop.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/sms/noop.go))**: Fallback logger for unconfigured or test environments.
+1. **Twilio Driver ([`internal/sms/twilio.go`](../../apps/auth-engine/internal/sms/twilio.go))**: Integrates with Twilio Programmable Messaging API using `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`.
+2. **MessageBird Driver ([`internal/sms/messagebird.go`](../../apps/auth-engine/internal/sms/messagebird.go))**: Integrates with MessageBird REST API using `MESSAGEBIRD_ACCESS_KEY` and `MESSAGEBIRD_ORIGINATOR`.
+3. **AWS SNS Driver ([`internal/sms/aws_sns.go`](../../apps/auth-engine/internal/sms/aws_sns.go))**: Integrates with AWS SNS Publish API using `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
+4. **No-op Driver ([`internal/sms/noop.go`](../../apps/auth-engine/internal/sms/noop.go))**: Fallback logger for unconfigured or test environments.
 
-### 2.3 Factory & Driver Selection ([`internal/sms/factory.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/internal/sms/factory.go))
+### 2.3 Factory & Driver Selection ([`internal/sms/factory.go`](../../apps/auth-engine/internal/sms/factory.go))
 The SMS driver is selected via `SMS_DRIVER` in `.env`:
 ```bash
 SMS_DRIVER=noop # "twilio" | "messagebird" | "aws_sns" | "noop"

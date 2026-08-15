@@ -92,6 +92,121 @@ func DefaultSecurityPolicy() SecurityPolicy {
 	}
 }
 
+// SessionPolicy defines tenant-level session and cookie behaviour.
+//
+// These live in the database rather than the environment because a customer
+// changes them and the change must take effect without a redeploy. The cookie
+// Domain is the deliberate exception and stays an environment value: a browser
+// only accepts a cookie for a domain the server is served from, so an engine at
+// api.authn.com physically cannot set one for .acme.com. That is bound to the
+// deployment's DNS, not to customer preference.
+type SessionPolicy struct {
+	// CookieSameSite is "lax" or "none". "lax" suits a customer whose apps share
+	// a parent domain; "none" is required when the browser must send the refresh
+	// cookie to a genuinely different site, and forces Secure.
+	//
+	// It is not free to choose: "none" over plaintext HTTP is refused at the
+	// point the cookie is built, not only at startup, because this value is
+	// runtime-changeable and a validated-once check would be stale.
+	CookieSameSite string `json:"cookie_same_site"`
+	// AccessTokenTTLMinutes is how long an access token stays valid, 1-1440.
+	// Zero means "inherit the deployment default".
+	AccessTokenTTLMinutes int `json:"access_token_ttl_minutes"`
+	// RefreshTokenTTLDays is how long a session can be refreshed before the user
+	// must sign in again, 1-365. Zero means "inherit the deployment default".
+	RefreshTokenTTLDays int `json:"refresh_token_ttl_days"`
+}
+
+// SameSite modes accepted in a SessionPolicy.
+const (
+	// SameSiteLax is the default: the cookie travels on top-level navigation to
+	// the site but not on cross-site subrequests.
+	SameSiteLax = "lax"
+	// SameSiteNone sends the cookie on cross-site requests, and is only valid
+	// alongside Secure.
+	SameSiteNone = "none"
+)
+
+// Bounds on the session policy's lifetimes. A tenant may tune these but not
+// escape them: an access token valid for a year would defeat the point of having
+// refresh at all, and one valid for zero minutes would lock the tenant out.
+const (
+	minAccessTokenTTLMinutes = 1
+	maxAccessTokenTTLMinutes = 1440
+	minRefreshTokenTTLDays   = 1
+	maxRefreshTokenTTLDays   = 365
+)
+
+// DefaultSessionPolicy returns the session policy applied to a tenant that has
+// configured none: Lax cookies and the deployment's own token lifetimes, which
+// the zero TTLs signal.
+//
+// Lax rather than None is the safe default. None weakens CSRF protection and is
+// only correct for a customer who genuinely serves apps from unrelated domains,
+// so it is opted into rather than inherited.
+func DefaultSessionPolicy() SessionPolicy {
+	return SessionPolicy{
+		CookieSameSite:        SameSiteLax,
+		AccessTokenTTLMinutes: 0,
+		RefreshTokenTTLDays:   0,
+	}
+}
+
+// NormalizeSessionPolicy corrects a session policy into the accepted range,
+// returning what will actually be applied.
+//
+// Out-of-range lifetimes are clamped rather than rejected, matching the password
+// policy's behaviour: a stored policy must always resolve to something usable,
+// because it is read on the login path where there is no caller to report a
+// validation error to. An unrecognised SameSite becomes "lax".
+func NormalizeSessionPolicy(sp SessionPolicy) SessionPolicy {
+	switch strings.ToLower(strings.TrimSpace(sp.CookieSameSite)) {
+	case SameSiteNone:
+		sp.CookieSameSite = SameSiteNone
+	default:
+		sp.CookieSameSite = SameSiteLax
+	}
+
+	// Zero is meaningful — "inherit the deployment default" — so it survives
+	// clamping; any other out-of-range value is pulled to the nearest bound.
+	if sp.AccessTokenTTLMinutes != 0 {
+		if sp.AccessTokenTTLMinutes < minAccessTokenTTLMinutes {
+			sp.AccessTokenTTLMinutes = minAccessTokenTTLMinutes
+		}
+		if sp.AccessTokenTTLMinutes > maxAccessTokenTTLMinutes {
+			sp.AccessTokenTTLMinutes = maxAccessTokenTTLMinutes
+		}
+	}
+	if sp.RefreshTokenTTLDays != 0 {
+		if sp.RefreshTokenTTLDays < minRefreshTokenTTLDays {
+			sp.RefreshTokenTTLDays = minRefreshTokenTTLDays
+		}
+		if sp.RefreshTokenTTLDays > maxRefreshTokenTTLDays {
+			sp.RefreshTokenTTLDays = maxRefreshTokenTTLDays
+		}
+	}
+
+	return sp
+}
+
+// AccessTokenTTL returns the tenant's access token lifetime, or fallback when the
+// tenant inherits the deployment default.
+func (sp SessionPolicy) AccessTokenTTL(fallback time.Duration) time.Duration {
+	if sp.AccessTokenTTLMinutes <= 0 {
+		return fallback
+	}
+	return time.Duration(sp.AccessTokenTTLMinutes) * time.Minute
+}
+
+// RefreshTokenTTL returns the tenant's refresh token lifetime, or fallback when
+// the tenant inherits the deployment default.
+func (sp SessionPolicy) RefreshTokenTTL(fallback time.Duration) time.Duration {
+	if sp.RefreshTokenTTLDays <= 0 {
+		return fallback
+	}
+	return time.Duration(sp.RefreshTokenTTLDays) * 24 * time.Hour
+}
+
 // RecoveryPolicy defines tenant-level account recovery rules: which proofs are
 // accepted, how long each stage lasts, and how aggressively repeated failures
 // are locked out.

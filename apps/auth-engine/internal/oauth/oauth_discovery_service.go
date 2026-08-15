@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -30,15 +31,56 @@ func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
 }
 
 // CreateClientApplication registers an OAuth client under tenantID with the
-// exact redirect URIs it is permitted to use.
+// exact redirect URIs it is permitted to use and the browser origins its
+// publishable keys may be called from.
 //
-// Returns an error if the auth repository is unavailable or the write fails.
-func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, name string, redirectURIs []string) error {
+// env is "test" or "live". redirectURIs and corsOrigins may be empty; an empty
+// CORS list leaves origin checking to the deployment-wide policy. Returns the
+// stored record — including schema defaults the caller did not set, such as the
+// environment and timestamps — or an error if the repository is unavailable or
+// the write fails (a duplicate client_id surfaces as an *ent.ConstraintError).
+func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, name, env string, redirectURIs, corsOrigins []string) (*ent.Application, error) {
 	if s.authRepo == nil {
-		return fmt.Errorf("auth repository uninitialized")
+		return nil, fmt.Errorf("auth repository uninitialized")
 	}
-	_, err := s.authRepo.CreateApplication(ctx, id, tenantID, name, redirectURIs)
-	return err
+	return s.authRepo.CreateApplication(ctx, id, tenantID, name, env, redirectURIs, corsOrigins)
+}
+
+// ListClientApplications returns the caller's tenant's applications. The tenant
+// is taken from the request context by the privacy interceptor, not passed in.
+func (s *Service) ListClientApplications(ctx context.Context) ([]*ent.Application, error) {
+	if s.authRepo == nil {
+		return nil, fmt.Errorf("auth repository uninitialized")
+	}
+	return s.authRepo.ListApplications(ctx)
+}
+
+// GetClientApplication returns one application within the caller's tenant, or
+// nil when none matches — including when the ID belongs to another tenant.
+func (s *Service) GetClientApplication(ctx context.Context, id string) (*ent.Application, error) {
+	if s.authRepo == nil {
+		return nil, fmt.Errorf("auth repository uninitialized")
+	}
+	return s.authRepo.GetApplicationByIDScoped(ctx, id)
+}
+
+// UpdateClientApplication applies a partial update within the caller's tenant. A
+// nil field is left unchanged. Returns nil when the application does not exist
+// in this tenant.
+func (s *Service) UpdateClientApplication(ctx context.Context, id string, name *string, redirectURIs, corsOrigins *[]string) (*ent.Application, error) {
+	if s.authRepo == nil {
+		return nil, fmt.Errorf("auth repository uninitialized")
+	}
+	return s.authRepo.UpdateApplication(ctx, id, name, redirectURIs, corsOrigins)
+}
+
+// DeleteClientApplication removes an application within the caller's tenant,
+// reporting whether one was deleted.
+func (s *Service) DeleteClientApplication(ctx context.Context, id string) (bool, error) {
+	if s.authRepo == nil {
+		return false, fmt.Errorf("auth repository uninitialized")
+	}
+	return s.authRepo.DeleteApplication(ctx, id)
 }
 
 // RotateJWKSKey promotes a freshly generated key to active and moves the

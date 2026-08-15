@@ -22,6 +22,13 @@ export {
   useOrgMembers,
   useGuardians,
   useAccountRecovery,
+  useRBAC,
+  useImpersonation,
+  useWebhooks,
+  useSAML,
+  useAPIKeys,
+  useAuditLogs,
+  useTenantPolicies,
 } from "./hooks";
 export type {
   AuthnProviderProps,

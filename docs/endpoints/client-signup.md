@@ -1,7 +1,7 @@
-# Endpoint Specification: `POST /v1/client/signup`
+# Endpoint Specification: `POST /v1/client/auth/signup`
 
 ## Overview
-* **Route**: `POST /v1/client/signup`
+* **Route**: `POST /v1/client/auth/signup`
 * **HTTP Method**: `POST`
 * **Purpose**: User Registration Endpoint. Registers new user accounts with Argon2id password hashing, enforces tenant password complexity policies, issues initial JWT access tokens and HttpOnly refresh token cookies, and triggers email verification workflows.
 
@@ -16,14 +16,14 @@
 
 ---
 
-## Request Payload (`POST /v1/client/signup`)
+## Request Payload (`POST /v1/client/auth/signup`)
 
 ```json
 {
   "email": "fresh.signup@authn.local",
   "password": "ValidPass123!",
   "name": "Fresh User",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "test"
 }
 ```
@@ -32,7 +32,7 @@
 * `email` (string, required) — User email address. Must be a valid email format.
 * `password` (string, required) — User password. Evaluated against active tenant password policies.
 * `name` (string, optional) — Display name of user (max 255 characters).
-* `tenant_id` (string, optional) — Target tenant identifier (defaults to `tnt_default`).
+* `tenant_id` (string, optional) — Target tenant identifier (defaults to `tnt_00000000000000000000000000000001`).
 * `environment` (string, optional) — Application environment mode (defaults to `test`).
 
 ---
@@ -109,7 +109,7 @@ Returned during Redis outages when rate limiting cannot be enforced. Prevents un
 
 ## Rate Limiting & Outage Behavior
 * **Sliding-Window Rate Limiter**: 5 attempts per 900s (15-minute) window per IP address + endpoint combination.
-* **Fail-CLOSED Security Guard**: During Redis outages, this sensitive mutation endpoint **REJECTS** requests with `503 Service Unavailable` and `X-Authn-Degraded-Mode: true`. See [`docs/ARCHITECTURE-DEGRADED-MODE.md`](file:///home/hanan-bhatti/authn/docs/ARCHITECTURE-DEGRADED-MODE.md) for full outage architecture.
+* **Fail-CLOSED Security Guard**: During Redis outages, this sensitive mutation endpoint **REJECTS** requests with `503 Service Unavailable` and `X-Authn-Degraded-Mode: true`. See [`docs/ARCHITECTURE-DEGRADED-MODE.md`](../ARCHITECTURE-DEGRADED-MODE.md) for full outage architecture.
 
 ---
 

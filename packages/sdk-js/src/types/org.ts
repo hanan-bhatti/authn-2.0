@@ -26,6 +26,9 @@ export interface AuthnOrgMember {
   organizationId: string;
   userId: string;
   roleId: string;
+  role?: string;
+  email?: string;
+  name?: string;
   assignedByUserId?: string;
   createdAt: string;
   updatedAt: string;
@@ -62,7 +65,8 @@ export interface UpdateOrgParams {
 
 export interface InviteOrgMemberParams {
   email: string;
-  roleId: string;
+  roleId?: string;
+  role?: string;
   expiresHrs?: number;
 }
 

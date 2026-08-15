@@ -169,9 +169,9 @@
 							"raw": "{\n  \"email\": \"fresh.signup@authn.local\",\n  \"password\": \"ValidPass123!\",\n  \"name\": \"Fresh User\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
+							"raw": "{{baseUrl}}/v1/client/auth/signup",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "signup"]
+							"path": ["v1", "client", "auth", "signup"]
 						},
 						"description": "Register a new user. Web client receives refresh token as HttpOnly cookie authn_refresh_token. Native/mobile clients receive refresh token in JSON body.\n\nVerified response (201):\n{\n  \"user\": {\n    \"id\": \"usr_08e90da4-9e3\",\n    \"email\": \"fresh.signup@authn.local\",\n    \"email_verified\": false,\n    \"name\": \"Fresh User\",\n    \"status\": \"active\",\n    \"created_at\": \"2026-08-06T00:26:27Z\"\n  },\n  \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n}"
 					}
@@ -188,9 +188,9 @@
 							"raw": "{\n  \"email\": \"new.user@example.com\",\n  \"password\": \"ValidPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
+							"raw": "{{baseUrl}}/v1/client/auth/signup",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "signup"]
+							"path": ["v1", "client", "auth", "signup"]
 						},
 						"description": "Missing X-Authn-Publishable-Key header.\n\nVerified response (401):\n{\"error\":\"missing publishable API key in X-Authn-Publishable-Key header\"}"
 					}
@@ -208,9 +208,9 @@
 							"raw": "{\n  \"email\": \"fresh.signup@authn.local\",\n  \"password\": \"ValidPass123!\",\n  \"name\": \"Fresh User\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
+							"raw": "{{baseUrl}}/v1/client/auth/signup",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "signup"]
+							"path": ["v1", "client", "auth", "signup"]
 						},
 						"description": "Email collision. Deliberate design choice (not a gap) — matches Firebase/Clerk/Auth0 behavior.\n\nVerified response (409):\n{\"error\":\"user with this email already exists\"}"
 					}
@@ -228,9 +228,9 @@
 							"raw": "{\n  \"email\": \"weak.password@authn.local\",\n  \"password\": \"12345\",\n  \"name\": \"Weak Pass\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
+							"raw": "{{baseUrl}}/v1/client/auth/signup",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "signup"]
+							"path": ["v1", "client", "auth", "signup"]
 						},
 						"description": "Password does not satisfy active tenant policy minimum length.\n\nVerified response (400):\n{\"error\":\"password does not meet policy requirements\",\"missing_criteria\":[\"min_length\"]}"
 					}
@@ -248,9 +248,9 @@
 							"raw": "{\n  \"email\": \"burst@authn.local\",\n  \"password\": \"ValidPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
+							"raw": "{{baseUrl}}/v1/client/auth/signup",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "signup"]
+							"path": ["v1", "client", "auth", "signup"]
 						},
 						"description": "Rate limit: 5 attempts / 900s per IP. Includes Retry-After header.\n\nVerified response (429):\n{\"error\":\"too many attempts, please try again later\",\"retry_after_seconds\":889}"
 					}
@@ -268,9 +268,9 @@
 							"raw": "{\n  \"email\": \"outage.signup@authn.local\",\n  \"password\": \"ValidPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/signup",
+							"raw": "{{baseUrl}}/v1/client/auth/signup",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "signup"]
+							"path": ["v1", "client", "auth", "signup"]
 						},
 						"description": "During Redis outage, signup is rejected (fail-CLOSED). X-Authn-Degraded-Mode: true in response header.\n\nVerified response (503):\n{\"error\":\"rate limit service unavailable\"}"
 					}
@@ -283,9 +283,9 @@
 							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/verify-email?token={{verificationToken}}",
+							"raw": "{{baseUrl}}/v1/client/auth/verify-email?token={{verificationToken}}",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "verify-email"],
+							"path": ["v1", "client", "auth", "verify-email"],
 							"query": [{"key": "token", "value": "{{verificationToken}}"}]
 						},
 						"description": "Validate email verification token. Token is 24h-expiry, single-use (cleared from DB on success).\n\nVerified response (200):\n{\"message\":\"email successfully verified\",\"email\":\"verify.test@authn.local\",\"email_verified\":true}"
@@ -299,9 +299,9 @@
 							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/verify-email?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+							"raw": "{{baseUrl}}/v1/client/auth/verify-email?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "verify-email"],
+							"path": ["v1", "client", "auth", "verify-email"],
 							"query": [{"key": "token", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
 						},
 						"description": "Garbage token or already-used token returns same 400. No signal which case.\n\nVerified response (400):\n{\"error\":\"invalid or revoked token\"}"
@@ -315,9 +315,9 @@
 							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/verify-email",
+							"raw": "{{baseUrl}}/v1/client/auth/verify-email",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "verify-email"]
+							"path": ["v1", "client", "auth", "verify-email"]
 						},
 						"description": "Missing ?token query parameter.\n\nVerified response (400):\n{\"error\":\"verification token query parameter is required\"}"
 					}
@@ -335,9 +335,9 @@
 							"raw": "{\n  \"email\": \"nobody@doesnotexist.local\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"raw": "{{baseUrl}}/v1/client/auth/resend-verification",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "resend-verification"]
+							"path": ["v1", "client", "auth", "resend-verification"]
 						},
 						"description": "Unknown email, already-verified, and valid unverified all return identical 200 (enumeration-safe).\n\nVerified response (200):\n{\"message\":\"if an account exists with this email address, a verification link has been sent\"}"
 					}
@@ -355,11 +355,13 @@
 							"raw": "{\n  \"email\": \"not-an-email\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"raw": "{{baseUrl}}/v1/client/auth/resend-verification",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "resend-verification"]
+							"path": ["v1", "client", "auth", "resend-verification"]
 						},
-					},
+						"description": "Malformed address rejected by format validation before any user lookup, so this 400 is distinguishable from the enumeration-safe 200 above.\n\nResponse (400): code=validation_failed, \"invalid email address format\" (internal/auth/auth_handlers.go ResendVerification)."
+					}
+				},
 				{
 					"name": "Resend Verification — 429 Per-Email Rate Limited",
 					"request": {
@@ -373,9 +375,9 @@
 							"raw": "{\n  \"email\": \"target.peremail@authn.local\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"raw": "{{baseUrl}}/v1/client/auth/resend-verification",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "resend-verification"]
+							"path": ["v1", "client", "auth", "resend-verification"]
 						},
 						"description": "Triggered after 3 resend attempts for the same email address in 1 hour. Includes Retry-After header. Enumeration-safe.\n\nVerified response (429):\n{\"error\":\"too many verification email requests for this address, please try again later\",\"retry_after_seconds\":900}"
 					}
@@ -408,9 +410,9 @@
 							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
 						"description": "Authenticate user on web. Access token in JSON body, refresh token strictly in HttpOnly cookie.\n\nVerified response (200):\n{\n  \"user\": {\n    \"id\": \"usr_vanilla_007\",\n    \"email\": \"user.vanilla@authn.local\",\n    \"email_verified\": true,\n    \"status\": \"active\",\n    \"created_at\": \"2026-08-05T23:32:04Z\"\n  },\n  \"access_token\": \"eyJhbGciOiJIUzI1...\"\n}"
 					}
@@ -429,9 +431,9 @@
 							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
 						"description": "Native/mobile login: refresh token delivered directly in JSON body.\n\nVerified response (200):\n{\n  \"user\": {...},\n  \"access_token\": \"...\",\n  \"refresh_token\": \"c9a9df1fe74055eea42a8711d1725858...\"\n}"
 					}
@@ -449,9 +451,9 @@
 							"raw": "{\n  \"email\": \"user.totp@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
 						"description": "User has active TOTP 2FA. Access token is withheld until second factor verification.\n\nVerified response (200):\n{\n  \"user\": {...},\n  \"mfa_required\": true,\n  \"mfa_token\": \"eyJhbGci...\",\n  \"methods\": [\"totp\"]\n}"
 					}
@@ -469,9 +471,9 @@
 							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"WrongPassword!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
 						"description": "Wrong password and non-existent email return byte-for-byte identical 401 with constant-time Argon2id execution (~190ms).\n\nVerified response (401):\n{\"error\":\"invalid email or password\"}"
 					}
@@ -488,9 +490,9 @@
 							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
 						"description": "Verified response (401):\n{\"error\":\"missing publishable API key in X-Authn-Publishable-Key header\"}"
 					}
@@ -508,9 +510,9 @@
 							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"WrongPassword!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
 						"description": "Rate limit: 5 attempts / 900s per IP. Escalation backoff: 15m -> 1h -> 6h -> 24h.\n\nVerified response (429):\n{\"error\":\"too many attempts, please try again later\",\"retry_after_seconds\":889}"
 					}
@@ -528,11 +530,14 @@
 							"raw": "{\n  \"email\": \"user.vanilla@authn.local\",\n  \"password\": \"UserPass123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/login",
+							"raw": "{{baseUrl}}/v1/client/auth/login",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "login"]
+							"path": ["v1", "client", "auth", "login"]
 						},
-					{
+						"description": "With Redis unreachable the limiter refuses the request instead of admitting it: an outage must not become an unlimited-credential-stuffing window.\n\nResponse (503): code=service_unavailable, \"rate limit service unavailable\" (internal/ratelimit/limiter.go:413). Distinguish from 429, which means a real budget was exceeded."
+					}
+				},
+				{
 					"name": "Refresh Token — 200 Success (Rotation)",
 					"request": {
 						"method": "POST",
@@ -1202,9 +1207,9 @@
 							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/verify-email?token=sample_verification_token_here",
+							"raw": "{{baseUrl}}/v1/client/auth/verify-email?token=sample_verification_token_here",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "verify-email"],
+							"path": ["v1", "client", "auth", "verify-email"],
 							"query": [{ "key": "token", "value": "sample_verification_token_here" }]
 						}
 					}
@@ -1222,9 +1227,9 @@
 							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/resend-verification",
+							"raw": "{{baseUrl}}/v1/client/auth/resend-verification",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "resend-verification"]
+							"path": ["v1", "client", "auth", "resend-verification"]
 						}
 					}
 				}
@@ -1325,9 +1330,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/totp/enroll",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/totp/enroll",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "totp", "enroll"]
+							"path": ["v1", "client", "auth", "2fa", "totp", "enroll"]
 						},
 						"description": "Returns QR code URI and secret. Status goes to pending."
 					}
@@ -1346,9 +1351,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"code\": \"123456\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/totp/confirm",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/totp/confirm",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "totp", "confirm"]
+							"path": ["v1", "client", "auth", "2fa", "totp", "confirm"]
 						},
 						"description": "Validates initial TOTP code. Transitions status pending → active."
 					}
@@ -1405,9 +1410,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"password\": \"SecurePassword123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/totp/disable",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/totp/disable",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "totp", "disable"]
+							"path": ["v1", "client", "auth", "2fa", "totp", "disable"]
 						}
 					}
 				}
@@ -1430,9 +1435,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/recovery-codes/regenerate",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/recovery-codes/regenerate",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "recovery-codes", "regenerate"]
+							"path": ["v1", "client", "auth", "2fa", "recovery-codes", "regenerate"]
 						},
 						"description": "Issues 8 new single-use XXXX-XXXX codes. Previous codes invalidated immediately."
 					}
@@ -1446,9 +1451,9 @@
 							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/recovery-codes/status?user_id=replace_with_user_id",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/recovery-codes/status?user_id=replace_with_user_id",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "recovery-codes", "status"],
+							"path": ["v1", "client", "auth", "2fa", "recovery-codes", "status"],
 							"query": [{ "key": "user_id", "value": "replace_with_user_id" }]
 						}
 					}
@@ -1472,9 +1477,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"phone_number\": \"+14155551234\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/sms/enroll",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/sms/enroll",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "sms", "enroll"]
+							"path": ["v1", "client", "auth", "2fa", "sms", "enroll"]
 						}
 					}
 				},
@@ -1492,9 +1497,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"code\": \"123456\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/sms/confirm",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/sms/confirm",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "sms", "confirm"]
+							"path": ["v1", "client", "auth", "2fa", "sms", "confirm"]
 						}
 					}
 				},
@@ -1512,9 +1517,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"password\": \"SecurePassword123!\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/sms/disable",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/sms/disable",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "sms", "disable"]
+							"path": ["v1", "client", "auth", "2fa", "sms", "disable"]
 						}
 					}
 				}
@@ -1537,9 +1542,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/register/begin",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/webauthn/register/begin",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "webauthn", "register", "begin"]
+							"path": ["v1", "client", "auth", "2fa", "webauthn", "register", "begin"]
 						}
 					}
 				},
@@ -1557,9 +1562,9 @@
 							"raw": "{\n  \"user_id\": \"replace_with_user_id\",\n  \"credential\": { \"id\": \"...\", \"rawId\": \"...\", \"response\": { \"attestationObject\": \"...\", \"clientDataJSON\": \"...\" }, \"type\": \"public-key\" }\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/register/finish",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/webauthn/register/finish",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "webauthn", "register", "finish"]
+							"path": ["v1", "client", "auth", "2fa", "webauthn", "register", "finish"]
 						}
 					}
 				},
@@ -1572,9 +1577,9 @@
 							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/credentials?user_id=replace_with_user_id",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/webauthn/credentials?user_id=replace_with_user_id",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "webauthn", "credentials"],
+							"path": ["v1", "client", "auth", "2fa", "webauthn", "credentials"],
 							"query": [{ "key": "user_id", "value": "replace_with_user_id" }]
 						}
 					}
@@ -1588,9 +1593,9 @@
 							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/client/2fa/webauthn/credentials/replace_with_credential_id",
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/webauthn/credentials/replace_with_credential_id",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "2fa", "webauthn", "credentials", "replace_with_credential_id"]
+							"path": ["v1", "client", "auth", "2fa", "webauthn", "credentials", "replace_with_credential_id"]
 						},
 						"description": "Edge case: cannot delete last active 2FA method if no password auth."
 					}
@@ -2956,6 +2961,3 @@
 		}
 	]
 }
-
-
-

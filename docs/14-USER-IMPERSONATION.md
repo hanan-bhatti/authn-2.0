@@ -41,7 +41,7 @@ Tokens issued via `jwt.IssueImpersonationToken` contain explicit security claims
 ```json
 {
   "sub": "usr_target123",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "live",
   "email": "customer@example.com",
   "impersonator_id": "usr_admin99",

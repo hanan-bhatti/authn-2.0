@@ -19,6 +19,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
@@ -55,6 +56,8 @@ type Client struct {
 	AuditLog *AuditLogClient
 	// Identity is the client for interacting with the Identity builders.
 	Identity *IdentityClient
+	// ManagedTenant is the client for interacting with the ManagedTenant builders.
+	ManagedTenant *ManagedTenantClient
 	// OrgInvitation is the client for interacting with the OrgInvitation builders.
 	OrgInvitation *OrgInvitationClient
 	// OrgMember is the client for interacting with the OrgMember builders.
@@ -112,6 +115,7 @@ func (c *Client) init() {
 	c.Application = NewApplicationClient(c.config)
 	c.AuditLog = NewAuditLogClient(c.config)
 	c.Identity = NewIdentityClient(c.config)
+	c.ManagedTenant = NewManagedTenantClient(c.config)
 	c.OrgInvitation = NewOrgInvitationClient(c.config)
 	c.OrgMember = NewOrgMemberClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
@@ -229,6 +233,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Application:         NewApplicationClient(cfg),
 		AuditLog:            NewAuditLogClient(cfg),
 		Identity:            NewIdentityClient(cfg),
+		ManagedTenant:       NewManagedTenantClient(cfg),
 		OrgInvitation:       NewOrgInvitationClient(cfg),
 		OrgMember:           NewOrgMemberClient(cfg),
 		Organization:        NewOrganizationClient(cfg),
@@ -273,6 +278,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Application:         NewApplicationClient(cfg),
 		AuditLog:            NewAuditLogClient(cfg),
 		Identity:            NewIdentityClient(cfg),
+		ManagedTenant:       NewManagedTenantClient(cfg),
 		OrgInvitation:       NewOrgInvitationClient(cfg),
 		OrgMember:           NewOrgMemberClient(cfg),
 		Organization:        NewOrganizationClient(cfg),
@@ -323,12 +329,12 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
-		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
-		c.RecoveryRequest, c.Role, c.SAMLConnection, c.SecurityBlacklist, c.Session,
-		c.SocialAuthState, c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User,
-		c.UserIpSubnetHistory, c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint,
-		c.WebhookEvent,
+		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.ManagedTenant,
+		c.OrgInvitation, c.OrgMember, c.Organization, c.Permission, c.PushDevice,
+		c.RecoveryContact, c.RecoveryRequest, c.Role, c.SAMLConnection,
+		c.SecurityBlacklist, c.Session, c.SocialAuthState, c.Tenant, c.TrustedDevice,
+		c.TwoFactorMethod, c.User, c.UserIpSubnetHistory, c.UserPasswordHistory,
+		c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -338,12 +344,12 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.OrgInvitation, c.OrgMember,
-		c.Organization, c.Permission, c.PushDevice, c.RecoveryContact,
-		c.RecoveryRequest, c.Role, c.SAMLConnection, c.SecurityBlacklist, c.Session,
-		c.SocialAuthState, c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User,
-		c.UserIpSubnetHistory, c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint,
-		c.WebhookEvent,
+		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.ManagedTenant,
+		c.OrgInvitation, c.OrgMember, c.Organization, c.Permission, c.PushDevice,
+		c.RecoveryContact, c.RecoveryRequest, c.Role, c.SAMLConnection,
+		c.SecurityBlacklist, c.Session, c.SocialAuthState, c.Tenant, c.TrustedDevice,
+		c.TwoFactorMethod, c.User, c.UserIpSubnetHistory, c.UserPasswordHistory,
+		c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -360,6 +366,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuditLog.mutate(ctx, m)
 	case *IdentityMutation:
 		return c.Identity.mutate(ctx, m)
+	case *ManagedTenantMutation:
+		return c.ManagedTenant.mutate(ctx, m)
 	case *OrgInvitationMutation:
 		return c.OrgInvitation.mutate(ctx, m)
 	case *OrgMemberMutation:
@@ -1016,6 +1024,155 @@ func (c *IdentityClient) mutate(ctx context.Context, m *IdentityMutation) (Value
 		return (&IdentityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Identity mutation op: %q", m.Op())
+	}
+}
+
+// ManagedTenantClient is a client for the ManagedTenant schema.
+type ManagedTenantClient struct {
+	config
+}
+
+// NewManagedTenantClient returns a client for the ManagedTenant from the given config.
+func NewManagedTenantClient(c config) *ManagedTenantClient {
+	return &ManagedTenantClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `managedtenant.Hooks(f(g(h())))`.
+func (c *ManagedTenantClient) Use(hooks ...Hook) {
+	c.hooks.ManagedTenant = append(c.hooks.ManagedTenant, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `managedtenant.Intercept(f(g(h())))`.
+func (c *ManagedTenantClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ManagedTenant = append(c.inters.ManagedTenant, interceptors...)
+}
+
+// Create returns a builder for creating a ManagedTenant entity.
+func (c *ManagedTenantClient) Create() *ManagedTenantCreate {
+	mutation := newManagedTenantMutation(c.config, OpCreate)
+	return &ManagedTenantCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ManagedTenant entities.
+func (c *ManagedTenantClient) CreateBulk(builders ...*ManagedTenantCreate) *ManagedTenantCreateBulk {
+	return &ManagedTenantCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ManagedTenantClient) MapCreateBulk(slice any, setFunc func(*ManagedTenantCreate, int)) *ManagedTenantCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ManagedTenantCreateBulk{err: fmt.Errorf("calling to ManagedTenantClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ManagedTenantCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ManagedTenantCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ManagedTenant.
+func (c *ManagedTenantClient) Update() *ManagedTenantUpdate {
+	mutation := newManagedTenantMutation(c.config, OpUpdate)
+	return &ManagedTenantUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ManagedTenantClient) UpdateOne(mt *ManagedTenant) *ManagedTenantUpdateOne {
+	mutation := newManagedTenantMutation(c.config, OpUpdateOne, withManagedTenant(mt))
+	return &ManagedTenantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ManagedTenantClient) UpdateOneID(id string) *ManagedTenantUpdateOne {
+	mutation := newManagedTenantMutation(c.config, OpUpdateOne, withManagedTenantID(id))
+	return &ManagedTenantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ManagedTenant.
+func (c *ManagedTenantClient) Delete() *ManagedTenantDelete {
+	mutation := newManagedTenantMutation(c.config, OpDelete)
+	return &ManagedTenantDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ManagedTenantClient) DeleteOne(mt *ManagedTenant) *ManagedTenantDeleteOne {
+	return c.DeleteOneID(mt.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ManagedTenantClient) DeleteOneID(id string) *ManagedTenantDeleteOne {
+	builder := c.Delete().Where(managedtenant.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ManagedTenantDeleteOne{builder}
+}
+
+// Query returns a query builder for ManagedTenant.
+func (c *ManagedTenantClient) Query() *ManagedTenantQuery {
+	return &ManagedTenantQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeManagedTenant},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ManagedTenant entity by its id.
+func (c *ManagedTenantClient) Get(ctx context.Context, id string) (*ManagedTenant, error) {
+	return c.Query().Where(managedtenant.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ManagedTenantClient) GetX(ctx context.Context, id string) *ManagedTenant {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTenant queries the tenant edge of a ManagedTenant.
+func (c *ManagedTenantClient) QueryTenant(mt *ManagedTenant) *TenantQuery {
+	query := (&TenantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := mt.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(managedtenant.Table, managedtenant.FieldID, id),
+			sqlgraph.To(tenant.Table, tenant.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, managedtenant.TenantTable, managedtenant.TenantColumn),
+		)
+		fromV = sqlgraph.Neighbors(mt.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ManagedTenantClient) Hooks() []Hook {
+	return c.hooks.ManagedTenant
+}
+
+// Interceptors returns the client interceptors.
+func (c *ManagedTenantClient) Interceptors() []Interceptor {
+	return c.inters.ManagedTenant
+}
+
+func (c *ManagedTenantClient) mutate(ctx context.Context, m *ManagedTenantMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ManagedTenantCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ManagedTenantUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ManagedTenantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ManagedTenantDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ManagedTenant mutation op: %q", m.Op())
 	}
 }
 
@@ -3107,6 +3264,22 @@ func (c *TenantClient) QueryAuditLogs(t *Tenant) *AuditLogQuery {
 	return query
 }
 
+// QueryManagedTenants queries the managed_tenants edge of a Tenant.
+func (c *TenantClient) QueryManagedTenants(t *Tenant) *ManagedTenantQuery {
+	query := (&ManagedTenantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := t.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenant.Table, tenant.FieldID, id),
+			sqlgraph.To(managedtenant.Table, managedtenant.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tenant.ManagedTenantsTable, tenant.ManagedTenantsColumn),
+		)
+		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *TenantClient) Hooks() []Hook {
 	return c.hooks.Tenant
@@ -4535,17 +4708,19 @@ func (c *WebhookEventClient) mutate(ctx context.Context, m *WebhookEventMutation
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
-		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role, SAMLConnection,
-		SecurityBlacklist, Session, SocialAuthState, Tenant, TrustedDevice,
-		TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory, UserRole,
-		WebhookEndpoint, WebhookEvent []ent.Hook
+		ApiKey, Application, AuditLog, Identity, ManagedTenant, OrgInvitation,
+		OrgMember, Organization, Permission, PushDevice, RecoveryContact,
+		RecoveryRequest, Role, SAMLConnection, SecurityBlacklist, Session,
+		SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod, User,
+		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
+		WebhookEvent []ent.Hook
 	}
 	inters struct {
-		ApiKey, Application, AuditLog, Identity, OrgInvitation, OrgMember, Organization,
-		Permission, PushDevice, RecoveryContact, RecoveryRequest, Role, SAMLConnection,
-		SecurityBlacklist, Session, SocialAuthState, Tenant, TrustedDevice,
-		TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory, UserRole,
-		WebhookEndpoint, WebhookEvent []ent.Interceptor
+		ApiKey, Application, AuditLog, Identity, ManagedTenant, OrgInvitation,
+		OrgMember, Organization, Permission, PushDevice, RecoveryContact,
+		RecoveryRequest, Role, SAMLConnection, SecurityBlacklist, Session,
+		SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod, User,
+		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
+		WebhookEvent []ent.Interceptor
 	}
 )

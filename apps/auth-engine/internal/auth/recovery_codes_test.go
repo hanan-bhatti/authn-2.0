@@ -63,7 +63,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 		"name":        "Recovery User",
 	}
 	sBytes, _ := json.Marshal(signUpPayload)
-	reqSignUp := httptest.NewRequest("POST", "/v1/client/signup", bytes.NewReader(sBytes))
+	reqSignUp := httptest.NewRequest("POST", "/v1/client/auth/signup", bytes.NewReader(sBytes))
 	reqSignUp.Header.Set("Content-Type", "application/json")
 	respSignUp, err := app.Test(reqSignUp, 10000)
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// 2. Enroll TOTP
-	reqEnroll := httptest.NewRequest("POST", "/v1/client/2fa/totp/enroll", nil)
+	reqEnroll := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/enroll", nil)
 	reqEnroll.Header.Set("Authorization", "Bearer "+token)
 	respEnroll, err := app.Test(reqEnroll, 10000)
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 	require.NoError(t, err)
 
 	cBytes, _ := json.Marshal(map[string]string{"code": totpCode})
-	reqConfirm := httptest.NewRequest("POST", "/v1/client/2fa/totp/confirm", bytes.NewReader(cBytes))
+	reqConfirm := httptest.NewRequest("POST", "/v1/client/auth/2fa/totp/confirm", bytes.NewReader(cBytes))
 	reqConfirm.Header.Set("Authorization", "Bearer "+token)
 	reqConfirm.Header.Set("Content-Type", "application/json")
 	respConfirm, err := app.Test(reqConfirm, 10000)
@@ -110,7 +110,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 	unusedOldCode := initialCodes[1]
 
 	// 4. Check initial recovery codes status -> remaining 16
-	reqStatus1 := httptest.NewRequest("GET", "/v1/client/2fa/recovery-codes/status", nil)
+	reqStatus1 := httptest.NewRequest("GET", "/v1/client/auth/2fa/recovery-codes/status", nil)
 	reqStatus1.Header.Set("Authorization", "Bearer "+token)
 	respStatus1, err := app.Test(reqStatus1, 10000)
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 		"email":       "recoveryuser@example.com",
 		"password":    password,
 	})
-	reqLogin := httptest.NewRequest("POST", "/v1/client/login", bytes.NewReader(lBytes))
+	reqLogin := httptest.NewRequest("POST", "/v1/client/auth/login", bytes.NewReader(lBytes))
 	reqLogin.Header.Set("Content-Type", "application/json")
 	respLogin, err := app.Test(reqLogin, 10000)
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 		"email":       "recoveryuser@example.com",
 		"password":    password,
 	})
-	reqLogin2 := httptest.NewRequest("POST", "/v1/client/login", bytes.NewReader(lBytes2))
+	reqLogin2 := httptest.NewRequest("POST", "/v1/client/auth/login", bytes.NewReader(lBytes2))
 	reqLogin2.Header.Set("Content-Type", "application/json")
 	respLogin2, err := app.Test(reqLogin2, 10000)
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 	assert.Equal(t, "this recovery code has already been used", errResp["error"])
 
 	// 8. Confirm remaining count decremented to 15
-	reqStatus2 := httptest.NewRequest("GET", "/v1/client/2fa/recovery-codes/status", nil)
+	reqStatus2 := httptest.NewRequest("GET", "/v1/client/auth/2fa/recovery-codes/status", nil)
 	reqStatus2.Header.Set("Authorization", "Bearer "+token)
 	respStatus2, err := app.Test(reqStatus2, 10000)
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 
 	// 9. Regenerate Recovery Codes via Password Step-Up
 	rBytes, _ := json.Marshal(map[string]string{"password": password})
-	reqRegen := httptest.NewRequest("POST", "/v1/client/2fa/recovery-codes/regenerate", bytes.NewReader(rBytes))
+	reqRegen := httptest.NewRequest("POST", "/v1/client/auth/2fa/recovery-codes/regenerate", bytes.NewReader(rBytes))
 	reqRegen.Header.Set("Authorization", "Bearer "+token)
 	reqRegen.Header.Set("Content-Type", "application/json")
 	respRegen, err := app.Test(reqRegen, 10000)
@@ -213,7 +213,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 	assert.Len(t, regenResp.RecoveryCodes, 16)
 
 	// 10. Confirm status is back to 16
-	reqStatus3 := httptest.NewRequest("GET", "/v1/client/2fa/recovery-codes/status", nil)
+	reqStatus3 := httptest.NewRequest("GET", "/v1/client/auth/2fa/recovery-codes/status", nil)
 	reqStatus3.Header.Set("Authorization", "Bearer "+token)
 	respStatus3, err := app.Test(reqStatus3, 10000)
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestRecoveryCodes_FullLifecycle_E2E(t *testing.T) {
 		"email":       "recoveryuser@example.com",
 		"password":    password,
 	})
-	reqLogin3 := httptest.NewRequest("POST", "/v1/client/login", bytes.NewReader(lBytes3))
+	reqLogin3 := httptest.NewRequest("POST", "/v1/client/auth/login", bytes.NewReader(lBytes3))
 	reqLogin3.Header.Set("Content-Type", "application/json")
 	respLogin3, err := app.Test(reqLogin3, 10000)
 	require.NoError(t, err)

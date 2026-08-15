@@ -13,7 +13,7 @@ During an active lockout:
 
 ### Failed Attempts 1 to 5 (Wrong Password)
 ```http
-POST /v1/client/login HTTP/1.1
+POST /v1/client/auth/login HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012
@@ -34,7 +34,7 @@ Content-Length: 37
 
 ### Attempt 6 (CORRECT PASSWORD while Locked Out)
 ```http
-POST /v1/client/login HTTP/1.1
+POST /v1/client/auth/login HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012

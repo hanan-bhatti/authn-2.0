@@ -42,7 +42,7 @@ type PasskeyDeleteRequest struct {
 	Password string `json:"password,omitempty"`
 }
 
-// BeginWebAuthnRegistration handles POST /v1/client/2fa/webauthn/register/begin.
+// BeginWebAuthnRegistration handles POST /v1/client/auth/2fa/webauthn/register/begin.
 func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -58,7 +58,7 @@ func (h *Handler) BeginWebAuthnRegistration(c *fiber.Ctx) error {
 	})
 }
 
-// FinishWebAuthnRegistration handles POST /v1/client/2fa/webauthn/register/finish.
+// FinishWebAuthnRegistration handles POST /v1/client/auth/2fa/webauthn/register/finish.
 func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -96,7 +96,7 @@ func (h *Handler) FinishWebAuthnRegistration(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(res)
 }
 
-// BeginWebAuthnLogin handles POST /v1/client/2fa/webauthn/login/begin.
+// BeginWebAuthnLogin handles POST /v1/client/auth/2fa/webauthn/login/begin.
 func (h *Handler) BeginWebAuthnLogin(c *fiber.Ctx) error {
 	var req WebAuthnLoginBeginRequest
 	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.MFAToken) == "" {
@@ -116,7 +116,7 @@ func (h *Handler) BeginWebAuthnLogin(c *fiber.Ctx) error {
 	})
 }
 
-// FinishWebAuthnLogin handles POST /v1/client/2fa/webauthn/login/finish.
+// FinishWebAuthnLogin handles POST /v1/client/auth/2fa/webauthn/login/finish.
 func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 	mfaToken := c.Query("mfa_token")
 	sessionID := c.Query("session_id")
@@ -167,14 +167,8 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
 	} else {
-		c.Cookie(&fiber.Cookie{
-			Name:     "authn_refresh_token",
-			Value:    refreshToken,
-			HTTPOnly: true,
-			Secure:   h.service.config.CookieSecure(),
-			SameSite: "Lax",
-			Path:     "/v1/client",
-		})
+		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -191,7 +185,7 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 	})
 }
 
-// ListWebAuthnPasskeys handles GET /v1/client/2fa/webauthn/credentials.
+// ListWebAuthnPasskeys handles GET /v1/client/auth/2fa/webauthn/credentials.
 func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -205,7 +199,7 @@ func (h *Handler) ListWebAuthnPasskeys(c *fiber.Ctx) error {
 	})
 }
 
-// DeleteWebAuthnPasskey handles DELETE /v1/client/2fa/webauthn/credentials/:id.
+// DeleteWebAuthnPasskey handles DELETE /v1/client/auth/2fa/webauthn/credentials/:id.
 func (h *Handler) DeleteWebAuthnPasskey(c *fiber.Ctx) error {
 	userID := getUserID(c)
 

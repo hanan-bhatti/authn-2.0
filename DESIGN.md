@@ -1,471 +1,585 @@
-# Resend — Style Reference
-> black velvet with violet neon
+---
+version: alpha
+name: Authn Product Design
+description: |
+  Authn surfaces sit on a near-pure black canvas with off-white text and a
+  single signature color — the deep editorial-serif Domaine Display headline
+  mark — that gives an otherwise utilitarian developer-tool brand its print-
+  magazine confidence. The system pairs Domaine Display
+  (oversized 76px–96px serif, ss01/ss04/ss11 features on) with ABC Favorit
+  for body and Inter for UI. Surfaces rely on subtle 6–9% opacity gradient
+  glows, hairline 1px borders made from translucent white, and a strict
+  rounded-12px container vocabulary. There is no decorative chrome — just
+  type, code, and atmospheric depth.
 
-**Theme:** dark
+colors:
+  primary: "#fcfdff"
+  primary-on: "#000000"
+  ink: "#fcfdff"
+  body: "rgba(252,253,255,0.86)"
+  charcoal: "rgba(252,253,255,0.7)"
+  mute: "#a1a4a5"
+  ash: "#888e90"
+  stone: "#464a4d"
+  on-light: "#000000"
+  on-light-mute: "rgba(0,0,51,0.7)"
+  canvas: "#000000"
+  surface-card: "#0a0a0c"
+  surface-elevated: "#101012"
+  surface-deep: "#06060a"
+  hairline: "rgba(255,255,255,0.06)"
+  hairline-strong: "rgba(255,255,255,0.14)"
+  divider-soft: "rgba(255,255,255,0.04)"
+  accent-orange: "#ff801f"
+  accent-orange-glow: "rgba(255,89,0,0.22)"
+  accent-yellow: "#ffc53d"
+  accent-blue: "#3b9eff"
+  accent-blue-glow: "rgba(0,117,255,0.34)"
+  accent-green: "#11ff99"
+  accent-green-glow: "rgba(34,255,153,0.18)"
+  accent-red: "#ff2047"
+  accent-red-glow: "rgba(255,32,71,0.34)"
+  link: "#3b9eff"
+  surface-light: "#f1f7fe"
 
-Resend lives in a near-total darkness — pure black canvas, hairline graphite borders, and white-on-black typography that feels like reading text printed on matte glass. The hero is anti-decorative: a single large serif headline at 96px Domaine next to a 3D black cube, with no gradient wash and no marketing illustration. The brand mark is a tight violet (#9281f7) that appears in email-address strings, status icons, and code samples — never on buttons. A monospaced font (Commit Mono) carries the developer identity through every code block, badge, and inline label, making the page read like a terminal wrapped in a luxury interface. Components are sharp-cornered or gently rounded (6px / 16px), low-elevation, and rely on 1px borders rather than shadows to separate layers. Motion is restrained but expressive: fade-and-slide hero text, subtle WebGL rotation on the hero cube, and short 150ms ease-out transitions on hover.
+typography:
+  display-xxl:
+    fontFamily: Domaine Display
+    fontSize: 96px
+    fontWeight: 400
+    lineHeight: 1.0
+    letterSpacing: -0.96px
+    fontFeature: "ss01, ss04, ss11"
+  display-xl:
+    fontFamily: Domaine Display
+    fontSize: 76.8px
+    fontWeight: 400
+    lineHeight: 1.0
+    letterSpacing: -0.768px
+    fontFeature: "ss01, ss04, ss11"
+  display-lg:
+    fontFamily: ABC Favorit
+    fontSize: 56px
+    fontWeight: 400
+    lineHeight: 1.2
+    letterSpacing: -2.8px
+    fontFeature: "ss01, ss04, ss11"
+  heading-md:
+    fontFamily: Inter
+    fontSize: 24px
+    fontWeight: 500
+    lineHeight: 1.5
+    letterSpacing: -0.4px
+  heading-sm:
+    fontFamily: Inter
+    fontSize: 20px
+    fontWeight: 500
+    lineHeight: 1.3
+    letterSpacing: -0.3px
+  subtitle:
+    fontFamily: ABC Favorit
+    fontSize: 20px
+    fontWeight: 400
+    lineHeight: 1.3
+    fontFeature: "ss01, ss04, ss11"
+  body-lg:
+    fontFamily: Inter
+    fontSize: 18px
+    fontWeight: 400
+    lineHeight: 1.5
+  body-md:
+    fontFamily: ABC Favorit
+    fontSize: 16px
+    fontWeight: 400
+    lineHeight: 1.5
+    letterSpacing: -0.8px
+    fontFeature: "ss01, ss04, ss11"
+  body-sm:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: 400
+    lineHeight: 1.43
+  button-md:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: 500
+    lineHeight: 1.43
+  button-sm:
+    fontFamily: ABC Favorit
+    fontSize: 14px
+    fontWeight: 500
+    lineHeight: 1.43
+    letterSpacing: 0.35px
+    fontFeature: "ss01, ss03, ss04"
+  caption:
+    fontFamily: Inter
+    fontSize: 12px
+    fontWeight: 400
+    lineHeight: 1.5
+  caption-emph:
+    fontFamily: Helvetica
+    fontSize: 14px
+    fontWeight: 600
+    lineHeight: 1.0
+  code-md:
+    fontFamily: Geist Mono
+    fontSize: 13px
+    fontWeight: 400
+    lineHeight: 1.6
 
-## Tokens — Colors
+rounded:
+  none: 0px
+  xs: 4px
+  sm: 6px
+  md: 8px
+  lg: 12px
+  xl: 16px
+  full: 9999px
 
-| Name | Value | Token | Role |
-|------|-------|-------|------|
-| Void Black | `#000000` | `--color-void-black` | Page background, card surfaces, overlay scrims — the entire canvas |
-| Graphite Hairline | `#292d30` | `--color-graphite-hairline` | 1px borders on cards, inputs, buttons, code blocks, dividers — defines every layer separation |
-| White | `#ffffff` | `--color-white` | Primary headings, hero text, button labels, icon fills on dark surfaces |
-| Bone White | `#f0f0f0` | `--color-bone-white` | Body text, secondary headings, stroke outlines on icons — the primary reading color |
-| Ash Gray | `#a1a4a5` | `--color-ash-gray` | Muted body text, badge labels, icon strokes — third-tier text and metadata |
-| Smoke Gray | `#abafb4` | `--color-smoke-gray` | Link color, inactive button text, supporting captions — fourth-tier text |
-| Iron | `#6e727a` | `--color-iron` | Subtle decorative strokes, disabled states, low-emphasis borders |
-| Charcoal | `#464a4d` | `--color-charcoal` | Inline code text, muted labels — text that should disappear into the surface |
-| Iris Violet | `linear-gradient(to right bottom in oklab, rgb(146, 129, 247) 0%, rgb(154, 84, 220) 100%)` | `--color-iris-violet` | Violet text accent for links, tags, and emphasized short phrases; Diagonal violet-to-magenta gradient on icon containers and brand badges |
-| Iris Violet Glow | `#baa7ff` | `--color-iris-violet-glow` | Violet text accent for links, tags, and emphasized short phrases |
-| Signal Blue | `#3b9eff` | `--color-signal-blue` | Blue action color for filled buttons, selected navigation states, and focused conversion moments. |
-| Sky Blue | `#70b8ff` | `--color-sky-blue` | Blue text accent for links, tags, and emphasized short phrases |
-| Pulse Green | `#3ad389` | `--color-pulse-green` | Green text accent for links, tags, and emphasized short phrases. Use as a supporting accent, not as a status color |
-| Alarm Red | `#ff9592` | `--color-alarm-red` | Red text accent for links, tags, and emphasized short phrases. Use as a supporting accent, not as a status color |
-| Crimson | `#ff6465` | `--color-crimson` | Red wash for highlight backgrounds, decorative bands, and soft emphasis behind content. Use as a supporting accent, not as a status color |
-| Amber | `#ffca16` | `--color-amber` | Yellow text accent for links, tags, and emphasized short phrases. Use as a supporting accent, not as a status color |
-| Amber Glow | `#ffd60a` | `--color-amber-glow` | Yellow wash for highlight backgrounds, decorative bands, and soft emphasis behind content. Use as a supporting accent, not as a status color |
-| Surface Gradient | `linear-gradient(rgb(27, 27, 27), rgb(3, 3, 3))` | `--color-surface-gradient` | Subtle card-to-canvas surface lift — used in edge fades and elevated panels |
+spacing:
+  xxs: 2px
+  xs: 4px
+  sm: 8px
+  md: 12px
+  lg: 16px
+  xl: 24px
+  xxl: 32px
+  xxxl: 48px
+  section: 96px
+  band: 128px
 
-## Tokens — Typography
+components:
+  button-primary:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-on}"
+    typography: "{typography.button-md}"
+    rounded: "{rounded.md}"
+    padding: 8px 16px
+    height: 36px
+  button-primary-pressed:
+    backgroundColor: "{colors.surface-light}"
+    textColor: "{colors.primary-on}"
+    typography: "{typography.button-md}"
+    rounded: "{rounded.md}"
+  button-ghost:
+    backgroundColor: "{colors.surface-elevated}"
+    textColor: "{colors.ink}"
+    typography: "{typography.button-md}"
+    rounded: "{rounded.md}"
+    padding: 8px 16px
+    height: 36px
+  button-outline:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.ink}"
+    typography: "{typography.button-md}"
+    rounded: "{rounded.md}"
+    padding: 7px 15px
+    height: 36px
+  text-input:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.md}"
+    padding: 10px 14px
+    height: 40px
+  hero-stripe:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.ink}"
+    typography: "{typography.display-xxl}"
+    rounded: "{rounded.none}"
+    padding: 96px 32px
+  feature-card:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.lg}"
+    padding: 32px
+  feature-card-bordered:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.lg}"
+    padding: 32px
+  pricing-tier:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.lg}"
+    padding: 32px
+  pricing-tier-featured:
+    backgroundColor: "{colors.surface-elevated}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.lg}"
+    padding: 32px
+  code-window:
+    backgroundColor: "{colors.surface-deep}"
+    textColor: "{colors.body}"
+    typography: "{typography.code-md}"
+    rounded: "{rounded.lg}"
+    padding: 24px
+  code-tab:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.charcoal}"
+    typography: "{typography.code-md}"
+    rounded: "{rounded.sm}"
+    padding: 6px 12px
+  email-mockup:
+    backgroundColor: "{colors.surface-card}"
+    textColor: "{colors.ink}"
+    typography: "{typography.body-md}"
+    rounded: "{rounded.lg}"
+    padding: 0
+  badge-pill:
+    backgroundColor: "{colors.surface-elevated}"
+    textColor: "{colors.body}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.full}"
+    padding: 4px 10px
+  status-dot:
+    backgroundColor: "{colors.accent-green}"
+    rounded: "{rounded.full}"
+    size: 8px
+  nav-bar:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.body}"
+    typography: "{typography.button-sm}"
+    rounded: "{rounded.none}"
+    height: 64px
+  sub-nav-pill:
+    backgroundColor: "{colors.surface-elevated}"
+    textColor: "{colors.body}"
+    typography: "{typography.button-sm}"
+    rounded: "{rounded.full}"
+    padding: 6px 14px
+  contributor-avatar:
+    backgroundColor: "{colors.surface-card}"
+    rounded: "{rounded.full}"
+    size: 32px
+  footer:
+    backgroundColor: "{colors.canvas}"
+    textColor: "{colors.charcoal}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.none}"
+    padding: 64px 32px
+---
 
-### Inter — Body copy, UI labels, navigation, buttons, links. The workhorse — appears 1280 times across every non-code surface. · `--font-inter`
-- **Substitute:** Inter (Google Fonts), Söhne, system-ui
-- **Weights:** 400, 500, 600
-- **Sizes:** 12px, 14px, 16px, 18px, 24px
-- **Line height:** 1.00, 1.33, 1.43, 1.50, 1.60
-- **Role:** Body copy, UI labels, navigation, buttons, links. The workhorse — appears 1280 times across every non-code surface.
+## Overview
 
-### Domaine — Hero display type — weight 400 at 96px with -0.01em tracking creates an editorial, almost-printed feel. Only used twice on the entire page for the largest hero statement. · `--font-domaine`
-- **Substitute:** GT Sectra, Tiempos Headline, Playfair Display
-- **Weights:** 400
-- **Sizes:** 77px, 96px
-- **Line height:** 1.00
-- **Letter spacing:** -0.01em
-- **OpenType features:** `"ss01", "ss04", "ss11"`
-- **Role:** Hero display type — weight 400 at 96px with -0.01em tracking creates an editorial, almost-printed feel. Only used twice on the entire page for the largest hero statement.
+Authn looks like a developer tool with the typography of an editorial.
+Every page opens on `{colors.canvas}` (`#000000`), and the loudest element on
+the canvas is not a button or a brand stamp — it's a 96px Domaine Display
+serif headline ("Email for developers", "Email reimagined") with the
+`ss01 / ss04 / ss11` stylistic alternates engaged. That single typographic
+decision sets the brand tone: confident, considered, slightly literary, and
+priced on quality rather than novelty.
 
-### aBC Favorit — Section headlines and sub-headlines. The 56px weight-400 with -0.05em tracking is the signature — extreme negative tracking on a geometric sans creates a compressed, confident display feel that contrasts the editorial Domaine hero. · `--font-abc-favorit`
-- **Substitute:** Inter Display, Söhne Breit, GT America
-- **Weights:** 400, 500
-- **Sizes:** 14px, 16px, 20px, 56px
-- **Line height:** 1.00, 1.20, 1.30, 1.50
-- **Letter spacing:** -0.05em at 56px, +0.025em at 14px
-- **OpenType features:** `"ss01", "ss04", "ss11"; "ss01", "ss03", "ss04"`
-- **Role:** Section headlines and sub-headlines. The 56px weight-400 with -0.05em tracking is the signature — extreme negative tracking on a geometric sans creates a compressed, confident display feel that contrasts the editorial Domaine hero.
+The supporting cast is technical. Body copy switches to **ABC Favorit** for
+marketing prose and **Inter** for UI labels, while code blocks render in
+**Geist Mono** inside `{component.code-window}` shells with hairline traffic-
+light dots. Surface depth is built almost entirely from translucent white —
+6% borders, 14% strong borders, 4% dividers — over a deep `{colors.surface-deep}`
+layer that sits just below the canvas black. There are no gradients painted
+across full bands, just **soft atmospheric glows** (orange, blue, green, red,
+yellow) anchored at the top of select sections, all at low opacity.
 
-### Commit Mono — Code blocks, inline code, terminal-style badges, API labels. Monospaced presence is the developer's identity signal — appears 814 times, rivaling Inter. · `--font-commit-mono`
-- **Substitute:** JetBrains Mono, Berkeley Mono, IBM Plex Mono
-- **Weights:** 400
-- **Sizes:** 12px, 14px, 16px
-- **Line height:** 1.33, 1.43, 1.50
-- **Role:** Code blocks, inline code, terminal-style badges, API labels. Monospaced presence is the developer's identity signal — appears 814 times, rivaling Inter.
+Page rhythm cycles in a single dark register: hero stripe → atmospheric
+section → code window section → email mockup section → pricing or feature
+grid → black footer. The brand never warms to a light surface; even
+secondary email mockups are rendered as compact white cards inside the dark
+canvas, framed like print insets in a black-bordered magazine page.
 
-### Helvetica — Helvetica — detected in extracted data but not described by AI · `--font-helvetica`
-- **Weights:** 400, 600, 700
-- **Sizes:** 14px
-- **Line height:** 1, 1.71
-- **Role:** Helvetica — detected in extracted data but not described by AI
+**Key Characteristics:**
+- Pure black canvas (`{colors.canvas}` — `#000000`) on every public page; off-white text (`{colors.ink}` — `#fcfdff`) carries the full read.
+- A serif-led type system: **Domaine Display** at 76–96px for hero headlines, **ABC Favorit** for marketing body, **Inter** for UI, **Geist Mono** for code.
+- Six accent glow colours used only as low-opacity atmospheric washes (`{colors.accent-orange}`, `{colors.accent-blue}`, `{colors.accent-green}`, `{colors.accent-red}`, `{colors.accent-yellow}`) — never as buttons or solid surfaces.
+- Strict container vocabulary: `{rounded.lg}` (12px) for feature cards, code wells, and email mockups; `{rounded.md}` (8px) for buttons; `{rounded.full}` for pills and avatars.
+- Translucent white borders (`{colors.hairline}` 6% / `{colors.hairline-strong}` 14%) replace shadows entirely — the system has no traditional drop-shadow elevation language.
+- `{component.button-primary}` is a small white rectangle with black text — counterintuitive contrast that becomes the page's brightest pixel and works as a single visual anchor.
 
-### -apple-system — -apple-system — detected in extracted data but not described by AI · `--font-apple-system`
-- **Weights:** 400
-- **Sizes:** 14px
-- **Line height:** 1.5, 1.55
-- **OpenType features:** `"liga" 0`
-- **Role:** -apple-system — detected in extracted data but not described by AI
+## Colors
 
-### Type Scale
+### Brand & Accent
+- **Primary White** (`{colors.primary}` — `#fcfdff`): the brand's de facto accent. Reserved for `{component.button-primary}` (white pill on black canvas), Domaine display headlines, and the active text colour. White is the loudest possible colour on this canvas — that's the signature.
+- **Primary On** (`{colors.primary-on}` — `#000000`): label colour on top of `{colors.primary}` surfaces. Black text on white pill is the brand's CTA pattern.
+- **Surface Light** (`{colors.surface-light}` — `#f1f7fe`): a subtle blue-tinted off-white used as the active/pressed state of `{component.button-primary}`.
 
-| Role | Size | Line Height | Letter Spacing | Token |
-|------|------|-------------|----------------|-------|
-| caption | 12px | 1.33 | — | `--text-caption` |
-| body-sm | 14px | 1.43 | — | `--text-body-sm` |
-| body | 16px | 1.5 | — | `--text-body` |
-| subheading | 20px | 1 | — | `--text-subheading` |
-| heading-sm | 24px | 1.5 | — | `--text-heading-sm` |
-| heading | 56px | 1.2 | -2.8px | `--text-heading` |
-| heading-lg | 77px | 1 | -0.77px | `--text-heading-lg` |
-| display | 96px | 1 | -0.96px | `--text-display` |
+### Surface
+- **Canvas** (`{colors.canvas}` — `#000000`): the default page background. True black, never near-black.
+- **Surface Card** (`{colors.surface-card}` — `#0a0a0c`): the standard inset card surface, just lighter than canvas to register a step up in elevation.
+- **Surface Elevated** (`{colors.surface-elevated}` — `#101012`): a second elevation step used on featured pricing tiers and ghost button surfaces.
+- **Surface Deep** (`{colors.surface-deep}` — `#06060a`): code window background — slightly cooler and darker than the canvas itself, suggesting depth via temperature.
+- **Hairline** (`{colors.hairline}` — `rgba(255,255,255,0.06)`): the soft 1px translucent-white divider used between rows and around feature cards.
+- **Hairline Strong** (`{colors.hairline-strong}` — `rgba(255,255,255,0.14)`): the structural 1px border on cards, code wells, and form inputs.
+- **Divider Soft** (`{colors.divider-soft}` — `rgba(255,255,255,0.04)`): low-contrast dividers between footer columns.
 
-## Tokens — Spacing & Shapes
+### Text
+- **Ink** (`{colors.ink}` — `#fcfdff`): primary text colour on the dark canvas. Faintly blue-cool to feel like printed paper rather than pure white pop.
+- **Body** (`{colors.body}` — `rgba(252,253,255,0.86)`): long-form body text where pure ink would feel too sharp.
+- **Charcoal** (`{colors.charcoal}` — `rgba(252,253,255,0.7)`): captions, secondary nav labels.
+- **Mute** (`{colors.mute}` — `#a1a4a5`): supporting text and inactive labels.
+- **Ash** (`{colors.ash}` — `#888e90`): tertiary text, footer copy.
+- **Stone** (`{colors.stone}` — `#464a4d`): disabled foreground.
+- **On-Light** (`{colors.on-light}` — `#000000`): label colour inside the rare email-mockup white cards.
+- **On-Light Mute** (`{colors.on-light-mute}` — `rgba(0,0,51,0.7)`): secondary text inside email mockups.
 
-**Base unit:** 4px
+### Semantic
+- **Accent Orange** (`{colors.accent-orange}` — `#ff801f`) + glow (`{colors.accent-orange-glow}` — `rgba(255,89,0,0.22)`): atmospheric warm wash anchored to "Email reimagined" / customer story sections. Solid orange never appears as a button or surface — only the glow.
+- **Accent Yellow** (`{colors.accent-yellow}` — `#ffc53d`): used in inline highlight strokes and "first-class developer experience" key callouts.
+- **Accent Blue** (`{colors.accent-blue}` — `#3b9eff`) + glow (`{colors.accent-blue-glow}` — `rgba(0,117,255,0.34)`): inline link colour and the cool atmospheric wash on the "Integrate this weekend" section.
+- **Accent Green** (`{colors.accent-green}` — `#11ff99`) + glow (`{colors.accent-green-glow}` — `rgba(34,255,153,0.18)`): success status dots and the "delivery confirmed" feature glow.
+- **Accent Red** (`{colors.accent-red}` — `#ff2047`) + glow (`{colors.accent-red-glow}` — `rgba(255,32,71,0.34)`): inline error red and the "reach humans, not spam folders" attention wash.
+- **Link** (`{colors.link}` — `#3b9eff`): inline link colour — same as accent blue.
 
-**Density:** comfortable
+## Typography
 
-### Spacing Scale
+### Font Family
 
-| Name | Value | Token |
-|------|-------|-------|
-| 4 | 4px | `--spacing-4` |
-| 8 | 8px | `--spacing-8` |
-| 12 | 12px | `--spacing-12` |
-| 16 | 16px | `--spacing-16` |
-| 20 | 20px | `--spacing-20` |
-| 24 | 24px | `--spacing-24` |
-| 28 | 28px | `--spacing-28` |
-| 32 | 32px | `--spacing-32` |
-| 40 | 40px | `--spacing-40` |
-| 48 | 48px | `--spacing-48` |
-| 64 | 64px | `--spacing-64` |
-| 80 | 80px | `--spacing-80` |
-| 96 | 96px | `--spacing-96` |
-| 104 | 104px | `--spacing-104` |
-| 144 | 144px | `--spacing-144` |
+Authn ships a four-family stack:
 
-### Border Radius
+- **Domaine Display** — proprietary editorial serif used exclusively for hero headlines at 76px+, with `ss01 / ss04 / ss11` stylistic sets engaged for a slightly tighter, more print-magazine look.
+- **ABC Favorit** — proprietary humanist sans-serif used for marketing body copy, hero subtitles, and pill labels. Carries `ss01 / ss03 / ss04` features for tabular figures and alternate glyphs.
+- **Inter** — open-source sans-serif used for UI: button labels, captions, card body text, nav links.
+- **Geist Mono** — open-source monospace used in code wells.
 
-| Element | Value |
-|---------|-------|
-| cards | 16px |
-| badges | 6px |
-| inputs | 6px |
-| buttons | 6px |
-| large-panels | 24px |
+When proprietary families cannot be licensed, **Söhne** or **Tiempos Headline** stand in for Domaine Display, and **Geist** or **Inter Tight** can replace ABC Favorit. Inter and Geist Mono are open-source and should be used directly.
 
-### Shadows
+### Hierarchy
 
-| Name | Value | Token |
-|------|-------|-------|
-| subtle | `rgba(176, 199, 217, 0.145) 0px 0px 0px 1px` | `--shadow-subtle` |
-| subtle-2 | `rgb(0, 0, 0) 0px 0px 0px 8px` | `--shadow-subtle-2` |
-| subtle-3 | `rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0p...` | `--shadow-subtle-3` |
+| Token | Size | Weight | Line Height | Letter Spacing | Use |
+|---|---|---|---|---|---|
+| `{typography.display-xxl}` | 96px | 400 | 1.0 | -0.96px | Home hero ("Email for developers"). One per page. |
+| `{typography.display-xl}` | 76.8px | 400 | 1.0 | -0.768px | Section openers ("Email reimagined", "Available today"). |
+| `{typography.display-lg}` | 56px | 400 | 1.2 | -2.8px | ABC Favorit display sub-titles. |
+| `{typography.heading-md}` | 24px | 500 | 1.5 | -0.4px | Card titles, section sub-titles. |
+| `{typography.heading-sm}` | 20px | 500 | 1.3 | -0.3px | List headers. |
+| `{typography.subtitle}` | 20px | 400 | 1.3 | 0 | Hero subtitles. |
+| `{typography.body-lg}` | 18px | 400 | 1.5 | 0 | Marketing prose. |
+| `{typography.body-md}` | 16px | 400 | 1.5 | -0.8px | ABC Favorit body. |
+| `{typography.body-sm}` | 14px | 400 | 1.43 | 0 | Captions, metadata. |
+| `{typography.button-md}` | 14px | 500 | 1.43 | 0 | Default button label. |
+| `{typography.button-sm}` | 14px | 500 | 1.43 | 0.35px | Pill labels, inline links. |
+| `{typography.caption}` | 12px | 400 | 1.5 | 0 | Footer disclosure, copyright. |
+| `{typography.caption-emph}` | 14px | 600 | 1.0 | 0 | Emphatic small caption — Helvetica fallback. |
+| `{typography.code-md}` | 13px | 400 | 1.6 | 0 | Code blocks, inline code. |
 
-### Layout
+### Principles
+- Display sizes always run at `lineHeight: 1.0` with negative letter-spacing — the Domaine Display headlines pack into solid typographic blocks rather than open prose lines.
+- Body weight stays at 400 across `{typography.body-lg}` and `{typography.body-md}`. The serif/sans family change carries hierarchy, not weight bumps.
+- ABC Favorit always runs with `ss01 / ss04 / ss11` engaged; Inter never carries OpenType features. Code in Geist Mono never carries ligatures.
+- Inline links use `{typography.button-sm}` with positive letter-spacing (`0.35px`) and ABC Favorit — the small spacing nudge gives interactive prose its precision.
 
-- **Page max-width:** 1200px
-- **Section gap:** 96px
-- **Card padding:** 32px
-- **Element gap:** 16px
+### Note on Font Substitutes
+
+When Domaine Display is unavailable, clamp `lineHeight` to 1.0 explicitly and apply `font-feature-settings: "ss01", "liga"` on the substitute serif to mimic the alternate glyphs. Söhne or Tiempos Headline will read closest. ABC Favorit substitutes (Geist, Inter Tight) typically default to looser tracking — apply -0.5% letter-spacing on body sizes to compensate.
+
+## Layout
+
+### Spacing System
+- **Base unit**: 4px, with the working scale on multiples of 4 / 8 / 16.
+- **Tokens**: `{spacing.xxs}` 2px · `{spacing.xs}` 4px · `{spacing.sm}` 8px · `{spacing.md}` 12px · `{spacing.lg}` 16px · `{spacing.xl}` 24px · `{spacing.xxl}` 32px · `{spacing.xxxl}` 48px · `{spacing.section}` 96px · `{spacing.band}` 128px.
+- Section padding: `{spacing.section}` (96px) vertical between bands; `{spacing.band}` (128px) on the hero stripe and closing footer transition.
+- Card internal padding: `{spacing.xxl}` (32px) on `{component.feature-card}`, `{component.pricing-tier}`, and `{component.code-window}`.
+
+### Grid & Container
+- **Max content width** ≈ 1200px on body sections.
+- **Feature grid**: 3 columns at desktop, 2 at tablet, 1 at mobile.
+- **Pricing**: 3-tier grid centred at desktop; centre tier promotes to `{component.pricing-tier-featured}` (one-step-elevated surface).
+- **Code-story splits**: a 2-up split — narrative copy left, `{component.code-window}` right — collapsing to stacked at < 1024px.
+- **Email mockup band**: a single white card (640px max width) centred in the dark canvas with generous vertical padding to read like a print magazine inset.
+
+### Whitespace Philosophy
+- Whitespace is editorial and generous — full-bleed sections breathe at 96–128px so Domaine Display headlines have room to register at scale.
+- Inside cards, padding stays at 32px so feature copy and code wells have a consistent rhythm with the outer grid.
+- Hairline `{colors.hairline}` and `{colors.hairline-strong}` carry the role drop shadows would in a brighter system; the dark canvas suppresses traditional shadow depth entirely.
+
+## Elevation & Depth
+
+| Level | Treatment | Use |
+|---|---|---|
+| 0 — flat | No shadow, no border | Default canvas, full-bleed bands. |
+| 1 — surface card | `{colors.surface-card}` (`#0a0a0c`) + 1px `{colors.hairline-strong}` | Feature cards, pricing tiers, form inputs. |
+| 2 — elevated | `{colors.surface-elevated}` (`#101012`) + 1px `{colors.hairline-strong}` | Featured pricing tier, ghost button. |
+| 3 — code well | `{colors.surface-deep}` (`#06060a`) + 1px `{colors.hairline-strong}` | Code window, terminal shells. |
+| 4 — atmospheric glow | Low-opacity radial gradient (`{colors.accent-*-glow}`) anchored at section top | Section openers ("Integrate this weekend", "Email reimagined"). |
+
+The system has **no traditional drop shadow language**. Every surface either gets a translucent-white hairline border or sits inside an atmospheric glow. The dark canvas absorbs shadow naturally; surfaces register depth via temperature and luminance shifts rather than blur.
+
+### Decorative Depth
+- **Atmospheric section glows** — six accent colours each with a paired glow token (orange, yellow, blue, green, red, plus a deep slate for "everything in your context"). Each section opens with a single radial wash anchored at the top edge of the section, falling off to canvas black within ~600px vertical distance. Never two glows in the same section.
+- **Email card insets** — the "Beyond experience" mockup band lifts a single white email card off the black canvas, giving it the only true light-on-dark contrast in the system. The card uses no shadow; the contrast itself is the elevation.
+- **Code window traffic lights** — `{component.code-window}` shells include a row of three coloured dots (red `{colors.accent-red}`, yellow `{colors.accent-yellow}`, green `{colors.accent-green}`) at the top — the only place all three semantic colours appear together as solid surfaces.
+
+## Shapes
+
+### Border Radius Scale
+
+| Token | Value | Use |
+|---|---|---|
+| `{rounded.none}` | 0px | Hero stripe, full-bleed bands, footer. |
+| `{rounded.xs}` | 4px | Inline tags inside code wells. |
+| `{rounded.sm}` | 6px | Code tabs, mid-size chips. |
+| `{rounded.md}` | 8px | Buttons, form inputs. |
+| `{rounded.lg}` | 12px | Feature cards, pricing tiers, code wells, email mockups. |
+| `{rounded.xl}` | 16px | Larger feature panels. |
+| `{rounded.full}` | 9999px | Pills, status dots, contributor avatars. |
+
+### Photography Geometry
+- The system uses almost no photography. Visual interest comes from typography + atmospheric glows + code wells + the white email-card insets.
+- When portraits appear (testimonial avatars), they are circular (`{rounded.full}`) at 32px, sitting inline with body copy.
+- Email mockup cards run at 4:5 portrait aspect with `{rounded.lg}` corners.
 
 ## Components
 
-### Primary Button (Ghost on Black)
-**Role:** Default CTA — 'Get started', 'Log in'
+### Buttons
 
-Transparent background, 1px border in #292d30, white text (#ffffff), 6px radius, 12px 16px padding. Hover increases border opacity to white. This is the signature button — never filled, never colorful.
+**`button-primary`** — white CTA
+- Background `{colors.primary}`, label `{colors.primary-on}`, type `{typography.button-md}`, padding `8px 16px`, `rounded: {rounded.md}`, height 36px.
+- The brightest pixel on the canvas. Used for "Get started", "Sign up", "Try Authn".
+- Pressed state lives in `button-primary-pressed` (background `{colors.surface-light}`).
 
-### Nav Link Button
-**Role:** Top navigation items — 'Features', 'Company', 'Resources'
+**`button-ghost`** — translucent CTA
+- Background `{colors.surface-elevated}`, label `{colors.ink}`, 1px `{colors.hairline-strong}`, type `{typography.button-md}`, `rounded: {rounded.md}`, height 36px.
+- Equal-weight secondary action paired with `{component.button-primary}`.
 
-Transparent background, no border, text color #f0f0f0 at 14px Inter weight 400, 0px padding. Underline or color shift on hover to #ffffff.
+**`button-outline`** — outlined CTA
+- Background `{colors.canvas}`, label `{colors.ink}`, 1px `{colors.hairline-strong}`, type `{typography.button-md}`, `rounded: {rounded.md}`, height 36px.
+- Tertiary action; appears on its own next to inline links.
 
-### Text Link with Chevron
-**Role:** Inline CTAs — 'Documentation', 'Get started >'
+### Cards & Containers
 
-No background, no border, white or #f0f0f0 text at 16px Inter, trailing chevron icon in same color. Restrained, terminal-like.
+**`hero-stripe`** — full-bleed hero
+- Background `{colors.canvas}`, text `{colors.ink}`, type `{typography.display-xxl}` for the headline, padding `96px 32px`, `rounded: {rounded.none}`.
+- Used only on the home page hero band; carries the 96px Domaine Display headline and a single `{component.button-primary}` CTA. No photography, no atmospheric glow inside the hero itself — the glow appears on the section that follows.
 
-### Hero Announcement Pill
-**Role:** 'Announcing Resend Forward >' badge above hero headline
+**`feature-card`** — feature highlight card
+- Background `{colors.surface-card}`, text `{colors.ink}`, type `{typography.body-md}`, `rounded: {rounded.lg}`, padding `{spacing.xxl}` (32px).
+- Used in the home grid: "Despite emails using React", "So beyond editing", etc. No outline by default — relies on canvas black contrast.
 
-Transparent fill, 1px border in #292d30, #f0f0f0 text at 14px Inter, 9999px (pill) radius, 6px 12px padding. Small chromatic accent chevron.
+**`feature-card-bordered`** — outlined feature card
+- Background `{colors.surface-card}`, text `{colors.ink}`, 1px `{colors.hairline-strong}`, type `{typography.body-md}`, `rounded: {rounded.lg}`, padding `{spacing.xxl}`.
+- Used when feature cards sit close together and need explicit separation.
 
-### Section Card
-**Role:** Content cards in feature sections and testimonial grid
+**`pricing-tier`** — pricing tier card
+- Background `{colors.surface-card}`, text `{colors.ink}`, 1px `{colors.hairline-strong}`, type `{typography.body-md}`, `rounded: {rounded.lg}`, padding `{spacing.xxl}` (32px).
+- Tier name in `{typography.heading-md}` + price in `{typography.display-lg}` (ABC Favorit, 56px).
 
-Black background (#000000), 1px border in #292d30, 16px radius, 32px padding, no shadow. Cards rely on the border to separate from the black canvas.
+**`pricing-tier-featured`** — recommended tier
+- Background `{colors.surface-elevated}`, text `{colors.ink}`, 1px `{colors.hairline-strong}`, type `{typography.body-md}`, `rounded: {rounded.lg}`, padding `{spacing.xxl}`.
+- Centre tier elevated by surface luminance, not by colour.
 
-### Testimonial Card
-**Role:** Customer quote cards in 'Beyond expectations' section
+**`code-window`** — code well
+- Background `{colors.surface-deep}`, text `{colors.body}`, type `{typography.code-md}`, 1px `{colors.hairline-strong}`, `rounded: {rounded.lg}`, padding `{spacing.xl}` (24px).
+- Includes a 3-dot traffic-light row at top using `{colors.accent-red}` / `{colors.accent-yellow}` / `{colors.accent-green}` for chrome, plus a tab strip below it.
 
-Black background, 1px #292d30 border, 16px radius, 24px padding. Contains quoted text at 16px Inter, avatar (32px circle), name at 14px weight 500 in #f0f0f0, role/title in #a1a4a5.
+**`code-tab`** — code language tab
+- Background `{colors.surface-card}`, text `{colors.charcoal}`, type `{typography.code-md}`, `rounded: {rounded.sm}`, padding `6px 12px`.
+- Active tab bumps text to `{colors.ink}` and adds a subtle `{colors.hairline-strong}` underline.
 
-### Code Block / Terminal Window
-**Role:** Developer-facing code snippets and API examples
+**`email-mockup`** — email-card inset
+- Background `{colors.surface-card}` (or the rare `#ffffff` when rendered as a light-island inset), text `{colors.ink}` (or `{colors.on-light}` for white insets), type `{typography.body-md}`, `rounded: {rounded.lg}`, padding 0.
+- Used in the "Beyond experience" band to demonstrate rendered email output.
 
-Black background, 1px #292d30 border, 16px radius, Commit Mono at 12-14px. Syntax highlighting uses #9281f7 for strings/keywords, #3b9eff for filenames, #3ad389 for success values, #ff9592 for errors. Optional traffic-light dots in top-left for terminal aesthetic.
+### Inputs & Forms
 
-### Logo Grid
-**Role:** Customer logos — Warner Bros, Max, Raycast, etc.
+**`text-input`** — default input
+- Background `{colors.surface-card}`, text `{colors.ink}`, type `{typography.body-sm}`, 1px `{colors.hairline-strong}`, `rounded: {rounded.md}`, padding `10px 14px`, height 40px.
+- Sign-up and waitlist email fields. Focus state thickens the border to `{colors.ink}` (no separate ring colour).
 
-Inline-display logos at their native colors on black canvas, centered in a 4-column grid with 60px row gap. No card wrappers, no labels — just the marks breathing against black.
+### Navigation
 
-### Status Indicator Dot
-**Role:** Email event status — delivered, opened, clicked, bounced, complained
+**`nav-bar`** — top nav (desktop)
+- Background `{colors.canvas}`, text `{colors.body}`, type `{typography.button-sm}`, height 64px, single hairline `{colors.hairline}` bottom border.
+- Left: wordmark logo. Centre: top-level nav ("Features", "Pricing", "Docs", "Customers"). Right: "Sign in" link + `{component.button-primary}`.
 
-2-3px diameter filled dot, no border, paired with label text in Commit Mono. Colors map to semantics: #3ad389 delivered, #70b8ff opened, #baa7ff clicked, #ff9592 bounced, #ffca16 complained.
+**`nav-bar`** (mobile)
+- Same height 64px, collapses centre nav into a hamburger icon. Logo stays left, sign-in CTA stays right.
 
-### Email Address Badge
-**Role:** 'from:' addresses in code samples and UI
+**`sub-nav-pill`** — pill-style sub-nav
+- Pill chips set in a horizontal row above content (e.g. on the customers index), `{component.sub-nav-pill}` styling.
 
-No background, Commit Mono at 12-14px, text color #9281f7 (Iris Violet). The violet-on-black makes email identifiers the most readable code element — a deliberate developer-UX choice.
+### Signature Components
 
-### Icon Container
-**Role:** Rounded-square containers for app icons in integrations grid
+**`badge-pill`** — neutral pill
+- Background `{colors.surface-elevated}`, text `{colors.body}`, type `{typography.caption}`, `rounded: {rounded.full}`, padding `4px 10px`.
+- Inline tags ("New", "Beta", "v3.0") inside hero copy and customer story headers.
 
-32x32 or 48x48 rounded square (16px radius), subtle gradient fill (oklab violet→magenta), white or violet stroke icon inside. Creates the only chromatic surface on the page.
+**`status-dot`** — status indicator
+- Background `{colors.accent-green}`, `rounded: {rounded.full}`, 8px square.
+- Inline indicator next to "Status: Operational" in the footer or system status references.
 
-### 3D Hero Cube
-**Role:** WebGL-rendered black geometric cube in hero
+**`contributor-avatar`** — testimonial avatar
+- Background `{colors.surface-card}` placeholder, `rounded: {rounded.full}`, 32×32px.
+- Used inline with customer testimonials.
 
-Full-opacity black cube with subtle edge highlights in #292d30, rotating slowly. No glow, no color — a sculptural object that anchors the right side of the hero against the black canvas.
-
-### Footer Link Row
-**Role:** Minimal footer with two text links
-
-Two text links ('Privacy', 'Terms') at 14px Inter in #a1a4a5, separated by space, no decorative elements. Footer is intentionally minimal — no logo, no columns.
+**`footer`** — global footer
+- Background `{colors.canvas}`, text `{colors.charcoal}`, type `{typography.body-sm}`, `rounded: {rounded.none}`, padding `64px 32px`.
+- Multi-column quick-links grid above a single-line copyright row separated by `{colors.divider-soft}`.
 
 ## Do's and Don'ts
 
 ### Do
-- Use pure #000000 as the page canvas — never off-black or tinted dark grays for the background.
-- Separate all UI layers with 1px borders in #292d30, not shadows. Cards, inputs, code blocks all rely on hairline borders against the black canvas.
-- Use Commit Mono for any code, email address, or developer-facing string. Keep Inter for prose and UI chrome.
-- Keep buttons ghost/outlined: transparent fill, 1px border, white text. Never use a filled colorful button as the primary CTA.
-- Use 6px radius for buttons, badges, inputs. Use 16px radius for cards and code windows. Never mix — the radius scale is two values.
-- Let Iris Violet (#9281f7) mark code strings and developer identifiers. It is the only brand color and should feel like syntax highlighting, not decoration.
-- Apply tight -0.05em letter-spacing at 56px display sizes and -0.01em at 96px hero sizes. The compressed tracking is what makes the headlines feel confident.
+- Use `{colors.canvas}` (true black) as the default page background. Every public page lives here.
+- Reserve `{component.button-primary}` (white pill) as the only solid bright surface. One per viewport at most.
+- Set hero headlines in **Domaine Display** at 76–96px with `lineHeight: 1.0` and `ss01 / ss04 / ss11` features engaged.
+- Use **ABC Favorit** for marketing body, **Inter** for UI labels, **Geist Mono** for code. Keep the lanes strict.
+- Build elevation from translucent-white hairlines, not drop shadows.
+- Use `{colors.accent-*-glow}` tokens as low-opacity radial atmospheric washes — never as solid surfaces.
+- Set buttons and inputs to `{rounded.md}` (8px); cards and code wells to `{rounded.lg}` (12px); pills and avatars to `{rounded.full}`.
+- Use the white email-mockup inset sparingly — it's the only deliberately-light surface and should feel like a print pull-quote.
 
 ### Don't
-- Don't add gradients, glows, or chromatic washes to the hero or section backgrounds. The canvas is flat black.
-- Don't use filled accent-color buttons (blue, violet, green) as primary actions. Buttons stay ghost or white-text-on-black.
-- Don't use multiple border radii on a single surface. Cards are 16px, buttons/badges/inputs are 6px — pick one per component.
-- Don't introduce colored card backgrounds. Cards sit on black with hairline borders; no #292d30 fills.
-- Don't use shadows for elevation. The design relies on 1px borders and subtle backdrop blurs, not drop shadows.
-- Don't pair Iris Violet with large type as a decorative heading color. It belongs to code and developer identifiers only.
-- Don't break the monochrome-with-one-violet discipline by adding multiple accent hues to UI chrome. The status colors (green, blue, red, amber) are reserved for data/status indicators.
+- Don't use a near-black canvas. The brand sits on `#000000`, not `#0a0a0a`.
+- Don't apply solid colour to atmospheric accent tokens. `{colors.accent-orange}` is for inline highlights only — its glow form is for backdrops.
+- Don't add drop shadows to feature cards or code wells. Translucent white borders carry depth on this canvas.
+- Don't bump body weight to 600 for emphasis. Use family change (Inter → ABC Favorit → Domaine Display) instead.
+- Don't render code outside `{component.code-window}` — even small inline code uses Geist Mono and a `{colors.surface-card}` background.
+- Don't loosen Domaine Display `lineHeight` past 1.0. Tight stacking is structural to the brand.
+- Don't introduce a secondary brand accent. White is the brand on black — accents are atmospheric only.
+- Don't bring photography front-and-centre. The brand reads as type-and-code, not photography-led.
 
-## Surfaces
+## Responsive Behavior
 
-| Level | Name | Value | Purpose |
-|-------|------|-------|---------|
-| 0 | Void | `#000000` | Primary page canvas, full-bleed black |
-| 1 | Graphite | `#292d30` | Hairline borders defining card and input surfaces against the void |
-| 2 | Surface Lift | `#0b0e14` | Elevated panels and overlay scrims via subtle gradient |
-| 3 | Backdrop Blur | `#000000f2` | Modal and navigation overlays with blur(25px) |
+### Breakpoints
 
-## Elevation
+| Name | Width | Key Changes |
+|---|---|---|
+| Desktop XL | ≥ 1440px | Full max-width 1200 body, 3-up feature grid, side-by-side code-story splits. |
+| Desktop | 1280–1439px | Container shrinks; xl side padding. |
+| Tablet Large | 1024–1279px | Feature grid stays 3-up, code-story remains 2-up. |
+| Tablet | 768–1023px | Feature grid 2-up, code-story stacks (narrative on top), pricing stacks vertically. |
+| Mobile Large | 426–767px | Feature grid 1-up; nav collapses to hamburger; hero `{typography.display-xxl}` clamps to 56px. |
+| Mobile | ≤ 425px | All grids 1-up, hero clamps to 44px, section padding `{spacing.section}` collapses to 64px. |
 
-Elevation is achieved through 1px hairline borders (#292d30) against a flat black canvas, never through drop shadows. The only shadow token in active use is a faint 1px ring (rgba(176, 199, 217, 0.145)) on icon containers, used sparingly to suggest a subtle light source rather than depth.
+### Touch Targets
+- All buttons ship at minimum 36px tall on desktop, scaling to 44px on mobile via padding adjustment. WCAG AAA met on mobile.
+- `{component.text-input}` is 40px tall — comfortable but not large. Mobile scales to 48px via padding.
+- `{component.sub-nav-pill}` stays at 36px on desktop, 40px on mobile.
 
-## Imagery
+### Collapsing Strategy
+- Top-level nav collapses to hamburger at < 1024px; the wordmark and `{component.button-primary}` stay anchored.
+- Hero `{typography.display-xxl}` clamps: 96px → 76px → 56px → 44px across the breakpoint ladder.
+- Pricing 3-up stacks vertically at < 1024px with the featured tier remaining centre-stacked.
+- Code-story splits switch from side-by-side to stacked at < 1024px, code well always second.
+- Atmospheric glows scale with section width but maintain the same opacity — they fade naturally at small viewports.
 
-Imagery is almost entirely WebGL-rendered 3D objects (black cube in hero, rotating geometric forms) and inline product UI screenshots shown inside dark code windows. No photography, no illustrations, no lifestyle imagery. Logos in the trust bar are inline SVGs at native colors. Icons are 1px-1.5px stroke outlines in #f0f0f0 or #a1a4a5. The visual language is: black canvas, 3D object as hero anchor, dark code windows as product proof, white SVG logos as social proof. Nothing decorative — every visual element is either structural (cube) or demonstrative (code window, logo).
+### Image Behavior
+- Email mockup cards reflow at 1:1 aspect on mobile to remain readable.
+- Atmospheric glows are CSS gradients — no asset cost, no breakpoint variation.
+- Customer testimonial avatars stay 32px circular regardless of breakpoint.
 
-## Agent Prompt Guide
+## Iteration Guide
 
-Quick Color Reference:
-- text/heading: #ffffff
-- text/body: #f0f0f0
-- text/muted: #a1a4a5
-- background/canvas: #000000
-- border/hairline: #292d30
-- accent/code: #9281f7
-- primary action: #3b9eff (filled action)
+1. Focus on ONE component at a time. Most surfaces share `{colors.surface-card}` or `{colors.surface-elevated}` with `{rounded.lg}` — only the role-specific tokens (`{colors.primary}`, `{component.code-window}`) shift between variants.
+2. Reference component names and tokens directly (`{colors.primary}`, `{component.button-primary-pressed}`, `{rounded.lg}`) — do not paraphrase.
+3. Run `npx @google/design.md lint DESIGN.md` after edits; orphaned-tokens warnings will catch unused entries.
+4. Add new variants as separate entries (`-pressed`, `-featured`, `-disabled`) — do not bury them in prose.
+5. Default body type to `{typography.body-md}`; reach for `{typography.subtitle}` only on hero subtitles.
+6. Keep `{colors.primary}` (white) scarce — if more than one solid white surface appears per viewport, ask whether one should drop to `{component.button-ghost}` instead.
 
-3-5 Example Component Prompts:
+## Known Gaps
 
-1. Create a section headline: 'Integrate tonight' at 56px aBCFavorit weight 400, color #ffffff, letter-spacing -2.8px, line-height 1.2. Below it, body copy at 18px Inter weight 400, color #a1a4a5. Section sits on a #000000 canvas with no border.
-
-2. Create a code terminal window: #000000 background, 1px border in #292d30, 16px radius, padding 24px. Content in Commit Mono at 14px. Email address strings colored #9281f7, keywords colored #f0f0f0, success values colored #3ad389. Optional 3 traffic-light dots (8px circles) in top-left.
-
-3. Create a navigation bar: transparent background, Resend wordmark logo on left (white), nav items ('Features', 'Company', 'Resources') in Inter 14px weight 400, color #f0f0f0. On the right, a 'Get started' button — transparent fill, 1px border in #292d30, white text, 6px radius, 8px 16px padding. The bar sits on #000000 with no separator.
-
-4. Create a testimonial card: #000000 background, 1px border in #292d30, 16px radius, 32px padding. Quote text in Inter 16px weight 400, color #f0f0f0. Below: 32px circular avatar, name in Inter 14px weight 500 #f0f0f0, role/title in #a1a4a5. No shadow.
-
-5. Create a status indicator row: inline pill with a 2px circle dot in #3ad389 followed by 'Delivered' label in Commit Mono 12px, color #a1a4a5. Dot indicates email event status. No background, no border, sits inline within a dark code window.
-
-## Similar Brands
-
-- **Linear** — Same black-canvas, hairline-border aesthetic with restrained chromatic accents and sharp typography
-- **Vercel** — Near-identical pure-black backgrounds with white typography and minimal border-based elevation
-- **Plaid** — Dark-mode developer-tool identity with monospaced code emphasis and single-accent palette
-- **Railway** — Black canvas with terminal-style code windows as the primary product showcase
-- **Stripe (dark mode)** — Editorially confident display type on black with hairline borders and ghost buttons
-
-## Quick Start
-
-### CSS Custom Properties
-
-```css
-:root {
-  /* Colors */
-  --color-void-black: #000000;
-  --color-graphite-hairline: #292d30;
-  --color-white: #ffffff;
-  --color-bone-white: #f0f0f0;
-  --color-ash-gray: #a1a4a5;
-  --color-smoke-gray: #abafb4;
-  --color-iron: #6e727a;
-  --color-charcoal: #464a4d;
-  --color-iris-violet: #9281f7;
-  --gradient-iris-violet: linear-gradient(to right bottom in oklab, rgb(146, 129, 247) 0%, rgb(154, 84, 220) 100%);
-  --color-iris-violet-glow: #baa7ff;
-  --color-signal-blue: #3b9eff;
-  --color-sky-blue: #70b8ff;
-  --color-pulse-green: #3ad389;
-  --color-alarm-red: #ff9592;
-  --color-crimson: #ff6465;
-  --color-amber: #ffca16;
-  --color-amber-glow: #ffd60a;
-  --color-surface-gradient: #0b0e14;
-  --gradient-surface-gradient: linear-gradient(rgb(27, 27, 27), rgb(3, 3, 3));
-
-  /* Typography — Font Families */
-  --font-inter: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-domaine: 'Domaine', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-abc-favorit: 'aBC Favorit', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-commit-mono: 'Commit Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-helvetica: 'Helvetica', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-apple-system: '-apple-system', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-
-  /* Typography — Scale */
-  --text-caption: 12px;
-  --leading-caption: 1.33;
-  --text-body-sm: 14px;
-  --leading-body-sm: 1.43;
-  --text-body: 16px;
-  --leading-body: 1.5;
-  --text-subheading: 20px;
-  --leading-subheading: 1;
-  --text-heading-sm: 24px;
-  --leading-heading-sm: 1.5;
-  --text-heading: 56px;
-  --leading-heading: 1.2;
-  --tracking-heading: -2.8px;
-  --text-heading-lg: 77px;
-  --leading-heading-lg: 1;
-  --tracking-heading-lg: -0.77px;
-  --text-display: 96px;
-  --leading-display: 1;
-  --tracking-display: -0.96px;
-
-  /* Typography — Weights */
-  --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-
-  /* Spacing */
-  --spacing-unit: 4px;
-  --spacing-4: 4px;
-  --spacing-8: 8px;
-  --spacing-12: 12px;
-  --spacing-16: 16px;
-  --spacing-20: 20px;
-  --spacing-24: 24px;
-  --spacing-28: 28px;
-  --spacing-32: 32px;
-  --spacing-40: 40px;
-  --spacing-48: 48px;
-  --spacing-64: 64px;
-  --spacing-80: 80px;
-  --spacing-96: 96px;
-  --spacing-104: 104px;
-  --spacing-144: 144px;
-
-  /* Layout */
-  --page-max-width: 1200px;
-  --section-gap: 96px;
-  --card-padding: 32px;
-  --element-gap: 16px;
-
-  /* Border Radius */
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-2xl: 16px;
-  --radius-3xl: 24px;
-
-  /* Named Radii */
-  --radius-cards: 16px;
-  --radius-badges: 6px;
-  --radius-inputs: 6px;
-  --radius-buttons: 6px;
-  --radius-large-panels: 24px;
-
-  /* Shadows */
-  --shadow-subtle: rgba(176, 199, 217, 0.145) 0px 0px 0px 1px;
-  --shadow-subtle-2: rgb(0, 0, 0) 0px 0px 0px 8px;
-  --shadow-subtle-3: rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px;
-
-  /* Surfaces */
-  --surface-void: #000000;
-  --surface-graphite: #292d30;
-  --surface-surface-lift: #0b0e14;
-  --surface-backdrop-blur: #000000f2;
-}
-```
-
-### Tailwind v4
-
-```css
-@theme {
-  /* Colors */
-  --color-void-black: #000000;
-  --color-graphite-hairline: #292d30;
-  --color-white: #ffffff;
-  --color-bone-white: #f0f0f0;
-  --color-ash-gray: #a1a4a5;
-  --color-smoke-gray: #abafb4;
-  --color-iron: #6e727a;
-  --color-charcoal: #464a4d;
-  --color-iris-violet: #9281f7;
-  --color-iris-violet-glow: #baa7ff;
-  --color-signal-blue: #3b9eff;
-  --color-sky-blue: #70b8ff;
-  --color-pulse-green: #3ad389;
-  --color-alarm-red: #ff9592;
-  --color-crimson: #ff6465;
-  --color-amber: #ffca16;
-  --color-amber-glow: #ffd60a;
-  --color-surface-gradient: #0b0e14;
-
-  /* Typography */
-  --font-inter: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-domaine: 'Domaine', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-abc-favorit: 'aBC Favorit', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-commit-mono: 'Commit Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-helvetica: 'Helvetica', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-apple-system: '-apple-system', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-
-  /* Typography — Scale */
-  --text-caption: 12px;
-  --leading-caption: 1.33;
-  --text-body-sm: 14px;
-  --leading-body-sm: 1.43;
-  --text-body: 16px;
-  --leading-body: 1.5;
-  --text-subheading: 20px;
-  --leading-subheading: 1;
-  --text-heading-sm: 24px;
-  --leading-heading-sm: 1.5;
-  --text-heading: 56px;
-  --leading-heading: 1.2;
-  --tracking-heading: -2.8px;
-  --text-heading-lg: 77px;
-  --leading-heading-lg: 1;
-  --tracking-heading-lg: -0.77px;
-  --text-display: 96px;
-  --leading-display: 1;
-  --tracking-display: -0.96px;
-
-  /* Spacing */
-  --spacing-4: 4px;
-  --spacing-8: 8px;
-  --spacing-12: 12px;
-  --spacing-16: 16px;
-  --spacing-20: 20px;
-  --spacing-24: 24px;
-  --spacing-28: 28px;
-  --spacing-32: 32px;
-  --spacing-40: 40px;
-  --spacing-48: 48px;
-  --spacing-64: 64px;
-  --spacing-80: 80px;
-  --spacing-96: 96px;
-  --spacing-104: 104px;
-  --spacing-144: 144px;
-
-  /* Border Radius */
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-2xl: 16px;
-  --radius-3xl: 24px;
-
-  /* Shadows */
-  --shadow-subtle: rgba(176, 199, 217, 0.145) 0px 0px 0px 1px;
-  --shadow-subtle-2: rgb(0, 0, 0) 0px 0px 0px 8px;
-  --shadow-subtle-3: rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px;
-}
-```
+- Pressed/active visual states are documented only for `button-primary-pressed`; other components rely on the default focus-ring (browser default) for interactive feedback.
+- Authenticated product surfaces, documentation, landing pages, and the web console all follow this shared system.
+- Email-template editor surfaces (a key product feature) are not extracted — those live behind authentication.
+- The atmospheric glow rendering uses CSS radial gradients; exact stops and angles vary per section and are not standardised as tokens — render per section-specific design judgment.

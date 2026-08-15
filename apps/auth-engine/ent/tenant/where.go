@@ -465,6 +465,16 @@ func RolePolicyNotNil() predicate.Tenant {
 	return predicate.Tenant(sql.FieldNotNull(FieldRolePolicy))
 }
 
+// SessionPolicyIsNil applies the IsNil predicate on the "session_policy" field.
+func SessionPolicyIsNil() predicate.Tenant {
+	return predicate.Tenant(sql.FieldIsNull(FieldSessionPolicy))
+}
+
+// SessionPolicyNotNil applies the NotNil predicate on the "session_policy" field.
+func SessionPolicyNotNil() predicate.Tenant {
+	return predicate.Tenant(sql.FieldNotNull(FieldSessionPolicy))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Tenant {
 	return predicate.Tenant(sql.FieldEQ(FieldCreatedAt, v))
@@ -675,6 +685,29 @@ func HasAuditLogs() predicate.Tenant {
 func HasAuditLogsWith(preds ...predicate.AuditLog) predicate.Tenant {
 	return predicate.Tenant(func(s *sql.Selector) {
 		step := newAuditLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasManagedTenants applies the HasEdge predicate on the "managed_tenants" edge.
+func HasManagedTenants() predicate.Tenant {
+	return predicate.Tenant(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ManagedTenantsTable, ManagedTenantsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasManagedTenantsWith applies the HasEdge predicate on the "managed_tenants" edge with a given conditions (other predicates).
+func HasManagedTenantsWith(preds ...predicate.ManagedTenant) predicate.Tenant {
+	return predicate.Tenant(func(s *sql.Selector) {
+		step := newManagedTenantsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

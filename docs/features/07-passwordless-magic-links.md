@@ -34,7 +34,7 @@ If a user requests a magic link for an email address that does not exist in the 
 {
   "email": "user@example.com",
   "name": "Alex Smith",
-  "tenant_id": "tnt_default",
+  "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "test"
 }
 ```

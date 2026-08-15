@@ -1,17 +1,17 @@
 # Endpoint Specification: Email Verification Flow
 
 ## Endpoints Covered
-* `GET /v1/client/verify-email` — Token-based email address verification
-* `POST /v1/client/resend-verification` — Resend verification email
+* `GET /v1/client/auth/verify-email` — Token-based email address verification
+* `POST /v1/client/auth/resend-verification` — Resend verification email
 
 These two endpoints form a single user flow and are documented together.
 
 ---
 
-## 1. `GET /v1/client/verify-email`
+## 1. `GET /v1/client/auth/verify-email`
 
 ### Overview
-* **Route**: `GET /v1/client/verify-email?token=<raw_token>`
+* **Route**: `GET /v1/client/auth/verify-email?token=<raw_token>`
 * **Purpose**: Validates a single-use 64-hex-character email verification token, marks the user's `email_verified` field `true`, and clears the token from the database. Intended to be opened by the user clicking the link from their verification email.
 
 ### Authentication & Access Control
@@ -20,7 +20,7 @@ These two endpoints form a single user flow and are documented together.
 
 ### Request
 ```
-GET /v1/client/verify-email?token=56d9754d701cfa3c74ba92...
+GET /v1/client/auth/verify-email?token=56d9754d701cfa3c74ba92...
 X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012
 ```
 
@@ -39,7 +39,7 @@ No request body.
 #### `200 OK` — Successful Verification
 ```bash
 $ curl -i -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
-  "http://localhost:8080/v1/client/verify-email?token=56d9754d701cfa3c74ba92feb9ff8cd6c530f31a7b2cbb1813c2cf938b9870c2"
+  "http://localhost:8080/v1/client/auth/verify-email?token=56d9754d701cfa3c74ba92feb9ff8cd6c530f31a7b2cbb1813c2cf938b9870c2"
 
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -56,7 +56,7 @@ X-Authn-Degraded-Mode: false
 #### `400 Bad Request` — Missing Token Parameter
 ```bash
 $ curl -i -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
-  "http://localhost:8080/v1/client/verify-email"
+  "http://localhost:8080/v1/client/auth/verify-email"
 
 HTTP/1.1 400 Bad Request
 ```
@@ -69,11 +69,11 @@ Both garbage tokens and replayed (already-consumed) tokens return the same gener
 
 ```bash
 # Test 1: Garbage token
-$ curl -i "http://localhost:8080/v1/client/verify-email?token=aaaaaaaaaaaa..."
+$ curl -i "http://localhost:8080/v1/client/auth/verify-email?token=aaaaaaaaaaaa..."
 HTTP/1.1 400 Bad Request
 
 # Test 2: Replay of already-verified token (same token, 2nd request)
-$ curl -i "http://localhost:8080/v1/client/verify-email?token=56d9754d701cfa..."
+$ curl -i "http://localhost:8080/v1/client/auth/verify-email?token=56d9754d701cfa..."
 HTTP/1.1 400 Bad Request
 ```
 ```json
@@ -87,7 +87,7 @@ HTTP/1.1 400 Bad Request
 
 #### `405 Method Not Allowed` — Wrong HTTP Verb
 ```bash
-$ curl -i -X POST "http://localhost:8080/v1/client/verify-email?token=..."
+$ curl -i -X POST "http://localhost:8080/v1/client/auth/verify-email?token=..."
 
 HTTP/1.1 405 Method Not Allowed
 Allow: GET, HEAD
@@ -98,10 +98,10 @@ Allow: GET, HEAD
 
 ---
 
-## 2. `POST /v1/client/resend-verification`
+## 2. `POST /v1/client/auth/resend-verification`
 
 ### Overview
-* **Route**: `POST /v1/client/resend-verification`
+* **Route**: `POST /v1/client/auth/resend-verification`
 * **Purpose**: Triggers a new verification email for an unverified account. Designed to be **enumeration-safe**: always returns the same `200` response regardless of whether the email is registered, already verified, or completely unknown.
 
 ### Authentication & Access Control
@@ -119,7 +119,7 @@ Allow: GET, HEAD
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `email` | string | Yes | Must pass RFC email format validation |
-| `tenant_id` | string | No | Defaults to `tnt_default` |
+| `tenant_id` | string | No | Defaults to `tnt_00000000000000000000000000000001` |
 | `environment` | string | No | Defaults to `test` |
 
 ---
@@ -134,7 +134,7 @@ The same message is returned for all cases: unknown email, already-verified acco
 $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -d '{"email":"nobody@doesnotexist.local"}' \
-  http://localhost:8080/v1/client/resend-verification
+  http://localhost:8080/v1/client/auth/resend-verification
 
 HTTP/1.1 200 OK
 
@@ -150,7 +150,7 @@ HTTP/1.1 200 OK
 $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -d '{"email":"not-an-email"}' \
-  http://localhost:8080/v1/client/resend-verification
+  http://localhost:8080/v1/client/auth/resend-verification
 
 HTTP/1.1 400 Bad Request
 ```
@@ -162,7 +162,7 @@ HTTP/1.1 400 Bad Request
 ```bash
 $ curl -i -X POST -H "Content-Type: application/json" \
   -d '{"email":"fresh.signup@authn.local"}' \
-  http://localhost:8080/v1/client/resend-verification
+  http://localhost:8080/v1/client/auth/resend-verification
 
 HTTP/1.1 401 Unauthorized
 ```
@@ -173,7 +173,7 @@ HTTP/1.1 401 Unauthorized
 #### `405 Method Not Allowed` — Wrong HTTP Verb
 ```bash
 $ curl -i -X GET -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
-  http://localhost:8080/v1/client/resend-verification
+  http://localhost:8080/v1/client/auth/resend-verification
 
 HTTP/1.1 405 Method Not Allowed
 Allow: POST
@@ -189,7 +189,7 @@ Triggered when more than `AUTHN_RESEND_RATELIMIT_MAX_ATTEMPTS` (default 3) resen
 $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -d '{"email":"target.peremail@authn.local"}' \
-  http://localhost:8080/v1/client/resend-verification
+  http://localhost:8080/v1/client/auth/resend-verification
 
 HTTP/1.1 429 Too Many Requests
 Retry-After: 900

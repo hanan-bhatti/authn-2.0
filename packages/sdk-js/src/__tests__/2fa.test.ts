@@ -71,7 +71,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     return { client, mockFetch };
   };
 
-  it("1. enrollTOTP — POST /v1/client/2fa/totp/enroll", async () => {
+  it("1. enrollTOTP — POST /v1/client/auth/2fa/totp/enroll", async () => {
     const { client, mockFetch } = createClientWithMock({
       secret: "JBSWY3DPEHPK3PXP",
       uri: "otpauth://totp/Authn:user@example.com?secret=JBSWY3DPEHPK3PXP",
@@ -85,12 +85,12 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/totp/enroll"),
+      expect.stringContaining("/v1/client/auth/2fa/totp/enroll"),
       expect.objectContaining({ method: "POST" }),
     );
   });
 
-  it("2. confirmTOTP — POST /v1/client/2fa/totp/confirm", async () => {
+  it("2. confirmTOTP — POST /v1/client/auth/2fa/totp/confirm", async () => {
     const { client, mockFetch } = createClientWithMock({
       message: "TOTP 2FA enabled",
       recovery_codes: ["code1", "code2"],
@@ -106,7 +106,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("3. disableTOTP — POST /v1/client/2fa/totp/disable", async () => {
+  it("3. disableTOTP — POST /v1/client/auth/2fa/totp/disable", async () => {
     const { client, mockFetch } = createClientWithMock({
       message: "2FA TOTP disabled",
     });
@@ -118,7 +118,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("4. verifyTOTP — POST /v1/client/2fa/totp/verify", async () => {
+  it("4. verifyTOTP — POST /v1/client/auth/2fa/totp/verify", async () => {
     // Session login challenge path
     const { client: client1 } = createClientWithMock({
       user: { id: "usr_123", email: "totp@example.com", email_verified: true, status: "active", created_at: "2026-08-01T00:00:00Z" },
@@ -142,7 +142,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("5. enrollSMS — POST /v1/client/2fa/sms/enroll", async () => {
+  it("5. enrollSMS — POST /v1/client/auth/2fa/sms/enroll", async () => {
     const { client } = createClientWithMock({
       message: "OTP sent via SMS",
       expires_in_seconds: 300,
@@ -155,7 +155,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("6. confirmSMS — POST /v1/client/2fa/sms/confirm", async () => {
+  it("6. confirmSMS — POST /v1/client/auth/2fa/sms/confirm", async () => {
     const { client } = createClientWithMock({
       message: "SMS 2FA confirmed",
       recovery_codes_created: false,
@@ -165,7 +165,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("7. disableSMS — DELETE /v1/client/2fa/sms/disable", async () => {
+  it("7. disableSMS — DELETE /v1/client/auth/2fa/sms/disable", async () => {
     const { client, mockFetch } = createClientWithMock({
       message: "SMS 2FA disabled",
     });
@@ -173,12 +173,12 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     const result = await client.disableSMS({ password: "SecretPassword123!" });
     expect(result.ok).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/sms/disable"),
+      expect.stringContaining("/v1/client/auth/2fa/sms/disable"),
       expect.objectContaining({ method: "DELETE" }),
     );
   });
 
-  it("8. regenerateRecoveryCodes — POST /v1/client/2fa/recovery-codes/regenerate", async () => {
+  it("8. regenerateRecoveryCodes — POST /v1/client/auth/2fa/recovery-codes/regenerate", async () => {
     const { client } = createClientWithMock({
       message: "recovery codes regenerated",
       recovery_codes: ["rc1", "rc2", "rc3"],
@@ -191,7 +191,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("9. getRecoveryCodesStatus — GET /v1/client/2fa/recovery-codes/status", async () => {
+  it("9. getRecoveryCodesStatus — GET /v1/client/auth/2fa/recovery-codes/status", async () => {
     const { client, mockFetch } = createClientWithMock({
       remaining_count: 14,
       total_count: 16,
@@ -206,12 +206,12 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
       expect(result.status.hasRecoveryCodes).toBe(true);
     }
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/recovery-codes/status"),
+      expect.stringContaining("/v1/client/auth/2fa/recovery-codes/status"),
       expect.objectContaining({ method: "GET" }),
     );
   });
 
-  it("10. beginPasskeyRegistration — POST /v1/client/2fa/webauthn/register/begin", async () => {
+  it("10. beginPasskeyRegistration — POST /v1/client/auth/2fa/webauthn/register/begin", async () => {
     const { client } = createClientWithMock({
       options: { challenge: "abc" },
       session_id: "wasess_123",
@@ -224,7 +224,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("11. finishPasskeyRegistration — POST /v1/client/2fa/webauthn/register/finish", async () => {
+  it("11. finishPasskeyRegistration — POST /v1/client/auth/2fa/webauthn/register/finish", async () => {
     const { client, mockFetch } = createClientWithMock({
       message: "Passkey registered",
       recovery_codes_created: false,
@@ -237,12 +237,12 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     });
     expect(result.ok).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/webauthn/register/finish?session_id=wasess_123&name=My+YubiKey"),
+      expect.stringContaining("/v1/client/auth/2fa/webauthn/register/finish?session_id=wasess_123&name=My+YubiKey"),
       expect.objectContaining({ method: "POST" }),
     );
   });
 
-  it("12. beginPasskeyLogin — POST /v1/client/2fa/webauthn/login/begin", async () => {
+  it("12. beginPasskeyLogin — POST /v1/client/auth/2fa/webauthn/login/begin", async () => {
     const { client } = createClientWithMock({
       options: { challenge: "xyz" },
       session_id: "wasess_login_456",
@@ -257,7 +257,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     }
   });
 
-  it("13. finishPasskeyLogin — POST /v1/client/2fa/webauthn/login/finish", async () => {
+  it("13. finishPasskeyLogin — POST /v1/client/auth/2fa/webauthn/login/finish", async () => {
     const { client, mockFetch } = createClientWithMock({
       user: { id: "usr_passkey", email: "passkey@example.com", email_verified: true, status: "active", created_at: "2026-08-01T00:00:00Z" },
       access_token: "jwt_passkey_login",
@@ -274,12 +274,12 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
       expect(result.session.accessToken).toBe("jwt_passkey_login");
     }
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/webauthn/login/finish?mfa_token=mfa_tok_login&session_id=wasess_login_456"),
+      expect.stringContaining("/v1/client/auth/2fa/webauthn/login/finish?mfa_token=mfa_tok_login&session_id=wasess_login_456"),
       expect.objectContaining({ method: "POST" }),
     );
   });
 
-  it("14. listWebAuthnCredentials — GET /v1/client/2fa/webauthn/credentials", async () => {
+  it("14. listWebAuthnCredentials — GET /v1/client/auth/2fa/webauthn/credentials", async () => {
     const { client, mockFetch } = createClientWithMock({
       credentials: [
         {
@@ -299,12 +299,12 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
       expect(result.credentials[0].name).toBe("Work MacBook TouchID");
     }
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/webauthn/credentials"),
+      expect.stringContaining("/v1/client/auth/2fa/webauthn/credentials"),
       expect.objectContaining({ method: "GET" }),
     );
   });
 
-  it("15. revokeWebAuthnCredential — DELETE /v1/client/2fa/webauthn/credentials/:id", async () => {
+  it("15. revokeWebAuthnCredential — DELETE /v1/client/auth/2fa/webauthn/credentials/:id", async () => {
     const { client, mockFetch } = createClientWithMock({
       message: "passkey deleted",
     });
@@ -315,7 +315,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     });
     expect(result.ok).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/client/2fa/webauthn/credentials/2fa_row_1"),
+      expect.stringContaining("/v1/client/auth/2fa/webauthn/credentials/2fa_row_1"),
       expect.objectContaining({ method: "DELETE" }),
     );
   });

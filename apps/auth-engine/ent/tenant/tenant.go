@@ -38,6 +38,8 @@ const (
 	FieldSocialProviders = "social_providers"
 	// FieldRolePolicy holds the string denoting the role_policy field in the database.
 	FieldRolePolicy = "role_policy"
+	// FieldSessionPolicy holds the string denoting the session_policy field in the database.
+	FieldSessionPolicy = "session_policy"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -54,6 +56,8 @@ const (
 	EdgeWebhookEndpoints = "webhook_endpoints"
 	// EdgeAuditLogs holds the string denoting the audit_logs edge name in mutations.
 	EdgeAuditLogs = "audit_logs"
+	// EdgeManagedTenants holds the string denoting the managed_tenants edge name in mutations.
+	EdgeManagedTenants = "managed_tenants"
 	// Table holds the table name of the tenant in the database.
 	Table = "tenants"
 	// ApplicationsTable is the table that holds the applications relation/edge.
@@ -98,6 +102,13 @@ const (
 	AuditLogsInverseTable = "audit_logs"
 	// AuditLogsColumn is the table column denoting the audit_logs relation/edge.
 	AuditLogsColumn = "tenant_id"
+	// ManagedTenantsTable is the table that holds the managed_tenants relation/edge.
+	ManagedTenantsTable = "managed_tenants"
+	// ManagedTenantsInverseTable is the table name for the ManagedTenant entity.
+	// It exists in this package in order to avoid circular dependency with the "managedtenant" package.
+	ManagedTenantsInverseTable = "managed_tenants"
+	// ManagedTenantsColumn is the table column denoting the managed_tenants relation/edge.
+	ManagedTenantsColumn = "tenant_id"
 )
 
 // Columns holds all SQL columns for tenant fields.
@@ -115,6 +126,7 @@ var Columns = []string{
 	FieldRecoveryPolicy,
 	FieldSocialProviders,
 	FieldRolePolicy,
+	FieldSessionPolicy,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -277,6 +289,20 @@ func ByAuditLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newAuditLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByManagedTenantsCount orders the results by managed_tenants count.
+func ByManagedTenantsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newManagedTenantsStep(), opts...)
+	}
+}
+
+// ByManagedTenants orders the results by managed_tenants terms.
+func ByManagedTenants(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newManagedTenantsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newApplicationsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -317,5 +343,12 @@ func newAuditLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AuditLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, AuditLogsTable, AuditLogsColumn),
+	)
+}
+func newManagedTenantsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ManagedTenantsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ManagedTenantsTable, ManagedTenantsColumn),
 	)
 }

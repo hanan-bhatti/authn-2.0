@@ -20,6 +20,8 @@ type Tx struct {
 	AuditLog *AuditLogClient
 	// Identity is the client for interacting with the Identity builders.
 	Identity *IdentityClient
+	// ManagedTenant is the client for interacting with the ManagedTenant builders.
+	ManagedTenant *ManagedTenantClient
 	// OrgInvitation is the client for interacting with the OrgInvitation builders.
 	OrgInvitation *OrgInvitationClient
 	// OrgMember is the client for interacting with the OrgMember builders.
@@ -197,6 +199,7 @@ func (tx *Tx) init() {
 	tx.Application = NewApplicationClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.Identity = NewIdentityClient(tx.config)
+	tx.ManagedTenant = NewManagedTenantClient(tx.config)
 	tx.OrgInvitation = NewOrgInvitationClient(tx.config)
 	tx.OrgMember = NewOrgMemberClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)

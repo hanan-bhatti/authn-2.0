@@ -345,3 +345,71 @@ func (r *Repository) UpdateImpersonationPolicy(ctx context.Context, tenantID str
 
 	return ip, nil
 }
+
+// GetSessionPolicy returns the tenant's session policy, or DefaultSessionPolicy
+// when the tenant is missing, has none stored, or has one that no longer parses.
+// Stored values are normalized on the way out, so a policy written under looser
+// bounds cannot keep granting a longer session than the current rules permit. The
+// error is always nil.
+//
+// This sits on the login path and on every cookie write, so it must never fail
+// the caller — see the package note on reads degrading to defaults. Callers that
+// want it cached should go through settings.Resolver rather than adding a cache
+// here, so invalidation has one home.
+func (r *Repository) GetSessionPolicy(ctx context.Context, tenantID string) (SessionPolicy, error) {
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
+	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+	if err != nil {
+		return DefaultSessionPolicy(), nil
+	}
+
+	if len(t.SessionPolicy) == 0 {
+		return DefaultSessionPolicy(), nil
+	}
+
+	data, err := json.Marshal(t.SessionPolicy)
+	if err != nil {
+		return DefaultSessionPolicy(), nil
+	}
+
+	var sp SessionPolicy
+	if err := json.Unmarshal(data, &sp); err != nil {
+		return DefaultSessionPolicy(), nil
+	}
+
+	return NormalizeSessionPolicy(sp), nil
+}
+
+// UpdateSessionPolicy normalizes the policy, persists it, and returns what was
+// stored. It returns ErrTenantNotFound for an unknown tenant, or the write error.
+//
+// Out-of-range values are clamped rather than refused, so a caller asking for a
+// ten-year access token receives a 200 describing the day it actually got. The one
+// thing not decided here is whether SameSite=None is usable: that depends on the
+// deployment's scheme, which this layer does not know, so it is enforced where the
+// cookie is built.
+func (r *Repository) UpdateSessionPolicy(ctx context.Context, tenantID string, sp SessionPolicy) (SessionPolicy, error) {
+	client := r.factory.GetClient(ctx, tenantID, policyPoolEnvironment)
+
+	sp = NormalizeSessionPolicy(sp)
+
+	var policyMap map[string]interface{}
+	data, _ := json.Marshal(sp)
+	_ = json.Unmarshal(data, &policyMap)
+
+	exists, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Exist(ctx)
+	if err != nil {
+		return sp, fmt.Errorf("failed checking tenant existence: %w", err)
+	}
+	if !exists {
+		return sp, ErrTenantNotFound
+	}
+
+	if _, err = client.Tenant.UpdateOneID(tenantID).
+		SetSessionPolicy(policyMap).
+		Save(ctx); err != nil {
+		return sp, fmt.Errorf("failed updating tenant session policy: %w", err)
+	}
+
+	return sp, nil
+}

@@ -8,7 +8,7 @@
 
 ## 2. Architecture & Data Model
 
-SAML configuration relies on the Ent ORM schema [`saml_connection.go`](file:///home/hanan-bhatti/authn/apps/auth-engine/ent/schema/saml_connection.go):
+SAML configuration relies on the Ent ORM schema [`saml_connection.go`](../../apps/auth-engine/ent/schema/saml_connection.go):
 
 - `id`: string (`saml_...`, unique, immutable)
 - `organization_id`: string (owning organization)

@@ -39,7 +39,7 @@
 {
   "key": {
     "id": "key_1e3d11488ab3",
-    "application_id": "app_test123",
+    "application_id": "app_00000000000000000000000000000001",
     "name": "Stripe Webhook Handler",
     "type": "secret",
     "key_prefix": "sk_test_",

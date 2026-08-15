@@ -1,0 +1,899 @@
+openapi: 3.0.3
+info:
+  title: Enterprise SAML SSO Fragment (Chunk SAML)
+  description: Verified OpenAPI 3.0 specification fragment for Enterprise SAML 2.0 endpoints in apps/auth-engine.
+  version: 1.0.0
+
+paths:
+  /v1/saml/acs:
+    post:
+      summary: Process SAML Assertion Consumer Service (ACS)
+      operationId: processACS
+      tags:
+        - Enterprise SAML
+      description: |
+        Assertion Consumer Service endpoint for SAML 2.0 Identity Providers.
+        Processes SAMLResponse assertions submitted via HTTP POST binding (JSON or URL-encoded form data).
+        This is an unauthenticated protocol endpoint; security is guaranteed by XML signature verification and assertion validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ACSRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ACSRequest'
+      responses:
+        '200':
+          description: SAML SSO authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ACSResponse'
+        '400':
+          description: Missing or malformed SAMLResponse payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: missing SAMLResponse payload
+                code: missing_parameter
+        '403':
+          description: SAML assertion validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML assertion could not be validated for this service provider
+                code: forbidden
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: an internal error occurred while processing this request
+                code: internal_error
+
+  /v1/saml/metadata/{orgId}:
+    get:
+      summary: Get Service Provider SAML Metadata XML
+      operationId: getSPMetadata
+      tags:
+        - Enterprise SAML
+      description: |
+        Returns the SAML 2.0 Service Provider (SP) metadata XML document for an organization.
+        This is an unauthenticated public endpoint fetched by Identity Provider administrators to configure SSO integrations.
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID to retrieve metadata for
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SAML 2.0 SP Metadata XML document
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: public, max-age=3600
+          content:
+            application/xml:
+              schema:
+                type: string
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <EntityDescriptor entityID="https://authn.com/saml/sp/org_aac11dae-f5c" xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
+                  <SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+                    <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>
+                    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="http://localhost:8080/v1/saml/acs" index="1"/>
+                  </SPSSODescriptor>
+                </EntityDescriptor>
+        '404':
+          description: SAML connection configuration not found for organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found for organization
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/domain-lookup:
+    post:
+      summary: Lookup Domain SSO Configuration
+      operationId: lookupDomainSSO
+      tags:
+        - Enterprise SAML
+        - Client Authentication
+      description: |
+        Inspects an email address or domain prior to sign-in to determine if Enterprise SAML SSO is configured or mandatory.
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainLookupRequest'
+      responses:
+        '200':
+          description: Domain lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainLookupResponse'
+        '400':
+          description: Missing email or valid domain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: email or valid domain is required
+                code: validation_failed
+        '401':
+          description: Unauthorized - Tenant resolution failed or missing Publishable Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: tenant could not be resolved for this request
+                code: unauthorized
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/organizations/{orgId}/saml:
+    post:
+      summary: Create SAML Connection (Client API)
+      operationId: createClientSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Client Organizations
+      description: |
+        Configures Enterprise SAML 2.0 SSO for the specified organization via Client API.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSAMLRequest'
+      responses:
+        '201':
+          description: SAML connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnectionResponse'
+        '400':
+          description: Invalid configuration parameter or domain already mapped to another SAML connection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: SAML connection already exists for this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection already exists for this organization
+                code: already_exists
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: Get SAML Connection (Client API)
+      operationId: getClientSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Client Organizations
+      description: |
+        Retrieves the active SAML 2.0 connection settings for the specified organization via Client API.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SAML connection configuration details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnectionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: SAML connection configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    patch:
+      summary: Update SAML Connection (Client API)
+      operationId: updateClientSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Client Organizations
+      description: |
+        Updates existing SAML 2.0 connection settings for the specified organization via Client API.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSAMLRequest'
+      responses:
+        '200':
+          description: SAML connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnectionResponse'
+        '400':
+          description: Invalid configuration parameter or domain conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: SAML connection configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Delete SAML Connection (Client API)
+      operationId: deleteClientSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Client Organizations
+      description: |
+        Deletes the SAML 2.0 connection configuration for the specified organization via Client API.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SAML connection deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSAMLConnectionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: SAML connection configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/organizations/{orgId}/saml:
+    post:
+      summary: Create SAML Connection (Tenant Admin API)
+      operationId: createTenantSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Tenant Admin SAML
+      description: |
+        Tenant admin endpoint to configure Enterprise SAML 2.0 SSO for an organization.
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSAMLRequest'
+      responses:
+        '201':
+          description: SAML connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnectionResponse'
+        '400':
+          description: Invalid configuration parameter or domain conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Requires tenant admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: SAML connection already exists for this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection already exists for this organization
+                code: already_exists
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    get:
+      summary: Get SAML Connection (Tenant Admin API)
+      operationId: getTenantSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Tenant Admin SAML
+      description: |
+        Tenant admin endpoint to retrieve SAML 2.0 connection settings for an organization.
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SAML connection configuration details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnectionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Requires tenant admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: SAML connection configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    patch:
+      summary: Update SAML Connection (Tenant Admin API)
+      operationId: updateTenantSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Tenant Admin SAML
+      description: |
+        Tenant admin endpoint to update SAML 2.0 connection settings for an organization.
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSAMLRequest'
+      responses:
+        '200':
+          description: SAML connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnectionResponse'
+        '400':
+          description: Invalid configuration parameter or domain conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Requires tenant admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: SAML connection configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Delete SAML Connection (Tenant Admin API)
+      operationId: deleteTenantSAMLConnection
+      tags:
+        - Enterprise SAML
+        - Tenant Admin SAML
+      description: |
+        Tenant admin endpoint to delete SAML 2.0 connection settings for an organization.
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          description: Organization ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SAML connection deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSAMLConnectionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Requires tenant admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: SAML connection configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: SAML connection configuration not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Client publishable API key (`pk_live_...` or `pk_test_...`)
+    SecretKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Secret-Key
+      description: Secret API key (`sk_live_...` or `sk_test_...`)
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Session JWT or Tenant Admin Bearer token
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+        code:
+          type: string
+          description: Machine-readable error code.
+
+    ACSRequest:
+      type: object
+      required:
+        - SAMLResponse
+      properties:
+        SAMLResponse:
+          type: string
+          description: Base64-encoded SAML 2.0 Response XML document.
+        RelayState:
+          type: string
+          description: Optional opaque state parameter echoed back from authentication request.
+
+    ACSResponse:
+      type: object
+      required:
+        - message
+        - user
+        - organization
+      properties:
+        message:
+          type: string
+          example: SAML SSO authentication successful
+        user:
+          type: object
+          required:
+            - id
+            - email
+            - email_verified
+          properties:
+            id:
+              type: string
+              example: usr_1a2b3c4d
+            email:
+              type: string
+              format: email
+              example: user@acme.com
+            email_verified:
+              type: boolean
+              example: true
+        organization:
+          type: object
+          required:
+            - id
+            - name
+            - slug
+          properties:
+            id:
+              type: string
+              example: org_aac11dae-f5c
+            name:
+              type: string
+              example: Acme Enterprise Corp
+            slug:
+              type: string
+              example: acme-corp
+
+    DomainLookupRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address to derive target domain from (used when domain parameter is omitted).
+          example: user@acme.com
+        domain:
+          type: string
+          description: Explicit domain name to inspect directly.
+          example: acme.com
+
+    DomainLookupResponse:
+      type: object
+      required:
+        - has_sso
+        - enforce_sso
+      properties:
+        has_sso:
+          type: boolean
+          description: Indicates whether a SAML SSO connection claims this domain.
+          example: true
+        enforce_sso:
+          type: boolean
+          description: Indicates whether SAML SSO is strictly enforced for this domain.
+          example: true
+        org_id:
+          type: string
+          description: Mapped organization ID (present when has_sso is true).
+          example: org_aac11dae-f5c
+        org_name:
+          type: string
+          description: Mapped organization display name (present when has_sso is true).
+          example: Acme Enterprise Corp
+        idp_sso_url:
+          type: string
+          format: uri
+          description: Identity Provider SSO authentication URL (present when has_sso is true).
+          example: https://idp.acme.com/sso
+
+    CreateSAMLRequest:
+      type: object
+      required:
+        - idp_entity_id
+        - idp_sso_url
+        - idp_certificate
+        - allowed_domains
+      properties:
+        idp_entity_id:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Identity Provider Entity ID / Issuer URI.
+          example: https://idp.acme.com/saml
+        idp_sso_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Identity Provider Single Sign-On HTTP-POST / Redirect URL.
+          example: https://idp.acme.com/sso
+        idp_certificate:
+          type: string
+          maxLength: 10000
+          description: PEM-formatted X.509 public signing certificate of the Identity Provider.
+          example: "-----BEGIN CERTIFICATE-----\nMIIE...\n-----END CERTIFICATE-----"
+        allowed_domains:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+          description: Email domains routed to this Identity Provider.
+          example: ["acme.com", "acme.org"]
+        attribute_mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional JSON map linking SAML assertion attribute names to engine user fields.
+          example:
+            email: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress
+            name: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name
+        enforce_sso:
+          type: boolean
+          default: false
+          description: If true, direct password and social authentication are disabled for users in allowed_domains.
+          example: true
+
+    UpdateSAMLRequest:
+      type: object
+      properties:
+        idp_entity_id:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Replaces the Identity Provider Entity ID when non-null.
+          example: https://idp.acme.com/saml-v2
+        idp_sso_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Replaces the Identity Provider SSO URL when non-null.
+          example: https://idp.acme.com/sso-v2
+        idp_certificate:
+          type: string
+          maxLength: 10000
+          description: Replaces the PEM X.509 signing certificate when non-null.
+          example: "-----BEGIN CERTIFICATE-----\nMIIF...\n-----END CERTIFICATE-----"
+        allowed_domains:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+          description: Replaces the allowed email domain list when non-null.
+          example: ["acme.com"]
+        attribute_mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: Replaces the attribute mapping when non-null.
+        enforce_sso:
+          type: boolean
+          description: Replaces the SSO enforcement flag when non-null.
+          example: false
+
+    SAMLConnectionResponse:
+      type: object
+      required:
+        - id
+        - organization_id
+        - idp_entity_id
+        - idp_sso_url
+        - idp_certificate
+        - allowed_domains
+        - enforce_sso
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique SAML connection identifier.
+          example: saml_1307e93e-aa1
+        organization_id:
+          type: string
+          description: Owning organization ID.
+          example: org_aac11dae-f5c
+        idp_entity_id:
+          type: string
+          description: Identity Provider Entity ID.
+          example: https://idp.acme.com/saml
+        idp_sso_url:
+          type: string
+          format: uri
+          description: Identity Provider SSO URL.
+          example: https://idp.acme.com/sso
+        idp_certificate:
+          type: string
+          description: Public X.509 certificate in PEM format.
+          example: "-----BEGIN CERTIFICATE-----\nMIIE...\n-----END CERTIFICATE-----"
+        allowed_domains:
+          type: array
+          items:
+            type: string
+          description: Array of email domains routed to this connection.
+          example: ["acme.com"]
+        attribute_mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of IdP attributes to engine user fields.
+        enforce_sso:
+          type: boolean
+          description: Flag indicating if SSO is strictly mandatory for allowed_domains.
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the connection was created.
+          example: '2026-08-06T06:41:59Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the connection was last updated.
+          example: '2026-08-06T06:41:59Z'
+
+    DeleteSAMLConnectionResponse:
+      type: object
+      required:
+        - message
+        - org_id
+      properties:
+        message:
+          type: string
+          example: SAML connection deleted successfully
+        org_id:
+          type: string
+          description: Organization ID whose SAML connection was deleted.
+          example: org_aac11dae-f5c

@@ -1,0 +1,1165 @@
+openapi: 3.0.3
+info:
+  title: Authn Engine - Chunk OAuth & Social SSO OpenAPI Fragment
+  version: 1.0.0
+  description: Verified OpenAPI 3.0 fragment covering OAuth2, OpenID Connect, and Social Identity Provider endpoints in apps/auth-engine.
+
+paths:
+  /.well-known/openid-configuration:
+    get:
+      summary: Get OpenID Connect Discovery Metadata
+      description: Returns the RFC 8414 / OpenID Connect Discovery document advertising issuer, authorization endpoint, token endpoint, userinfo endpoint, JWKS URI, supported response types, scopes, signing algorithms, and grant types.
+      operationId: getOIDCDiscovery
+      tags:
+        - OAuth & OIDC
+      security: []
+      responses:
+        '200':
+          description: OpenID Connect discovery configuration
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=3600
+              description: Cache control header set to 1 hour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDCDiscoveryConfig'
+
+  /v1/oauth/jwks:
+    get:
+      summary: Get JSON Web Key Set (JWKS)
+      description: Returns the public key set (RFC 7517) containing active public keys and grace-period keys for verifying tokens issued by this engine.
+      operationId: getOAuthJWKS
+      tags:
+        - OAuth & OIDC
+      security: []
+      responses:
+        '200':
+          description: JSON Web Key Set containing public verification keys
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=3600
+              description: Cache control header set to 1 hour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSResponse'
+
+  /v1/oauth/userinfo:
+    get:
+      summary: Get UserInfo Claims
+      description: Returns standard OpenID Connect profile claims for the authenticated subject using a bearer access token or session cookie.
+      operationId: getOIDCUserInfo
+      tags:
+        - OAuth & OIDC
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: UserInfo claims for the authenticated subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+        '401':
+          description: Unauthorized - Access token is missing, invalid, or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "unauthorized: access token required in Authorization header or cookie"
+                code: "unauthorized"
+        '404':
+          description: User record not found for verified subject
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "user not found"
+                code: "not_found"
+
+  /v1/oauth/authorize:
+    get:
+      summary: OAuth2 PKCE Authorization Endpoint
+      description: |
+        Requires an authenticated user session (via access token cookie or Authorization Bearer header) and a valid publishable key.
+        Validates client registration and redirect URI, then issues a single-use PKCE authorization code.
+        Returns a 302 redirect to the redirect_uri when supplied, or 200 OK with code in JSON body otherwise.
+      operationId: oauthAuthorize
+      tags:
+        - OAuth & OIDC
+      security:
+        - PublishableKey: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: client_id
+          required: true
+          schema:
+            type: string
+          description: Registered client application identifier.
+        - in: query
+          name: redirect_uri
+          required: false
+          schema:
+            type: string
+          description: Callback destination URI. Must exactly match one of client's registered exact_redirect_uris.
+        - in: query
+          name: response_type
+          required: false
+          schema:
+            type: string
+            default: code
+          description: Response type (only "code" is supported).
+        - in: query
+          name: code_challenge
+          required: false
+          schema:
+            type: string
+          description: PKCE code challenge derived from the client's code verifier.
+        - in: query
+          name: code_challenge_method
+          required: false
+          schema:
+            type: string
+            default: S256
+          description: PKCE transform method ("S256" required; "plain" is rejected with 400).
+        - in: query
+          name: scope
+          required: false
+          schema:
+            type: string
+            default: openid profile email
+          description: Requested OAuth2 scopes.
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+          description: Opaque state parameter echoed back in the redirect query parameters.
+        - in: query
+          name: publishable_key
+          required: false
+          schema:
+            type: string
+          description: Query parameter fallback for publishable key if X-Authn-Publishable-Key header is absent.
+        - in: query
+          name: pk
+          required: false
+          schema:
+            type: string
+          description: Short alias query parameter fallback for publishable key.
+      responses:
+        '302':
+          description: Found - Redirects to redirect_uri with code and state parameters
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Redirect URL containing code and optional state query parameters
+        '200':
+          description: Authorization code issued (returned in body when redirect_uri is omitted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizeResponse'
+        '400':
+          description: Bad Request - Missing/invalid parameters, plain PKCE method, or unregistered client/redirect URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "invalid_request: client_id is not registered or redirect_uri is not authorized for this client"
+                code: "validation_failed"
+        '401':
+          description: Unauthorized - Authentication session required or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "unauthorized: authentication session required"
+                code: "unauthorized"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/oauth/token:
+    post:
+      summary: OAuth2 Token Exchange & Refresh Endpoint
+      description: |
+        Exchanges an authorization code for access and ID tokens (authorization_code grant with PKCE),
+        or exchanges a refresh token for rotated tokens (refresh_token grant).
+        Payload is accepted as JSON or form URL-encoded.
+      operationId: oauthTokenExchange
+      tags:
+        - OAuth & OIDC
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenExchangeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenExchangeRequest'
+      responses:
+        '200':
+          description: Token exchange successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Sets HttpOnly authn_refresh_token cookie when rotating refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenExchangeResponse'
+        '400':
+          description: Bad Request - Missing code/refresh_token, malformed body, or invalid grant parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "invalid_grant: authorization code, client_id, redirect_uri, or PKCE code_verifier is invalid or expired"
+                code: "validation_failed"
+        '401':
+          description: Unauthorized - Refresh token is invalid, expired, or revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "refresh token is invalid, expired, or has been revoked"
+                code: "invalid_token"
+
+  /v1/admin/jwks/rotate:
+    post:
+      summary: Rotate JWKS Signing Key
+      description: Promotes a freshly generated RSA key to active and moves the outgoing key into the rotation grace period. Returns the updated key set.
+      operationId: rotateJWKS
+      tags:
+        - Key Management
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: JWKS key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RotateJWKSResponse'
+        '401':
+          description: Unauthorized - Secret key or console JWT missing/invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Tenant admin role or 2FA enrollment required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/applications:
+    post:
+      summary: Register Client Application
+      description: Registers an OAuth client application under the authenticated tenant with exact redirect URIs allowlist.
+      operationId: createApplication
+      tags:
+        - Application Management
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Application registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApplicationResponse'
+        '400':
+          description: Bad Request - Missing id or name, or invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "id and name are required"
+                code: "missing_parameter"
+        '401':
+          description: Unauthorized - Tenant resolution failed or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Tenant admin role or 2FA enrollment required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/social/{provider}/authorize:
+    get:
+      summary: Initiate Social Provider Authorization
+      description: |
+        Initiates a social sign-in flow for the given provider (google, github, apple, discord, microsoft, facebook, x, linkedin, etc.).
+        Validates post_callback_redirect against registered exact_redirect_uris for the application and responds 302 Found to provider consent screen.
+      operationId: socialAuthorize
+      tags:
+        - Social SSO
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+          description: Canonical social provider name (e.g. google, github, apple, discord).
+        - in: query
+          name: redirect_uri
+          required: true
+          schema:
+            type: string
+          description: Engine callback URI.
+        - in: query
+          name: post_callback_redirect
+          required: false
+          schema:
+            type: string
+          description: Final application destination URI to land user after callback. Must be authorized for application.
+        - in: query
+          name: publishable_key
+          required: false
+          schema:
+            type: string
+          description: Query parameter fallback for publishable key if X-Authn-Publishable-Key header is absent.
+        - in: query
+          name: pk
+          required: false
+          schema:
+            type: string
+          description: Short alias query parameter fallback for publishable key.
+      responses:
+        '302':
+          description: Found - Redirects browser to social provider consent URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Provider authorization URL containing state token and callback URL
+        '400':
+          description: Bad Request - Missing redirect_uri, provider unconfigured/disabled, or post_callback_redirect unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "redirect_uri query parameter is required"
+                code: "missing_parameter"
+        '401':
+          description: Unauthorized - Publishable API key missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/social/{provider}/callback:
+    get:
+      summary: Handle Social Provider Callback
+      description: |
+        Processes the social provider redirect with code and state.
+        On success, redirects 302 to the application's authorized destination with access token in URL fragment,
+        or returns 200 OK with access token in JSON body if no destination applies.
+      operationId: socialCallback
+      tags:
+        - Social SSO
+      security:
+        - PublishableKey: []
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+          description: Canonical social provider name.
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: One-time authorization code returned by provider.
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+          description: State token returned by provider for CSRF validation.
+        - in: query
+          name: publishable_key
+          required: false
+          schema:
+            type: string
+          description: Query parameter fallback for publishable key if X-Authn-Publishable-Key header is absent.
+        - in: query
+          name: pk
+          required: false
+          schema:
+            type: string
+          description: Short alias query parameter fallback for publishable key.
+      responses:
+        '302':
+          description: Found - Redirects to post_callback_redirect with access_token and token_type in URL fragment
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Destination URL carrying access token in fragment (#access_token=...&token_type=Bearer)
+        '200':
+          description: OK - Access token returned in body when no post_callback_redirect applies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialCallbackResponse'
+        '400':
+          description: Bad Request - Code or state missing, state expired/not found, email required, or provider unconfigured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "code and state query parameters are required"
+                code: "missing_parameter"
+        '401':
+          description: Unauthorized - Publishable API key missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Conflict - Social profile email belongs to another existing account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "an account with this email already exists; sign in with your original method then link providers in account settings"
+                code: "email_exists_social_account"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/social-providers:
+    get:
+      summary: List Social Identity Providers
+      description: Returns every supported social provider along with its tenant configuration state and setup instructions.
+      operationId: listSocialProviders
+      tags:
+        - Tenant Social Provider Management
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of social providers and setup guides
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSocialProvidersResponse'
+        '401':
+          description: Unauthorized - Secret key or console JWT missing/invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Tenant admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/tenant/social-providers/{provider}:
+    get:
+      summary: Get Social Identity Provider Configuration
+      description: Returns configuration state and setup guidance for a specific social provider.
+      operationId: getSocialProvider
+      tags:
+        - Tenant Social Provider Management
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+          description: Canonical social provider name (e.g. google, github, apple).
+      responses:
+        '200':
+          description: Social provider configuration and setup guidance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSocialProviderResponse'
+        '401':
+          description: Unauthorized - Secret key or console JWT missing/invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Tenant admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Provider not found or unsupported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "provider not found"
+                code: "not_found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    put:
+      summary: Configure Social Identity Provider Credentials
+      description: Stores or updates credentials (client_id, client_secret) and enabled state for a social provider. Empty client_secret preserves existing stored secret.
+      operationId: configureSocialProvider
+      tags:
+        - Tenant Social Provider Management
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+          description: Canonical social provider name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureProviderRequest'
+      responses:
+        '200':
+          description: Provider credentials configured successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigureProviderResponse'
+        '400':
+          description: Bad Request - Missing client_id or malformed body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "client_id is required"
+                code: "missing_parameter"
+        '401':
+          description: Unauthorized - Secret key or console JWT missing/invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Tenant admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Unprocessable Entity - Credential failed provider format validation rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "[google] invalid client_id: must end with .apps.googleusercontent.com"
+                code: "validation_failed"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Remove Social Identity Provider Configuration
+      description: Deletes configuration and stored credentials for a social provider for the tenant.
+      operationId: deleteSocialProvider
+      tags:
+        - Tenant Social Provider Management
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+          description: Canonical social provider name.
+      responses:
+        '200':
+          description: Provider configuration removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteProviderResponse'
+        '401':
+          description: Unauthorized - Secret key or console JWT missing/invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden - Tenant admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Publishable API key identifying application & tenant scope (pk_test_... or pk_live_...)
+    SecretKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Secret-Key
+      description: Secret API key (sk_test_... or sk_live_...) for backend tenant admin authentication
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: End-user or console administrator JWT access token
+
+  schemas:
+    OIDCDiscoveryConfig:
+      type: object
+      description: RFC 8414 OpenID Connect Discovery Metadata document
+      required:
+        - issuer
+        - authorization_endpoint
+        - token_endpoint
+        - userinfo_endpoint
+        - jwks_uri
+        - response_types_supported
+        - subject_types_supported
+        - id_token_signing_alg_values_supported
+        - scopes_supported
+        - token_endpoint_auth_methods_supported
+        - code_challenge_methods_supported
+        - claims_supported
+        - grant_types_supported
+      properties:
+        issuer:
+          type: string
+          example: https://auth.example.com
+        authorization_endpoint:
+          type: string
+          example: https://auth.example.com/v1/oauth/authorize
+        token_endpoint:
+          type: string
+          example: https://auth.example.com/v1/oauth/token
+        userinfo_endpoint:
+          type: string
+          example: https://auth.example.com/v1/oauth/userinfo
+        jwks_uri:
+          type: string
+          example: https://auth.example.com/v1/oauth/jwks
+        response_types_supported:
+          type: array
+          items:
+            type: string
+          example: ["code"]
+        subject_types_supported:
+          type: array
+          items:
+            type: string
+          example: ["public"]
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+          example: ["RS256"]
+        scopes_supported:
+          type: array
+          items:
+            type: string
+          example: ["openid", "profile", "email"]
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+          example: ["client_secret_basic", "client_secret_post", "none"]
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+          example: ["S256"]
+        claims_supported:
+          type: array
+          items:
+            type: string
+          example: ["iss", "sub", "aud", "exp", "iat", "email", "name", "tenant_id"]
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+          example: ["authorization_code", "refresh_token"]
+
+    JSONWebKey:
+      type: object
+      description: Single RFC 7517 JSON Web Key entry
+      required:
+        - kty
+        - use
+        - alg
+        - kid
+      properties:
+        kty:
+          type: string
+          example: RSA
+        use:
+          type: string
+          example: sig
+        alg:
+          type: string
+          example: RS256
+        kid:
+          type: string
+          example: key_2026_active
+        n:
+          type: string
+          description: Base64url-encoded RSA public modulus
+        e:
+          type: string
+          description: Base64url-encoded RSA public exponent
+
+    JWKSResponse:
+      type: object
+      description: Document returned by JWKS endpoint
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/JSONWebKey'
+
+    UserInfoResponse:
+      type: object
+      description: Standard OIDC UserInfo claim set
+      required:
+        - sub
+        - email
+        - email_verified
+        - tenant_id
+      properties:
+        sub:
+          type: string
+          example: usr_1a2b3c4d
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        email_verified:
+          type: boolean
+          example: true
+        name:
+          type: string
+          example: Jane Doe
+        tenant_id:
+          type: string
+          example: tnt_5e6f7g8h
+        environment:
+          type: string
+          example: production
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-08-01T12:00:00Z
+
+    AuthorizeResponse:
+      type: object
+      description: Response payload when authorization code is requested without redirect_uri
+      required:
+        - code
+        - tenant_id
+        - scope
+      properties:
+        code:
+          type: string
+          example: auth_code_9a8b7c6d5e
+        tenant_id:
+          type: string
+          example: tnt_5e6f7g8h
+        scope:
+          type: string
+          example: openid profile email
+
+    TokenExchangeRequest:
+      type: object
+      description: Request payload for token endpoint (supports JSON and form URL-encoded)
+      required:
+        - grant_type
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code, refresh_token]
+          example: authorization_code
+        code:
+          type: string
+          description: Authorization code (required for authorization_code grant)
+          example: auth_code_9a8b7c6d5e
+        client_id:
+          type: string
+          description: Client application ID
+          example: app_client_123
+        redirect_uri:
+          type: string
+          description: Redirect URI matching authorization request
+          example: https://app.example.com/callback
+        code_verifier:
+          type: string
+          description: PKCE code verifier matching S256 code_challenge
+          example: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+        refresh_token:
+          type: string
+          description: Refresh token (for refresh_token grant)
+
+    TokenExchangeResponse:
+      type: object
+      description: Response payload from token endpoint
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          example: 900
+        refresh_token:
+          type: string
+          example: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        id_token:
+          type: string
+          example: eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleV8yMDI2X2FjdGl2ZSJ9...
+        scope:
+          type: string
+          example: openid profile email
+        user:
+          $ref: '#/components/schemas/UserDTO'
+
+    UserDTO:
+      type: object
+      description: Public user profile payload
+      required:
+        - id
+        - email
+        - email_verified
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          example: usr_1a2b3c
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        email_verified:
+          type: boolean
+          example: true
+        name:
+          type: string
+          example: Alex Smith
+        status:
+          type: string
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-08-01T12:00:00Z
+
+    RotateJWKSResponse:
+      type: object
+      required:
+        - message
+        - new_active_key_id
+        - jwks
+      properties:
+        message:
+          type: string
+          example: JWKS key successfully rotated
+        new_active_key_id:
+          type: string
+          example: key_2026_active_v2
+        jwks:
+          $ref: '#/components/schemas/JWKSResponse'
+
+    CreateApplicationRequest:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          example: app_my_client
+        name:
+          type: string
+          example: My OAuth Client Application
+        exact_redirect_uris:
+          type: array
+          items:
+            type: string
+          example: ["https://app.example.com/callback"]
+
+    CreateApplicationResponse:
+      type: object
+      required:
+        - message
+        - id
+        - name
+        - exact_redirect_uris
+      properties:
+        message:
+          type: string
+          example: application registered successfully
+        id:
+          type: string
+          example: app_my_client
+        name:
+          type: string
+          example: My OAuth Client Application
+        exact_redirect_uris:
+          type: array
+          items:
+            type: string
+          example: ["https://app.example.com/callback"]
+
+    SocialCallbackResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          example: Bearer
+
+    ProviderSetup:
+      type: object
+      description: Setup guidance for configuring OAuth application in provider developer console
+      required:
+        - callback_url
+        - step_by_step
+        - console_url
+      properties:
+        callback_url:
+          type: string
+          format: uri
+          example: https://auth.example.com/v1/client/auth/social/google/callback
+        step_by_step:
+          type: array
+          items:
+            type: string
+          example:
+            - Navigate to Google Cloud Console
+            - Create an OAuth 2.0 Client ID
+            - Add the callback URL to Authorized redirect URIs
+        console_url:
+          type: string
+          format: uri
+          example: https://console.cloud.google.com/apis/credentials
+        client_id_format:
+          type: string
+          example: must end with .apps.googleusercontent.com
+        client_secret_format:
+          type: string
+
+    ProviderSetupResponse:
+      type: object
+      description: Social provider configuration state and setup guide
+      required:
+        - provider
+        - enabled
+        - client_id
+        - configured
+        - setup
+      properties:
+        provider:
+          type: string
+          example: google
+        enabled:
+          type: boolean
+          example: true
+        client_id:
+          type: string
+          example: 123456789-abc.apps.googleusercontent.com
+        configured:
+          type: boolean
+          example: true
+        setup:
+          $ref: '#/components/schemas/ProviderSetup'
+
+    ListSocialProvidersResponse:
+      type: object
+      required:
+        - providers
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderSetupResponse'
+
+    GetSocialProviderResponse:
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          $ref: '#/components/schemas/ProviderSetupResponse'
+
+    ConfigureProviderRequest:
+      type: object
+      required:
+        - client_id
+      properties:
+        enabled:
+          type: boolean
+          default: false
+          example: true
+        client_id:
+          type: string
+          example: 123456789-abc.apps.googleusercontent.com
+        client_secret:
+          type: string
+          description: Secret key. Empty string preserves stored secret.
+          example: GOCSPX-abc123secret
+
+    ConfigureProviderResponse:
+      type: object
+      required:
+        - message
+        - provider
+      properties:
+        message:
+          type: string
+          example: provider configured successfully
+        provider:
+          type: string
+          example: google
+
+    DeleteProviderResponse:
+      type: object
+      required:
+        - message
+        - provider
+      properties:
+        message:
+          type: string
+          example: provider removed
+        provider:
+          type: string
+          example: google
+
+    ErrorEnvelope:
+      type: object
+      description: Canonical error response envelope
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: invalid credentials provided
+        code:
+          type: string
+          description: Stable machine-readable error code
+          example: invalid_credentials

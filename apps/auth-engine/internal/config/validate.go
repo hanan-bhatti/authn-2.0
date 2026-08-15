@@ -48,6 +48,7 @@ func (c *Config) Validate() error {
 	c.validateProduction(add)
 	c.validateLifetimes(add)
 	c.validatePlatformTenant(add)
+	c.validateCookieDomain(add)
 
 	if len(problems) == 0 {
 		return nil
@@ -242,5 +243,58 @@ func (c *Config) validatePlatformTenant(add func(string, ...any)) {
 	if id == "tnt_00000000000000000000000000000001" {
 		add("PLATFORM_TENANT_ID must not be \"tnt_default\": that tenant is created by " +
 			"the development seeder with credentials published in source control")
+	}
+}
+
+// validateCookieDomain checks that a configured cookie domain is a bare domain
+// the deployment could actually set a cookie for.
+//
+// A browser silently discards a Set-Cookie whose Domain the responding host is
+// not within, so every mistake in this value produces the same symptom: login
+// appears to succeed and the session vanishes on the next request, with nothing
+// logged. Catching the malformed shapes at startup is the difference between a
+// clear refusal to boot and an afternoon spent in browser devtools.
+//
+// The domain is not required to match AppBaseURL. A deployment may legitimately
+// serve auth.acme.com while scoping cookies to .acme.com, and behind a proxy the
+// base URL may name an internal host. Only shapes that cannot work are refused.
+func (c *Config) validateCookieDomain(add func(string, ...any)) {
+	domain := strings.TrimSpace(c.CookieDomain)
+	if domain == "" {
+		return // host-only cookies; correct for a single-domain deployment
+	}
+
+	if strings.Contains(domain, "://") {
+		add("COOKIE_DOMAIN (%q) must be a bare domain without a scheme, e.g. \".acme.com\"", domain)
+		return
+	}
+	if strings.ContainsAny(domain, "/ \t") {
+		add("COOKIE_DOMAIN (%q) must be a bare domain without a path or spaces", domain)
+		return
+	}
+	if strings.Contains(domain, ":") {
+		add("COOKIE_DOMAIN (%q) must not include a port: cookie scope ignores ports entirely", domain)
+		return
+	}
+
+	// A leading dot is the conventional way to write "this domain and its
+	// subdomains" and is accepted, but the remainder still has to be a domain.
+	bare := strings.TrimPrefix(domain, ".")
+	if bare == "" {
+		add("COOKIE_DOMAIN (%q) is only a dot", domain)
+		return
+	}
+
+	// A single label cannot be a cookie domain on the public internet, and
+	// "localhost" specifically must be left host-only: browsers refuse a Domain
+	// attribute for it, so setting one drops the cookie in local development —
+	// exactly where it is hardest to attribute.
+	if bare == "localhost" {
+		add("COOKIE_DOMAIN must not be set to \"localhost\": browsers reject a Domain " +
+			"attribute for it. Leave COOKIE_DOMAIN empty for local development")
+		return
+	}
+	if !strings.Contains(bare, ".") {
+		add("COOKIE_DOMAIN (%q) must be a dotted domain such as \".acme.com\"", domain)
 	}
 }

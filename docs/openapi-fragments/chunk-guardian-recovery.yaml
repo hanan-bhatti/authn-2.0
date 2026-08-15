@@ -1,0 +1,865 @@
+openapi: 3.0.3
+info:
+  title: Chunk C - Guardian & Recovery API
+  version: 1.0.0
+  description: OpenAPI 3.0 fragment for Social Recovery Guardians and Account Recovery endpoints in authn-engine.
+paths:
+  /v1/client/account/guardians/invite:
+    post:
+      summary: Invite trusted guardians
+      description: Enrolls new trusted guardians, generates Shamir secret shares, and issues zero-knowledge invite tokens. Requires an active authenticated user session.
+      operationId: InviteGuardians
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - guardians
+              properties:
+                guardians:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InviteGuardianInput'
+                  description: Array of 1 to 5 guardian email and name objects
+      responses:
+        '201':
+          description: Guardians invited successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteGuardiansResponse'
+        '400':
+          description: Bad request (invalid payload, invalid email, or guardian limit exceeded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key or bearer token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/account/guardians/accept:
+    post:
+      summary: Accept guardian invitation
+      description: Accepts an invitation to become a trusted recovery guardian using the contact ID and invitation token. Public endpoint.
+      operationId: AcceptGuardianInvite
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contact_id
+                - token
+              properties:
+                contact_id:
+                  type: string
+                  example: gdn_1a2b3c
+                  description: Unique recovery contact ID
+                token:
+                  type: string
+                  example: raw_invitation_token_hex
+                  description: Zero-knowledge guardian invitation token
+      responses:
+        '200':
+          description: Guardian invitation accepted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: Guardian invitation accepted successfully
+        '400':
+          description: Bad request (missing parameters or invalid/expired invitation token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/account/guardians:
+    get:
+      summary: List trusted guardians
+      description: Returns all recovery guardians enrolled by the authenticated user.
+      operationId: ListGuardians
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: List of guardians retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - guardians
+                properties:
+                  guardians:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GuardianDTO'
+        '401':
+          description: Unauthorized (missing or invalid publishable key or bearer token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/account/guardians/{id}:
+    delete:
+      summary: Revoke a guardian
+      description: Revokes a trusted guardian contact and executes the Re-Key & Re-Split Protocol for remaining guardians.
+      operationId: RevokeGuardian
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique RecoveryContact ID identifier to revoke
+          schema:
+            type: string
+            example: gdn_1a2b3c
+      responses:
+        '200':
+          description: Guardian revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: Guardian revoked successfully. Remaining guardians re-keyed with new Shamir shares.
+        '400':
+          description: Bad request (missing contact ID or unable to revoke guardian)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key or bearer token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/initiate:
+    post:
+      summary: Initiate account recovery
+      description: Opens an account recovery attempt for the provided email and returns eligible proof methods based on tenant policy and device trust evaluation.
+      operationId: InitiateRecovery
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                tenant_id:
+                  type: string
+                  example: tnt_demo123
+                  description: Optional tenant ID (defaults to context tenant or tnt_00000000000000000000000000000001)
+                environment:
+                  type: string
+                  example: test
+                  description: Optional environment scope (defaults to test)
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                  description: Account email address
+      responses:
+        '200':
+          description: Recovery request initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitiateRecoveryResponse'
+        '400':
+          description: Bad request (missing email or no recovery methods configured)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden (origin IP, subnet, or device fingerprint blacklisted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/proof/guardian:
+    post:
+      summary: Submit guardian share proof
+      description: Submits one guardian's Shamir secret share toward fulfilling recovery threshold requirements.
+      operationId: SubmitGuardianProof
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recovery_request_id
+                - share_payload
+              properties:
+                recovery_request_id:
+                  type: string
+                  example: req_1a2b3c
+                  description: Recovery request ID returned by initiate
+                share_payload:
+                  type: string
+                  example: 0102030405060708090a0b0c0d0e0f10
+                  description: Hex-encoded raw Shamir secret share
+      responses:
+        '200':
+          description: Guardian share proof processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - threshold_reached
+                  - status
+                properties:
+                  threshold_reached:
+                    type: boolean
+                    example: true
+                    description: True if threshold K shares have been collected
+                  status:
+                    type: string
+                    enum:
+                      - proof_verified
+                      - awaiting_more_shares
+                    example: proof_verified
+        '400':
+          description: Bad request (missing parameters or invalid share proof)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/proof/old-password:
+    post:
+      summary: Submit old password proof
+      description: Verifies identity using a previously valid password. Requires a trusted device origin.
+      operationId: SubmitOldPasswordProof
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recovery_request_id
+                - password
+              properties:
+                recovery_request_id:
+                  type: string
+                  example: req_1a2b3c
+                  description: Recovery request ID
+                password:
+                  type: string
+                  example: OldSuperSecret123!
+                  description: Previous account password
+      responses:
+        '200':
+          description: Old password proof verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - message
+                properties:
+                  status:
+                    type: string
+                    example: proof_verified
+                  message:
+                    type: string
+                    example: Old password verified successfully
+        '400':
+          description: Bad request (missing parameters or invalid password proof)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/proof/security-questions:
+    post:
+      summary: Submit security questions proof
+      description: Verifies identity by validating answers to enrolled security questions.
+      operationId: SubmitSecurityQuestionsProof
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recovery_request_id
+              properties:
+                recovery_request_id:
+                  type: string
+                  example: req_1a2b3c
+                  description: Recovery request ID
+                answers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  example:
+                    q_mother_maiden: Smith
+                    q_first_pet: Fluffy
+                  description: Map of question identifier or text to answer string
+      responses:
+        '200':
+          description: Security questions proof verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - message
+                properties:
+                  status:
+                    type: string
+                    example: proof_verified
+                  message:
+                    type: string
+                    example: Security questions verified successfully
+        '400':
+          description: Bad request (missing parameters or invalid answers proof)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/claim:
+    post:
+      summary: Claim recovered account
+      description: Redeems an out-of-band claim token after proof verification and sets a new password on the account.
+      operationId: ClaimAccount
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimAccountInput'
+      responses:
+        '200':
+          description: Account claimed and password reset successfully
+          headers:
+            Set-Cookie:
+              description: Sets authn_td_token trusted device cookie when device registration produces one
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimAccountResponse'
+        '400':
+          description: Bad request (missing parameters or invalid/expired claim token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/cancel:
+    post:
+      summary: Cancel recovery (authenticated session)
+      description: Cancels an active recovery request using an authenticated user session, blacklisting the originating request details for 7 days.
+      operationId: CancelRecoveryAuth
+      security:
+        - PublishableKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recovery_request_id
+              properties:
+                recovery_request_id:
+                  type: string
+                  example: req_1a2b3c
+                  description: Recovery request ID to cancel
+      responses:
+        '200':
+          description: Recovery request cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - message
+                properties:
+                  status:
+                    type: string
+                    example: cancelled
+                  message:
+                    type: string
+                    example: Recovery request successfully cancelled. Originating request details blacklisted for 7 days. Account flagged for security review.
+        '400':
+          description: Bad request (missing parameter or invalid cancellation point)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid session token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/client/auth/recovery/cancel/token:
+    post:
+      summary: Cancel recovery via cancellation token
+      description: Cancels an active recovery request using a multi-channel out-of-band cancellation token.
+      operationId: CancelRecoveryToken
+      security:
+        - PublishableKey: []
+      parameters:
+        - name: cancellation_token
+          in: query
+          required: false
+          description: Signed cancellation token (alternative to JSON request body)
+          schema:
+            type: string
+            example: raw_cancellation_token_hex
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cancellation_token:
+                  type: string
+                  example: raw_cancellation_token_hex
+                  description: Signed cancellation token
+      responses:
+        '200':
+          description: Recovery request cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - message
+                properties:
+                  status:
+                    type: string
+                    example: cancelled
+                  message:
+                    type: string
+                    example: Recovery request successfully cancelled. Originating request details blacklisted for 7 days. Account flagged for security review.
+        '400':
+          description: Bad request (missing parameter or invalid cancellation token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid publishable key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Authn-Publishable-Key
+      description: Publishable API Key identifying tenant and application
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: End-user JWT access token
+  schemas:
+    InviteGuardianInput:
+      type: object
+      required:
+        - email
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+          example: guardian@example.com
+          description: Email address of the trusted guardian
+        name:
+          type: string
+          example: Jane Doe
+          description: Display name or label of the trusted guardian
+
+    InviteGuardiansResponse:
+      type: object
+      required:
+        - enrolled_count
+        - threshold_k
+        - guardians
+      properties:
+        enrolled_count:
+          type: integer
+          example: 3
+          description: Number of guardians enrolled
+        threshold_k:
+          type: integer
+          example: 2
+          description: Shamir secret sharing threshold K required for recovery
+        guardians:
+          type: array
+          items:
+            $ref: '#/components/schemas/GuardianDTO'
+        invite_urls:
+          type: array
+          items:
+            type: string
+          description: Optional invitation URLs generated for distribution
+
+    GuardianDTO:
+      type: object
+      required:
+        - id
+        - guardian_email
+        - guardian_name
+        - share_index
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          example: gdn_1a2b3c
+          description: Unique recovery contact ID
+        guardian_email:
+          type: string
+          format: email
+          example: guardian@example.com
+          description: Email address of the guardian
+        guardian_name:
+          type: string
+          example: Jane Doe
+          description: Display name or label of the guardian
+        share_index:
+          type: integer
+          example: 1
+          description: Index of Shamir share (1 to 5) assigned to this guardian
+        status:
+          type: string
+          enum:
+            - pending_invite
+            - active
+            - revoked
+          example: pending_invite
+          description: Status of guardian enrollment
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-01T12:00:00Z'
+          description: Enrollment timestamp
+
+    InitiateRecoveryResponse:
+      type: object
+      required:
+        - recovery_request_id
+        - status
+        - is_trusted_device_origin
+        - available_methods
+      properties:
+        recovery_request_id:
+          type: string
+          example: req_1a2b3c
+          description: Unique recovery request ID used in subsequent proof calls
+        status:
+          type: string
+          example: initiated
+          description: Request status in state machine
+        is_trusted_device_origin:
+          type: boolean
+          example: true
+          description: Indicates whether request originated from a trusted device and subnet
+        available_methods:
+          type: array
+          items:
+            type: string
+          example:
+            - guardian_consensus
+            - old_password
+            - security_questions
+          description: Permitted proof methods in descending trust order
+        cancellation_token:
+          type: string
+          example: cancel_tok_1a2b3c
+          description: One-time cancellation token (omitted in HTTP response for security, populated only internally)
+
+    ClaimAccountInput:
+      type: object
+      required:
+        - request_id
+        - claim_token
+        - new_password
+      properties:
+        request_id:
+          type: string
+          example: req_1a2b3c
+          description: Recovery request ID in ready_for_claim state
+        claim_token:
+          type: string
+          example: raw_claim_token_hex
+          description: Out-of-band claim token received by account owner
+        new_password:
+          type: string
+          example: NewSuperSecret123!
+          description: Replacement password for the account
+
+    ClaimAccountResponse:
+      type: object
+      required:
+        - status
+        - message
+        - recovery_codes
+      properties:
+        status:
+          type: string
+          example: completed
+          description: Terminal outcome status
+        message:
+          type: string
+          example: Account recovery completed successfully. Password reset, sessions revoked, 2FA cleared.
+          description: Human-readable completion message
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          example:
+            - A1B2-C3D4
+            - E5F6-G7H8
+          description: Freshly minted 2FA backup recovery codes
+        device_cookie:
+          type: string
+          example: raw_device_cookie_token
+          description: Signed trusted-device token issued upon claiming
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          example: Invalid payload or parameters
+          description: Human-readable error message
+        code:
+          type: string
+          example: validation_failed
+          description: Machine-readable error code

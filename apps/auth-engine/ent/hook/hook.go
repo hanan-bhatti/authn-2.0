@@ -57,6 +57,18 @@ func (f IdentityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityMutation", m)
 }
 
+// The ManagedTenantFunc type is an adapter to allow the use of ordinary
+// function as ManagedTenant mutator.
+type ManagedTenantFunc func(context.Context, *ent.ManagedTenantMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ManagedTenantFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ManagedTenantMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ManagedTenantMutation", m)
+}
+
 // The OrgInvitationFunc type is an adapter to allow the use of ordinary
 // function as OrgInvitation mutator.
 type OrgInvitationFunc func(context.Context, *ent.OrgInvitationMutation) (ent.Value, error)

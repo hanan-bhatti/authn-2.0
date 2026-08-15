@@ -166,6 +166,11 @@ func Load() (*Config, error) {
 	cfg.PlatformTenantID = r.str("PLATFORM_TENANT_ID", "")
 	cfg.PlatformTenantSlug = r.str("PLATFORM_TENANT_SLUG", "")
 
+	// Empty means a host-only cookie, which is the correct default: a domain-wide
+	// cookie is only meaningful when the deployment actually serves a parent
+	// domain, and guessing one would produce cookies the browser silently drops.
+	cfg.CookieDomain = r.str("COOKIE_DOMAIN", "")
+
 	if err := r.err(); err != nil {
 		return nil, err
 	}

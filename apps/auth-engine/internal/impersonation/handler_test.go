@@ -64,7 +64,9 @@ func TestImpersonationHTTPHandlers(t *testing.T) {
 	policyRepo := policy.NewRepository(factory)
 	svc := impersonation.NewService(factory, cfg)
 	verifier := &mockStepUpVerifier{}
-	handler := impersonation.NewHandler(svc, policyRepo, verifier)
+	// nil blocklist: these cases assert handler behavior, not JTI revocation,
+	// and a nil *tokenblocklist.Blocklist is a documented no-op.
+	handler := impersonation.NewHandler(svc, policyRepo, verifier, nil)
 
 	// Create Admin User & Target User & Other Admin User
 	adminUser, err := client.User.Create().SetID("usr_admin10").SetTenantID(tnt.ID).SetEmail("admin10@example.com").SetName("Admin 10").SetStatus("active").Save(sysCtx)

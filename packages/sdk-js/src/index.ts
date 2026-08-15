@@ -96,6 +96,9 @@ export {
 // Error system
 export { AuthnError, AuthnErrorCode, isAuthnError } from "./types";
 
+// Admin types
+export * from "./types/admin";
+
 // SDK version — injected at build time by tsup/esbuild
 export const SDK_VERSION = "0.1.0";
 

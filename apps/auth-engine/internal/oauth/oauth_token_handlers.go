@@ -13,7 +13,6 @@ package oauth
 import (
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
@@ -194,18 +193,12 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 		}
 
 		if newRawRefreshToken != "" {
-			cookie := new(fiber.Cookie)
-			cookie.Name = refreshTokenCookieName
-			cookie.Value = newRawRefreshToken
-			cookie.Expires = time.Now().Add(h.service.cfg.RefreshTokenTTL)
-			cookie.HTTPOnly = true
-			// Secure tracks the deployment's own scheme. Without it a browser
-			// sends this long-lived token over cleartext HTTP, where anyone on
-			// the path can capture and replay it.
-			cookie.Secure = h.service.cfg.CookieSecure()
-			cookie.SameSite = "Lax"
-			cookie.Path = "/"
-			c.Cookie(cookie)
+			// The tenant comes from the publishable key this endpoint is guarded by,
+			// not from the rotated session: cookie attributes are a property of the
+			// tenant whose browser is being written to.
+			tenantID, _ := c.Locals("tenant_id").(string)
+			h.cookies.SetRefreshToken(c, tenantID, newRawRefreshToken,
+				h.cookies.RefreshTokenTTL(c.UserContext(), tenantID))
 		}
 
 		res := fiber.Map{

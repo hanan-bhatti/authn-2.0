@@ -322,7 +322,7 @@ func (e *testEnv) do(t *testing.T, method, path string, payload any, decorate ..
 // signUp registers a user and returns the signup reply.
 func (e *testEnv) signUp(t *testing.T, emailAddr, password, name string) response {
 	t.Helper()
-	return e.do(t, http.MethodPost, "/v1/client/signup", map[string]string{
+	return e.do(t, http.MethodPost, "/v1/client/auth/signup", map[string]string{
 		"email":       emailAddr,
 		"password":    password,
 		"name":        name,
@@ -335,7 +335,7 @@ func (e *testEnv) signUp(t *testing.T, emailAddr, password, name string) respons
 // native-client header.
 func (e *testEnv) login(t *testing.T, emailAddr, password string, decorate ...func(*http.Request)) response {
 	t.Helper()
-	return e.do(t, http.MethodPost, "/v1/client/login", map[string]string{
+	return e.do(t, http.MethodPost, "/v1/client/auth/login", map[string]string{
 		"email":       emailAddr,
 		"password":    password,
 		"tenant_id":   testTenant,

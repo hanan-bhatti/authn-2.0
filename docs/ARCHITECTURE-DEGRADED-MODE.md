@@ -39,10 +39,10 @@ Not all endpoints react identically to Redis cache outages. The platform strictl
 │  Stateless Read Tier     │                             │  Sensitive Mutation Tier │
 │  (FAIL-OPEN)             │                             │  (FAIL-CLOSED)           │
 ├──────────────────────────┤                             ├──────────────────────────┤
-│ • GET /v1/health         │                             │ • POST /v1/client/login  │
-│ • GET /v1/ready          │                             │ • POST /v1/client/signup │
+│ • GET /v1/health         │                             │ • POST /v1/client/auth/login  │
+│ • GET /v1/ready          │                             │ • POST /v1/client/auth/signup │
 │ • GET /.well-known/...   │                             │ • POST /v1/client/auth/* │
-│ • GET /v1/oauth/jwks     │                             │ • POST /v1/client/2fa/*  │
+│ • GET /v1/oauth/jwks     │                             │ • POST /v1/client/auth/2fa/*  │
 │ • GET /v1/saml/metadata  │                             │ • POST /v1/recovery/*    │
 ├──────────────────────────┤                             ├──────────────────────────┤
 │ Returns 200 OK +         │                             │ Returns 503 Service      │
@@ -66,11 +66,11 @@ Not all endpoints react identically to Redis cache outages. The platform strictl
 * **Definition**: Security-critical authentication, registration, token exchange, and credential mutation endpoints that rely on Redis sliding-window rate limiting to prevent brute-force credential stuffing and password guessing.
 * **Behavior**: Strictly **REJECT** incoming requests with `503 Service Unavailable` (`{"error": "rate limit service unavailable"}`) and `X-Authn-Degraded-Mode: true`.
 * **Endpoints**:
-  * `POST /v1/client/login`
-  * `POST /v1/client/signup`
+  * `POST /v1/client/auth/login`
+  * `POST /v1/client/auth/signup`
   * `POST /v1/client/auth/refresh`
   * `POST /v1/client/auth/recovery/*`
-  * `POST /v1/client/2fa/*`
+  * `POST /v1/client/auth/2fa/*`
 
 ---
 
@@ -80,7 +80,7 @@ The following live `curl` outputs serve as the canonical empirical proof of degr
 
 ### Test Case 1: Baseline Health (Redis UP)
 ```bash
-$ curl -i http://localhost:8080/v1/saml/metadata/org_acme
+$ curl -i http://localhost:8080/v1/saml/metadata/org_00000000000000000000000000000001
 
 HTTP/1.1 200 OK
 Content-Type: application/xml
@@ -105,7 +105,7 @@ $ curl -i -X POST \
   -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
   -d '{"email":"user.vanilla@authn.local","password":"UserPass123!"}' \
-  http://localhost:8080/v1/client/login
+  http://localhost:8080/v1/client/auth/login
 
 HTTP/1.1 503 Service Unavailable
 Content-Type: application/json
@@ -116,7 +116,7 @@ X-Authn-Degraded-Mode: true
 
 ### Test Case 4: Automatic Recovery (`docker start authn-redis`)
 ```bash
-$ curl -i http://localhost:8080/v1/saml/metadata/org_acme
+$ curl -i http://localhost:8080/v1/saml/metadata/org_00000000000000000000000000000001
 
 HTTP/1.1 200 OK
 Content-Type: application/xml

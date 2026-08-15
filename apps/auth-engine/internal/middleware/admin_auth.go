@@ -122,7 +122,7 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 					// is flat. The admin_2fa_required code is what the console
 					// branches on to redirect into enrolment.
 					return httperr.Forbidden(c, "admin_2fa_required",
-						"admin 2FA required: administrator accounts must enroll in 2FA (TOTP or Passkey) at /v1/client/2fa/totp/enroll before accessing admin features")
+						"admin 2FA required: administrator accounts must enroll in 2FA (TOTP or Passkey) at /v1/client/auth/2fa/totp/enroll before accessing admin features")
 				}
 			}
 

@@ -1,0 +1,1302 @@
+openapi: 3.0.3
+info:
+  title: User & Session Management Fragment (Chunk User-Session)
+  description: Verified OpenAPI 3.0 specification fragment for User Self-Service and Session Management endpoints in apps/auth-engine.
+  version: 1.0.0
+
+paths:
+  /v1/client/user/email/verify:
+    get:
+      summary: Verify Primary Email Address Change
+      operationId: verifyEmailChange
+      tags:
+        - User Self-Service
+      description: |
+        Consumes the verification token from the query string to verify and promote a proposed new primary email address.
+        Requires a publishable key. The caller identity is verified via the signed token parameter.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Verification token delivered to the new email address
+          schema:
+            type: string
+      security:
+        - PublishableKey: []
+      responses:
+        '200':
+          description: Primary email address verified and updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: primary email address updated and verified successfully
+        '400':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing_parameter:
+                  summary: Missing token parameter
+                  value:
+                    error: token query parameter is required
+                    code: missing_parameter
+                invalid_token:
+                  summary: Invalid or expired token
+                  value:
+                    error: invalid or expired verification token
+                    code: invalid_token
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/recovery-email/verify:
+    get:
+      summary: Verify Secondary Recovery Email Address
+      operationId: verifyRecoveryEmail
+      tags:
+        - User Self-Service
+      description: |
+        Consumes the verification token from the query string to mark a secondary recovery email address as verified.
+        Requires a publishable key.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Verification token delivered to the recovery email address
+          schema:
+            type: string
+      security:
+        - PublishableKey: []
+      responses:
+        '200':
+          description: Secondary recovery email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: secondary recovery email verified successfully
+        '400':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing_parameter:
+                  summary: Missing token parameter
+                  value:
+                    error: token query parameter is required
+                    code: missing_parameter
+                invalid_token:
+                  summary: Invalid or expired token
+                  value:
+                    error: invalid or expired verification token
+                    code: invalid_token
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/profile:
+    get:
+      summary: Get Authenticated User Profile
+      operationId: getUserProfile
+      tags:
+        - User Self-Service
+      description: |
+        Returns the account profile for the authenticated caller.
+        Requires a valid publishable key and user session / access token.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: Unauthorized request or missing user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: User account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: user account not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    patch:
+      summary: Update Authenticated User Profile
+      operationId: updateUserProfile
+      tags:
+        - User Self-Service
+      description: |
+        Applies a partial update to the caller's profile. Metadata fields are merged into existing metadata.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '400':
+          description: Invalid request body or field validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                invalid_body:
+                  summary: Invalid JSON payload
+                  value:
+                    error: request body is not valid JSON
+                    code: invalid_request_body
+                validation_failed:
+                  summary: Validation error
+                  value:
+                    error: "profile could not be updated: one or more fields are invalid"
+                    code: validation_failed
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/password:
+    post:
+      summary: Change User Password
+      operationId: changePassword
+      tags:
+        - User Self-Service
+      description: |
+        Changes the caller's password. Validates against current password (if set) and tenant password policy.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: password updated successfully
+        '400':
+          description: Missing new password or password policy validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                missing_parameter:
+                  summary: Missing new password
+                  value:
+                    error: new_password is required
+                    code: missing_parameter
+                validation_failed:
+                  summary: Password policy failure
+                  value:
+                    error: "password could not be changed: ensure the new password meets the configured password policy"
+                    code: validation_failed
+        '401':
+          description: Unauthorized request or incorrect current password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                unauthorized_tenant:
+                  summary: Tenant unresolvable
+                  value:
+                    error: tenant could not be resolved for this request
+                    code: unauthorized
+                invalid_credentials:
+                  summary: Incorrect current password
+                  value:
+                    error: incorrect current password
+                    code: invalid_credentials
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/email:
+    post:
+      summary: Request Primary Email Address Change
+      operationId: requestEmailChange
+      tags:
+        - User Self-Service
+      description: |
+        Initiates a change of the user's primary email address by mailing a confirmation link to the new address.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestEmailChangeRequest'
+      responses:
+        '200':
+          description: Email verification link sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: email verification link sent to new email address
+        '400':
+          description: Validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: email change request could not be processed
+                code: validation_failed
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Email address already in use by another account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: email address is already in use by another account
+                code: already_exists
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/recovery-email:
+    get:
+      summary: Get Secondary Recovery Email Status
+      operationId: getRecoveryEmail
+      tags:
+        - User Self-Service
+      description: |
+        Returns the caller's secondary recovery address and its verification status.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: Recovery email details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - recovery_email
+                  - recovery_email_verified
+                properties:
+                  recovery_email:
+                    type: string
+                    format: email
+                    example: recovery@example.com
+                  recovery_email_verified:
+                    type: boolean
+                    example: true
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    post:
+      summary: Set Secondary Recovery Email Address
+      operationId: setRecoveryEmail
+      tags:
+        - User Self-Service
+      description: |
+        Registers a secondary recovery email address and sends a confirmation link to it.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetRecoveryEmailRequest'
+      responses:
+        '200':
+          description: Recovery email verification link sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: secondary recovery email verification link sent
+        '400':
+          description: Validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: recovery email could not be set
+                code: validation_failed
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+    delete:
+      summary: Remove Secondary Recovery Email Address
+      operationId: deleteRecoveryEmail
+      tags:
+        - User Self-Service
+      description: |
+        Removes the secondary recovery email address from the caller's account.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: Recovery email removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: secondary recovery email removed successfully
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/social-accounts:
+    get:
+      summary: List Linked Social Accounts
+      operationId: listSocialAccounts
+      tags:
+        - User Self-Service
+      description: |
+        Returns all OAuth / social identities linked to the caller's account.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: Linked social accounts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - social_accounts
+                properties:
+                  social_accounts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LinkedSocialAccount'
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/social-accounts/{provider}:
+    delete:
+      summary: Unlink Social Account Provider
+      operationId: unlinkSocialAccount
+      tags:
+        - User Self-Service
+      description: |
+        Disconnects an OAuth provider from the caller's account. Refuses to unlink if it is the only login method.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Social authentication provider name (e.g. google, github)
+          schema:
+            type: string
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: Social account unlinked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - provider
+                  - message
+                properties:
+                  provider:
+                    type: string
+                    example: google
+                  message:
+                    type: string
+                    example: social account unlinked successfully
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: social account could not be unlinked
+                code: validation_failed
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Cannot unlink sole authentication method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "cannot unlink social account: user has no password set and this is the only login method"
+                code: forbidden
+        '404':
+          description: Social provider not linked to account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: social provider is not connected to this account
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/user/account:
+    delete:
+      summary: Permanently Delete User Account
+      operationId: deleteAccount
+      tags:
+        - User Self-Service
+      description: |
+        Permanently erases the caller's account. Re-authenticates with current password before erasure if configured.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
+      responses:
+        '200':
+          description: Account permanently deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: user account deleted permanently
+        '401':
+          description: Unauthorized or incorrect password confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: incorrect current password
+                code: invalid_credentials
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/sessions:
+    get:
+      summary: List Authenticated User Active Sessions
+      operationId: listSessions
+      tags:
+        - Session Management
+      description: |
+        Returns the calling user's active sessions, flagging which session processed this request.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - sessions
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionResponse'
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "session authentication required: missing or invalid access token"
+                code: unauthorized
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/sessions/revoke:
+    post:
+      summary: Revoke Specific User Session
+      operationId: revokeSession
+      tags:
+        - Session Management
+      description: |
+        Revokes a single active session belonging to the caller specified in the request body.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSessionRequest'
+      responses:
+        '200':
+          description: Session revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - session_id
+                properties:
+                  message:
+                    type: string
+                    example: session revoked
+                  session_id:
+                    type: string
+                    example: sess_01H1234567890ABCDEF
+        '400':
+          description: Missing session_id parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: session_id is required
+                code: missing_parameter
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "session authentication required: missing or invalid access token"
+                code: unauthorized
+        '403':
+          description: Session belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: session does not belong to the calling user
+                code: forbidden
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: session not found
+                code: not_found
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/sessions/revoke-others:
+    post:
+      summary: Revoke Other User Sessions
+      operationId: revokeOtherSessions
+      tags:
+        - Session Management
+      description: |
+        Revokes all active sessions belonging to the caller except the session executing this request.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: Other sessions revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - count
+                properties:
+                  message:
+                    type: string
+                    example: all other sessions revoked
+                  count:
+                    type: integer
+                    example: 2
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "session authentication required: missing or invalid access token"
+                code: unauthorized
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/sessions/revoke-all:
+    post:
+      summary: Revoke All User Sessions
+      operationId: revokeAllSessions
+      tags:
+        - Session Management
+      description: |
+        Revokes every session belonging to the caller, including the current active session.
+      security:
+        - PublishableKey: []
+          BearerAuth: []
+      responses:
+        '200':
+          description: All sessions revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - count
+                properties:
+                  message:
+                    type: string
+                    example: all sessions revoked
+                  count:
+                    type: integer
+                    example: 3
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: "session authentication required: missing or invalid access token"
+                code: unauthorized
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/client/auth/refresh:
+    post:
+      summary: Refresh Access Token
+      operationId: refreshTokens
+      tags:
+        - Session Management
+      description: |
+        Exchanges a refresh token (supplied in JSON request body or `authn_refresh_token` HTTP cookie) for a new access token and rotated refresh token.
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokensRequest'
+      responses:
+        '200':
+          description: Token pair refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTokenPairResponse'
+        '400':
+          description: Missing refresh token parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: refresh_token required
+                code: missing_parameter
+        '401':
+          description: Refresh token invalid, expired, revoked, or compromised
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                session_compromised:
+                  summary: Token reuse detected / session compromised
+                  value:
+                    error: session revoked due to token reuse detection
+                    code: session_compromised
+                session_revoked:
+                  summary: Session explicitly revoked
+                  value:
+                    error: session has been revoked
+                    code: session_revoked
+                session_expired:
+                  summary: Session expired
+                  value:
+                    error: session has expired
+                    code: session_expired
+                invalid_token:
+                  summary: Unknown or invalid refresh token
+                  value:
+                    error: invalid or expired refresh token
+                    code: invalid_token
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/users/{user_id}/sessions:
+    get:
+      summary: Admin List User Active Sessions
+      operationId: adminListUserSessions
+      tags:
+        - Admin Session Management
+      description: |
+        Admin endpoint to list all active sessions for a target user. Requires secret key or tenant admin access.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: Target user ID whose sessions to list
+          schema:
+            type: string
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Target user's active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - sessions
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionResponse'
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden / Admin permissions required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/admin/users/{user_id}/sessions/revoke-all:
+    post:
+      summary: Admin Revoke All Sessions for User
+      operationId: adminRevokeAllUserSessions
+      tags:
+        - Admin Session Management
+      description: |
+        Admin endpoint to forcibly revoke all active sessions for a target user. Requires secret key or tenant admin access.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: Target user ID whose sessions to revoke
+          schema:
+            type: string
+      security:
+        - SecretKey: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: All sessions revoked for target user
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - user_id
+                  - count
+                properties:
+                  message:
+                    type: string
+                    example: all sessions revoked for user
+                  user_id:
+                    type: string
+                    example: usr_01H1234567890ABCDEF
+                  count:
+                    type: integer
+                    example: 3
+        '401':
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden / Admin permissions required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    PublishableKey:
+      type: apiKey
+      in: header
+      name: X-Publishable-Key
+      description: Tenant publishable key (pk_...)
+    SecretKey:
+      type: apiKey
+      in: header
+      name: X-Secret-Key
+      description: Secret key for admin operations (sk_...)
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer access token or admin console JWT
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message (never discloses internal implementation details)
+          example: invalid or expired verification token
+        code:
+          type: string
+          description: Stable machine-readable error identifier
+          example: invalid_token
+
+    UserProfileResponse:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - email
+        - email_verified
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          example: usr_01H1234567890ABCDEF
+        tenant_id:
+          type: string
+          example: tnt_01H1234567890ABCDEF
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        email_verified:
+          type: boolean
+          example: true
+        name:
+          type: string
+          example: Jane Doe
+        phone_number:
+          type: string
+          example: "+15551234567"
+        phone_verified:
+          type: boolean
+          example: false
+        recovery_email:
+          type: string
+          format: email
+          example: recovery@example.com
+        recovery_email_verified:
+          type: boolean
+          example: true
+        avatar_url:
+          type: string
+          format: uri
+          example: https://example.com/avatar.jpg
+        locale:
+          type: string
+          example: en-US
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            department: Engineering
+            theme: dark
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-01-15T08:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-02-10T11:45:00Z"
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Jane Doe
+        avatar_url:
+          type: string
+          format: uri
+          example: https://example.com/avatar.jpg
+        locale:
+          type: string
+          example: en-US
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            theme: dark
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - new_password
+      properties:
+        current_password:
+          type: string
+          format: password
+          description: Current user password (required if account has a password set)
+          example: OldPassword123!
+        new_password:
+          type: string
+          format: password
+          description: Replacement password meeting tenant password policy
+          example: NewSecretPassword456!
+
+    RequestEmailChangeRequest:
+      type: object
+      required:
+        - new_email
+      properties:
+        new_email:
+          type: string
+          format: email
+          example: newemail@example.com
+
+    SetRecoveryEmailRequest:
+      type: object
+      required:
+        - recovery_email
+      properties:
+        recovery_email:
+          type: string
+          format: email
+          example: recovery@example.com
+
+    DeleteAccountRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          format: password
+          description: Confirmation password for account erasure
+          example: CurrentPassword123!
+
+    LinkedSocialAccount:
+      type: object
+      required:
+        - provider
+        - provider_user_id
+        - connected_at
+      properties:
+        provider:
+          type: string
+          example: google
+        provider_user_id:
+          type: string
+          example: "109876543210987654321"
+        email:
+          type: string
+          format: email
+          example: user@gmail.com
+        connected_at:
+          type: string
+          format: date-time
+          example: "2026-01-15T08:30:00Z"
+
+    DeviceInfo:
+      type: object
+      required:
+        - browser
+        - os
+        - device
+        - label
+      properties:
+        browser:
+          type: string
+          example: Chrome
+        os:
+          type: string
+          example: macOS
+        device:
+          type: string
+          example: Desktop
+        label:
+          type: string
+          example: Chrome on macOS
+
+    SessionResponse:
+      type: object
+      required:
+        - id
+        - device
+        - ip_address
+        - location
+        - created_at
+        - is_current
+      properties:
+        id:
+          type: string
+          example: sess_01H1234567890ABCDEF
+        device:
+          $ref: '#/components/schemas/DeviceInfo'
+        ip_address:
+          type: string
+          example: 192.0.2.1
+        location:
+          type: string
+          example: Unknown Location
+        last_active_at:
+          type: string
+          format: date-time
+          example: "2026-08-10T10:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-08-01T12:00:00Z"
+        is_current:
+          type: boolean
+          example: true
+
+    RevokeSessionRequest:
+      type: object
+      required:
+        - session_id
+      properties:
+        session_id:
+          type: string
+          example: sess_01H1234567890ABCDEF
+
+    RefreshTokensRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Opaque refresh token (can also be supplied via authn_refresh_token cookie)
+          example: rt_01H1234567890ABCDEF
+
+    SessionTokenPairResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - session_id
+      properties:
+        access_token:
+          type: string
+          description: Newly issued JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          description: Rotated refresh token (omitted / empty string on grace window replay)
+          example: rt_9876543210FEDCBA
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Access token TTL in seconds
+          example: 3600
+        session_id:
+          type: string
+          example: sess_01H1234567890ABCDEF

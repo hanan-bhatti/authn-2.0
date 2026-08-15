@@ -21,7 +21,7 @@ import (
 func TestRenderVerificationEmail(t *testing.T) {
 	data := email.VerificationEmailData{
 		UserName:         "Alice Smith",
-		VerificationLink: "http://localhost:8080/v1/client/verify-email?token=abcdef123456",
+		VerificationLink: "http://localhost:8080/v1/client/auth/verify-email?token=abcdef123456",
 		AppName:          "Authn Test App",
 		ExpiresInHours:   24,
 	}
@@ -31,12 +31,12 @@ func TestRenderVerificationEmail(t *testing.T) {
 
 	assert.Contains(t, html, "Verify your email address")
 	assert.Contains(t, html, "Alice Smith")
-	assert.Contains(t, html, "http://localhost:8080/v1/client/verify-email?token=abcdef123456")
+	assert.Contains(t, html, "http://localhost:8080/v1/client/auth/verify-email?token=abcdef123456")
 	assert.Contains(t, html, "Authn Test App")
 
 	assert.Contains(t, text, "Verify your email address for Authn Test App")
 	assert.Contains(t, text, "Alice Smith")
-	assert.Contains(t, text, "http://localhost:8080/v1/client/verify-email?token=abcdef123456")
+	assert.Contains(t, text, "http://localhost:8080/v1/client/auth/verify-email?token=abcdef123456")
 }
 
 func TestNoopProvider_Send(t *testing.T) {

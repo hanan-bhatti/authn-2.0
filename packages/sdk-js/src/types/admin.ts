@@ -4,12 +4,13 @@
 
 
 export interface AuthnAdminConfig {
-  secretKey: string;
+  secretKey?: string;
   publishableKey?: string;
   endpoint?: string;
   tenantId?: string;
   environment?: "test" | "live";
   timeout?: number;
+  headers?: Record<string, string>;
 }
 
 // RBAC
@@ -190,6 +191,9 @@ export interface WebhookDeliveryDTO {
   endpointId: string;
   eventType: string;
   responseStatusCode: number;
+  requestBody?: string;
+  responseBody?: string;
+  payload?: Record<string, unknown>;
   success: boolean;
   deliveredAt: string;
 }
@@ -213,6 +217,7 @@ export interface SAMLConnectionDTO {
   idpEntityId?: string;
   ssoUrl?: string;
   certificate?: string;
+  allowedDomains?: string[];
   enabled: boolean;
   createdAt: string;
 }
@@ -320,4 +325,98 @@ export interface ListAuditLogsResult {
   ok: true;
   logs: AuditLogDTO[];
   total: number;
+}
+
+// Password Policy
+export interface PasswordPolicyDTO {
+  minLength: number;
+  requireUppercase: boolean;
+  requireLowercase: boolean;
+  requireNumbers: boolean;
+  requireSymbols: boolean;
+  maxAgeDays: number;
+  preventReuseCount: number;
+}
+
+export interface GetPasswordPolicyResult {
+  ok: true;
+  policy: PasswordPolicyDTO;
+}
+
+export interface UpdatePasswordPolicyParams {
+  minLength?: number;
+  requireUppercase?: boolean;
+  requireLowercase?: boolean;
+  requireNumbers?: boolean;
+  requireSymbols?: boolean;
+  maxAgeDays?: number;
+  preventReuseCount?: number;
+}
+
+export interface UpdatePasswordPolicyResult {
+  ok: true;
+  policy: PasswordPolicyDTO;
+}
+
+// Security Policy
+export interface SecurityPolicyDTO {
+  requireMfaAdmins: boolean;
+  requireMfaAll: boolean;
+  sessionTimeoutMinutes: number;
+  maxFailedAttempts: number;
+  lockoutDurationMinutes: number;
+  allowedIpRanges?: string[];
+}
+
+export interface GetSecurityPolicyResult {
+  ok: true;
+  policy: SecurityPolicyDTO;
+}
+
+export interface UpdateSecurityPolicyParams {
+  requireMfaAdmins?: boolean;
+  requireMfaAll?: boolean;
+  sessionTimeoutMinutes?: number;
+  maxFailedAttempts?: number;
+  lockoutDurationMinutes?: number;
+  allowedIpRanges?: string[];
+}
+
+export interface UpdateSecurityPolicyResult {
+  ok: true;
+  policy: SecurityPolicyDTO;
+}
+
+// Recovery Policy
+export interface RecoveryPolicyDTO {
+  allowGuardianRecovery: boolean;
+  minGuardians: number;
+  allowSecurityQuestions: boolean;
+  allowOldPassword: boolean;
+  recoveryDelayHours: number;
+}
+
+export interface GetRecoveryPolicyResult {
+  ok: true;
+  policy: RecoveryPolicyDTO;
+}
+
+export interface UpdateRecoveryPolicyParams {
+  allowGuardianRecovery?: boolean;
+  minGuardians?: number;
+  allowSecurityQuestions?: boolean;
+  allowOldPassword?: boolean;
+  recoveryDelayHours?: number;
+}
+
+export interface UpdateRecoveryPolicyResult {
+  ok: true;
+  policy: RecoveryPolicyDTO;
+}
+
+// JWKS Rotation
+export interface RotateJWKSResult {
+  ok: true;
+  message: string;
+  activeKid?: string;
 }
