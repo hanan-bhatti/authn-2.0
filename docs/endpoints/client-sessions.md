@@ -1,4 +1,4 @@
-# Endpoint Specification: `GET /v1/client/sessions` & `POST /v1/client/sessions/revoke*`
+# Endpoint Specification: `GET /v1/client/sessions`, `POST /v1/client/sessions/revoke*` & `POST /v1/client/auth/logout*`
 
 ## Overview
 * **Routes**:
@@ -97,6 +97,28 @@ X-Authn-Degraded-Mode: false
 {
   "count": 3,
   "message": "all sessions revoked"
+}
+```
+
+### `200 OK` — Sign Out (`POST /v1/client/auth/logout`)
+Ends the session the request was made with. The session is resolved from the access token when one is presented and from the `authn_refresh_token` cookie otherwise, so a browser idle past the access-token lifetime can still sign itself out; without that fallback the cookie would be cleared while the session stayed live for the rest of the refresh lifetime.
+
+Always answers `200`, including when no session resolved — a browser holding an unusable token still needs it removed. `session_revoked` reports whether a server-side session was actually ended. The reply clears the refresh cookie.
+
+```json
+{
+  "message": "signed out",
+  "session_revoked": true
+}
+```
+
+### `200 OK` — Sign Out Everywhere (`POST /v1/client/auth/logout-all`)
+Ends every session the caller owns, the calling one and the session created at signup included, and clears the refresh cookie. Unlike `/logout` this requires an identified caller — from the access token or the refresh cookie — and answers `401` when neither names a user, because revoking "all sessions" for nobody would silently do nothing while reporting success.
+
+```json
+{
+  "message": "signed out on all devices",
+  "count": 3
 }
 ```
 

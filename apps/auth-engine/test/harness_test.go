@@ -44,6 +44,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -225,8 +226,20 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
 	oauthHandler := oauth.NewHandler(oauthService)
 
+	// The session handler owns sign-out and the client session routes, and it
+	// gets the same resolver the server gives it so its cookie writes are driven
+	// by stored tenant policy rather than the deployment default.
+	sessionRepo := session.NewRepository(factory)
+	sessionService := session.NewService(sessionRepo, cfg)
+	sessionHandler := session.NewHandler(sessionService).
+		WithSessionPolicyResolver(settingsResolver)
+
 	authHandler.RegisterRoutes(app, pkMiddleware)
 	oauthHandler.RegisterRoutes(app, pkMiddleware)
+	// The admin slot is nil: no test drives the admin session routes, and passing
+	// the publishable-key middleware there would mount routes that act on an
+	// arbitrary user ID behind a credential that establishes no identity.
+	sessionHandler.RegisterRoutes(app, pkMiddleware, nil)
 
 	ctx := privacy.NewBypassContext(context.Background())
 	if err := authRepo.EnsureTenantExists(ctx, testTenant); err != nil {

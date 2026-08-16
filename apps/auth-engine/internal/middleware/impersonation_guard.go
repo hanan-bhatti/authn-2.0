@@ -80,6 +80,14 @@ var impersonationDenyList = []destructiveRoute{
 	// impersonated session must not be able to drive either half.
 	{method: "POST", suffix: "/auth/recovery/initiate"},
 	{method: "POST", suffix: "/auth/recovery/claim"},
+
+	// Sign-out. An impersonation token names the target user in `sub` and carries
+	// no session claim, so /logout-all resolves the victim's user ID and revokes
+	// every session they own on every device. An impersonator ending their own
+	// support session uses /auth/impersonate/exit, which is deliberately absent
+	// from this list.
+	{method: "POST", suffix: "/auth/logout"},
+	{method: "POST", suffix: "/auth/logout-all"},
 }
 
 // matchesDestructiveRoute reports whether (method, path) names a destructive

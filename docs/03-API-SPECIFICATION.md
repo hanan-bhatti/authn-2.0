@@ -43,6 +43,8 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 ### 2.4 Core Client Authentication
 - `POST /v1/client/auth/signup` — User registration with email/password
 - `POST /v1/client/auth/login` — User authentication with Argon2id check
+- `POST /v1/client/auth/logout` — End the calling session and clear the refresh cookie
+- `POST /v1/client/auth/logout-all` — End every session the caller owns on every device
 - `GET /v1/client/auth/verify-email` — Single-use email verification link
 - `POST /v1/client/auth/resend-verification` — Resend email verification link
 
@@ -487,6 +489,33 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
       "is_current": true
     }
   ]
+}
+```
+
+#### Sign Out (`POST /v1/client/auth/logout` & `POST /v1/client/auth/logout-all`)
+
+> **Last Verified**: `2026-08-16` — integration suite (`apps/auth-engine/test/logout_test.go`).
+
+- **Description**: Ends the caller's session server-side and clears the `authn_refresh_token` cookie. Distinct from `/v1/client/sessions/revoke-all`, which requires a valid access token and does not touch the cookie: sign-out resolves the session from **either** credential the request carries.
+  - **Credential resolution**: the access token when one is presented, otherwise the refresh cookie. The fallback is what makes the endpoint usable from a browser idle past the access-token lifetime — without it the cookie would be cleared while the session stayed live for the rest of the refresh lifetime.
+  - `/logout` ends only the session the request was made with. Other devices keep working.
+  - `/logout-all` ends every session the caller owns, the calling one and the session created at signup included.
+- **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, plus `Authorization: Bearer <jwt>` **or** the `authn_refresh_token` cookie.
+- **Status codes**:
+  - `/logout` always answers `200`, including when nothing resolved. Sign-out reveals nothing the caller does not already know, and a browser holding an unusable token still needs it removed — refusing would leave it holding a credential it can neither use nor clear. `session_revoked` reports whether a server-side session was actually ended.
+  - `/logout-all` answers `401` when neither credential names a user, because revoking "all sessions" for nobody would silently do nothing while reporting success.
+- **Response (200 OK)** — `/logout`:
+```json
+{
+  "message": "signed out",
+  "session_revoked": true
+}
+```
+- **Response (200 OK)** — `/logout-all`:
+```json
+{
+  "message": "signed out on all devices",
+  "count": 3
 }
 ```
 

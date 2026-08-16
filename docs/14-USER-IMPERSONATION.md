@@ -74,6 +74,21 @@ Tokens issued via `jwt.IssueImpersonationToken` contain explicit security claims
                         └─▶ BLOCK: 403 Forbidden ("code": "impersonation_read_only_restricted")
 ```
 
+The blocked set is an explicit enumeration (`impersonationDenyList` in
+`internal/middleware/impersonation_guard.go`), not a pattern match: account
+deletion, password and email changes, social-account unlinking, every 2FA
+teardown or re-enrollment, guardian changes, recovery initiate/claim, and both
+sign-out routes (`POST /v1/client/auth/logout`, `POST /v1/client/auth/logout-all`).
+
+Sign-out is on the list because an impersonation token names the target user in
+`sub` and carries no session claim, so `/logout-all` would resolve the victim's
+user ID and revoke every session they own on every device. `POST
+/v1/client/auth/impersonate/exit` is deliberately **not** on the list — it is how
+an impersonator ends their own session, and blocking it would strand them.
+
+A new destructive route under `/v1/client` must be added to that list when it is
+registered; the guard's default is allow, so an omission fails open.
+
 ---
 
 ## 5. API Endpoints

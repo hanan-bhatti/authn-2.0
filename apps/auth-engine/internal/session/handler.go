@@ -66,7 +66,10 @@ func (h *Handler) WithSessionPolicyResolver(r authcookie.SessionPolicyResolver) 
 //
 // pkMiddleware guards the client tier and resolves the tenant; adminMiddleware
 // guards the admin tier, whose routes act on an arbitrary user ID from the path
-// and therefore must never be reachable from a client session.
+// and therefore must never be reachable from a client session. A nil
+// adminMiddleware leaves that tier unmounted rather than open: Fiber accepts a
+// nil handler at registration and dereferences it on the first request, so
+// passing one through would trade a guard for a panic.
 func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware fiber.Handler) {
 	client := app.Group("/v1/client/sessions", pkMiddleware)
 	client.Get("/", h.ListSessions)
@@ -76,9 +79,19 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware, adminMiddleware f
 
 	app.Post("/v1/client/auth/refresh", pkMiddleware, h.RefreshTokens)
 
-	admin := app.Group("/v1/admin/users/:user_id/sessions", adminMiddleware)
-	admin.Get("/", h.AdminListUserSessions)
-	admin.Post("/revoke-all", h.AdminRevokeAllUserSessions)
+	// Sign-out sits beside refresh rather than in the /v1/client/sessions group
+	// because it acts on the credential the request carries, not on a session
+	// named in the body. Both routes are reachable with only a publishable key:
+	// each one authenticates itself from the token or cookie presented, and a
+	// caller who cannot present one has nothing to revoke.
+	app.Post("/v1/client/auth/logout", pkMiddleware, h.Logout)
+	app.Post("/v1/client/auth/logout-all", pkMiddleware, h.LogoutAll)
+
+	if adminMiddleware != nil {
+		admin := app.Group("/v1/admin/users/:user_id/sessions", adminMiddleware)
+		admin.Get("/", h.AdminListUserSessions)
+		admin.Post("/revoke-all", h.AdminRevokeAllUserSessions)
+	}
 }
 
 // getUserIDAndSessionID resolves the calling user and session, preferring the
@@ -203,6 +216,75 @@ func (h *Handler) RevokeAllSessions(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "all sessions revoked", "count": count})
+}
+
+// Logout handles POST /v1/client/auth/logout, ending the caller's current
+// session and clearing the refresh cookie.
+//
+// The session is resolved from the access token when one is presented and from
+// the refresh cookie otherwise. That fallback is the point of the endpoint for a
+// browser idle past the access-token lifetime: without it the cookie would be
+// cleared while the session stayed live for the rest of the refresh lifetime.
+//
+// It always answers 200 and always clears the cookie, including when no session
+// resolved. Sign-out reveals nothing the caller does not already know, and a
+// browser holding an unusable token still needs it removed — refusing would leave
+// it holding a credential it can neither use nor clear. session_revoked reports
+// whether a server-side session was actually ended.
+func (h *Handler) Logout(c *fiber.Ctx) error {
+	userID, sessionID := h.getUserIDAndSessionID(c)
+
+	revoked := false
+	if userID != "" && sessionID != "" {
+		if err := h.svc.RevokeSession(c.UserContext(), userID, sessionID); err == nil {
+			revoked = true
+		}
+	}
+
+	if !revoked {
+		if raw := c.Cookies(authcookie.RefreshTokenName); raw != "" {
+			sid, uid, err := h.svc.ResolveSessionByRefreshToken(c.UserContext(), raw)
+			if err == nil {
+				revoked = h.svc.RevokeSession(c.UserContext(), uid, sid) == nil
+			}
+		}
+	}
+
+	h.cookies.ClearRefreshToken(c)
+
+	return c.JSON(fiber.Map{"message": "signed out", "session_revoked": revoked})
+}
+
+// LogoutAll handles POST /v1/client/auth/logout-all, ending every session the
+// caller owns on every device and clearing the refresh cookie.
+//
+// Unlike Logout this needs an identified user, since the set of sessions to end
+// is defined by ownership. The caller is identified from the access token, or
+// from the refresh cookie when no usable access token was presented; when
+// neither names a user the request is refused, because revoking "all sessions"
+// for nobody would silently do nothing while reporting success.
+func (h *Handler) LogoutAll(c *fiber.Ctx) error {
+	userID, _ := h.getUserIDAndSessionID(c)
+
+	if userID == "" {
+		if raw := c.Cookies(authcookie.RefreshTokenName); raw != "" {
+			if _, uid, err := h.svc.ResolveSessionByRefreshToken(c.UserContext(), raw); err == nil {
+				userID = uid
+			}
+		}
+	}
+	if userID == "" {
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized, msgSessionAuthRequired)
+	}
+
+	count, err := h.svc.RevokeAllSessions(c.UserContext(), userID)
+	if err != nil {
+		return httperr.SendInternal(c, "session.logout_all", err)
+	}
+
+	h.cookies.ClearRefreshToken(c)
+
+	return c.JSON(fiber.Map{"message": "signed out on all devices", "count": count})
 }
 
 // RefreshTokens exchanges a refresh token, taken from the body or the

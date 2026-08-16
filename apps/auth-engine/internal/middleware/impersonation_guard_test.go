@@ -127,6 +127,67 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp9.StatusCode)
 }
 
+// TestImpersonatedSignOutIsBlocked covers the sign-out routes.
+//
+// An impersonation token names the target user in `sub` and carries no session
+// claim, so sign-out resolves the victim's user ID and nothing else. On
+// /logout-all that is enough: it revokes every session the victim owns, on every
+// device, signing them out of an account the impersonator is only visiting. That
+// is a destructive mutation of the target's account, which is what this guard
+// exists to refuse — an impersonator who wants to end their own support session
+// uses /v1/client/auth/impersonate/exit, which is deliberately not on the list.
+func TestImpersonatedSignOutIsBlocked(t *testing.T) {
+	signingSecret := "test_encryption_key_32_bytes_12345"
+
+	app := fiber.New()
+	app.Use(middleware.PreventImpersonatedMutations(signingSecret, nil))
+	app.Post("/v1/client/auth/logout", func(c *fiber.Ctx) error {
+		return c.SendString("signed out")
+	})
+	app.Post("/v1/client/auth/logout-all", func(c *fiber.Ctx) error {
+		return c.SendString("signed out everywhere")
+	})
+	app.Post("/v1/client/auth/impersonate/exit", func(c *fiber.Ctx) error {
+		return c.SendString("impersonation ended")
+	})
+
+	stdToken, err := jwtpkg.IssueAccessToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "user", signingSecret, 15*time.Minute)
+	require.NoError(t, err)
+	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "usr_admin99", "usr_admin99", 15*time.Minute, signingSecret)
+	require.NoError(t, err)
+
+	for _, path := range []string{"/v1/client/auth/logout", "/v1/client/auth/logout-all"} {
+		// The victim's own token signs out normally: the guard blocks by who is
+		// asking, not by route.
+		req := httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Authorization", "Bearer "+stdToken)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "own token on %s", path)
+
+		req = httptest.NewRequest("POST", path, nil)
+		req.Header.Set("Authorization", "Bearer "+impToken)
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "impersonated token on %s", path)
+
+		// Cookie delivery is the browser default, so it must be blocked too.
+		req = httptest.NewRequest("POST", path, nil)
+		req.AddCookie(&http.Cookie{Name: "authn_access_token", Value: impToken})
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "impersonated cookie on %s", path)
+	}
+
+	// Ending the impersonation itself stays reachable, otherwise blocking sign-out
+	// would strand the impersonator in the session.
+	req := httptest.NewRequest("POST", "/v1/client/auth/impersonate/exit", nil)
+	req.Header.Set("Authorization", "Bearer "+impToken)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 // TestImpersonationGuardLogsUnverifiableToken pins the observability of the
 // fail-open path.
 //

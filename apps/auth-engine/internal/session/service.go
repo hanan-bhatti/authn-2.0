@@ -254,6 +254,30 @@ func (s *Service) RevokeAllSessions(ctx context.Context, userID string) (int, er
 	return s.repo.RevokeAllUserSessions(ctx, userID, "")
 }
 
+// ResolveSessionByRefreshToken returns the session ID and owning user ID for a
+// raw refresh token, without rotating or revoking anything.
+//
+// Sign-out needs this because the access token is deliberately short-lived: a
+// browser idle past that lifetime still holds a valid refresh cookie, and
+// resolving the session from the access token alone would clear the cookie while
+// leaving the session live for the rest of the refresh lifetime — the user would
+// appear signed out while their session kept working.
+//
+// The lookup is tenant-scoped by the privacy interceptor through the session's
+// user edge, so a token minted for another tenant does not resolve here.
+// Returns ErrSessionNotFound when no session matches the token.
+func (s *Service) ResolveSessionByRefreshToken(ctx context.Context, rawRefreshToken string) (sessionID string, userID string, err error) {
+	if rawRefreshToken == "" {
+		return "", "", ErrSessionNotFound
+	}
+
+	sess, err := s.repo.GetSessionByTokenHash(ctx, HashRefreshToken(rawRefreshToken))
+	if err != nil {
+		return "", "", ErrSessionNotFound
+	}
+	return sess.ID, sess.UserID, nil
+}
+
 // accessTokenExpiresIn returns the configured access token lifetime in whole
 // seconds, the unit the OAuth token response uses.
 func (s *Service) accessTokenExpiresIn() int {
