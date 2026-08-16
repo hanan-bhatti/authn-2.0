@@ -1,9 +1,11 @@
 # Authn Platform — Enterprise Identity Engine
 #
-# Build, vet and test the Go engine on every push and pull request.
+# Build, vet and test the Go engine and the TypeScript SDKs on every push and
+# pull request.
 #
-# The suite runs against SQLite, which every test constructs in memory, so no
-# service containers are needed and a run stays fast enough to gate a merge.
+# Both suites run entirely in-process — the engine constructs SQLite in memory
+# and the SDK tests inject a stub fetch — so no service containers are needed
+# and a run stays fast enough to gate a merge.
 
 name: CI
 
@@ -20,15 +22,18 @@ concurrency:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: apps/auth-engine
-
 jobs:
   engine:
     name: Auth engine
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # Scoped to this job rather than the workflow. A workflow-wide default puts
+    # every other job in the Go module directory, so each one has to remember to
+    # opt out — and a job that forgets fails somewhere unhelpful.
+    defaults:
+      run:
+        working-directory: apps/auth-engine
 
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +57,11 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # Tagged, because vet only sees files the build constraints select. Without
+      # the tag the integration harness — the largest single body of test code
+      # here — is never vetted at all.
       - name: Vet
-        run: go vet ./...
+        run: go vet -tags=integration ./...
 
       # -race is what catches the concurrency bugs this codebase cares about:
       # the first-admin claim and refresh-token rotation are both raced by
@@ -61,13 +69,48 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      # Everything under test/ is behind //go:build integration, so the step
+      # above compiles none of it. Scoped to ./test/... rather than ./... so the
+      # two steps stay disjoint and a failure names which suite broke.
+      - name: Integration test
+        run: go test -tags=integration -race ./test/...
+
+  sdk:
+    name: TypeScript SDKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before setup-node: the pnpm cache key is derived from the store path,
+      # which does not exist until pnpm is installed. Version comes from the
+      # root package.json `packageManager` field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile fails rather than resolving a new tree, so a lockfile
+      # that was not committed alongside a manifest change is caught here
+      # instead of drifting between machines.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm lint
+
+      # turbo builds @authn/js first — sdk-react resolves it from dist, so its
+      # tests run against the published shape of the package rather than source.
+      - name: Test
+        run: pnpm test
+
   image:
     name: Docker image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: .
 
     steps:
       - uses: actions/checkout@v4

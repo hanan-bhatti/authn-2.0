@@ -367,6 +367,22 @@ function mapInvitation(raw: {
   };
 }
 
+/**
+ * newAbortController builds the controller a client's lifetime hangs off, or
+ * undefined where the runtime has no AbortController.
+ *
+ * The SDK supports environments older than the API — React Native releases and
+ * long-lived embedded WebViews among them — and construction is not the place to
+ * fail over a capability that only makes teardown tidier.
+ */
+function newAbortController(): AbortController | undefined {
+  try {
+    return new AbortController();
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AuthnClient
 // ---------------------------------------------------------------------------
@@ -384,6 +400,16 @@ export class AuthnClient {
   private readonly stateListeners = new Set<AuthStateCallback>();
   private refreshInProgress: Promise<SessionResult> | null = null;
   private destroyed = false;
+
+  /**
+   * Aborted by {@link destroy}, cancelling every request this client has in
+   * flight along with any retry still backing off.
+   *
+   * Undefined where AbortController is unavailable; the client then still
+   * refuses new calls after destruction, it simply cannot recall the ones
+   * already sent.
+   */
+  private readonly lifetime: AbortController | undefined = newAbortController();
 
   constructor(config: AuthnClientConfig) {
     const publishableKey =
@@ -440,6 +466,7 @@ export class AuthnClient {
       customFetch: config.fetch,
       getAccessToken: () => this.getToken(),
       onRefreshToken: () => this.refreshSession(),
+      lifetimeSignal: this.lifetime?.signal,
     });
 
     this.logger.info("AuthnClient initialized", {
@@ -1249,15 +1276,31 @@ export class AuthnClient {
   /**
    * Permanently tear down the client instance.
    *
-   * Cancels the refresh timer, clears all listeners, and prevents further
-   * API calls. Use this in SPA cleanup (e.g. React `useEffect` cleanup).
+   * Cancels the refresh timer, clears all listeners, aborts anything in flight,
+   * and refuses further API calls. Use this in SPA cleanup (e.g. React
+   * `useEffect` cleanup). Safe to call more than once.
    */
   destroy(): void {
     this.destroyed = true;
     this.clearRefreshTimer();
     this.stateListeners.clear();
     this.currentSession = null;
+    // Refusing new calls is not enough on its own: a request already sent has a
+    // retry chain that backs off for seconds, and its callbacks would fire into
+    // a caller that no longer exists.
+    this.lifetime?.abort();
     this.logger.debug("AuthnClient destroyed");
+  }
+
+  /**
+   * Whether {@link destroy} has been called.
+   *
+   * A destroyed client cannot be revived, so this is what a caller holding one
+   * for longer than a single request — a framework provider across a remount,
+   * say — checks before use, rather than discovering it from a thrown error.
+   */
+  isDestroyed(): boolean {
+    return this.destroyed;
   }
 
   // =======================================================================

@@ -1,8 +1,8 @@
 # Authn Platform — Enterprise Identity Engine
 #
-# Commands for working on the Go engine. Everything here is a thin wrapper over
-# a `go` or `docker compose` invocation — nothing is hidden, so any target can
-# be run by hand if you prefer.
+# Commands for working on the engine and the TypeScript SDKs. Everything here is
+# a thin wrapper over a `go`, `pnpm` or `docker compose` invocation — nothing is
+# hidden, so any target can be run by hand if you prefer.
 #
 # Configuration comes from .env, which is the single source of truth. Copy
 # .env.example to get started; `make dev` does that for you if it is missing.
@@ -17,7 +17,7 @@ GO         := go
 COMPOSE := docker compose --env-file .env --env-file .env.compose
 
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs migrate bootstrap seed build test vet fmt tidy clean compose-env
+.PHONY: help dev up down logs migrate bootstrap seed build test test-engine test-sdk vet fmt tidy clean compose-env
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -67,11 +67,20 @@ build: ## Compile the engine binaries into apps/auth-engine/bin
 	cd $(ENGINE_DIR) && $(GO) build -o bin/bootstrap ./cmd/bootstrap
 	cd $(ENGINE_DIR) && $(GO) build -o bin/migrate ./cmd/migrate
 
-test: ## Run the engine test suite
-	cd $(ENGINE_DIR) && $(GO) test ./...
+test: test-engine test-sdk ## Run every suite CI gates on — engine, integration and SDKs
+
+# Two invocations because everything under test/ is behind //go:build
+# integration, so the first compiles none of it. -race on both to match CI,
+# where it is what catches races in the first-admin claim and token rotation.
+test-engine: ## Run the engine suite, unit and integration
+	cd $(ENGINE_DIR) && $(GO) test -race ./...
+	cd $(ENGINE_DIR) && $(GO) test -tags=integration -race ./test/...
+
+test-sdk: ## Run the TypeScript SDK suites
+	pnpm test
 
 vet: ## Run go vet
-	cd $(ENGINE_DIR) && $(GO) vet ./...
+	cd $(ENGINE_DIR) && $(GO) vet -tags=integration ./...
 
 fmt: ## Format Go sources
 	cd $(ENGINE_DIR) && gofmt -w .

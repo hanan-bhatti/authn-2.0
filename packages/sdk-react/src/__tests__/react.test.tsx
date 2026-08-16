@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { act, render, renderHook } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { AuthnClient, AuthnError, AuthnErrorCode } from "@authn/js";
 import {
   AuthnProvider,
@@ -11,6 +11,28 @@ import {
   useSignUp,
   useUser,
 } from "../index";
+
+/**
+ * offlineFetch answers every request the way a browser holding no refresh cookie
+ * is answered: 401 from the token endpoint.
+ *
+ * Every client below needs one. Mocking the method under test is not enough — the
+ * provider probes for an existing session on mount, so a client left with the
+ * global fetch sends a real request to the configured endpoint on every render,
+ * making the suite slow, network-dependent, and answered by whatever happens to
+ * be listening.
+ */
+function offlineFetch(): typeof globalThis.fetch {
+  return vi.fn(
+    async () =>
+      new Response(JSON.stringify({ error: { code: "invalid_token" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+  ) as unknown as typeof globalThis.fetch;
+}
+
+const publishableKey = "pk_test_demo12345678901234567890123456789012";
 
 describe("<AuthnProvider> Lifecycle & Context", () => {
   it("should throw an error when hooks are used outside of <AuthnProvider>", () => {
@@ -34,7 +56,7 @@ describe("<AuthnProvider> Lifecycle & Context", () => {
 
   it("should mount cleanly with a publishableKey and destroy client on unmount", () => {
     const { unmount } = render(
-      <AuthnProvider publishableKey="pk_test_demo12345678901234567890123456789012">
+      <AuthnProvider publishableKey={publishableKey} fetch={offlineFetch()}>
         <div>Child</div>
       </AuthnProvider>,
     );
@@ -43,7 +65,8 @@ describe("<AuthnProvider> Lifecycle & Context", () => {
 
   it("should accept a pre-constructed client instance and not destroy external client on unmount", () => {
     const client = new AuthnClient({
-      publishableKey: "pk_test_demo12345678901234567890123456789012",
+      publishableKey,
+      fetch: offlineFetch(),
     });
     const destroySpy = vi.spyOn(client, "destroy");
 
@@ -59,26 +82,61 @@ describe("<AuthnProvider> Lifecycle & Context", () => {
 });
 
 describe("React Auth Hooks Behavior", () => {
-  const publishableKey = "pk_test_demo12345678901234567890123456789012";
-
   const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <AuthnProvider publishableKey={publishableKey}>
+    <AuthnProvider publishableKey={publishableKey} fetch={offlineFetch()}>
       {children}
     </AuthnProvider>
   );
 
-  it("useAuth() and useUser() should return state and subscriber updates", async () => {
-    const { result } = renderHook(() => useAuth(), { wrapper });
-    const { result: userResult } = renderHook(() => useUser(), { wrapper });
+  // isLoading tracks the mount-time session probe, so it is true until that probe
+  // settles. Asserting false straight after mount would describe a provider that
+  // reports "not signed in" before it has looked — the state a consumer must not
+  // act on, since it is indistinguishable from a finished check that found
+  // nothing.
+  it("useAuth() reports loading until the mount-time session probe settles", async () => {
+    let release!: () => void;
+    const probe = new Promise<void>((resolve) => {
+      release = resolve;
+    });
 
-    expect(result.current.isLoading).toBe(false);
+    // The gate makes the transition observable. With an immediately-resolving
+    // stub, whether the probe has settled by the first assertion is a matter of
+    // microtask timing, and the test would pin the contract only by luck.
+    const gatedFetch = vi.fn(async () => {
+      await probe;
+      return new Response(JSON.stringify({ error: { code: "invalid_token" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    const gatedWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+      <AuthnProvider publishableKey={publishableKey} fetch={gatedFetch}>
+        {children}
+      </AuthnProvider>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: gatedWrapper });
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isAuthenticated).toBe(false);
+
+    await act(async () => {
+      release();
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.isAuthenticated).toBe(false);
     expect(result.current.user).toBeNull();
-    expect(userResult.current).toBeNull();
+  });
+
+  it("useUser() returns null when no session was restored", async () => {
+    const { result } = renderHook(() => useUser(), { wrapper });
+    await waitFor(() => expect(result.current).toBeNull());
   });
 
   it("useSignIn() should handle login success, loading, error, and reset()", async () => {
-    const client = new AuthnClient({ publishableKey });
+    const client = new AuthnClient({ publishableKey, fetch: offlineFetch() });
     vi.spyOn(client, "login").mockResolvedValue({
       ok: true,
       session: {
@@ -134,7 +192,7 @@ describe("React Auth Hooks Behavior", () => {
   });
 
   it("useSignUp() should handle sign-up success, error, and reset()", async () => {
-    const client = new AuthnClient({ publishableKey });
+    const client = new AuthnClient({ publishableKey, fetch: offlineFetch() });
     vi.spyOn(client, "signUp").mockResolvedValue({
       ok: true,
       session: {
@@ -166,7 +224,7 @@ describe("React Auth Hooks Behavior", () => {
   });
 
   it("useSignOut() should handle sign-out success and reset()", async () => {
-    const client = new AuthnClient({ publishableKey });
+    const client = new AuthnClient({ publishableKey, fetch: offlineFetch() });
     vi.spyOn(client, "signOut").mockResolvedValue({ ok: true });
 
     const customWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -185,7 +243,7 @@ describe("React Auth Hooks Behavior", () => {
   });
 
   it("useMagicLink() should handle sendMagicLink, verifyMagicLink, and error states", async () => {
-    const client = new AuthnClient({ publishableKey });
+    const client = new AuthnClient({ publishableKey, fetch: offlineFetch() });
     vi.spyOn(client, "sendMagicLink").mockResolvedValue({ ok: true });
     vi.spyOn(client, "verifyMagicLink").mockResolvedValue({
       ok: true,

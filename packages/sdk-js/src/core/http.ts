@@ -21,6 +21,15 @@ export interface HttpClientConfig {
   customHeaders?: Record<string, string>;
   getAccessToken?: () => string | null;
   onRefreshToken?: () => Promise<SessionResult>;
+  /**
+   * Aborted when the owning client is destroyed, cancelling every request in
+   * flight and every retry still pending.
+   *
+   * Without it a request outlives its caller: the retry chain backs off for
+   * seconds, so a component that unmounts mid-request keeps issuing requests
+   * — and resolving callbacks — long after the tree it belonged to is gone.
+   */
+  lifetimeSignal?: AbortSignal;
 }
 
 export interface HttpResponse<T> {
@@ -39,6 +48,7 @@ export class HttpClient {
   private readonly onRefreshToken?: () => Promise<SessionResult>;
 
   private readonly customHeaders?: Record<string, string>;
+  private readonly lifetimeSignal?: AbortSignal;
 
   constructor(config: HttpClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
@@ -49,6 +59,7 @@ export class HttpClient {
     this.customHeaders = config.customHeaders;
     this.getAccessToken = config.getAccessToken;
     this.onRefreshToken = config.onRefreshToken;
+    this.lifetimeSignal = config.lifetimeSignal;
   }
 
   async post<T>(
@@ -106,14 +117,31 @@ export class HttpClient {
   ): Promise<HttpResponse<T>> {
     const url = `${this.baseUrl}${path}`;
 
+    // A destroyed client is not a slow client: refuse before spending a socket.
+    if (this.lifetimeSignal?.aborted) {
+      throw AuthnError.cancelled(path);
+    }
+
     this.logger.debug(`${method} ${path}`, { attempt, isRetryAfterRefresh });
 
     let controller: AbortController | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let onLifetimeAbort: (() => void) | undefined;
 
     try {
       controller = new AbortController();
       timeoutId = setTimeout(() => controller!.abort(), this.timeout);
+
+      // The per-request controller carries both reasons a request can be cut
+      // short. Linking rather than passing the lifetime signal straight to
+      // fetch keeps the timeout working: a signal can only be handed over
+      // whole, so one of the two would otherwise have to be dropped.
+      if (this.lifetimeSignal) {
+        onLifetimeAbort = () => controller!.abort();
+        this.lifetimeSignal.addEventListener("abort", onLifetimeAbort, {
+          once: true,
+        });
+      }
     } catch {
       // AbortController not supported
     }
@@ -158,7 +186,13 @@ export class HttpClient {
         err instanceof DOMException &&
         err.name === "AbortError"
       ) {
-        throw AuthnError.timeout(path, this.timeout);
+        // Both reasons arrive as the same AbortError, and only the lifetime
+        // signal can say which happened. Reporting a cancellation as a timeout
+        // would be a lie the caller acts on: a timeout is retryable, so a
+        // destroyed client's abandoned request would be tried again.
+        throw this.lifetimeSignal?.aborted
+          ? AuthnError.cancelled(path)
+          : AuthnError.timeout(path, this.timeout);
       }
 
       if (attempt < MAX_RETRIES) {
@@ -167,13 +201,26 @@ export class HttpClient {
           attempt,
           error: err instanceof Error ? err.message : String(err),
         });
-        await sleep(delay);
-        return this.request<T>(method, path, body, attempt + 1, isRetryAfterRefresh);
+        // Cancellation is enforced on re-entry rather than here: a retry is a
+        // fresh request() call, and its first act is to refuse if the client has
+        // been destroyed meanwhile.
+        await sleep(delay, this.lifetimeSignal);
+        return this.request<T>(
+          method,
+          path,
+          body,
+          attempt + 1,
+          isRetryAfterRefresh,
+          extraHeaders,
+        );
       }
 
       throw AuthnError.networkError(err);
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
+      if (onLifetimeAbort) {
+        this.lifetimeSignal?.removeEventListener("abort", onLifetimeAbort);
+      }
     }
 
     const requestId = response.headers.get("X-Request-Id") ?? undefined;
@@ -209,7 +256,7 @@ export class HttpClient {
         this.logger.info(
           `Token refresh succeeded — retrying original request ${method} ${path}`,
         );
-        return this.request<T>(method, path, body, 0, true);
+        return this.request<T>(method, path, body, 0, true, extraHeaders);
       }
 
       this.logger.error(
@@ -236,8 +283,15 @@ export class HttpClient {
         `${response.status} on ${method} ${path}, retrying in ${delay}ms…`,
         { attempt, retryAfter, requestId },
       );
-      await sleep(delay);
-      return this.request<T>(method, path, body, attempt + 1, isRetryAfterRefresh);
+      await sleep(delay, this.lifetimeSignal);
+      return this.request<T>(
+        method,
+        path,
+        body,
+        attempt + 1,
+        isRetryAfterRefresh,
+        extraHeaders,
+      );
     }
 
     if (response.status === 204) {
@@ -286,8 +340,29 @@ export class HttpClient {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * sleep waits out a retry backoff, returning early if the client is destroyed
+ * meanwhile.
+ *
+ * Waking early matters more than it looks: the longest backoff is several
+ * seconds, and a plain timer holds the process open for all of it — enough to
+ * keep a test runner or a serverless invocation alive after the work is
+ * abandoned. The caller re-checks the signal, so an early return is a
+ * cancellation rather than a shortened wait.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, ms);
+    function finish(): void {
+      clearTimeout(timer);
+      signal!.removeEventListener("abort", finish);
+      resolve();
+    }
+    signal.addEventListener("abort", finish, { once: true });
+  });
 }
 
 function withQuery(path: string, params?: Record<string, string | undefined>): string {

@@ -7,6 +7,13 @@
 export enum AuthnErrorCode {
   NETWORK_ERROR = "NETWORK_ERROR",
   TIMEOUT = "TIMEOUT",
+  /**
+   * The request was abandoned because the client was destroyed — a component
+   * unmounted, a route changed. Distinct from TIMEOUT: the server was never
+   * given the chance to answer, so nothing is known about its state, and
+   * retrying is pointless because the caller no longer exists.
+   */
+  CANCELLED = "CANCELLED",
   INVALID_CONFIG = "INVALID_CONFIG",
   INVALID_PARAMS = "INVALID_PARAMS",
   INVALID_PUBLISHABLE_KEY = "INVALID_PUBLISHABLE_KEY",
@@ -82,6 +89,21 @@ export class AuthnError extends Error {
     return new AuthnError({
       message: `Request to "${path}" timed out after ${duration}ms.`,
       code: AuthnErrorCode.TIMEOUT,
+    });
+  }
+
+  /**
+   * cancelled reports a request abandoned because its client was destroyed.
+   *
+   * It is deliberately not retryable. The generic retry path treats an
+   * unanswered request as worth another attempt, which is right for a flaky
+   * network and wrong here — the caller that wanted the answer is gone, so a
+   * retry only keeps a dead client making requests.
+   */
+  static cancelled(path: string): AuthnError {
+    return new AuthnError({
+      message: `Request to "${path}" was cancelled because the client was destroyed.`,
+      code: AuthnErrorCode.CANCELLED,
     });
   }
 

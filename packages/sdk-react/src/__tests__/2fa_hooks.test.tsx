@@ -4,11 +4,30 @@ import { act, renderHook } from "@testing-library/react";
 import { AuthnClient } from "@authn/js";
 import { AuthnProvider, usePasskeys, useTOTP } from "../index";
 
+/**
+ * offlineFetch answers every request the way a browser holding no refresh cookie
+ * is answered: 401 from the token endpoint.
+ *
+ * Spying on the method under test is not enough — the provider probes for an
+ * existing session on mount, so a client left with the global fetch sends a real
+ * request to the configured endpoint, and the suite becomes slow, network-dependent,
+ * and answered by whatever happens to be listening.
+ */
+function offlineFetch(): typeof globalThis.fetch {
+  return vi.fn(
+    async () =>
+      new Response(JSON.stringify({ error: { code: "invalid_token" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+  ) as unknown as typeof globalThis.fetch;
+}
+
 describe("useTOTP and usePasskeys Hooks", () => {
   const validPk = "pk_test_demo12345678901234567890123456789012";
 
   const createWrapper = () => {
-    const client = new AuthnClient({ publishableKey: validPk });
+    const client = new AuthnClient({ publishableKey: validPk, fetch: offlineFetch() });
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AuthnProvider client={client}>{children}</AuthnProvider>
     );
