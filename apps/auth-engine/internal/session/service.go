@@ -52,8 +52,11 @@ type SessionResponse struct {
 	IPAddress string `json:"ip_address"`
 	// Location is the coarse geographic label recorded for the session.
 	Location string `json:"location"`
-	// LastActiveAt is the RFC 3339 timestamp of the most recent activity, empty
-	// if the session has never been touched.
+	// LastActiveAt is the RFC 3339 timestamp of the session's most recent activity.
+	// A session stamps this when it is issued and every refresh issues a successor
+	// row, so its resolution is the refresh cadence — one access-token lifetime —
+	// rather than the individual request. Per-application activity is recorded
+	// separately, at request granularity, by internal/sessionactivity.
 	LastActiveAt string `json:"last_active_at,omitempty"`
 	// CreatedAt is the RFC 3339 creation timestamp.
 	CreatedAt string `json:"created_at"`

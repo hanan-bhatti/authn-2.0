@@ -20,8 +20,8 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
 )
 
-// ConsoleRoleSlug is the only role slug the console auth middlewares accept in a
-// JWT `role` claim (middleware.RequireAdminAuth, middleware.RequireConsoleAuth).
+// ConsoleRoleSlug is the only role slug middleware.RequireAdminAuth accepts in a
+// JWT `role` claim.
 const ConsoleRoleSlug = "tenant_admin"
 
 // ResolveConsoleRoleClaim returns the role slug to embed in a user's JWT `role`

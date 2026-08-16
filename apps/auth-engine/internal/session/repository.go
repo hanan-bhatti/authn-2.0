@@ -212,13 +212,3 @@ func (r *Repository) GetUserActiveSessions(ctx context.Context, userID string) (
 		Order(ent.Desc(session.FieldLastActiveAt)).
 		All(ctx)
 }
-
-// TouchLastActive stamps the session's last-activity time with the current
-// instant, which drives the ordering of the session list.
-func (r *Repository) TouchLastActive(ctx context.Context, sessionID string) error {
-	client := r.factory.GetClient(ctx, "", "")
-	now := time.Now()
-	return client.Session.UpdateOneID(sessionID).
-		SetLastActiveAt(now).
-		Exec(ctx)
-}
