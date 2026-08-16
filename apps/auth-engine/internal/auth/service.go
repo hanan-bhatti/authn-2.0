@@ -42,6 +42,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/userrole"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	emailPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
@@ -494,7 +495,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 
 	// Issue 15-minute JWT Access Token (role embedded for console auth)
-	accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, role, s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, role, sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -689,6 +690,17 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 		return nil, "", "", ErrInvalidToken
 	}
 
+	// Checked before the token is consumed, so a refused attempt does not spend
+	// the link. A restriction lifted later leaves the link usable for whatever
+	// remains of its lifetime, and a link that keeps being refused costs the
+	// holder nothing but a repeated rejection.
+	if err := accountstatus.Allowed(u); err != nil {
+		if errors.Is(err, accountstatus.ErrDeleted) {
+			return nil, "", "", ErrInvalidToken
+		}
+		return nil, "", "", err
+	}
+
 	// Immediately clear single-use token to prevent replay attacks
 	if err := s.repo.ClearUserMagicLinkToken(ctx, u.ID); err != nil {
 		return nil, "", "", fmt.Errorf("failed consuming magic link token: %w", err)
@@ -759,8 +771,14 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 		return nil, "", "", ErrInvalidCredentials
 	}
 
-	if u.Status != "active" {
-		return nil, "", "", fmt.Errorf("account is locked or suspended (status: %s)", u.Status)
+	// A soft-deleted account is reported as bad credentials rather than named.
+	// Its row survives only to keep the address reserved, so naming it would turn
+	// the sign-in form into a way to ask which addresses were once registered.
+	if err := accountstatus.Allowed(u); err != nil {
+		if errors.Is(err, accountstatus.ErrDeleted) {
+			return nil, "", "", ErrInvalidCredentials
+		}
+		return nil, "", "", err
 	}
 
 	// Check if user has active 2FA methods (TOTP, Passkeys, or Recovery Codes)
@@ -866,8 +884,12 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		if err != nil || u == nil {
 			return nil, "", "", fmt.Errorf("user not found for session")
 		}
-		if u.Status != "active" {
-			return nil, "", "", fmt.Errorf("user account is suspended or banned")
+
+		// Refresh is where a restriction placed mid-session takes hold. Sessions
+		// are revoked when an account is restricted, but a refresh already in
+		// flight can outrun that write, and the row it holds is still active.
+		if err := accountstatus.Allowed(u); err != nil {
+			return nil, "", "", err
 		}
 
 		// Generate new 32-byte opaque refresh token
@@ -894,7 +916,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Issue new 15-minute access token
 		tenantID := string(u.TenantID)
 		env := string(u.Environment)
-		accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
+		accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -905,16 +927,25 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 	// 2. Check if token is in 10-second grace window ('rotated_grace')
 	if sess.Status == session.StatusRotatedGrace {
 		if sess.GraceExpiresAt != nil && time.Now().Before(*sess.GraceExpiresAt) {
+			// A restricted account is refused here rather than left to fall through
+			// to the reuse handling below, which would log a theft alert for what is
+			// an ordinary retry by a client that has not yet been told to stop.
+			if u, err := s.repo.FindUserByID(ctx, sess.UserID); err == nil {
+				if statusErr := accountstatus.Allowed(u); statusErr != nil {
+					return nil, "", "", statusErr
+				}
+			}
+
 			// Token reused within 10s grace period (e.g. concurrent in-flight requests)
 			// Return a fresh access token for the superseded session
 			if sess.SupersededBySessionID != nil && *sess.SupersededBySessionID != "" {
 				supersededSess, err := s.repo.FindSessionByID(ctx, *sess.SupersededBySessionID)
 				if err == nil && supersededSess != nil && supersededSess.Status == session.StatusActive {
 					u, err := s.repo.FindUserByID(ctx, supersededSess.UserID)
-					if err == nil && u != nil {
+					if err == nil && accountstatus.Allowed(u) == nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessToken(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
+						accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), supersededSess.ID, s.config.EncryptionKey, s.config.AccessTokenTTL)
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -1096,13 +1127,22 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", ErrInvalidToken
 	}
 
-	if err := s.Verify2FACodeWithMethod(ctx, claims.Sub, claims.Methods, code, targetMethod); err != nil {
-		return nil, "", "", err
-	}
-
+	// Loaded and gated before the factor is checked, because a recovery code is
+	// single-use: verifying first would spend one of the user's ten codes on an
+	// attempt that was never going to be allowed to complete.
 	u, err := s.repo.FindUserByID(ctx, claims.Sub)
 	if err != nil || u == nil {
 		return nil, "", "", ErrInvalidToken
+	}
+	if err := accountstatus.Allowed(u); err != nil {
+		if errors.Is(err, accountstatus.ErrDeleted) {
+			return nil, "", "", ErrInvalidToken
+		}
+		return nil, "", "", err
+	}
+
+	if err := s.Verify2FACodeWithMethod(ctx, claims.Sub, claims.Methods, code, targetMethod); err != nil {
+		return nil, "", "", err
 	}
 
 	// Issue Session & Refresh Token
@@ -1121,7 +1161,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -1924,6 +1964,16 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", ErrInvalidToken
 	}
 
+	// Gated before the assertion is verified, so a refused attempt leaves the
+	// stored signature counter alone. Advancing it for an account that cannot sign
+	// in would burn counter values the authenticator has already moved past.
+	if err := accountstatus.Allowed(u); err != nil {
+		if errors.Is(err, accountstatus.ErrDeleted) {
+			return nil, "", "", ErrInvalidToken
+		}
+		return nil, "", "", err
+	}
+
 	passkeys, err := s.repo.GetPasskeysForUser(ctx, u.ID)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed fetching passkeys: %w", err)
@@ -1975,7 +2025,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessToken(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionIDStr, s.config.EncryptionKey, s.config.AccessTokenTTL)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

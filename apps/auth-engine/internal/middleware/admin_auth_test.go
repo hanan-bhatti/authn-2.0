@@ -68,7 +68,9 @@ func TestRequireAdminAuthMiddleware(t *testing.T) {
 	}
 
 	app := fiber.New()
-	adminMw := middleware.RequireAdminAuth(apiKeySvc, secretKey, mockValidator)
+	// A nil blocklist is the no-Redis configuration: every check is a no-op, which
+	// keeps this test about credential dispatch and the 2FA gate.
+	adminMw := middleware.RequireAdminAuth(apiKeySvc, secretKey, nil, mockValidator)
 
 	app.Get("/v1/admin/protected", adminMw, func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{

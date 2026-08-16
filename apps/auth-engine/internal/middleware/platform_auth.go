@@ -127,6 +127,14 @@ func RequirePlatformAuth(signingSecret, platformTenantID string, bl *tokenblockl
 				"this platform session has been revoked: sign in again")
 		}
 
+		// A platform operator whose account was restricted loses the control plane
+		// on the next request rather than at the end of the token's lifetime. The
+		// stakes here are higher than on the client tier, not lower.
+		if bl.IsUserTokenRefused(c.UserContext(), claims.Sub, claims.Iat) {
+			return httperr.Forbidden(c, httperr.CodeAccountDisabled,
+				"this account is no longer permitted to access the platform control plane")
+		}
+
 		if claims.IsImpersonated {
 			return httperr.Forbidden(c, httperr.CodeImpersonationBlocked,
 				"the platform control plane is unreachable during an impersonation session")

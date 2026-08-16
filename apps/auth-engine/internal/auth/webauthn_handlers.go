@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
@@ -154,6 +155,9 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 
 	u, accessToken, refreshToken, err := h.service.FinishWebAuthnLogin(c.UserContext(), mfaToken, sessionID, httpReq, userAgent, ipAddress)
 	if err != nil {
+		if accountstatus.Refused(err) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
+		}
 		return sendServiceError(c, "auth.webauthn.login_finish", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to complete passkey login")
 	}

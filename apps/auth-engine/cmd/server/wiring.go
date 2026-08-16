@@ -104,7 +104,7 @@ func wireFeatures(
 	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
 	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
 	// Checks mandatory 2FA on console admin JWT sessions.
-	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.EncryptionKey, authRepo)
+	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.EncryptionKey, bl, authRepo)
 
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)

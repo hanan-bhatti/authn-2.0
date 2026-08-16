@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
@@ -112,6 +113,9 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	if mfaToken != "" {
 		u, accessToken, refreshToken, err := h.service.VerifyTOTPChallenge(c.UserContext(), mfaToken, strings.TrimSpace(req.Code), req.Method, userAgent, ipAddress)
 		if err != nil {
+			if accountstatus.Refused(err) {
+				return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
+			}
 			return sendServiceError(c, "auth.2fa.verify_challenge", fiber.StatusBadRequest, err,
 				httperr.CodeInvalidMFACode, "two-factor verification failed")
 		}

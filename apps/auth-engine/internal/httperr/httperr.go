@@ -39,6 +39,10 @@ const (
 	CodeMagicLinkExpired          Code = "magic_link_expired"
 	CodeMFARequired               Code = "mfa_required"
 	CodeInvalidMFACode            Code = "invalid_mfa_code"
+	// CodeAccountDisabled means the credential was correct but the account is not
+	// allowed to sign in: banned, suspended, or held after a recovery. Clients
+	// branch on it to show a contact-support path rather than a retry prompt.
+	CodeAccountDisabled Code = "account_disabled"
 
 	// Authorization.
 	CodeForbidden            Code = "forbidden"

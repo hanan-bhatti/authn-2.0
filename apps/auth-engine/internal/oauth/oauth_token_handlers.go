@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
@@ -159,6 +160,10 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 
 		res, err := h.service.ExchangeCodeForTokens(c.UserContext(), req.Code, req.ClientID, req.RedirectURI, req.CodeVerifier)
 		if err != nil {
+			if accountstatus.Refused(err) {
+				return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled,
+					"invalid_grant: "+accountstatus.PublicMessage(err))
+			}
 			// Which binding failed is withheld: naming it tells an attacker
 			// holding a stolen code exactly which parameter still has to be
 			// guessed. Storage and key-management failures are wrapped into the
@@ -186,6 +191,13 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 
 		userDTO, accessToken, newRawRefreshToken, err := h.service.RotateRefreshTokenSession(c.UserContext(), rawToken, userAgent, ipAddress)
 		if err != nil {
+			// A restricted account is named, unlike a bad token: the holder's
+			// credential is fine and no amount of re-authenticating will help, so
+			// telling them the token is invalid would send them in a loop.
+			if accountstatus.Refused(err) {
+				return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled,
+					"invalid_grant: "+accountstatus.PublicMessage(err))
+			}
 			// Reuse detection and revocation state stay server-side; the caller
 			// only learns the token is no longer usable.
 			return httperr.Unauthorized(c, httperr.CodeInvalidToken,

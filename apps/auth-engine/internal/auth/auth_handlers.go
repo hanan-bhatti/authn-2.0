@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
@@ -84,6 +85,9 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 
 	u, accessToken, refreshToken, err := h.service.VerifyMagicLinkToken(c.UserContext(), token, userAgent, ipAddress)
 	if err != nil {
+		if accountstatus.Refused(err) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
+		}
 		return httperr.BadRequest(c, httperr.CodeMagicLinkExpired, "invalid or expired magic link token")
 	}
 
@@ -272,6 +276,13 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 				MFAToken:    accessToken,
 				Methods:     methods,
 			})
+		}
+		// A restriction an administrator placed is answered distinctly from a bad
+		// password. Collapsing it into invalid_credentials sends the account holder
+		// into a password reset that cannot help them, and the reset would succeed,
+		// leaving them with a working password they still cannot sign in with.
+		if accountstatus.Refused(err) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
 		}
 		// Every non-2FA failure here already answered 401, including wrapped
 		// internal errors. Keep that status, but never echo the error: the

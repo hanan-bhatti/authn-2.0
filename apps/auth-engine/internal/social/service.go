@@ -22,6 +22,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -251,6 +252,9 @@ func (s *Service) HandleCallback(
 		if err != nil {
 			return "", "", err
 		}
+		if err := accountstatus.Allowed(fetchedUser); err != nil {
+			return "", "", err
+		}
 		userID = fetchedUser.ID
 		email = fetchedUser.Email
 		name = fetchedUser.Name
@@ -261,6 +265,13 @@ func (s *Service) HandleCallback(
 		}
 
 		if existingUser != nil {
+			// Proving control of the provider account does not lift a restriction on
+			// the local account it maps to. Without this, a banned user could sign in
+			// through Google even though the password path refuses them, and a
+			// soft-deleted address would be linked to rather than left reserved.
+			if err := accountstatus.Allowed(existingUser); err != nil {
+				return "", "", err
+			}
 			userID = existingUser.ID
 			email = existingUser.Email
 			name = existingUser.Name

@@ -22,6 +22,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
@@ -135,8 +136,11 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 				if err != nil {
 					return nil, fmt.Errorf("failed to load session user: %w", err)
 				}
+				if err := accountstatus.Allowed(userObj); err != nil {
+					return nil, err
+				}
 
-				accessToken, err := jwtpkg.IssueAccessToken(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
+				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), supersededSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
@@ -159,6 +163,13 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 	userObj, err := s.getUserByID(ctx, sess.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load user: %w", err)
+	}
+
+	// Checked before the rotation write, so a refused refresh leaves the session
+	// exactly as it was rather than consuming the caller's token in the process of
+	// turning them away.
+	if err := accountstatus.Allowed(userObj); err != nil {
+		return nil, err
 	}
 
 	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", s.cfg.SessionGracePeriod, s.cfg.RefreshTokenTTL)

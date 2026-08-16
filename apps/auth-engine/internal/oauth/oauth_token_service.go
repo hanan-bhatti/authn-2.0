@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
@@ -107,6 +108,12 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 		}
 		if u == nil {
 			return nil, fmt.Errorf("user %s not found", authCode.UserID)
+		}
+		// An authorization code outlives the moment it was issued. If the account
+		// was restricted between the consent screen and this exchange, the code must
+		// not still convert into a token.
+		if err := accountstatus.Allowed(u); err != nil {
+			return nil, err
 		}
 		email = u.Email
 		name = u.Name

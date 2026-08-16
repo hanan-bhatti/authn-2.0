@@ -89,6 +89,15 @@ func RequireClientAuth(signingSecret string, bl *tokenblocklist.Blocklist) fiber
 				"invalid or expired access token")
 		}
 
+		// A restriction placed on the account after this token was minted refuses
+		// it too. Without this the token stays good for the rest of its lifetime,
+		// so a ban would take up to one access-token TTL to be felt — long enough
+		// for whatever it was placed to stop.
+		if bl.IsUserTokenRefused(c.UserContext(), claims.Sub, claims.Iat) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled,
+				"This account is no longer permitted to access this application.")
+		}
+
 		// Empty means no key middleware preceded this one, so there is nothing to
 		// compare against and the token is the only tenant authority.
 		if keyTenant := GetTenantID(c); keyTenant != "" && keyTenant != claims.TenantID {

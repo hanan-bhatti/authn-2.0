@@ -17,6 +17,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
@@ -341,6 +342,9 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 		}
 		if errors.Is(err, ErrSessionNotFound) {
 			return httperr.Unauthorized(c, httperr.CodeInvalidToken, "invalid or expired refresh token")
+		}
+		if accountstatus.Refused(err) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
 		}
 		return httperr.SendInternal(c, "session.refresh", err)
 	}

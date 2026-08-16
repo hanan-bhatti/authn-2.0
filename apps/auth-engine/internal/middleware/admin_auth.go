@@ -25,6 +25,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -43,16 +44,20 @@ type Primary2FAValidator interface {
 // Bearer, and dispatched on its prefix — "sk_" for a secret key, "eyJ" for the
 // base64url JSON header of a JWT.
 //
-// signingSecret verifies console tokens. An optional validator, when supplied,
-// additionally refuses console operators who have not enrolled a second factor:
-// an administrator's password alone must not command the admin surface.
+// signingSecret verifies console tokens. bl is consulted for console tokens
+// only: a secret key is checked against storage on every request, so its
+// revocation is already immediate, while a JWT is self-contained and would
+// otherwise stay valid for its full lifetime after a sign-out, an impersonation
+// exit, or a ban. An optional validator, when supplied, additionally refuses
+// console operators who have not enrolled a second factor: an administrator's
+// password alone must not command the admin surface.
 //
 // It answers 401 for a missing, unrecognised, or invalid credential, and 403 for
 // a valid end-user token that lacks the tenant_admin role or the required 2FA
 // enrolment. On success it installs the resolved tenant and environment on the
 // privacy context and records which of the two routes authenticated the caller
 // in the admin_auth_method local.
-func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, validator ...Primary2FAValidator) fiber.Handler {
+func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, bl *tokenblocklist.Blocklist, validator ...Primary2FAValidator) fiber.Handler {
 	var v Primary2FAValidator
 	if len(validator) > 0 {
 		v = validator[0]
@@ -96,6 +101,16 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, valid
 			if err != nil {
 				return httperr.Unauthorized(c, httperr.CodeInvalidToken,
 					"invalid or expired console session token")
+			}
+
+			if bl.IsBlocked(c.UserContext(), claims.Jti) {
+				return httperr.Unauthorized(c, httperr.CodeInvalidToken,
+					"this console session has been revoked: sign in again")
+			}
+
+			if bl.IsUserTokenRefused(c.UserContext(), claims.Sub, claims.Iat) {
+				return httperr.Forbidden(c, httperr.CodeAccountDisabled,
+					"this account is no longer permitted to administer this tenant")
 			}
 
 			// A key middleware may have resolved a tenant ahead of this one. When

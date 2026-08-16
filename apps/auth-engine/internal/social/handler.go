@@ -17,6 +17,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
@@ -125,6 +126,9 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 		}
 		if errors.Is(err, ErrEmailRequired) || errors.Is(err, ErrProviderNotConfigured) {
 			return httperr.BadRequest(c, httperr.CodeValidationFailed, err.Error())
+		}
+		if accountstatus.Refused(err) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
 		}
 		return httperr.SendInternal(c, "social.callback", err)
 	}
