@@ -19,6 +19,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -31,17 +32,13 @@ func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	if tenantID, ok := c.Locals("tenant_id").(string); ok && tenantID != "" {
-		req.TenantID = tenantID
-	} else if req.TenantID == "" {
-		req.TenantID = "tnt_00000000000000000000000000000001"
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
+	req.TenantID = tenantID
 
-	if env, ok := c.Locals("environment").(string); ok && env != "" {
-		req.Environment = env
-	} else if req.Environment == "" {
-		req.Environment = "test"
-	}
+	req.Environment = middleware.GetEnvironment(c)
 
 	if !isValidEmail(req.Email) {
 		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")
@@ -122,17 +119,13 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
-		req.TenantID = tID
-	} else if req.TenantID == "" {
-		req.TenantID = "tnt_00000000000000000000000000000001"
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
+	req.TenantID = tenantID
 
-	if env, ok := c.Locals("environment").(string); ok && env != "" {
-		req.Environment = env
-	} else if req.Environment == "" {
-		req.Environment = "test"
-	}
+	req.Environment = middleware.GetEnvironment(c)
 	if req.Email == "" || req.Password == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email and password are required")
 	}
@@ -232,17 +225,13 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
-		req.TenantID = tID
-	} else if req.TenantID == "" {
-		req.TenantID = "tnt_00000000000000000000000000000001"
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
+	req.TenantID = tenantID
 
-	if env, ok := c.Locals("environment").(string); ok && env != "" {
-		req.Environment = env
-	} else if req.Environment == "" {
-		req.Environment = "test"
-	}
+	req.Environment = middleware.GetEnvironment(c)
 
 	if req.Email == "" || req.Password == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email and password are required")
@@ -294,7 +283,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	// Check password policy compliance & force upgrade flags on login
 	var policyWarning *PolicyWarningDTO
 	if h.policyRepo != nil {
-		pol, err := h.policyRepo.GetPasswordPolicy(c.Context(), req.TenantID)
+		pol, err := h.policyRepo.GetPasswordPolicy(c.UserContext(), req.TenantID)
 		if err == nil {
 			missingCriteria := policy.ValidatePassword(pol, req.Password)
 			if len(missingCriteria) > 0 && pol.ForceUpgradeOnSignin {
@@ -372,26 +361,24 @@ func (h *Handler) VerifyEmail(c *fiber.Ctx) error {
 // ResendVerification handles resending verification emails (POST /v1/client/auth/resend-verification).
 func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 	var req struct {
-		TenantID    string `json:"tenant_id"`
-		Environment string `json:"environment"`
-		Email       string `json:"email"`
+		Email string `json:"email"`
+		// Resolved from the credential below; excluded from JSON so the body
+		// cannot name a tenant or select an environment.
+		TenantID    string `json:"-"`
+		Environment string `json:"-"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
 		return httperr.InvalidBody(c)
 	}
 
-	if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
-		req.TenantID = tID
-	} else if req.TenantID == "" {
-		req.TenantID = "tnt_00000000000000000000000000000001"
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
+	req.TenantID = tenantID
 
-	if env, ok := c.Locals("environment").(string); ok && env != "" {
-		req.Environment = env
-	} else if req.Environment == "" {
-		req.Environment = "test"
-	}
+	req.Environment = middleware.GetEnvironment(c)
 
 	if !isValidEmail(req.Email) {
 		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")

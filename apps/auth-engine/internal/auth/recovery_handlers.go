@@ -16,34 +16,33 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
 // InitiateRecovery handles POST /v1/client/auth/recovery/initiate (Unauthenticated).
+//
+// The tenant and environment come from the publishable key that authenticated the
+// request, never from the body. This endpoint looks the account up under a bypass
+// context, so the tenant it is given is the only thing separating one customer's
+// accounts from another's: honouring a body value would let any holder of a
+// publishable key — which is public by design — start recovery against an account
+// in a tenant they do not control.
 func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 	var req struct {
-		TenantID    string `json:"tenant_id"`
-		Environment string `json:"environment"`
-		Email       string `json:"email"`
+		Email string `json:"email"`
 	}
 
 	if err := c.BodyParser(&req); err != nil || req.Email == "" {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email address is required")
 	}
 
-	tenantID := req.TenantID
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = "tnt_00000000000000000000000000000001"
-		}
+	tenantID, err := middleware.RequireTenantID(c)
+	if err != nil {
+		return err
 	}
-	env := req.Environment
-	if env == "" {
-		env = "test"
-	}
+	env := middleware.GetEnvironment(c)
 
 	deviceCookie := c.Cookies("authn_td_token")
 	input := InitiateRecoveryInput{

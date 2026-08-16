@@ -93,6 +93,8 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `PUT /v1/tenant/security-policy` — Update tenant email verification & security policies
 - `GET /v1/tenant/recovery-policy` — Get tenant recovery policy
 - `PUT /v1/tenant/recovery-policy` — Update tenant recovery policy with 9 validation rules
+- `GET /v1/tenant/session-policy` — Get tenant session policy (access/refresh token lifetimes, cookie SameSite)
+- `PUT /v1/tenant/session-policy` — Update tenant session policy; out-of-range values are clamped to 1–1440 minutes and 1–365 days, and a zero field inherits the deployment default
 - `POST /v1/admin/keys/` — Issue new publishable or secret API key
 - `GET /v1/admin/keys/` — List API keys for application
 - `POST /v1/admin/keys/:key_id/revoke` — Revoke API key

@@ -30,8 +30,11 @@ import (
 
 // SignUpRequest defines the HTTP payload for user registration.
 type SignUpRequest struct {
-	TenantID    string `json:"tenant_id" example:"tnt_demo123"`
-	Environment string `json:"environment" example:"test"`
+	// TenantID and Environment are populated from the credential that
+	// authenticated the request, not from the body. They are excluded from JSON so
+	// a caller cannot name a tenant or reach live data with a test key.
+	TenantID    string `json:"-"`
+	Environment string `json:"-"`
 	Email       string `json:"email" example:"user@example.com"`
 	Password    string `json:"password" example:"SuperSecret123!"`
 	Name        string `json:"name" example:"Alex Smith"`
@@ -39,8 +42,11 @@ type SignUpRequest struct {
 
 // LoginRequest defines the HTTP payload for password login.
 type LoginRequest struct {
-	TenantID    string `json:"tenant_id" example:"tnt_demo123"`
-	Environment string `json:"environment" example:"test"`
+	// TenantID and Environment are populated from the credential that
+	// authenticated the request, not from the body. They are excluded from JSON so
+	// a caller cannot name a tenant or reach live data with a test key.
+	TenantID    string `json:"-"`
+	Environment string `json:"-"`
 	Email       string `json:"email" example:"user@example.com"`
 	Password    string `json:"password" example:"SuperSecret123!"`
 }
@@ -228,8 +234,11 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 
 // SendMagicLinkDTO defines the request payload for requesting a magic login link.
 type SendMagicLinkDTO struct {
-	TenantID    string `json:"tenant_id" example:"tnt_demo"`
-	Environment string `json:"environment" example:"test"`
+	// TenantID and Environment are populated from the credential that
+	// authenticated the request, not from the body. They are excluded from JSON so
+	// a caller cannot name a tenant or reach live data with a test key.
+	TenantID    string `json:"-"`
+	Environment string `json:"-"`
 	Email       string `json:"email" example:"user@example.com"`
 	Name        string `json:"name,omitempty" example:"Alex Smith"`
 }

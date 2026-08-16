@@ -290,10 +290,25 @@ func AttachPrivacyInterceptors(client *ent.Client) {
 				if !ok || p.TenantID == "" {
 					return nil, fmt.Errorf("%w: mutation on multi-tenant entity requires active TenantID in context", ErrPrivacyViolation)
 				}
-				// Fill the tenant only when the caller left it unset. Overwriting
-				// an explicit value would mask a caller writing across tenants
-				// instead of letting the boundary check catch it.
-				if tID, exists := m.Field("tenant_id"); !exists || tID == "" {
+
+				named, explicit := m.Field("tenant_id")
+				namedID, _ := named.(string)
+
+				switch {
+				// An explicit tenant that disagrees with the caller's is refused
+				// rather than corrected. Rewriting it would turn an attempt to
+				// write across tenants into a successful write somewhere else,
+				// which looks identical to working code from the outside; refusing
+				// surfaces the caller that is trusting a tenant it never verified.
+				case explicit && namedID != "" && namedID != p.TenantID:
+					return nil, fmt.Errorf("%w: mutation names tenant %q under a context scoped to tenant %q",
+						ErrPrivacyViolation, namedID, p.TenantID)
+
+				// New rows inherit the caller's tenant. Updates deliberately do
+				// not: stamping one would rewrite the tenant column of whichever
+				// row the predicate matched, moving a row between tenants rather
+				// than supplying a default for a missing value.
+				case m.Op().Is(ent.OpCreate) && (!explicit || namedID == ""):
 					setter.SetTenantID(p.TenantID)
 				}
 			}

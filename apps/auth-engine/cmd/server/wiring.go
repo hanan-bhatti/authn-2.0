@@ -28,6 +28,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
@@ -72,6 +73,14 @@ func wireFeatures(
 	policyRepo := policy.NewRepository(factory)
 	policyHandler := policy.NewHandler(policyRepo)
 
+	// settingsResolver is the live source of per-tenant session policy and
+	// per-application settings, cached in Redis under a short TTL.
+	//
+	// A nil redisClient — REDIS_REQUIRED=false with Redis unavailable — reads
+	// through to the database on every call, trading latency for availability.
+	settingsResolver := settings.NewResolver(factory, policyRepo, redisClient, 0)
+	policyHandler = policyHandler.WithSettingsInvalidator(settingsResolver)
+
 	emailProvider, err := email.NewEmailProvider(cfg)
 	if err != nil {
 		log.Printf("email: provider initialization failed: %v; falling back to noop (messages are logged, not sent)", err)
@@ -82,7 +91,9 @@ func wireFeatures(
 
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider)
-	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).WithBlocklist(bl)
+	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
+		WithBlocklist(bl).
+		WithSessionPolicyResolver(settingsResolver)
 
 	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
 	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
@@ -91,7 +102,7 @@ func wireFeatures(
 
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
-	oauthHandler := oauth.NewHandler(oauthService)
+	oauthHandler := oauth.NewHandler(oauthService).WithSettings(settingsResolver)
 
 	socialRepo := social.NewRepository(factory, cfg.EncryptionKey)
 	socialService := social.NewService(socialRepo, cfg)
@@ -99,7 +110,7 @@ func wireFeatures(
 
 	sessionRepo := session.NewRepository(factory)
 	sessionService := session.NewService(sessionRepo, cfg)
-	sessionHandler := session.NewHandler(sessionService)
+	sessionHandler := session.NewHandler(sessionService).WithSessionPolicyResolver(settingsResolver)
 
 	rbacRepo := rbac.NewRepository(factory)
 	rbacAudit := rbac.NewAuditLogger(factory)

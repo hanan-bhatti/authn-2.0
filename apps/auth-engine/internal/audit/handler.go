@@ -56,13 +56,9 @@ type AuditLogDTO struct {
 
 // ListAuditLogs handles GET /v1/admin/audit-logs.
 func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = "tnt_00000000000000000000000000000001"
-		}
+	tenantID, err := middleware.RequireTenantID(c)
+	if err != nil {
+		return err
 	}
 
 	client := h.factory.GetClient(c.UserContext(), tenantID, "")

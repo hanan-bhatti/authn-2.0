@@ -44,6 +44,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -212,7 +213,13 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider)
-	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter)
+
+	// The resolver is attached with a nil cache, so every read goes to the
+	// database. That matches the server's degraded path and keeps a test from
+	// asserting against a value another test left in a shared cache.
+	settingsResolver := settings.NewResolver(factory, policyRepo, nil, 0)
+	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
+		WithSessionPolicyResolver(settingsResolver)
 
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)

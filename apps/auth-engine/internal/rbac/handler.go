@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -119,11 +120,10 @@ func sendPermissionValidationError(c *fiber.Ctx, err error) error {
 
 // CreateRole handles POST /v1/tenant/roles. It answers 201 with the new role,
 // 400 for an unparseable body, 422 for a malformed or restricted permission, 409
-// when the name or slug is taken, and 500 otherwise. The tenant comes from the
-// body, then the authenticated context, then the query string.
+// when the name or slug is taken, and 500 otherwise. The role is created in the
+// authenticated caller's tenant.
 func (h *Handler) CreateRole(c *fiber.Ctx) error {
 	var req struct {
-		TenantID    string   `json:"tenant_id"`
 		Name        string   `json:"name"`
 		Slug        string   `json:"slug"`
 		Description string   `json:"description"`
@@ -133,13 +133,9 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	tenantID := req.TenantID
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = c.Query("tenant_id", "tnt_00000000000000000000000000000001")
-		}
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
 
 	actorID := h.getActorID(c)
@@ -161,13 +157,9 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 // ListRoles handles GET /v1/tenant/roles, answering 200 with every role in the
 // tenant and its permissions, or 500 when the query fails.
 func (h *Handler) ListRoles(c *fiber.Ctx) error {
-	tenantID := c.Query("tenant_id")
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = "tnt_00000000000000000000000000000001"
-		}
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
 
 	roles, err := h.svc.ListRoles(c.UserContext(), tenantID)
@@ -184,13 +176,9 @@ func (h *Handler) ListRoles(c *fiber.Ctx) error {
 // otherwise.
 func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 	roleID := c.Params("role_id")
-	tenantID := c.Query("tenant_id")
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = "tnt_00000000000000000000000000000001"
-		}
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
 
 	var req struct {
@@ -218,13 +206,9 @@ func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 // user or role does not exist, and 500 otherwise.
 func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
-	tenantID := c.Query("tenant_id")
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = "tnt_00000000000000000000000000000001"
-		}
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
 
 	var req struct {
@@ -260,13 +244,9 @@ func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 func (h *Handler) RevokeUserRole(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
 	roleSlug := c.Params("role_slug")
-	tenantID := c.Query("tenant_id")
-	if tenantID == "" {
-		if t, ok := c.Locals("tenant_id").(string); ok && t != "" {
-			tenantID = t
-		} else {
-			tenantID = "tnt_00000000000000000000000000000001"
-		}
+	tenantID, terr := middleware.RequireTenantID(c)
+	if terr != nil {
+		return terr
 	}
 
 	actorID := h.getActorID(c)

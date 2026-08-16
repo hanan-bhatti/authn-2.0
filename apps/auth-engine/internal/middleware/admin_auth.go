@@ -154,3 +154,33 @@ func GetTenantID(c *fiber.Ctx) string {
 	}
 	return ""
 }
+
+// RequireTenantID returns the authenticated caller's tenant, or a 401 response
+// when no guard resolved one.
+//
+// Handlers must take the tenant from here rather than from the query string, a
+// path parameter or the request body. The tenant decides which rows the request
+// reaches, so accepting a caller-supplied value lets anyone holding a valid
+// credential for one tenant address every other tenant by naming it. Returning
+// an error on an empty value keeps a routing mistake a 401 instead of a
+// cross-tenant read or write against a fallback tenant.
+func RequireTenantID(c *fiber.Ctx) (string, error) {
+	if tenantID := GetTenantID(c); tenantID != "" {
+		return tenantID, nil
+	}
+	return "", httperr.Unauthorized(c, httperr.CodeUnauthorized,
+		"tenant could not be resolved from the supplied credential")
+}
+
+// GetEnvironment returns the environment resolved by whichever auth middleware
+// ran, defaulting to "test".
+//
+// The environment is a property of the credential — a test key addresses test
+// data and a live key live data — so it is read from here rather than from the
+// request. Defaulting to "test" keeps an unresolved request away from live rows.
+func GetEnvironment(c *fiber.Ctx) string {
+	if val, ok := c.Locals("environment").(string); ok && val != "" {
+		return val
+	}
+	return "test"
+}

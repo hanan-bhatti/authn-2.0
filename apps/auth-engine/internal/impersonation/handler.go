@@ -24,6 +24,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -163,7 +164,10 @@ func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMidd
 // handleImpersonationError maps the service's error to. A policy that cannot be
 // read falls back to the defaults rather than failing the request.
 func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, terr := requireTenantID(c)
+	if terr != nil {
+		return terr
+	}
 	env := getEnvironment(c)
 	targetUserID := c.Params("user_id")
 	adminID := getAdminID(c)
@@ -268,7 +272,10 @@ func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 // 200 with the tenant's policy, or with the defaults when none is stored or it
 // cannot be read.
 func (h *Handler) GetImpersonationPolicy(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, terr := requireTenantID(c)
+	if terr != nil {
+		return terr
+	}
 	pol := policy.DefaultImpersonationPolicy()
 	if h.policyRepo != nil {
 		p, err := h.policyRepo.GetImpersonationPolicy(c.UserContext(), tenantID)
@@ -285,7 +292,10 @@ func (h *Handler) GetImpersonationPolicy(c *fiber.Ctx) error {
 // the policy is out of bounds, and 500 when the write fails. With no repository
 // configured it echoes the validated policy back without persisting it.
 func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
-	tenantID := getTenantID(c)
+	tenantID, terr := requireTenantID(c)
+	if terr != nil {
+		return terr
+	}
 	var pol policy.ImpersonationPolicy
 	if err := c.BodyParser(&pol); err != nil {
 		return httperr.BadRequest(c, httperr.CodeInvalidRequestBody, "invalid request JSON body")
@@ -341,23 +351,20 @@ func handleImpersonationError(c *fiber.Ctx, err error) error {
 	}
 }
 
-// getTenantID returns the tenant resolved by the auth middleware, or
-// "tnt_00000000000000000000000000000001" for single-tenant deployments that never set one.
-func getTenantID(c *fiber.Ctx) string {
-	if val, ok := c.Locals("tenant_id").(string); ok && val != "" {
-		return val
-	}
-	return "tnt_00000000000000000000000000000001"
+// requireTenantID returns the tenant resolved by the admin guard.
+//
+// Impersonation mints a token that acts as another user, so an unresolved tenant
+// is refused rather than defaulted: substituting one would aim the most powerful
+// operation on the admin surface at whichever tenant the fallback named.
+func requireTenantID(c *fiber.Ctx) (string, error) {
+	return middleware.RequireTenantID(c)
 }
 
 // getEnvironment returns the environment resolved by the auth middleware,
 // defaulting to "test" so an unresolved request cannot silently read or write
 // live data.
 func getEnvironment(c *fiber.Ctx) string {
-	if val, ok := c.Locals("environment").(string); ok && val != "" {
-		return val
-	}
-	return "test"
+	return middleware.GetEnvironment(c)
 }
 
 // getAdminID identifies the initiating admin from the request locals, preferring

@@ -383,7 +383,12 @@ func (l *Limiter) Middleware() fiber.Handler {
 			return c.Next()
 		}
 
-		tenantID := c.Query("tenant_id", "tnt_00000000000000000000000000000001")
+		// The tenant is only a bucket namespace here, but it is still taken from
+		// the credential the key middleware resolved rather than the request: a
+		// caller who can name their own namespace can mint a fresh budget on
+		// every attempt, which removes the limit entirely. Requests that reach
+		// this with no resolved tenant share one bucket.
+		tenantID := "unresolved"
 		if tID, ok := c.Locals("tenant_id").(string); ok && tID != "" {
 			tenantID = tID
 		}
