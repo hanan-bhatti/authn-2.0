@@ -22,6 +22,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/schema"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
@@ -388,6 +389,24 @@ func init() {
 	sessionDescCreatedAt := sessionFields[14].Descriptor()
 	// session.DefaultCreatedAt holds the default value on creation for the created_at field.
 	session.DefaultCreatedAt = sessionDescCreatedAt.Default.(func() time.Time)
+	sessionappactivityFields := schema.SessionAppActivity{}.Fields()
+	_ = sessionappactivityFields
+	// sessionappactivityDescSessionID is the schema descriptor for session_id field.
+	sessionappactivityDescSessionID := sessionappactivityFields[1].Descriptor()
+	// sessionappactivity.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	sessionappactivity.SessionIDValidator = sessionappactivityDescSessionID.Validators[0].(func(string) error)
+	// sessionappactivityDescApplicationID is the schema descriptor for application_id field.
+	sessionappactivityDescApplicationID := sessionappactivityFields[2].Descriptor()
+	// sessionappactivity.ApplicationIDValidator is a validator for the "application_id" field. It is called by the builders before save.
+	sessionappactivity.ApplicationIDValidator = sessionappactivityDescApplicationID.Validators[0].(func(string) error)
+	// sessionappactivityDescFirstSeenAt is the schema descriptor for first_seen_at field.
+	sessionappactivityDescFirstSeenAt := sessionappactivityFields[3].Descriptor()
+	// sessionappactivity.DefaultFirstSeenAt holds the default value on creation for the first_seen_at field.
+	sessionappactivity.DefaultFirstSeenAt = sessionappactivityDescFirstSeenAt.Default.(func() time.Time)
+	// sessionappactivityDescLastActiveAt is the schema descriptor for last_active_at field.
+	sessionappactivityDescLastActiveAt := sessionappactivityFields[4].Descriptor()
+	// sessionappactivity.DefaultLastActiveAt holds the default value on creation for the last_active_at field.
+	sessionappactivity.DefaultLastActiveAt = sessionappactivityDescLastActiveAt.Default.(func() time.Time)
 	socialauthstateFields := schema.SocialAuthState{}.Fields()
 	_ = socialauthstateFields
 	// socialauthstateDescTenantID is the schema descriptor for tenant_id field.
@@ -511,19 +530,19 @@ func init() {
 	// user.DefaultPhoneVerified holds the default value on creation for the phone_verified field.
 	user.DefaultPhoneVerified = userDescPhoneVerified.Default.(bool)
 	// userDescRecoveryFailedAttempts is the schema descriptor for recovery_failed_attempts field.
-	userDescRecoveryFailedAttempts := userFields[19].Descriptor()
+	userDescRecoveryFailedAttempts := userFields[20].Descriptor()
 	// user.DefaultRecoveryFailedAttempts holds the default value on creation for the recovery_failed_attempts field.
 	user.DefaultRecoveryFailedAttempts = userDescRecoveryFailedAttempts.Default.(int)
 	// userDescSecurityReviewRequired is the schema descriptor for security_review_required field.
-	userDescSecurityReviewRequired := userFields[21].Descriptor()
+	userDescSecurityReviewRequired := userFields[22].Descriptor()
 	// user.DefaultSecurityReviewRequired holds the default value on creation for the security_review_required field.
 	user.DefaultSecurityReviewRequired = userDescSecurityReviewRequired.Default.(bool)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[22].Descriptor()
+	userDescCreatedAt := userFields[23].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[23].Descriptor()
+	userDescUpdatedAt := userFields[24].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

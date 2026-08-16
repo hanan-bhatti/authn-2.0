@@ -240,6 +240,20 @@ func (uc *UserCreate) SetNillableStatus(u *user.Status) *UserCreate {
 	return uc
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (uc *UserCreate) SetDeletedAt(t time.Time) *UserCreate {
+	uc.mutation.SetDeletedAt(t)
+	return uc
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (uc *UserCreate) SetNillableDeletedAt(t *time.Time) *UserCreate {
+	if t != nil {
+		uc.SetDeletedAt(*t)
+	}
+	return uc
+}
+
 // SetLastSignInAt sets the "last_sign_in_at" field.
 func (uc *UserCreate) SetLastSignInAt(t time.Time) *UserCreate {
 	uc.mutation.SetLastSignInAt(t)
@@ -724,6 +738,10 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := uc.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeEnum, value)
 		_node.Status = value
+	}
+	if value, ok := uc.mutation.DeletedAt(); ok {
+		_spec.SetField(user.FieldDeletedAt, field.TypeTime, value)
+		_node.DeletedAt = &value
 	}
 	if value, ok := uc.mutation.LastSignInAt(); ok {
 		_spec.SetField(user.FieldLastSignInAt, field.TypeTime, value)

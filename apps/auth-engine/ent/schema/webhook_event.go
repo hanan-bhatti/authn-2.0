@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"entgo.io/ent"
-	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -64,14 +63,14 @@ func (WebhookEvent) Fields() []ent.Field {
 // Edges of the WebhookEvent.
 func (WebhookEvent) Edges() []ent.Edge {
 	return []ent.Edge{
+		// Deleted with the endpoint. The cascade is declared on
+		// WebhookEndpoint.events, the side codegen reads when it emits the
+		// foreign key.
 		edge.From("webhook_endpoint", WebhookEndpoint.Type).
 			Ref("events").
 			Field("webhook_endpoint_id").
 			Unique().
-			Required().
-			Annotations(entsql.Annotation{
-				OnDelete: entsql.Cascade,
-			}),
+			Required(),
 	}
 }
 

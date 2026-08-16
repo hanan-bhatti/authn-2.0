@@ -45,6 +45,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeAppActivity holds the string denoting the app_activity edge name in mutations.
+	EdgeAppActivity = "app_activity"
 	// Table holds the table name of the session in the database.
 	Table = "sessions"
 	// UserTable is the table that holds the user relation/edge.
@@ -54,6 +56,13 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
+	// AppActivityTable is the table that holds the app_activity relation/edge.
+	AppActivityTable = "session_app_activities"
+	// AppActivityInverseTable is the table name for the SessionAppActivity entity.
+	// It exists in this package in order to avoid circular dependency with the "sessionappactivity" package.
+	AppActivityInverseTable = "session_app_activities"
+	// AppActivityColumn is the table column denoting the app_activity relation/edge.
+	AppActivityColumn = "session_id"
 )
 
 // Columns holds all SQL columns for session fields.
@@ -205,10 +214,31 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByAppActivityCount orders the results by app_activity count.
+func ByAppActivityCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAppActivityStep(), opts...)
+	}
+}
+
+// ByAppActivity orders the results by app_activity terms.
+func ByAppActivity(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAppActivityStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newAppActivityStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AppActivityInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, AppActivityTable, AppActivityColumn),
 	)
 }

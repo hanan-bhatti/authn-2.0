@@ -49,6 +49,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
@@ -197,6 +198,25 @@ func AttachPrivacyInterceptors(client *ent.Client) {
 					return nil, fmt.Errorf("%w: Session query requires active TenantID in context", ErrPrivacyViolation)
 				}
 				query.Where(session.HasUserWith(user.TenantID(p.TenantID)))
+
+			// Filtered through both parents rather than either one. A row pairing
+			// a session with an application belongs to a tenant only if both
+			// sides do, and requiring both means a mismatched pairing — which
+			// nothing should be able to write — is visible to neither tenant
+			// instead of to one of them.
+			case *ent.SessionAppActivityQuery:
+				if !ok || p.TenantID == "" {
+					return nil, fmt.Errorf("%w: SessionAppActivity query requires active TenantID in context", ErrPrivacyViolation)
+				}
+				query.Where(
+					sessionappactivity.HasSessionWith(session.HasUserWith(user.TenantID(p.TenantID))),
+					sessionappactivity.HasApplicationWith(application.TenantID(p.TenantID)),
+				)
+				if p.Environment != "" {
+					query.Where(sessionappactivity.HasApplicationWith(
+						application.EnvironmentEQ(application.Environment(p.Environment)),
+					))
+				}
 
 			case *ent.IdentityQuery:
 				if !ok || p.TenantID == "" {

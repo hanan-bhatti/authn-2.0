@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sessionactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -164,6 +165,13 @@ func (r *Repository) RotateSession(ctx context.Context, tenantID, environment, o
 	if err != nil {
 		return nil, "", err
 	}
+
+	// Per-application activity follows the successor, then records this refresh
+	// against it. Errors are dropped for the same reason as at sign-in: the
+	// caller's tokens have already rotated, and failing here would revoke a
+	// session that is now valid over a reporting timestamp.
+	_ = sessionactivity.CarryForward(ctx, client, oldSessionID, newSess.ID)
+	_ = sessionactivity.Touch(ctx, client, newSess.ID)
 
 	return newSess, newRaw, nil
 }

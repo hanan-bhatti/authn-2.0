@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 )
 
@@ -204,6 +205,21 @@ func (sc *SessionCreate) SetUser(u *User) *SessionCreate {
 	return sc.SetUserID(u.ID)
 }
 
+// AddAppActivityIDs adds the "app_activity" edge to the SessionAppActivity entity by IDs.
+func (sc *SessionCreate) AddAppActivityIDs(ids ...string) *SessionCreate {
+	sc.mutation.AddAppActivityIDs(ids...)
+	return sc
+}
+
+// AddAppActivity adds the "app_activity" edges to the SessionAppActivity entity.
+func (sc *SessionCreate) AddAppActivity(s ...*SessionAppActivity) *SessionCreate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return sc.AddAppActivityIDs(ids...)
+}
+
 // Mutation returns the SessionMutation object of the builder.
 func (sc *SessionCreate) Mutation() *SessionMutation {
 	return sc.mutation
@@ -386,6 +402,22 @@ func (sc *SessionCreate) createSpec() (*Session, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.UserID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := sc.mutation.AppActivityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

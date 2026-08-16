@@ -494,6 +494,30 @@ func (f SessionMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutatio
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SessionMutation", m)
 }
 
+// The SessionAppActivityQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type SessionAppActivityQueryRuleFunc func(context.Context, *ent.SessionAppActivityQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f SessionAppActivityQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SessionAppActivityQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.SessionAppActivityQuery", q)
+}
+
+// The SessionAppActivityMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type SessionAppActivityMutationRuleFunc func(context.Context, *ent.SessionAppActivityMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f SessionAppActivityMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.SessionAppActivityMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SessionAppActivityMutation", m)
+}
+
 // The SocialAuthStateQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type SocialAuthStateQueryRuleFunc func(context.Context, *ent.SocialAuthStateQuery) error

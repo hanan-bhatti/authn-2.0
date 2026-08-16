@@ -50,8 +50,10 @@ type User struct {
 	AvatarURL string `json:"avatar_url,omitempty"`
 	// Preferred locale string (e.g. en-US, es-ES, ur-PK)
 	Locale string `json:"locale,omitempty"`
-	// Account status: active, banned, or recovery_hold (48h security freeze)
+	// Account status: active, banned (permanent), recovery_hold (48h security freeze), or suspended (reversible)
 	Status user.Status `json:"status,omitempty"`
+	// Soft-deletion timestamp. The row is retained so the email stays reserved — a second signup on that address is refused while it exists
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// Timestamp when user last successfully logged in
 	LastSignInAt *time.Time `json:"last_sign_in_at,omitempty"`
 	// Custom key-value metadata attributes for user profile
@@ -226,7 +228,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case user.FieldID, user.FieldTenantID, user.FieldEnvironment, user.FieldEmail, user.FieldUsername, user.FieldPasswordHash, user.FieldEmailVerificationToken, user.FieldMagicLinkToken, user.FieldPhoneNumber, user.FieldName, user.FieldAvatarURL, user.FieldLocale, user.FieldStatus:
 			values[i] = new(sql.NullString)
-		case user.FieldEmailVerificationExpiresAt, user.FieldMagicLinkExpiresAt, user.FieldLastSignInAt, user.FieldRecoveryLockoutUntil, user.FieldCreatedAt, user.FieldUpdatedAt:
+		case user.FieldEmailVerificationExpiresAt, user.FieldMagicLinkExpiresAt, user.FieldDeletedAt, user.FieldLastSignInAt, user.FieldRecoveryLockoutUntil, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -349,6 +351,13 @@ func (u *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				u.Status = user.Status(value.String)
+			}
+		case user.FieldDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
+			} else if value.Valid {
+				u.DeletedAt = new(time.Time)
+				*u.DeletedAt = value.Time
 			}
 		case user.FieldLastSignInAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -542,6 +551,11 @@ func (u *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", u.Status))
+	builder.WriteString(", ")
+	if v := u.DeletedAt; v != nil {
+		builder.WriteString("deleted_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	if v := u.LastSignInAt; v != nil {
 		builder.WriteString("last_sign_in_at=")

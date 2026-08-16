@@ -54,6 +54,9 @@ type SecurityBlacklist func(*sql.Selector)
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
 
+// SessionAppActivity is the predicate function for sessionappactivity builders.
+type SessionAppActivity func(*sql.Selector)
+
 // SocialAuthState is the predicate function for socialauthstate builders.
 type SocialAuthState func(*sql.Selector)
 

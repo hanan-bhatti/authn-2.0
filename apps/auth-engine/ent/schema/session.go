@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -97,6 +98,16 @@ func (Session) Edges() []ent.Edge {
 			Field("user_id").
 			Unique().
 			Required(),
+		// Where this session has been used. The session stays tenant-wide and
+		// revocation stays all-or-nothing; these rows only record per-application
+		// activity against it.
+		//
+		// Cascade belongs on this side of the edge, not on the inverse: codegen
+		// skips inverse edges when it builds foreign keys, so the same annotation
+		// over on SessionAppActivity would generate NO ACTION and the rows would
+		// outlive the session they describe.
+		edge.To("app_activity", SessionAppActivity.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

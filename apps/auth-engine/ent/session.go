@@ -57,9 +57,11 @@ type Session struct {
 type SessionEdges struct {
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
+	// AppActivity holds the value of the app_activity edge.
+	AppActivity []*SessionAppActivity `json:"app_activity,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -71,6 +73,15 @@ func (e SessionEdges) UserOrErr() (*User, error) {
 		return nil, &NotFoundError{label: user.Label}
 	}
 	return nil, &NotLoadedError{edge: "user"}
+}
+
+// AppActivityOrErr returns the AppActivity value or an error if the edge
+// was not loaded in eager-loading.
+func (e SessionEdges) AppActivityOrErr() ([]*SessionAppActivity, error) {
+	if e.loadedTypes[1] {
+		return e.AppActivity, nil
+	}
+	return nil, &NotLoadedError{edge: "app_activity"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -210,6 +221,11 @@ func (s *Session) Value(name string) (ent.Value, error) {
 // QueryUser queries the "user" edge of the Session entity.
 func (s *Session) QueryUser() *UserQuery {
 	return NewSessionClient(s.config).QueryUser(s)
+}
+
+// QueryAppActivity queries the "app_activity" edge of the Session entity.
+func (s *Session) QueryAppActivity() *SessionAppActivityQuery {
+	return NewSessionClient(s.config).QueryAppActivity(s)
 }
 
 // Update returns a builder for updating this Session.

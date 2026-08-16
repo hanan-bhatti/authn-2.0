@@ -28,6 +28,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
@@ -65,6 +66,7 @@ const (
 	TypeSAMLConnection      = "SAMLConnection"
 	TypeSecurityBlacklist   = "SecurityBlacklist"
 	TypeSession             = "Session"
+	TypeSessionAppActivity  = "SessionAppActivity"
 	TypeSocialAuthState     = "SocialAuthState"
 	TypeTenant              = "Tenant"
 	TypeTrustedDevice       = "TrustedDevice"
@@ -1048,6 +1050,9 @@ type ApplicationMutation struct {
 	api_keys                   map[string]struct{}
 	removedapi_keys            map[string]struct{}
 	clearedapi_keys            bool
+	session_activity           map[string]struct{}
+	removedsession_activity    map[string]struct{}
+	clearedsession_activity    bool
 	done                       bool
 	oldValue                   func(context.Context) (*Application, error)
 	predicates                 []predicate.Application
@@ -1548,6 +1553,60 @@ func (m *ApplicationMutation) ResetAPIKeys() {
 	m.removedapi_keys = nil
 }
 
+// AddSessionActivityIDs adds the "session_activity" edge to the SessionAppActivity entity by ids.
+func (m *ApplicationMutation) AddSessionActivityIDs(ids ...string) {
+	if m.session_activity == nil {
+		m.session_activity = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.session_activity[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSessionActivity clears the "session_activity" edge to the SessionAppActivity entity.
+func (m *ApplicationMutation) ClearSessionActivity() {
+	m.clearedsession_activity = true
+}
+
+// SessionActivityCleared reports if the "session_activity" edge to the SessionAppActivity entity was cleared.
+func (m *ApplicationMutation) SessionActivityCleared() bool {
+	return m.clearedsession_activity
+}
+
+// RemoveSessionActivityIDs removes the "session_activity" edge to the SessionAppActivity entity by IDs.
+func (m *ApplicationMutation) RemoveSessionActivityIDs(ids ...string) {
+	if m.removedsession_activity == nil {
+		m.removedsession_activity = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.session_activity, ids[i])
+		m.removedsession_activity[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSessionActivity returns the removed IDs of the "session_activity" edge to the SessionAppActivity entity.
+func (m *ApplicationMutation) RemovedSessionActivityIDs() (ids []string) {
+	for id := range m.removedsession_activity {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SessionActivityIDs returns the "session_activity" edge IDs in the mutation.
+func (m *ApplicationMutation) SessionActivityIDs() (ids []string) {
+	for id := range m.session_activity {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSessionActivity resets all changes to the "session_activity" edge.
+func (m *ApplicationMutation) ResetSessionActivity() {
+	m.session_activity = nil
+	m.clearedsession_activity = false
+	m.removedsession_activity = nil
+}
+
 // Where appends a list predicates to the ApplicationMutation builder.
 func (m *ApplicationMutation) Where(ps ...predicate.Application) {
 	m.predicates = append(m.predicates, ps...)
@@ -1798,12 +1857,15 @@ func (m *ApplicationMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ApplicationMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.tenant != nil {
 		edges = append(edges, application.EdgeTenant)
 	}
 	if m.api_keys != nil {
 		edges = append(edges, application.EdgeAPIKeys)
+	}
+	if m.session_activity != nil {
+		edges = append(edges, application.EdgeSessionActivity)
 	}
 	return edges
 }
@@ -1822,15 +1884,24 @@ func (m *ApplicationMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case application.EdgeSessionActivity:
+		ids := make([]ent.Value, 0, len(m.session_activity))
+		for id := range m.session_activity {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ApplicationMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removedapi_keys != nil {
 		edges = append(edges, application.EdgeAPIKeys)
+	}
+	if m.removedsession_activity != nil {
+		edges = append(edges, application.EdgeSessionActivity)
 	}
 	return edges
 }
@@ -1845,18 +1916,27 @@ func (m *ApplicationMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case application.EdgeSessionActivity:
+		ids := make([]ent.Value, 0, len(m.removedsession_activity))
+		for id := range m.removedsession_activity {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ApplicationMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedtenant {
 		edges = append(edges, application.EdgeTenant)
 	}
 	if m.clearedapi_keys {
 		edges = append(edges, application.EdgeAPIKeys)
+	}
+	if m.clearedsession_activity {
+		edges = append(edges, application.EdgeSessionActivity)
 	}
 	return edges
 }
@@ -1869,6 +1949,8 @@ func (m *ApplicationMutation) EdgeCleared(name string) bool {
 		return m.clearedtenant
 	case application.EdgeAPIKeys:
 		return m.clearedapi_keys
+	case application.EdgeSessionActivity:
+		return m.clearedsession_activity
 	}
 	return false
 }
@@ -1893,6 +1975,9 @@ func (m *ApplicationMutation) ResetEdge(name string) error {
 		return nil
 	case application.EdgeAPIKeys:
 		m.ResetAPIKeys()
+		return nil
+	case application.EdgeSessionActivity:
+		m.ResetSessionActivity()
 		return nil
 	}
 	return fmt.Errorf("unknown Application edge %s", name)
@@ -14179,6 +14264,9 @@ type SessionMutation struct {
 	clearedFields            map[string]struct{}
 	user                     *string
 	cleareduser              bool
+	app_activity             map[string]struct{}
+	removedapp_activity      map[string]struct{}
+	clearedapp_activity      bool
 	done                     bool
 	oldValue                 func(context.Context) (*Session, error)
 	predicates               []predicate.Session
@@ -14978,6 +15066,60 @@ func (m *SessionMutation) ResetUser() {
 	m.cleareduser = false
 }
 
+// AddAppActivityIDs adds the "app_activity" edge to the SessionAppActivity entity by ids.
+func (m *SessionMutation) AddAppActivityIDs(ids ...string) {
+	if m.app_activity == nil {
+		m.app_activity = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.app_activity[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAppActivity clears the "app_activity" edge to the SessionAppActivity entity.
+func (m *SessionMutation) ClearAppActivity() {
+	m.clearedapp_activity = true
+}
+
+// AppActivityCleared reports if the "app_activity" edge to the SessionAppActivity entity was cleared.
+func (m *SessionMutation) AppActivityCleared() bool {
+	return m.clearedapp_activity
+}
+
+// RemoveAppActivityIDs removes the "app_activity" edge to the SessionAppActivity entity by IDs.
+func (m *SessionMutation) RemoveAppActivityIDs(ids ...string) {
+	if m.removedapp_activity == nil {
+		m.removedapp_activity = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.app_activity, ids[i])
+		m.removedapp_activity[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAppActivity returns the removed IDs of the "app_activity" edge to the SessionAppActivity entity.
+func (m *SessionMutation) RemovedAppActivityIDs() (ids []string) {
+	for id := range m.removedapp_activity {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AppActivityIDs returns the "app_activity" edge IDs in the mutation.
+func (m *SessionMutation) AppActivityIDs() (ids []string) {
+	for id := range m.app_activity {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAppActivity resets all changes to the "app_activity" edge.
+func (m *SessionMutation) ResetAppActivity() {
+	m.app_activity = nil
+	m.clearedapp_activity = false
+	m.removedapp_activity = nil
+}
+
 // Where appends a list predicates to the SessionMutation builder.
 func (m *SessionMutation) Where(ps ...predicate.Session) {
 	m.predicates = append(m.predicates, ps...)
@@ -15416,9 +15558,12 @@ func (m *SessionMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *SessionMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.user != nil {
 		edges = append(edges, session.EdgeUser)
+	}
+	if m.app_activity != nil {
+		edges = append(edges, session.EdgeAppActivity)
 	}
 	return edges
 }
@@ -15431,27 +15576,47 @@ func (m *SessionMutation) AddedIDs(name string) []ent.Value {
 		if id := m.user; id != nil {
 			return []ent.Value{*id}
 		}
+	case session.EdgeAppActivity:
+		ids := make([]ent.Value, 0, len(m.app_activity))
+		for id := range m.app_activity {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *SessionMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
+	if m.removedapp_activity != nil {
+		edges = append(edges, session.EdgeAppActivity)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *SessionMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case session.EdgeAppActivity:
+		ids := make([]ent.Value, 0, len(m.removedapp_activity))
+		for id := range m.removedapp_activity {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *SessionMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.cleareduser {
 		edges = append(edges, session.EdgeUser)
+	}
+	if m.clearedapp_activity {
+		edges = append(edges, session.EdgeAppActivity)
 	}
 	return edges
 }
@@ -15462,6 +15627,8 @@ func (m *SessionMutation) EdgeCleared(name string) bool {
 	switch name {
 	case session.EdgeUser:
 		return m.cleareduser
+	case session.EdgeAppActivity:
+		return m.clearedapp_activity
 	}
 	return false
 }
@@ -15484,8 +15651,605 @@ func (m *SessionMutation) ResetEdge(name string) error {
 	case session.EdgeUser:
 		m.ResetUser()
 		return nil
+	case session.EdgeAppActivity:
+		m.ResetAppActivity()
+		return nil
 	}
 	return fmt.Errorf("unknown Session edge %s", name)
+}
+
+// SessionAppActivityMutation represents an operation that mutates the SessionAppActivity nodes in the graph.
+type SessionAppActivityMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *string
+	first_seen_at      *time.Time
+	last_active_at     *time.Time
+	clearedFields      map[string]struct{}
+	session            *string
+	clearedsession     bool
+	application        *string
+	clearedapplication bool
+	done               bool
+	oldValue           func(context.Context) (*SessionAppActivity, error)
+	predicates         []predicate.SessionAppActivity
+}
+
+var _ ent.Mutation = (*SessionAppActivityMutation)(nil)
+
+// sessionappactivityOption allows management of the mutation configuration using functional options.
+type sessionappactivityOption func(*SessionAppActivityMutation)
+
+// newSessionAppActivityMutation creates new mutation for the SessionAppActivity entity.
+func newSessionAppActivityMutation(c config, op Op, opts ...sessionappactivityOption) *SessionAppActivityMutation {
+	m := &SessionAppActivityMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSessionAppActivity,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSessionAppActivityID sets the ID field of the mutation.
+func withSessionAppActivityID(id string) sessionappactivityOption {
+	return func(m *SessionAppActivityMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SessionAppActivity
+		)
+		m.oldValue = func(ctx context.Context) (*SessionAppActivity, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SessionAppActivity.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSessionAppActivity sets the old SessionAppActivity of the mutation.
+func withSessionAppActivity(node *SessionAppActivity) sessionappactivityOption {
+	return func(m *SessionAppActivityMutation) {
+		m.oldValue = func(context.Context) (*SessionAppActivity, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SessionAppActivityMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SessionAppActivityMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SessionAppActivity entities.
+func (m *SessionAppActivityMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SessionAppActivityMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SessionAppActivityMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SessionAppActivity.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *SessionAppActivityMutation) SetSessionID(s string) {
+	m.session = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *SessionAppActivityMutation) SessionID() (r string, exists bool) {
+	v := m.session
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the SessionAppActivity entity.
+// If the SessionAppActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionAppActivityMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *SessionAppActivityMutation) ResetSessionID() {
+	m.session = nil
+}
+
+// SetApplicationID sets the "application_id" field.
+func (m *SessionAppActivityMutation) SetApplicationID(s string) {
+	m.application = &s
+}
+
+// ApplicationID returns the value of the "application_id" field in the mutation.
+func (m *SessionAppActivityMutation) ApplicationID() (r string, exists bool) {
+	v := m.application
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationID returns the old "application_id" field's value of the SessionAppActivity entity.
+// If the SessionAppActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionAppActivityMutation) OldApplicationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationID: %w", err)
+	}
+	return oldValue.ApplicationID, nil
+}
+
+// ResetApplicationID resets all changes to the "application_id" field.
+func (m *SessionAppActivityMutation) ResetApplicationID() {
+	m.application = nil
+}
+
+// SetFirstSeenAt sets the "first_seen_at" field.
+func (m *SessionAppActivityMutation) SetFirstSeenAt(t time.Time) {
+	m.first_seen_at = &t
+}
+
+// FirstSeenAt returns the value of the "first_seen_at" field in the mutation.
+func (m *SessionAppActivityMutation) FirstSeenAt() (r time.Time, exists bool) {
+	v := m.first_seen_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstSeenAt returns the old "first_seen_at" field's value of the SessionAppActivity entity.
+// If the SessionAppActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionAppActivityMutation) OldFirstSeenAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstSeenAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstSeenAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstSeenAt: %w", err)
+	}
+	return oldValue.FirstSeenAt, nil
+}
+
+// ResetFirstSeenAt resets all changes to the "first_seen_at" field.
+func (m *SessionAppActivityMutation) ResetFirstSeenAt() {
+	m.first_seen_at = nil
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (m *SessionAppActivityMutation) SetLastActiveAt(t time.Time) {
+	m.last_active_at = &t
+}
+
+// LastActiveAt returns the value of the "last_active_at" field in the mutation.
+func (m *SessionAppActivityMutation) LastActiveAt() (r time.Time, exists bool) {
+	v := m.last_active_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastActiveAt returns the old "last_active_at" field's value of the SessionAppActivity entity.
+// If the SessionAppActivity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionAppActivityMutation) OldLastActiveAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastActiveAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastActiveAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastActiveAt: %w", err)
+	}
+	return oldValue.LastActiveAt, nil
+}
+
+// ResetLastActiveAt resets all changes to the "last_active_at" field.
+func (m *SessionAppActivityMutation) ResetLastActiveAt() {
+	m.last_active_at = nil
+}
+
+// ClearSession clears the "session" edge to the Session entity.
+func (m *SessionAppActivityMutation) ClearSession() {
+	m.clearedsession = true
+	m.clearedFields[sessionappactivity.FieldSessionID] = struct{}{}
+}
+
+// SessionCleared reports if the "session" edge to the Session entity was cleared.
+func (m *SessionAppActivityMutation) SessionCleared() bool {
+	return m.clearedsession
+}
+
+// SessionIDs returns the "session" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// SessionID instead. It exists only for internal usage by the builders.
+func (m *SessionAppActivityMutation) SessionIDs() (ids []string) {
+	if id := m.session; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetSession resets all changes to the "session" edge.
+func (m *SessionAppActivityMutation) ResetSession() {
+	m.session = nil
+	m.clearedsession = false
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (m *SessionAppActivityMutation) ClearApplication() {
+	m.clearedapplication = true
+	m.clearedFields[sessionappactivity.FieldApplicationID] = struct{}{}
+}
+
+// ApplicationCleared reports if the "application" edge to the Application entity was cleared.
+func (m *SessionAppActivityMutation) ApplicationCleared() bool {
+	return m.clearedapplication
+}
+
+// ApplicationIDs returns the "application" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ApplicationID instead. It exists only for internal usage by the builders.
+func (m *SessionAppActivityMutation) ApplicationIDs() (ids []string) {
+	if id := m.application; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetApplication resets all changes to the "application" edge.
+func (m *SessionAppActivityMutation) ResetApplication() {
+	m.application = nil
+	m.clearedapplication = false
+}
+
+// Where appends a list predicates to the SessionAppActivityMutation builder.
+func (m *SessionAppActivityMutation) Where(ps ...predicate.SessionAppActivity) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SessionAppActivityMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SessionAppActivityMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SessionAppActivity, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SessionAppActivityMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SessionAppActivityMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SessionAppActivity).
+func (m *SessionAppActivityMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SessionAppActivityMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.session != nil {
+		fields = append(fields, sessionappactivity.FieldSessionID)
+	}
+	if m.application != nil {
+		fields = append(fields, sessionappactivity.FieldApplicationID)
+	}
+	if m.first_seen_at != nil {
+		fields = append(fields, sessionappactivity.FieldFirstSeenAt)
+	}
+	if m.last_active_at != nil {
+		fields = append(fields, sessionappactivity.FieldLastActiveAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SessionAppActivityMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sessionappactivity.FieldSessionID:
+		return m.SessionID()
+	case sessionappactivity.FieldApplicationID:
+		return m.ApplicationID()
+	case sessionappactivity.FieldFirstSeenAt:
+		return m.FirstSeenAt()
+	case sessionappactivity.FieldLastActiveAt:
+		return m.LastActiveAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SessionAppActivityMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sessionappactivity.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case sessionappactivity.FieldApplicationID:
+		return m.OldApplicationID(ctx)
+	case sessionappactivity.FieldFirstSeenAt:
+		return m.OldFirstSeenAt(ctx)
+	case sessionappactivity.FieldLastActiveAt:
+		return m.OldLastActiveAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SessionAppActivity field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SessionAppActivityMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sessionappactivity.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case sessionappactivity.FieldApplicationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationID(v)
+		return nil
+	case sessionappactivity.FieldFirstSeenAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstSeenAt(v)
+		return nil
+	case sessionappactivity.FieldLastActiveAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastActiveAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SessionAppActivity field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SessionAppActivityMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SessionAppActivityMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SessionAppActivityMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SessionAppActivity numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SessionAppActivityMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SessionAppActivityMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SessionAppActivityMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown SessionAppActivity nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SessionAppActivityMutation) ResetField(name string) error {
+	switch name {
+	case sessionappactivity.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case sessionappactivity.FieldApplicationID:
+		m.ResetApplicationID()
+		return nil
+	case sessionappactivity.FieldFirstSeenAt:
+		m.ResetFirstSeenAt()
+		return nil
+	case sessionappactivity.FieldLastActiveAt:
+		m.ResetLastActiveAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SessionAppActivity field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SessionAppActivityMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.session != nil {
+		edges = append(edges, sessionappactivity.EdgeSession)
+	}
+	if m.application != nil {
+		edges = append(edges, sessionappactivity.EdgeApplication)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SessionAppActivityMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case sessionappactivity.EdgeSession:
+		if id := m.session; id != nil {
+			return []ent.Value{*id}
+		}
+	case sessionappactivity.EdgeApplication:
+		if id := m.application; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SessionAppActivityMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SessionAppActivityMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SessionAppActivityMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedsession {
+		edges = append(edges, sessionappactivity.EdgeSession)
+	}
+	if m.clearedapplication {
+		edges = append(edges, sessionappactivity.EdgeApplication)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SessionAppActivityMutation) EdgeCleared(name string) bool {
+	switch name {
+	case sessionappactivity.EdgeSession:
+		return m.clearedsession
+	case sessionappactivity.EdgeApplication:
+		return m.clearedapplication
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SessionAppActivityMutation) ClearEdge(name string) error {
+	switch name {
+	case sessionappactivity.EdgeSession:
+		m.ClearSession()
+		return nil
+	case sessionappactivity.EdgeApplication:
+		m.ClearApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown SessionAppActivity unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SessionAppActivityMutation) ResetEdge(name string) error {
+	switch name {
+	case sessionappactivity.EdgeSession:
+		m.ResetSession()
+		return nil
+	case sessionappactivity.EdgeApplication:
+		m.ResetApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown SessionAppActivity edge %s", name)
 }
 
 // SocialAuthStateMutation represents an operation that mutates the SocialAuthState nodes in the graph.
@@ -20067,6 +20831,7 @@ type UserMutation struct {
 	avatar_url                    *string
 	locale                        *string
 	status                        *user.Status
+	deleted_at                    *time.Time
 	last_sign_in_at               *time.Time
 	metadata                      *map[string]interface{}
 	recovery_failed_attempts      *int
@@ -20924,6 +21689,55 @@ func (m *UserMutation) OldStatus(ctx context.Context) (v user.Status, err error)
 // ResetStatus resets all changes to the "status" field.
 func (m *UserMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *UserMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *UserMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *UserMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[user.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *UserMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *UserMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, user.FieldDeletedAt)
 }
 
 // SetLastSignInAt sets the "last_sign_in_at" field.
@@ -21892,7 +22706,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.tenant != nil {
 		fields = append(fields, user.FieldTenantID)
 	}
@@ -21940,6 +22754,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, user.FieldDeletedAt)
 	}
 	if m.last_sign_in_at != nil {
 		fields = append(fields, user.FieldLastSignInAt)
@@ -22002,6 +22819,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Locale()
 	case user.FieldStatus:
 		return m.Status()
+	case user.FieldDeletedAt:
+		return m.DeletedAt()
 	case user.FieldLastSignInAt:
 		return m.LastSignInAt()
 	case user.FieldMetadata:
@@ -22057,6 +22876,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldLocale(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
+	case user.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
 	case user.FieldLastSignInAt:
 		return m.OldLastSignInAt(ctx)
 	case user.FieldMetadata:
@@ -22192,6 +23013,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetStatus(v)
 		return nil
+	case user.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
 	case user.FieldLastSignInAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -22316,6 +23144,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldLocale) {
 		fields = append(fields, user.FieldLocale)
 	}
+	if m.FieldCleared(user.FieldDeletedAt) {
+		fields = append(fields, user.FieldDeletedAt)
+	}
 	if m.FieldCleared(user.FieldLastSignInAt) {
 		fields = append(fields, user.FieldLastSignInAt)
 	}
@@ -22368,6 +23199,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldLocale:
 		m.ClearLocale()
+		return nil
+	case user.FieldDeletedAt:
+		m.ClearDeletedAt()
 		return nil
 	case user.FieldLastSignInAt:
 		m.ClearLastSignInAt()
@@ -22433,6 +23267,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case user.FieldDeletedAt:
+		m.ResetDeletedAt()
 		return nil
 	case user.FieldLastSignInAt:
 		m.ResetLastSignInAt()

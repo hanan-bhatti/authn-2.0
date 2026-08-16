@@ -47,6 +47,8 @@ const (
 	FieldLocale = "locale"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
+	FieldDeletedAt = "deleted_at"
 	// FieldLastSignInAt holds the string denoting the last_sign_in_at field in the database.
 	FieldLastSignInAt = "last_sign_in_at"
 	// FieldMetadata holds the string denoting the metadata field in the database.
@@ -192,6 +194,7 @@ var Columns = []string{
 	FieldAvatarURL,
 	FieldLocale,
 	FieldStatus,
+	FieldDeletedAt,
 	FieldLastSignInAt,
 	FieldMetadata,
 	FieldRecoveryFailedAttempts,
@@ -269,6 +272,7 @@ const (
 	StatusActive       Status = "active"
 	StatusBanned       Status = "banned"
 	StatusRecoveryHold Status = "recovery_hold"
+	StatusSuspended    Status = "suspended"
 )
 
 func (s Status) String() string {
@@ -278,7 +282,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusActive, StatusBanned, StatusRecoveryHold:
+	case StatusActive, StatusBanned, StatusRecoveryHold, StatusSuspended:
 		return nil
 	default:
 		return fmt.Errorf("user: invalid enum value for status field: %q", s)
@@ -371,6 +375,11 @@ func ByLocale(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByDeletedAt orders the results by the deleted_at field.
+func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
 }
 
 // ByLastSignInAt orders the results by the last_sign_in_at field.

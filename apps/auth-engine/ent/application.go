@@ -46,9 +46,11 @@ type ApplicationEdges struct {
 	Tenant *Tenant `json:"tenant,omitempty"`
 	// APIKeys holds the value of the api_keys edge.
 	APIKeys []*ApiKey `json:"api_keys,omitempty"`
+	// SessionActivity holds the value of the session_activity edge.
+	SessionActivity []*SessionAppActivity `json:"session_activity,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // TenantOrErr returns the Tenant value or an error if the edge
@@ -69,6 +71,15 @@ func (e ApplicationEdges) APIKeysOrErr() ([]*ApiKey, error) {
 		return e.APIKeys, nil
 	}
 	return nil, &NotLoadedError{edge: "api_keys"}
+}
+
+// SessionActivityOrErr returns the SessionActivity value or an error if the edge
+// was not loaded in eager-loading.
+func (e ApplicationEdges) SessionActivityOrErr() ([]*SessionAppActivity, error) {
+	if e.loadedTypes[2] {
+		return e.SessionActivity, nil
+	}
+	return nil, &NotLoadedError{edge: "session_activity"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -170,6 +181,11 @@ func (a *Application) QueryTenant() *TenantQuery {
 // QueryAPIKeys queries the "api_keys" edge of the Application entity.
 func (a *Application) QueryAPIKeys() *ApiKeyQuery {
 	return NewApplicationClient(a.config).QueryAPIKeys(a)
+}
+
+// QuerySessionActivity queries the "session_activity" edge of the Application entity.
+func (a *Application) QuerySessionActivity() *SessionAppActivityQuery {
+	return NewApplicationClient(a.config).QuerySessionActivity(a)
 }
 
 // Update returns a builder for updating this Application.

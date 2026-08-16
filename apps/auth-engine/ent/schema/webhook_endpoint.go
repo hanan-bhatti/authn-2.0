@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -80,7 +81,11 @@ func (WebhookEndpoint) Edges() []ent.Edge {
 			Field("tenant_id").
 			Unique().
 			Required(),
-		edge.To("events", WebhookEvent.Type),
+		// Dispatch history, deleted with the endpoint. Nothing in the engine
+		// clears these rows by hand, so without the cascade a delete is refused
+		// by the foreign key as soon as the endpoint has ever fired.
+		edge.To("events", WebhookEvent.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

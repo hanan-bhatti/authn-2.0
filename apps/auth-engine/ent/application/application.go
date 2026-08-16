@@ -33,6 +33,8 @@ const (
 	EdgeTenant = "tenant"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
+	// EdgeSessionActivity holds the string denoting the session_activity edge name in mutations.
+	EdgeSessionActivity = "session_activity"
 	// Table holds the table name of the application in the database.
 	Table = "applications"
 	// TenantTable is the table that holds the tenant relation/edge.
@@ -49,6 +51,13 @@ const (
 	APIKeysInverseTable = "api_keys"
 	// APIKeysColumn is the table column denoting the api_keys relation/edge.
 	APIKeysColumn = "application_id"
+	// SessionActivityTable is the table that holds the session_activity relation/edge.
+	SessionActivityTable = "session_app_activities"
+	// SessionActivityInverseTable is the table name for the SessionAppActivity entity.
+	// It exists in this package in order to avoid circular dependency with the "sessionappactivity" package.
+	SessionActivityInverseTable = "session_app_activities"
+	// SessionActivityColumn is the table column denoting the session_activity relation/edge.
+	SessionActivityColumn = "application_id"
 )
 
 // Columns holds all SQL columns for application fields.
@@ -165,6 +174,20 @@ func ByAPIKeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newAPIKeysStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// BySessionActivityCount orders the results by session_activity count.
+func BySessionActivityCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSessionActivityStep(), opts...)
+	}
+}
+
+// BySessionActivity orders the results by session_activity terms.
+func BySessionActivity(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSessionActivityStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newTenantStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -177,5 +200,12 @@ func newAPIKeysStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(APIKeysInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, APIKeysTable, APIKeysColumn),
+	)
+}
+func newSessionActivityStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SessionActivityInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SessionActivityTable, SessionActivityColumn),
 	)
 }

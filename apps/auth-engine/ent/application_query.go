@@ -15,18 +15,20 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/apikey"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 )
 
 // ApplicationQuery is the builder for querying Application entities.
 type ApplicationQuery struct {
 	config
-	ctx         *QueryContext
-	order       []application.OrderOption
-	inters      []Interceptor
-	predicates  []predicate.Application
-	withTenant  *TenantQuery
-	withAPIKeys *ApiKeyQuery
+	ctx                 *QueryContext
+	order               []application.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.Application
+	withTenant          *TenantQuery
+	withAPIKeys         *ApiKeyQuery
+	withSessionActivity *SessionAppActivityQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -100,6 +102,28 @@ func (aq *ApplicationQuery) QueryAPIKeys() *ApiKeyQuery {
 			sqlgraph.From(application.Table, application.FieldID, selector),
 			sqlgraph.To(apikey.Table, apikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, application.APIKeysTable, application.APIKeysColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySessionActivity chains the current query on the "session_activity" edge.
+func (aq *ApplicationQuery) QuerySessionActivity() *SessionAppActivityQuery {
+	query := (&SessionAppActivityClient{config: aq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := aq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := aq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(application.Table, application.FieldID, selector),
+			sqlgraph.To(sessionappactivity.Table, sessionappactivity.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, application.SessionActivityTable, application.SessionActivityColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
 		return fromU, nil
@@ -294,13 +318,14 @@ func (aq *ApplicationQuery) Clone() *ApplicationQuery {
 		return nil
 	}
 	return &ApplicationQuery{
-		config:      aq.config,
-		ctx:         aq.ctx.Clone(),
-		order:       append([]application.OrderOption{}, aq.order...),
-		inters:      append([]Interceptor{}, aq.inters...),
-		predicates:  append([]predicate.Application{}, aq.predicates...),
-		withTenant:  aq.withTenant.Clone(),
-		withAPIKeys: aq.withAPIKeys.Clone(),
+		config:              aq.config,
+		ctx:                 aq.ctx.Clone(),
+		order:               append([]application.OrderOption{}, aq.order...),
+		inters:              append([]Interceptor{}, aq.inters...),
+		predicates:          append([]predicate.Application{}, aq.predicates...),
+		withTenant:          aq.withTenant.Clone(),
+		withAPIKeys:         aq.withAPIKeys.Clone(),
+		withSessionActivity: aq.withSessionActivity.Clone(),
 		// clone intermediate query.
 		sql:  aq.sql.Clone(),
 		path: aq.path,
@@ -326,6 +351,17 @@ func (aq *ApplicationQuery) WithAPIKeys(opts ...func(*ApiKeyQuery)) *Application
 		opt(query)
 	}
 	aq.withAPIKeys = query
+	return aq
+}
+
+// WithSessionActivity tells the query-builder to eager-load the nodes that are connected to
+// the "session_activity" edge. The optional arguments are used to configure the query builder of the edge.
+func (aq *ApplicationQuery) WithSessionActivity(opts ...func(*SessionAppActivityQuery)) *ApplicationQuery {
+	query := (&SessionAppActivityClient{config: aq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	aq.withSessionActivity = query
 	return aq
 }
 
@@ -407,9 +443,10 @@ func (aq *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*Application{}
 		_spec       = aq.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			aq.withTenant != nil,
 			aq.withAPIKeys != nil,
+			aq.withSessionActivity != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -440,6 +477,15 @@ func (aq *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 		if err := aq.loadAPIKeys(ctx, query, nodes,
 			func(n *Application) { n.Edges.APIKeys = []*ApiKey{} },
 			func(n *Application, e *ApiKey) { n.Edges.APIKeys = append(n.Edges.APIKeys, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := aq.withSessionActivity; query != nil {
+		if err := aq.loadSessionActivity(ctx, query, nodes,
+			func(n *Application) { n.Edges.SessionActivity = []*SessionAppActivity{} },
+			func(n *Application, e *SessionAppActivity) {
+				n.Edges.SessionActivity = append(n.Edges.SessionActivity, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -490,6 +536,36 @@ func (aq *ApplicationQuery) loadAPIKeys(ctx context.Context, query *ApiKeyQuery,
 	}
 	query.Where(predicate.ApiKey(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(application.APIKeysColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ApplicationID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "application_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (aq *ApplicationQuery) loadSessionActivity(ctx context.Context, query *SessionAppActivityQuery, nodes []*Application, init func(*Application), assign func(*Application, *SessionAppActivity)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Application)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(sessionappactivity.FieldApplicationID)
+	}
+	query.Where(predicate.SessionAppActivity(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(application.SessionActivityColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

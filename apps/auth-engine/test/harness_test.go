@@ -57,10 +57,12 @@ import (
 const publishableKey = "pk_test_demo12345678901234567890123456789012"
 
 // testTenant and testEnvironment are the tenant and environment every request
-// in this package is scoped to.
+// in this package is scoped to. testApplication is the application the
+// publishable key above belongs to.
 const (
 	testTenant      = "tnt_00000000000000000000000000000001"
 	testEnvironment = "test"
+	testApplication = "app_00000000000000000000000000000001"
 )
 
 // platformTenantSlug is the slug the harness reserves for the control plane.
@@ -280,10 +282,10 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 	if err := authRepo.EnsureTenantExists(ctx, testTenant); err != nil {
 		t.Fatalf("seeding tenant: %v", err)
 	}
-	if err := authRepo.EnsureDefaultApplicationExists(ctx, "app_00000000000000000000000000000001", testTenant, []string{"http://localhost:3000/callback"}); err != nil {
+	if err := authRepo.EnsureDefaultApplicationExists(ctx, testApplication, testTenant, []string{"http://localhost:3000/callback"}); err != nil {
 		t.Fatalf("seeding application: %v", err)
 	}
-	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000001", "app_00000000000000000000000000000001", publishableKey, cfg.APIKeyPepper); err != nil {
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000001", testApplication, publishableKey, cfg.APIKeyPepper); err != nil {
 		t.Fatalf("seeding API key: %v", err)
 	}
 

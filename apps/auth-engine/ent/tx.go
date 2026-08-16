@@ -44,6 +44,8 @@ type Tx struct {
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SessionAppActivity is the client for interacting with the SessionAppActivity builders.
+	SessionAppActivity *SessionAppActivityClient
 	// SocialAuthState is the client for interacting with the SocialAuthState builders.
 	SocialAuthState *SocialAuthStateClient
 	// Tenant is the client for interacting with the Tenant builders.
@@ -211,6 +213,7 @@ func (tx *Tx) init() {
 	tx.SAMLConnection = NewSAMLConnectionClient(tx.config)
 	tx.SecurityBlacklist = NewSecurityBlacklistClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.SessionAppActivity = NewSessionAppActivityClient(tx.config)
 	tx.SocialAuthState = NewSocialAuthStateClient(tx.config)
 	tx.Tenant = NewTenantClient(tx.config)
 	tx.TrustedDevice = NewTrustedDeviceClient(tx.config)

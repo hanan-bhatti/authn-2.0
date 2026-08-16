@@ -40,6 +40,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sessionactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -282,6 +283,13 @@ func (r *Repository) CreateSession(ctx context.Context, id string, userID string
 	if err != nil {
 		return nil, fmt.Errorf("failed creating session: %w", err)
 	}
+
+	// First use of this session at the application the request arrived through.
+	// The error is dropped on purpose: per-application activity is reporting
+	// detail, and failing a sign-in over it would trade a working login for a
+	// missing timestamp.
+	_ = sessionactivity.Touch(ctx, client, s.ID)
+
 	return s, nil
 }
 
@@ -373,6 +381,14 @@ func (r *Repository) MarkSessionRotatedWithGrace(ctx context.Context, oldSession
 	if err != nil {
 		return fmt.Errorf("failed marking session as rotated with grace: %w", err)
 	}
+
+	// Per-application activity follows the successor. This is the auth-side
+	// rotation transition, so it is where the move belongs: the caller's tokens
+	// have already rotated by the time it runs, which is why the error is
+	// dropped — failing here would report a rotation that did happen as failed
+	// over a reporting timestamp.
+	_ = sessionactivity.CarryForward(ctx, client, oldSessionID, newSessionID)
+
 	return nil
 }
 

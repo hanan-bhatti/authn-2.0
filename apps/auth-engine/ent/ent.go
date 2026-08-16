@@ -28,6 +28,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
@@ -114,6 +115,7 @@ func checkColumn(table, column string) error {
 			samlconnection.Table:      samlconnection.ValidColumn,
 			securityblacklist.Table:   securityblacklist.ValidColumn,
 			session.Table:             session.ValidColumn,
+			sessionappactivity.Table:  sessionappactivity.ValidColumn,
 			socialauthstate.Table:     socialauthstate.ValidColumn,
 			tenant.Table:              tenant.ValidColumn,
 			trusteddevice.Table:       trusteddevice.ValidColumn,

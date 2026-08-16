@@ -381,6 +381,29 @@ func HasAPIKeysWith(preds ...predicate.ApiKey) predicate.Application {
 	})
 }
 
+// HasSessionActivity applies the HasEdge predicate on the "session_activity" edge.
+func HasSessionActivity() predicate.Application {
+	return predicate.Application(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SessionActivityTable, SessionActivityColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSessionActivityWith applies the HasEdge predicate on the "session_activity" edge with a given conditions (other predicates).
+func HasSessionActivityWith(preds ...predicate.SessionAppActivity) predicate.Application {
+	return predicate.Application(func(s *sql.Selector) {
+		step := newSessionActivityStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Application) predicate.Application {
 	return predicate.Application(sql.AndPredicates(predicates...))

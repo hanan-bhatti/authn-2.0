@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -72,6 +73,11 @@ func (Application) Edges() []ent.Edge {
 			Unique().
 			Required(),
 		edge.To("api_keys", ApiKey.Type),
+		// Which tenant-wide sessions have reached this application, and when.
+		// Cascade for the same reason as Session.app_activity: the row describes a
+		// pairing, so it means nothing once either side is gone.
+		edge.To("session_activity", SessionAppActivity.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

@@ -201,6 +201,18 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
 }
 
+// The SessionAppActivityFunc type is an adapter to allow the use of ordinary
+// function as SessionAppActivity mutator.
+type SessionAppActivityFunc func(context.Context, *ent.SessionAppActivityMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SessionAppActivityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SessionAppActivityMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionAppActivityMutation", m)
+}
+
 // The SocialAuthStateFunc type is an adapter to allow the use of ordinary
 // function as SocialAuthState mutator.
 type SocialAuthStateFunc func(context.Context, *ent.SocialAuthStateMutation) (ent.Value, error)

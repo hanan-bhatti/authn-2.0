@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,17 +14,19 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 )
 
 // SessionQuery is the builder for querying Session entities.
 type SessionQuery struct {
 	config
-	ctx        *QueryContext
-	order      []session.OrderOption
-	inters     []Interceptor
-	predicates []predicate.Session
-	withUser   *UserQuery
+	ctx             *QueryContext
+	order           []session.OrderOption
+	inters          []Interceptor
+	predicates      []predicate.Session
+	withUser        *UserQuery
+	withAppActivity *SessionAppActivityQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -75,6 +78,28 @@ func (sq *SessionQuery) QueryUser() *UserQuery {
 			sqlgraph.From(session.Table, session.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, session.UserTable, session.UserColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(sq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryAppActivity chains the current query on the "app_activity" edge.
+func (sq *SessionQuery) QueryAppActivity() *SessionAppActivityQuery {
+	query := (&SessionAppActivityClient{config: sq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := sq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := sq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(session.Table, session.FieldID, selector),
+			sqlgraph.To(sessionappactivity.Table, sessionappactivity.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, session.AppActivityTable, session.AppActivityColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(sq.driver.Dialect(), step)
 		return fromU, nil
@@ -269,12 +294,13 @@ func (sq *SessionQuery) Clone() *SessionQuery {
 		return nil
 	}
 	return &SessionQuery{
-		config:     sq.config,
-		ctx:        sq.ctx.Clone(),
-		order:      append([]session.OrderOption{}, sq.order...),
-		inters:     append([]Interceptor{}, sq.inters...),
-		predicates: append([]predicate.Session{}, sq.predicates...),
-		withUser:   sq.withUser.Clone(),
+		config:          sq.config,
+		ctx:             sq.ctx.Clone(),
+		order:           append([]session.OrderOption{}, sq.order...),
+		inters:          append([]Interceptor{}, sq.inters...),
+		predicates:      append([]predicate.Session{}, sq.predicates...),
+		withUser:        sq.withUser.Clone(),
+		withAppActivity: sq.withAppActivity.Clone(),
 		// clone intermediate query.
 		sql:  sq.sql.Clone(),
 		path: sq.path,
@@ -289,6 +315,17 @@ func (sq *SessionQuery) WithUser(opts ...func(*UserQuery)) *SessionQuery {
 		opt(query)
 	}
 	sq.withUser = query
+	return sq
+}
+
+// WithAppActivity tells the query-builder to eager-load the nodes that are connected to
+// the "app_activity" edge. The optional arguments are used to configure the query builder of the edge.
+func (sq *SessionQuery) WithAppActivity(opts ...func(*SessionAppActivityQuery)) *SessionQuery {
+	query := (&SessionAppActivityClient{config: sq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	sq.withAppActivity = query
 	return sq
 }
 
@@ -370,8 +407,9 @@ func (sq *SessionQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Sess
 	var (
 		nodes       = []*Session{}
 		_spec       = sq.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			sq.withUser != nil,
+			sq.withAppActivity != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -395,6 +433,13 @@ func (sq *SessionQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Sess
 	if query := sq.withUser; query != nil {
 		if err := sq.loadUser(ctx, query, nodes, nil,
 			func(n *Session, e *User) { n.Edges.User = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := sq.withAppActivity; query != nil {
+		if err := sq.loadAppActivity(ctx, query, nodes,
+			func(n *Session) { n.Edges.AppActivity = []*SessionAppActivity{} },
+			func(n *Session, e *SessionAppActivity) { n.Edges.AppActivity = append(n.Edges.AppActivity, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -427,6 +472,36 @@ func (sq *SessionQuery) loadUser(ctx context.Context, query *UserQuery, nodes []
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (sq *SessionQuery) loadAppActivity(ctx context.Context, query *SessionAppActivityQuery, nodes []*Session, init func(*Session), assign func(*Session, *SessionAppActivity)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Session)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(sessionappactivity.FieldSessionID)
+	}
+	query.Where(predicate.SessionAppActivity(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(session.AppActivityColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.SessionID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "session_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

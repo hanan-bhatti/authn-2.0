@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 )
 
@@ -284,6 +285,21 @@ func (su *SessionUpdate) SetUser(u *User) *SessionUpdate {
 	return su.SetUserID(u.ID)
 }
 
+// AddAppActivityIDs adds the "app_activity" edge to the SessionAppActivity entity by IDs.
+func (su *SessionUpdate) AddAppActivityIDs(ids ...string) *SessionUpdate {
+	su.mutation.AddAppActivityIDs(ids...)
+	return su
+}
+
+// AddAppActivity adds the "app_activity" edges to the SessionAppActivity entity.
+func (su *SessionUpdate) AddAppActivity(s ...*SessionAppActivity) *SessionUpdate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return su.AddAppActivityIDs(ids...)
+}
+
 // Mutation returns the SessionMutation object of the builder.
 func (su *SessionUpdate) Mutation() *SessionMutation {
 	return su.mutation
@@ -293,6 +309,27 @@ func (su *SessionUpdate) Mutation() *SessionMutation {
 func (su *SessionUpdate) ClearUser() *SessionUpdate {
 	su.mutation.ClearUser()
 	return su
+}
+
+// ClearAppActivity clears all "app_activity" edges to the SessionAppActivity entity.
+func (su *SessionUpdate) ClearAppActivity() *SessionUpdate {
+	su.mutation.ClearAppActivity()
+	return su
+}
+
+// RemoveAppActivityIDs removes the "app_activity" edge to SessionAppActivity entities by IDs.
+func (su *SessionUpdate) RemoveAppActivityIDs(ids ...string) *SessionUpdate {
+	su.mutation.RemoveAppActivityIDs(ids...)
+	return su
+}
+
+// RemoveAppActivity removes "app_activity" edges to SessionAppActivity entities.
+func (su *SessionUpdate) RemoveAppActivity(s ...*SessionAppActivity) *SessionUpdate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return su.RemoveAppActivityIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -448,6 +485,51 @@ func (su *SessionUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if su.mutation.AppActivityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := su.mutation.RemovedAppActivityIDs(); len(nodes) > 0 && !su.mutation.AppActivityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := su.mutation.AppActivityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
@@ -730,6 +812,21 @@ func (suo *SessionUpdateOne) SetUser(u *User) *SessionUpdateOne {
 	return suo.SetUserID(u.ID)
 }
 
+// AddAppActivityIDs adds the "app_activity" edge to the SessionAppActivity entity by IDs.
+func (suo *SessionUpdateOne) AddAppActivityIDs(ids ...string) *SessionUpdateOne {
+	suo.mutation.AddAppActivityIDs(ids...)
+	return suo
+}
+
+// AddAppActivity adds the "app_activity" edges to the SessionAppActivity entity.
+func (suo *SessionUpdateOne) AddAppActivity(s ...*SessionAppActivity) *SessionUpdateOne {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return suo.AddAppActivityIDs(ids...)
+}
+
 // Mutation returns the SessionMutation object of the builder.
 func (suo *SessionUpdateOne) Mutation() *SessionMutation {
 	return suo.mutation
@@ -739,6 +836,27 @@ func (suo *SessionUpdateOne) Mutation() *SessionMutation {
 func (suo *SessionUpdateOne) ClearUser() *SessionUpdateOne {
 	suo.mutation.ClearUser()
 	return suo
+}
+
+// ClearAppActivity clears all "app_activity" edges to the SessionAppActivity entity.
+func (suo *SessionUpdateOne) ClearAppActivity() *SessionUpdateOne {
+	suo.mutation.ClearAppActivity()
+	return suo
+}
+
+// RemoveAppActivityIDs removes the "app_activity" edge to SessionAppActivity entities by IDs.
+func (suo *SessionUpdateOne) RemoveAppActivityIDs(ids ...string) *SessionUpdateOne {
+	suo.mutation.RemoveAppActivityIDs(ids...)
+	return suo
+}
+
+// RemoveAppActivity removes "app_activity" edges to SessionAppActivity entities.
+func (suo *SessionUpdateOne) RemoveAppActivity(s ...*SessionAppActivity) *SessionUpdateOne {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return suo.RemoveAppActivityIDs(ids...)
 }
 
 // Where appends a list predicates to the SessionUpdate builder.
@@ -924,6 +1042,51 @@ func (suo *SessionUpdateOne) sqlSave(ctx context.Context) (_node *Session, err e
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if suo.mutation.AppActivityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := suo.mutation.RemovedAppActivityIDs(); len(nodes) > 0 && !suo.mutation.AppActivityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := suo.mutation.AppActivityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   session.AppActivityTable,
+			Columns: []string{session.AppActivityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sessionappactivity.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

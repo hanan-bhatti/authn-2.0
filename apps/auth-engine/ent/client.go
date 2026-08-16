@@ -31,6 +31,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
@@ -80,6 +81,8 @@ type Client struct {
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// SessionAppActivity is the client for interacting with the SessionAppActivity builders.
+	SessionAppActivity *SessionAppActivityClient
 	// SocialAuthState is the client for interacting with the SocialAuthState builders.
 	SocialAuthState *SocialAuthStateClient
 	// Tenant is the client for interacting with the Tenant builders.
@@ -127,6 +130,7 @@ func (c *Client) init() {
 	c.SAMLConnection = NewSAMLConnectionClient(c.config)
 	c.SecurityBlacklist = NewSecurityBlacklistClient(c.config)
 	c.Session = NewSessionClient(c.config)
+	c.SessionAppActivity = NewSessionAppActivityClient(c.config)
 	c.SocialAuthState = NewSocialAuthStateClient(c.config)
 	c.Tenant = NewTenantClient(c.config)
 	c.TrustedDevice = NewTrustedDeviceClient(c.config)
@@ -245,6 +249,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SAMLConnection:      NewSAMLConnectionClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
+		SessionAppActivity:  NewSessionAppActivityClient(cfg),
 		SocialAuthState:     NewSocialAuthStateClient(cfg),
 		Tenant:              NewTenantClient(cfg),
 		TrustedDevice:       NewTrustedDeviceClient(cfg),
@@ -290,6 +295,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SAMLConnection:      NewSAMLConnectionClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
+		SessionAppActivity:  NewSessionAppActivityClient(cfg),
 		SocialAuthState:     NewSocialAuthStateClient(cfg),
 		Tenant:              NewTenantClient(cfg),
 		TrustedDevice:       NewTrustedDeviceClient(cfg),
@@ -332,9 +338,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.ManagedTenant,
 		c.OrgInvitation, c.OrgMember, c.Organization, c.Permission, c.PushDevice,
 		c.RecoveryContact, c.RecoveryRequest, c.Role, c.SAMLConnection,
-		c.SecurityBlacklist, c.Session, c.SocialAuthState, c.Tenant, c.TrustedDevice,
-		c.TwoFactorMethod, c.User, c.UserIpSubnetHistory, c.UserPasswordHistory,
-		c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.SecurityBlacklist, c.Session, c.SessionAppActivity, c.SocialAuthState,
+		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
+		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -347,9 +353,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.ManagedTenant,
 		c.OrgInvitation, c.OrgMember, c.Organization, c.Permission, c.PushDevice,
 		c.RecoveryContact, c.RecoveryRequest, c.Role, c.SAMLConnection,
-		c.SecurityBlacklist, c.Session, c.SocialAuthState, c.Tenant, c.TrustedDevice,
-		c.TwoFactorMethod, c.User, c.UserIpSubnetHistory, c.UserPasswordHistory,
-		c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.SecurityBlacklist, c.Session, c.SessionAppActivity, c.SocialAuthState,
+		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
+		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -390,6 +396,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecurityBlacklist.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
+	case *SessionAppActivityMutation:
+		return c.SessionAppActivity.mutate(ctx, m)
 	case *SocialAuthStateMutation:
 		return c.SocialAuthState.mutate(ctx, m)
 	case *TenantMutation:
@@ -697,6 +705,22 @@ func (c *ApplicationClient) QueryAPIKeys(a *Application) *ApiKeyQuery {
 			sqlgraph.From(application.Table, application.FieldID, id),
 			sqlgraph.To(apikey.Table, apikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, application.APIKeysTable, application.APIKeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(a.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySessionActivity queries the session_activity edge of a Application.
+func (c *ApplicationClient) QuerySessionActivity(a *Application) *SessionAppActivityQuery {
+	query := (&SessionAppActivityClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := a.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(application.Table, application.FieldID, id),
+			sqlgraph.To(sessionappactivity.Table, sessionappactivity.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, application.SessionActivityTable, application.SessionActivityColumn),
 		)
 		fromV = sqlgraph.Neighbors(a.driver.Dialect(), step)
 		return fromV, nil
@@ -2902,6 +2926,22 @@ func (c *SessionClient) QueryUser(s *Session) *UserQuery {
 	return query
 }
 
+// QueryAppActivity queries the app_activity edge of a Session.
+func (c *SessionClient) QueryAppActivity(s *Session) *SessionAppActivityQuery {
+	query := (&SessionAppActivityClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := s.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(session.Table, session.FieldID, id),
+			sqlgraph.To(sessionappactivity.Table, sessionappactivity.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, session.AppActivityTable, session.AppActivityColumn),
+		)
+		fromV = sqlgraph.Neighbors(s.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *SessionClient) Hooks() []Hook {
 	return c.hooks.Session
@@ -2924,6 +2964,171 @@ func (c *SessionClient) mutate(ctx context.Context, m *SessionMutation) (Value, 
 		return (&SessionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Session mutation op: %q", m.Op())
+	}
+}
+
+// SessionAppActivityClient is a client for the SessionAppActivity schema.
+type SessionAppActivityClient struct {
+	config
+}
+
+// NewSessionAppActivityClient returns a client for the SessionAppActivity from the given config.
+func NewSessionAppActivityClient(c config) *SessionAppActivityClient {
+	return &SessionAppActivityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sessionappactivity.Hooks(f(g(h())))`.
+func (c *SessionAppActivityClient) Use(hooks ...Hook) {
+	c.hooks.SessionAppActivity = append(c.hooks.SessionAppActivity, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sessionappactivity.Intercept(f(g(h())))`.
+func (c *SessionAppActivityClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SessionAppActivity = append(c.inters.SessionAppActivity, interceptors...)
+}
+
+// Create returns a builder for creating a SessionAppActivity entity.
+func (c *SessionAppActivityClient) Create() *SessionAppActivityCreate {
+	mutation := newSessionAppActivityMutation(c.config, OpCreate)
+	return &SessionAppActivityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SessionAppActivity entities.
+func (c *SessionAppActivityClient) CreateBulk(builders ...*SessionAppActivityCreate) *SessionAppActivityCreateBulk {
+	return &SessionAppActivityCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SessionAppActivityClient) MapCreateBulk(slice any, setFunc func(*SessionAppActivityCreate, int)) *SessionAppActivityCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SessionAppActivityCreateBulk{err: fmt.Errorf("calling to SessionAppActivityClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SessionAppActivityCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SessionAppActivityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SessionAppActivity.
+func (c *SessionAppActivityClient) Update() *SessionAppActivityUpdate {
+	mutation := newSessionAppActivityMutation(c.config, OpUpdate)
+	return &SessionAppActivityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SessionAppActivityClient) UpdateOne(saa *SessionAppActivity) *SessionAppActivityUpdateOne {
+	mutation := newSessionAppActivityMutation(c.config, OpUpdateOne, withSessionAppActivity(saa))
+	return &SessionAppActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SessionAppActivityClient) UpdateOneID(id string) *SessionAppActivityUpdateOne {
+	mutation := newSessionAppActivityMutation(c.config, OpUpdateOne, withSessionAppActivityID(id))
+	return &SessionAppActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SessionAppActivity.
+func (c *SessionAppActivityClient) Delete() *SessionAppActivityDelete {
+	mutation := newSessionAppActivityMutation(c.config, OpDelete)
+	return &SessionAppActivityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SessionAppActivityClient) DeleteOne(saa *SessionAppActivity) *SessionAppActivityDeleteOne {
+	return c.DeleteOneID(saa.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SessionAppActivityClient) DeleteOneID(id string) *SessionAppActivityDeleteOne {
+	builder := c.Delete().Where(sessionappactivity.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SessionAppActivityDeleteOne{builder}
+}
+
+// Query returns a query builder for SessionAppActivity.
+func (c *SessionAppActivityClient) Query() *SessionAppActivityQuery {
+	return &SessionAppActivityQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSessionAppActivity},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SessionAppActivity entity by its id.
+func (c *SessionAppActivityClient) Get(ctx context.Context, id string) (*SessionAppActivity, error) {
+	return c.Query().Where(sessionappactivity.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SessionAppActivityClient) GetX(ctx context.Context, id string) *SessionAppActivity {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySession queries the session edge of a SessionAppActivity.
+func (c *SessionAppActivityClient) QuerySession(saa *SessionAppActivity) *SessionQuery {
+	query := (&SessionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := saa.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(sessionappactivity.Table, sessionappactivity.FieldID, id),
+			sqlgraph.To(session.Table, session.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, sessionappactivity.SessionTable, sessionappactivity.SessionColumn),
+		)
+		fromV = sqlgraph.Neighbors(saa.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a SessionAppActivity.
+func (c *SessionAppActivityClient) QueryApplication(saa *SessionAppActivity) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := saa.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(sessionappactivity.Table, sessionappactivity.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, sessionappactivity.ApplicationTable, sessionappactivity.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(saa.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SessionAppActivityClient) Hooks() []Hook {
+	return c.hooks.SessionAppActivity
+}
+
+// Interceptors returns the client interceptors.
+func (c *SessionAppActivityClient) Interceptors() []Interceptor {
+	return c.inters.SessionAppActivity
+}
+
+func (c *SessionAppActivityClient) mutate(ctx context.Context, m *SessionAppActivityMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SessionAppActivityCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SessionAppActivityUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SessionAppActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SessionAppActivityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SessionAppActivity mutation op: %q", m.Op())
 	}
 }
 
@@ -4711,16 +4916,16 @@ type (
 		ApiKey, Application, AuditLog, Identity, ManagedTenant, OrgInvitation,
 		OrgMember, Organization, Permission, PushDevice, RecoveryContact,
 		RecoveryRequest, Role, SAMLConnection, SecurityBlacklist, Session,
-		SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod, User,
-		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
+		SessionAppActivity, SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod,
+		User, UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
 		WebhookEvent []ent.Hook
 	}
 	inters struct {
 		ApiKey, Application, AuditLog, Identity, ManagedTenant, OrgInvitation,
 		OrgMember, Organization, Permission, PushDevice, RecoveryContact,
 		RecoveryRequest, Role, SAMLConnection, SecurityBlacklist, Session,
-		SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod, User,
-		UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
+		SessionAppActivity, SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod,
+		User, UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
 		WebhookEvent []ent.Interceptor
 	}
 )

@@ -641,6 +641,46 @@ var (
 			},
 		},
 	}
+	// SessionAppActivitiesColumns holds the columns for the "session_app_activities" table.
+	SessionAppActivitiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "first_seen_at", Type: field.TypeTime},
+		{Name: "last_active_at", Type: field.TypeTime},
+		{Name: "application_id", Type: field.TypeString},
+		{Name: "session_id", Type: field.TypeString},
+	}
+	// SessionAppActivitiesTable holds the schema information for the "session_app_activities" table.
+	SessionAppActivitiesTable = &schema.Table{
+		Name:       "session_app_activities",
+		Columns:    SessionAppActivitiesColumns,
+		PrimaryKey: []*schema.Column{SessionAppActivitiesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "session_app_activities_applications_session_activity",
+				Columns:    []*schema.Column{SessionAppActivitiesColumns[3]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "session_app_activities_sessions_app_activity",
+				Columns:    []*schema.Column{SessionAppActivitiesColumns[4]},
+				RefColumns: []*schema.Column{SessionsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sessionappactivity_session_id_application_id",
+				Unique:  true,
+				Columns: []*schema.Column{SessionAppActivitiesColumns[4], SessionAppActivitiesColumns[3]},
+			},
+			{
+				Name:    "sessionappactivity_application_id_last_active_at",
+				Unique:  false,
+				Columns: []*schema.Column{SessionAppActivitiesColumns[3], SessionAppActivitiesColumns[2]},
+			},
+		},
+	}
 	// SocialAuthStatesColumns holds the columns for the "social_auth_states" table.
 	SocialAuthStatesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -806,7 +846,8 @@ var (
 		{Name: "name", Type: field.TypeString, Nullable: true},
 		{Name: "avatar_url", Type: field.TypeString, Nullable: true},
 		{Name: "locale", Type: field.TypeString, Nullable: true},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "banned", "recovery_hold"}, Default: "active"},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "banned", "recovery_hold", "suspended"}, Default: "active"},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_sign_in_at", Type: field.TypeTime, Nullable: true},
 		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "recovery_failed_attempts", Type: field.TypeInt, Default: 0},
@@ -824,7 +865,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "users_tenants_users",
-				Columns:    []*schema.Column{UsersColumns[23]},
+				Columns:    []*schema.Column{UsersColumns[24]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -833,12 +874,17 @@ var (
 			{
 				Name:    "user_tenant_id_environment_email",
 				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[23], UsersColumns[1], UsersColumns[2]},
+				Columns: []*schema.Column{UsersColumns[24], UsersColumns[1], UsersColumns[2]},
 			},
 			{
 				Name:    "user_tenant_id_environment_username",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[23], UsersColumns[1], UsersColumns[3]},
+				Columns: []*schema.Column{UsersColumns[24], UsersColumns[1], UsersColumns[3]},
+			},
+			{
+				Name:    "user_tenant_id_environment_status_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsersColumns[24], UsersColumns[1], UsersColumns[15], UsersColumns[16]},
 			},
 		},
 	}
@@ -1000,7 +1046,7 @@ var (
 				Symbol:     "webhook_events_webhook_endpoints_events",
 				Columns:    []*schema.Column{WebhookEventsColumns[8]},
 				RefColumns: []*schema.Column{WebhookEndpointsColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.Cascade,
 			},
 		},
 		Indexes: []*schema.Index{
@@ -1034,6 +1080,7 @@ var (
 		SamlConnectionsTable,
 		SecurityBlacklistsTable,
 		SessionsTable,
+		SessionAppActivitiesTable,
 		SocialAuthStatesTable,
 		TenantsTable,
 		TrustedDevicesTable,
@@ -1065,6 +1112,8 @@ func init() {
 	RolesTable.ForeignKeys[0].RefTable = TenantsTable
 	SamlConnectionsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
+	SessionAppActivitiesTable.ForeignKeys[0].RefTable = ApplicationsTable
+	SessionAppActivitiesTable.ForeignKeys[1].RefTable = SessionsTable
 	TrustedDevicesTable.ForeignKeys[0].RefTable = UsersTable
 	TwoFactorMethodsTable.ForeignKeys[0].RefTable = UsersTable
 	UsersTable.ForeignKeys[0].RefTable = TenantsTable

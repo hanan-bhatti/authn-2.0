@@ -92,9 +92,17 @@ func (User) Fields() []ent.Field {
 			Optional().
 			Comment("Preferred locale string (e.g. en-US, es-ES, ur-PK)"),
 		field.Enum("status").
-			Values("active", "banned", "recovery_hold").
+			// Appended rather than grouped next to "banned" on purpose: MySQL
+			// stores an enum by ordinal, so inserting a value mid-list renumbers
+			// every value after it and rewrites the column. Appending leaves
+			// existing rows untouched.
+			Values("active", "banned", "recovery_hold", "suspended").
 			Default("active").
-			Comment("Account status: active, banned, or recovery_hold (48h security freeze)"),
+			Comment("Account status: active, banned (permanent), recovery_hold (48h security freeze), or suspended (reversible)"),
+		field.Time("deleted_at").
+			Optional().
+			Nillable().
+			Comment("Soft-deletion timestamp. The row is retained so the email stays reserved — a second signup on that address is refused while it exists"),
 		field.Time("last_sign_in_at").
 			Optional().
 			Nillable().
@@ -148,7 +156,14 @@ func (User) Edges() []ent.Edge {
 // Indexes of the User.
 func (User) Indexes() []ent.Index {
 	return []ent.Index{
+		// Unique on email with no regard for deleted_at, which is what reserves a
+		// soft-deleted user's address: the row still occupies the slot, so a
+		// second signup on it is refused by the database rather than by a check
+		// someone has to remember to write.
 		index.Fields("tenant_id", "environment", "email").Unique(),
 		index.Fields("tenant_id", "environment", "username"),
+		// Serves the admin listing, which pages users filtered by status and
+		// hides soft-deleted rows by default.
+		index.Fields("tenant_id", "environment", "status", "deleted_at"),
 	}
 }
