@@ -23,7 +23,9 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/org"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/platform"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/provisioning"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
@@ -41,6 +43,9 @@ type appWiring struct {
 	pkMiddleware         fiber.Handler
 	clientAuthMiddleware fiber.Handler
 	adminMiddleware      fiber.Handler
+	// platformMiddleware is nil when no platform tenant is configured, which
+	// leaves the control-plane routes unregistered.
+	platformMiddleware   fiber.Handler
 	authHandler          *auth.Handler
 	userHandler          *user.Handler
 	policyHandler        *policy.Handler
@@ -54,6 +59,7 @@ type appWiring struct {
 	orgHandler           *org.Handler
 	samlHandler          *saml.Handler
 	auditHandler         *audit.Handler
+	platformHandler      *platform.Handler
 	cleanup              func()
 }
 
@@ -138,10 +144,23 @@ func wireFeatures(
 
 	auditHandler := audit.NewHandler(factory)
 
+	// The hosted control plane exists only where a platform tenant is configured.
+	// Leaving the middleware nil in an OSS deployment leaves the routes
+	// unregistered, so /v1/platform answers 404 rather than advertising a surface
+	// that has no tenant to serve.
+	var platformMiddleware fiber.Handler
+	if cfg.PlatformTenantID != "" {
+		platformMiddleware = middleware.RequirePlatformAuth(cfg.EncryptionKey, cfg.PlatformTenantID, bl, authRepo)
+	}
+	provisioningService := provisioning.NewService(factory, apiKeyService)
+	platformHandler := platform.NewHandler(provisioningService, platform.NewRepository(factory),
+		rateLimiter, cfg.PlatformTenantSlug)
+
 	return &appWiring{
 		pkMiddleware:         pkMiddleware,
 		clientAuthMiddleware: clientAuthMiddleware,
 		adminMiddleware:      adminMiddleware,
+		platformMiddleware:   platformMiddleware,
 		authHandler:          authHandler,
 		userHandler:          userHandler,
 		policyHandler:        policyHandler,
@@ -155,6 +174,7 @@ func wireFeatures(
 		orgHandler:           orgHandler,
 		samlHandler:          samlHandler,
 		auditHandler:         auditHandler,
+		platformHandler:      platformHandler,
 		cleanup: func() {
 			webhookDispatcher.Stop()
 		},

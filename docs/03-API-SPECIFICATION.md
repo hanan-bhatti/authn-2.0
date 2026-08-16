@@ -9,10 +9,11 @@
 
 ## 1. Overview & Authentication Headers
 
-The **Authn Engine** exposes three distinct HTTP API surfaces:
+The **Authn Engine** exposes four distinct HTTP API surfaces:
 1. **Public Client API (`/v1/client/*`)**: Used by web frontends (React, Vue, Next.js) and mobile clients (Android, iOS) via Publishable Client Keys (`pk_test_...` / `pk_live_...`).
 2. **Tenant Policy & Admin API (`/v1/tenant/*`, `/v1/admin/*`)**: Used by administrators and server environments via Secret Admin Keys (`sk_test_...` / `sk_live_...`) or Bearer tokens.
 3. **OpenID Connect & OAuth 2.0 Standard Endpoints (`/v1/oauth/*`, `/.well-known/*`)**: RFC-compliant OIDC authorization server endpoints.
+4. **Hosted Platform Control Plane (`/v1/platform/*`)**: Used by SaaS customers to provision tenants of their own, via an end-user session belonging to the reserved platform tenant. **API keys are refused on this surface** — provisioning attributes ownership to a person, and a key names a tenant. Present only when `PLATFORM_TENANT_ID` and `PLATFORM_TENANT_SLUG` are configured; a self-hosted deployment leaves them unset and the routes are never mounted.
 
 ### Authentication Headers & Client Types
 
@@ -21,6 +22,7 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 | **Public Client API** | `X-Authn-Publishable-Key` | `pk_<env>_<hash>` | `X-Authn-Publishable-Key: pk_test_7f8a9b...` |
 | **Client Device Type** | `X-Authn-Client-Type` | `web` (default) \| `native` | `X-Authn-Client-Type: native` |
 | **Admin Management API** | `Authorization` | `Bearer sk_<env>_<hash>` | `Authorization: Bearer sk_live_3c2d1e...` |
+| **Platform Control Plane** | `Authorization` | `Bearer <platform_session_jwt>` | `Authorization: Bearer eyJhbGciOi...` |
 
 *(Note: All API JSON request and response payloads use camelCase/snake_case consistently per schema)*
 
@@ -37,7 +39,7 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `GET /v1/oauth/jwks` — Public RSA JWKS key set
 
 ### 2.3 OAuth 2.0 / OIDC Flow
-- `GET /v1/oauth/authorize` — PKCE Authorization Code endpointhyyy4r21 DF
+- `GET /v1/oauth/authorize` — PKCE Authorization Code endpoint
 - `POST /v1/oauth/token` — Token exchange (`authorization_code`, `refresh_token`)
 
 ### 2.4 Core Client Authentication
@@ -126,6 +128,10 @@ The **Authn Engine** exposes three distinct HTTP API surfaces:
 - `POST /v1/admin/webhooks/endpoints/:id/ping` — Dispatch test ping webhook event
 - `POST /v1/admin/webhooks/endpoints/:id/rotate-secret` — Rotate signing secret key
 - `GET /v1/admin/webhooks/deliveries` — List webhook delivery audit logs
+
+### 2.12 Hosted Platform Control Plane
+- `POST /v1/platform/tenants` — Provision a tenant, its first application, its system roles and its first API key pair, owned by the calling platform user
+- `GET /v1/platform/tenants` — List the tenants the calling platform user owns
 
 ---
 
@@ -915,3 +921,20 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 > See full endpoint doc: [`docs/endpoints/lockout-engine.md`](endpoints/lockout-engine.md)
 
 - **Description**: Multi-dimensional lockout enforcement after 5 failed password attempts, rejecting attempt #6 with the **CORRECT** password with `HTTP 429 Too Many Requests` and `Retry-After: 900`.
+
+### 3.20 Hosted Platform Control Plane (`POST /v1/platform/tenants`, `GET /v1/platform/tenants`)
+
+> **Last Verified**: `2026-08-16` — 14 middleware unit cases, 2 handler unit cases and 8 integration tests; every regression assertion confirmed against a deliberately mutated build.
+> See full endpoint doc: [`docs/endpoints/platform-tenants.md`](endpoints/platform-tenants.md)
+
+- **Description**: Self-serve tenant provisioning for the hosted product. A SaaS customer signs up on the reserved **platform tenant** through the ordinary `/v1/client/auth/*` stack and presents that session here to receive a tenant, its first application, its system roles and its first API key pair. The raw `pk_`/`sk_` pair appears in the `201` response and nowhere else — only hashes are stored, and neither key is ever logged.
+
+- **Credential**: An end-user JWT belonging to the platform tenant, in `Authorization: Bearer` or the `authn_access_token` cookie. **API keys are refused in every position** (`X-Authn-Secret-Key`, an `sk_`/`pk_` bearer, an `sk_` in the access-token cookie) with `401 unauthorized` rather than being allowed to fall through to the token verifier: provisioning attributes ownership to a person, and a key names a tenant.
+
+- **Refusal ladder**: `404 not_found` when no control plane is configured (the surface must not disclose that it exists) → `503 service_unavailable` when the account lookup is unwired (the verified-email check is not optional, so a guard that cannot perform it admits nobody) → `401 unauthorized` for an API key or a missing token → `401 invalid_token` for an unverifiable, expired or revoked token → `403 impersonation_blocked` → `403 tenant_mismatch` → `403 email_verification_required`. The platform tenant's publishable key is public by design, so the verified-address requirement is the only barrier between an arbitrary signup and a tenant-minting credential.
+
+- **Ownership is never taken from the request**: `owner_user_id`, `user_id` and `tenant_id` in the body are ignored; the owner is the subject the guard resolved. Ownership rows are stored under the **platform** tenant rather than the tenant they describe, so the privacy interceptor confines them to the control plane and one hosted customer cannot read another's.
+
+- **Slug conflicts return `409 already_exists`, not the existing tenant.** The provisioning service is idempotent by slug, which is correct for the container entrypoint that re-runs it on every boot and a vulnerability on a public endpoint — the caller would be handed the tenant that already owns the slug and the ownership row would give them a claim on somebody else's data. Reserved slugs (`platform`, `admin`, `system`, `default`, `internal`, `authn`, `console`, `api`, `www`, plus the configured `PLATFORM_TENANT_SLUG`) return `400 validation_failed` instead, since they were never available.
+
+- **Metered per platform user** at 5 tenants per the rate limiter's window, keyed on the user rather than the IP: signing up is free, so an IP budget is defeated by one more signup while a per-user budget costs an attacker a fresh verified email address per bucket. Exhaustion returns `429 rate_limited` with `Retry-After`; a limiter outage returns `503` and fails closed.

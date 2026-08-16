@@ -41,8 +41,10 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/platform"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/provisioning"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
@@ -60,6 +62,18 @@ const (
 	testTenant      = "tnt_00000000000000000000000000000001"
 	testEnvironment = "test"
 )
+
+// platformTenantSlug is the slug the harness reserves for the control plane.
+//
+// The seeded tenant doubles as the platform tenant, which is what the real hosted
+// deployment looks like: the control plane is one tenant among the rest, and its
+// end users are the customers who provision tenants of their own.
+//
+// The value is deliberately absent from the provisioning package's own built-in
+// reservations. A slug that appeared on both lists would be refused either way, so
+// a test could not tell whether the deployment's configured slug was reaching the
+// provisioner at all.
+const platformTenantSlug = "authn-console"
 
 // requestTimeoutMillis bounds a single in-process request. It is far above any
 // healthy response time because Argon2id password hashing deliberately costs
@@ -200,6 +214,11 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 		SessionGracePeriod: sessionGracePeriod,
 		AccessTokenTTL:     15 * time.Minute,
 		RefreshTokenTTL:    720 * time.Hour,
+		// The seeded tenant is also the control plane, so the platform routes mount
+		// and a user who signs up through the ordinary client routes is a platform
+		// member — the same arrangement the hosted deployment runs.
+		PlatformTenantID:   testTenant,
+		PlatformTenantSlug: platformTenantSlug,
 	}
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
@@ -240,6 +259,22 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 	// the publishable-key middleware there would mount routes that act on an
 	// arbitrary user ID behind a credential that establishes no identity.
 	sessionHandler.RegisterRoutes(app, pkMiddleware, nil)
+
+	// The control plane gets the real guard rather than a stand-in, because the
+	// properties worth testing here — that provisioning attributes ownership to the
+	// signed-in caller and that an unverified address cannot reach it — are
+	// properties of the guard and the handler acting together.
+	//
+	// The blocklist is nil, which IsBlocked handles as "nothing is revoked"; token
+	// revocation is covered by the middleware's own unit tests.
+	platformHandler := platform.NewHandler(
+		provisioning.NewService(factory, apiKeyService),
+		platform.NewRepository(factory),
+		rateLimiter,
+		cfg.PlatformTenantSlug,
+	)
+	platformHandler.RegisterRoutes(app,
+		middleware.RequirePlatformAuth(cfg.EncryptionKey, cfg.PlatformTenantID, nil, authRepo))
 
 	ctx := privacy.NewBypassContext(context.Background())
 	if err := authRepo.EnsureTenantExists(ctx, testTenant); err != nil {

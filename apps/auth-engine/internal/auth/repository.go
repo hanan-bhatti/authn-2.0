@@ -77,6 +77,32 @@ func (r *Repository) GetUserByID(ctx context.Context, userID string) (*ent.User,
 	return client.User.Get(ctx, userID)
 }
 
+// EmailVerified reports whether userID's email address is verified, and whether
+// the account exists at all.
+//
+// The two are reported separately because the caller — middleware.RequirePlatformAuth
+// — answers differently for each: an account that no longer exists invalidates
+// the session, while an unverified one is a live session that has not finished
+// signing up. Returning a bare false for both would give the wrong status to
+// whichever case was folded into the other.
+//
+// The query is tenant-scoped through ctx like any other read, so a user ID that
+// belongs to a different tenant reports found=false rather than that tenant's
+// verification state.
+func (r *Repository) EmailVerified(ctx context.Context, userID string) (bool, bool, error) {
+	u, err := r.factory.GetClient(ctx, "", "").User.Query().
+		Where(user.ID(userID)).
+		Select(user.FieldEmailVerified).
+		Only(ctx)
+	if ent.IsNotFound(err) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("failed reading email verification state: %w", err)
+	}
+	return u.EmailVerified, true, nil
+}
+
 // TenantExists reports whether tenantID names a provisioned tenant.
 //
 // The probe runs under a bypass because it answers a question that precedes
