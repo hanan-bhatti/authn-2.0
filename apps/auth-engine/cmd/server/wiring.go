@@ -113,13 +113,16 @@ func wireFeatures(
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
 	oauthHandler := oauth.NewHandler(oauthService).WithSettings(settingsResolver)
 
-	socialRepo := social.NewRepository(factory, cfg.EncryptionKey)
-	socialService := social.NewService(socialRepo, cfg)
-	socialHandler := social.NewHandler(socialService)
-
 	sessionRepo := session.NewRepository(factory)
 	sessionService := session.NewService(sessionRepo, cfg)
 	sessionHandler := session.NewHandler(sessionService).WithSessionPolicyResolver(settingsResolver)
+
+	// Social sign-in issues its session through the same store the session
+	// endpoints read, so a Google login is listed and revoked like any other.
+	socialRepo := social.NewRepository(factory, cfg.EncryptionKey)
+	socialService := social.NewService(socialRepo, cfg, sessionRepo)
+	socialHandler := social.NewHandler(socialService).
+		WithSessionPolicyResolver(settingsResolver)
 
 	rbacRepo := rbac.NewRepository(factory)
 	rbacAudit := rbac.NewAuditLogger(factory)

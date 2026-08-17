@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 )
 
@@ -30,11 +31,30 @@ const emailExistsSocialCode = "email_exists_social_account"
 type Handler struct {
 	// svc performs the underlying social authentication work.
 	svc *Service
+	// cookies builds the refresh cookie the callback writes. It is never nil:
+	// NewHandler installs one backed by default tenant policy, and
+	// WithSessionPolicyResolver replaces it with one that reads live policy.
+	cookies *authcookie.Writer
 }
 
 // NewHandler constructs a Handler bound to svc.
 func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+	return &Handler{
+		svc:     svc,
+		cookies: authcookie.NewWriter(svc.cfg, nil),
+	}
+}
+
+// WithSessionPolicyResolver points cookie construction at a live source of tenant
+// session policy, and returns the handler for chaining.
+//
+// A social sign-in ends in the same refresh cookie as a password sign-in, so it
+// has to honour the same tenant SameSite and lifetime settings; without a
+// resolver both paths fall back to policy.DefaultSessionPolicy, which is correct
+// but deaf to a customer's configuration.
+func (h *Handler) WithSessionPolicyResolver(r authcookie.SessionPolicyResolver) *Handler {
+	h.cookies = authcookie.NewWriter(h.svc.cfg, r)
+	return h
 }
 
 // RegisterRoutes mounts the social endpoints on app.
@@ -95,13 +115,17 @@ func (h *Handler) Authorize(c *fiber.Ctx) error {
 // Callback handles GET /v1/client/auth/social/:provider/callback, the
 // destination the provider returns the user to.
 //
-// On success it responds 302 to the application's authorized destination with
-// the access token in the URL fragment, or 200 with the token in the body when
-// no destination applies.
+// On success it sets the refresh cookie and responds 302 to the application's
+// authorized destination with the access token in the URL fragment, or 200 with
+// the token in the body when no destination applies. The refresh token is only
+// ever delivered as an HttpOnly cookie: putting it in the fragment alongside the
+// access token would hand a long-lived credential to page scripts, where the
+// short-lived one is the whole reason the pair is split.
 //
 // Returns 400 when code or state is missing, when the state is unknown or
 // expired, or when the provider returned no email; 409 when the address belongs
-// to another account; and 500 otherwise.
+// to another account; 403 when the account is not permitted to sign in; and 500
+// otherwise.
 func (h *Handler) Callback(c *fiber.Ctx) error {
 	provider := c.Params("provider")
 	code := c.Query("code")
@@ -113,7 +137,16 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "code and state query parameters are required")
 	}
 
-	accessToken, postCallbackRedirect, err := h.svc.HandleCallback(c.UserContext(), tenantID, provider, stateToken, code)
+	result, err := h.svc.HandleCallback(
+		c.UserContext(),
+		tenantID,
+		provider,
+		stateToken,
+		code,
+		c.IP(),
+		c.Get("User-Agent"),
+		c.Get("Origin"),
+	)
 	if err != nil {
 		if errors.Is(err, ErrEmailConflict) {
 			return httperr.Send(c, fiber.StatusConflict, emailExistsSocialCode, err.Error())
@@ -133,8 +166,13 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 		return httperr.SendInternal(c, "social.callback", err)
 	}
 
-	if postCallbackRedirect != "" {
-		redirectURL, err := buildPostCallbackRedirect(postCallbackRedirect, accessToken)
+	// The cookie lifetime comes from tenant policy while the session row was
+	// created with the deployment default, matching the password path rather than
+	// diverging from it.
+	h.cookies.SetRefreshToken(c, tenantID, result.RefreshToken, h.cookies.RefreshTokenTTL(c.UserContext(), tenantID))
+
+	if result.PostCallbackRedirect != "" {
+		redirectURL, err := buildPostCallbackRedirect(result.PostCallbackRedirect, result.AccessToken)
 		if err != nil {
 			return httperr.SendInternal(c, "social.callback.build_redirect", err)
 		}
@@ -142,7 +180,7 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"access_token": accessToken,
+		"access_token": result.AccessToken,
 		"token_type":   "Bearer",
 	})
 }

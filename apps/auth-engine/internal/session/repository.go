@@ -88,7 +88,8 @@ func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, u
 	now := time.Now()
 	expiresAt := now.Add(ttl)
 
-	sess, err := r.factory.GetClient(ctx, tenantID, environment).Session.Create().
+	client := r.factory.GetClient(ctx, tenantID, environment)
+	sess, err := client.Session.Create().
 		SetID(id).
 		SetUserID(userID).
 		SetRefreshTokenHash(hash).
@@ -103,6 +104,13 @@ func (r *Repository) CreateSession(ctx context.Context, tenantID, environment, u
 	if err != nil {
 		return nil, "", err
 	}
+
+	// First use of this session at the application the request arrived through.
+	// Recording it here rather than in each caller is what keeps a new sign-in
+	// path from silently omitting it. The error is dropped on purpose:
+	// per-application activity is reporting detail, and failing a sign-in over it
+	// would trade a working login for a missing timestamp.
+	_ = sessionactivity.Touch(ctx, client, sess.ID)
 
 	return sess, rawToken, nil
 }
@@ -168,12 +176,14 @@ func (r *Repository) RotateSession(ctx context.Context, tenantID, environment, o
 		return nil, "", err
 	}
 
-	// Per-application activity follows the successor, then records this refresh
-	// against it. Errors are dropped for the same reason as at sign-in: the
-	// caller's tokens have already rotated, and failing here would revoke a
-	// session that is now valid over a reporting timestamp.
+	// Per-application activity follows the successor. CreateSession has already
+	// recorded this refresh against the new row, so this only moves the pairings
+	// the outgoing session accumulated at other applications; the collision on
+	// the current one is resolved in favour of the earlier first_seen_at. The
+	// error is dropped for the same reason as at sign-in: the caller's tokens have
+	// already rotated, and failing here would revoke a session that is now valid
+	// over a reporting timestamp.
 	_ = sessionactivity.CarryForward(ctx, client, oldSessionID, newSess.ID)
-	_ = sessionactivity.Touch(ctx, client, newSess.ID)
 
 	return newSess, newRaw, nil
 }

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
@@ -319,6 +320,63 @@ func (r *Repository) CreateSocialUser(
 		SetAvatarURL(avatarURL).
 		SetEmailVerified(emailVerified).
 		Save(ctx)
+}
+
+// UpdateUserLastSignIn stamps last_sign_in_at with the current server time.
+//
+// A social sign-in has to record this itself: nothing else on the callback path
+// writes it, and without it an account that only ever signs in through a
+// provider reads as dormant in every report that ranks users by last activity.
+//
+// The error is returned rather than swallowed so the caller can decide, but the
+// value is presentational — a failure here should not fail a sign-in that has
+// already issued tokens.
+func (r *Repository) UpdateUserLastSignIn(ctx context.Context, userID string) error {
+	_, err := r.factory.GetClient(ctx, "", "").User.UpdateOneID(userID).
+		SetLastSignInAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("failed stamping last sign in: %w", err)
+	}
+	return nil
+}
+
+// CreateSignInAuditLog appends the audit record for a completed social sign-in.
+//
+// The provider is recorded in metadata rather than in the event type, so that
+// every sign-in across every method answers to one query on user.signed_in and
+// the provider is a filter within it rather than a separate event name to know
+// about.
+//
+// applicationID is optional and identifies which application the sign-in was
+// for, which the shared session model cannot otherwise express.
+func (r *Repository) CreateSignInAuditLog(
+	ctx context.Context,
+	tenantID, applicationID, userID, provider, ipAddress, userAgent, origin string,
+) error {
+	client := r.factory.GetClient(ctx, tenantID, "")
+
+	create := client.AuditLog.Create().
+		SetID(idgen.New("aud")).
+		SetTenantID(tenantID).
+		SetNillableUserID(&userID).
+		SetActorType(auditlog.ActorTypeUser).
+		SetEventType("user.signed_in").
+		SetIPAddress(ipAddress).
+		SetUserAgent(userAgent).
+		SetRequestOrigin(origin).
+		SetMetadata(map[string]interface{}{
+			"method":   "social",
+			"provider": provider,
+		})
+	if applicationID != "" {
+		create = create.SetApplicationID(applicationID)
+	}
+
+	if _, err := create.Save(ctx); err != nil {
+		return fmt.Errorf("failed creating social sign-in audit log: %w", err)
+	}
+	return nil
 }
 
 // GetProviderConfig reads one provider's configuration from the tenant record.

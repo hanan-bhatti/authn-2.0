@@ -26,12 +26,12 @@ Example output in setup guides:
 - Development: `http://localhost:8080/v1/client/auth/social/google/callback`
 
 ### 2.2 Ephemeral State Nonces (One-Time CSRF Protection)
-To prevent OAuth CSRF and session-hijacking attacks, the server generates a 32-byte cryptographically random hex token stored in the `SocialAuthState` database entity prior to redirecting the user to the provider:
-- **10-Minute TTL**: `expires_at` set to `now + 10 minutes`.
-- **Atomically Consumed & Hard-Deleted**: `ConsumeSocialAuthState` hard-deletes the state record upon read. Replaying a callback URL immediately returns `400 Bad Request`.
+To prevent OAuth CSRF and session-hijacking attacks, the server generates a 16-byte cryptographically random token, hex-encoded to 32 characters, and stores it as a `SocialAuthState` row prior to redirecting the user to the provider:
+- **Configurable TTL**: `expires_at` set to `now + SOCIAL_AUTH_STATE_TTL`.
+- **Atomically Consumed & Hard-Deleted**: `ConsumeSocialAuthState` hard-deletes the state record upon read, before the expiry check, so a replayed callback URL returns `400 Bad Request` whether or not the token had expired.
 
 ### 2.3 Account Linking & Credential Injection Defense
-- **Existing Social Identity**: Directly logs the user in and issues a JWT access token.
+- **Existing Social Identity**: Logs the user in by creating a session and issuing an access token bound to it.
 - **Email Collision (Existing Password Account)**: Returns `409 Conflict` (`email_exists_social_account`). This prevents malicious attackers from creating a social account with a victim's email address to compromise an existing password account.
 - **Authenticated Account Linking**: When an existing authenticated user adds a provider from account settings, the new `Identity` record attaches securely to their `userID`.
 - **New Social User**: Automatically provisions a new `User` record (with `password_hash = nil`) and links the `Identity`.
@@ -65,9 +65,9 @@ Tenant admins can configure social providers via `PUT /v1/tenant/social-provider
 ## 4. REST API Endpoint Index
 
 ### 4.1 Client Endpoints (Publishable Key `pk_test_...`)
-- `GET /v1/client/auth/social/:provider/authorize` — Initiates social login, persists 10-min state token, returns `302 Found` redirect to provider.
+- `GET /v1/client/auth/social/:provider/authorize` — Initiates social login, persists a state row for `SOCIAL_AUTH_STATE_TTL`, returns `302 Found` redirect to provider.
   - Query Params: `redirect_uri` (required), `post_callback_redirect` (optional).
-- `GET /v1/client/auth/social/:provider/callback` — Handles OAuth code exchange, user lookup/creation, issues JWT access token.
+- `GET /v1/client/auth/social/:provider/callback` — Handles OAuth code exchange, user lookup/creation, creates a session and issues a JWT access token bound to it, and sets the HttpOnly refresh cookie.
   - Query Params: `code` (required), `state` (required).
 
 ### 4.2 Admin Management Endpoints (Secret Key `sk_test_...`)
@@ -94,14 +94,14 @@ Stores tenant-level provider credentials:
 
 ### `SocialAuthState` (Ent Schema Entity)
 Ephemeral CSRF state token entity:
-- `id` (`string`, PK): 32-byte random hex string.
+- `id` (`string`, PK): the state token itself — 16 random bytes, hex-encoded.
 - `tenant_id` (`string`): Scope tenant boundary.
 - `application_id` (`string`): Initiating application ID.
 - `environment` (`string`): Environment (`test` / `live`).
 - `provider` (`string`): Provider identifier (`google`, `github`, etc.).
 - `redirect_uri` (`string`): Validated application callback URI.
 - `post_callback_redirect` (`string`): Post-login destination URI.
-- `expires_at` (`time.Time`): Expiration timestamp (`now + 10m`).
+- `expires_at` (`time.Time`): Expiration timestamp (`now + SOCIAL_AUTH_STATE_TTL`).
 
 ### `Identity` (Ent Schema Entity)
 Maps social profiles to users:

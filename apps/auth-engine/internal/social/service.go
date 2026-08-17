@@ -16,16 +16,33 @@ package social
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"log"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
+)
+
+const (
+	// defaultRefreshTokenTTL is the session lifetime used when configuration
+	// leaves RefreshTokenTTL unset. It matches the auth service's own fallback so
+	// both sign-in paths age out together.
+	defaultRefreshTokenTTL = 720 * time.Hour
+
+	// refreshTokenEntropyBytes is the randomness behind each refresh token, the
+	// same width the password sign-in path uses.
+	refreshTokenEntropyBytes = 32
 )
 
 var (
@@ -45,18 +62,45 @@ var (
 	ErrRedirectNotAllowed = errors.New("post_callback_redirect is not an authorized redirect target for this application")
 )
 
+// providerFactory constructs the driver for a provider name. It matches
+// NewProvider's signature.
+type providerFactory func(name, clientID, clientSecret string, extraParam ...string) (IdentityProvider, error)
+
 // Service orchestrates social sign-in on top of the repository and provider
 // drivers.
 type Service struct {
 	// repo is the storage layer for state, identities and provider credentials.
 	repo *Repository
+	// sessions issues the session a completed sign-in is carried by. It is the
+	// same store the password and passkey paths write to, so a social sign-in
+	// appears in the user's session list and is reachable by revocation.
+	sessions *session.Repository
 	// cfg supplies the callback URL and the token signing key.
 	cfg *config.Config
+	// newProvider resolves a provider driver. It is a field rather than a direct
+	// call to NewProvider because every network request this service makes goes
+	// through the returned driver, and that is the one dependency a test cannot
+	// supply for real.
+	newProvider providerFactory
 }
 
 // NewService constructs a Service.
-func NewService(repo *Repository, cfg *config.Config) *Service {
-	return &Service{repo: repo, cfg: cfg}
+//
+// sessions is required rather than optional: a sign-in that issues no session
+// would produce an access token that cannot be refreshed, cannot be listed and
+// cannot be revoked, which is indistinguishable from working until the first
+// token expires.
+func NewService(repo *Repository, cfg *config.Config, sessions *session.Repository) *Service {
+	return &Service{repo: repo, cfg: cfg, sessions: sessions, newProvider: NewProvider}
+}
+
+// refreshTokenTTL is how long a session created here may be refreshed before the
+// user signs in again, matching the lifetime the password path uses.
+func (s *Service) refreshTokenTTL() time.Duration {
+	if s.cfg != nil && s.cfg.RefreshTokenTTL > 0 {
+		return s.cfg.RefreshTokenTTL
+	}
+	return defaultRefreshTokenTTL
 }
 
 // validatePostCallbackRedirect reports whether target is an authorized
@@ -163,7 +207,7 @@ func (s *Service) InitiateAuthorize(
 		return "", ErrProviderNotConfigured
 	}
 
-	p, err := NewProvider(provider, clientID, clientSecret)
+	p, err := s.newProvider(provider, clientID, clientSecret)
 	if err != nil {
 		return "", err
 	}
@@ -179,38 +223,60 @@ func (s *Service) InitiateAuthorize(
 	return authURL, nil
 }
 
-// HandleCallback completes a social sign-in and returns the engine's access
-// token together with the destination to send the browser to.
+// CallbackResult is what a completed social sign-in produces.
+type CallbackResult struct {
+	// AccessToken is the engine's own short-lived bearer token. It carries the
+	// session ID, which is what lets revocation and the token cutoff reach it.
+	AccessToken string
+	// RefreshToken is the raw refresh credential, returned only here because only
+	// its digest is stored.
+	RefreshToken string
+	// SessionID identifies the session row both tokens belong to.
+	SessionID string
+	// PostCallbackRedirect is the authorized destination to send the browser to,
+	// or empty when the caller should answer with the token in the response body.
+	PostCallbackRedirect string
+}
+
+// HandleCallback completes a social sign-in and returns the tokens it issued
+// together with the destination to send the browser to.
 //
 // The state is consumed first, which both authenticates the callback as one the
 // engine started and prevents replay. The provider profile then resolves to an
 // account three ways: an existing link signs that user in, a matching email
 // links the provider to that account, and neither creates a new user.
 //
+// The sign-in is carried by a session row, exactly as the password and passkey
+// paths are. That row is what makes the resulting access token refreshable,
+// visible in the user's session list, and reachable by a revocation or a ban.
+//
 // The stored destination is re-validated here rather than trusted from the row,
 // because this is the last point before a live token is handed to that host. An
 // unauthorized destination degrades to an empty string, which makes the caller
 // return the token in the response body instead of redirecting.
 //
-// Returns the access token and destination, or ErrStateNotFound,
-// ErrStateExpired, ErrEmailRequired, a provider error, or a storage error.
+// ipAddress, userAgent and origin describe the request for the session row and
+// the audit trail; all three may be empty.
+//
+// Returns ErrStateNotFound, ErrStateExpired, ErrEmailRequired, an account-status
+// refusal, a provider error, or a storage error.
 func (s *Service) HandleCallback(
 	ctx context.Context,
-	tenantID, provider, stateToken, code string,
-) (accessToken string, postCallbackRedirect string, err error) {
+	tenantID, provider, stateToken, code, ipAddress, userAgent, origin string,
+) (*CallbackResult, error) {
 	state, err := s.repo.ConsumeSocialAuthState(ctx, tenantID, stateToken)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	clientID, clientSecret, _, err := s.repo.GetDecryptedProviderConfig(ctx, tenantID, provider)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	p, err := NewProvider(provider, clientID, clientSecret)
+	p, err := s.newProvider(provider, clientID, clientSecret)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	// The redirect URI presented at the token endpoint must be identical to the
@@ -218,7 +284,7 @@ func (s *Service) HandleCallback(
 	callbackURL := s.cfg.SocialCallbackURL(provider)
 	token, err := p.ExchangeCode(ctx, code, callbackURL)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	var providerUser *ProviderUser
@@ -230,11 +296,11 @@ func (s *Service) HandleCallback(
 		providerUser, err = p.GetUserInfo(ctx, token.AccessToken)
 	}
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if providerUser.Email == "" {
-		return "", "", ErrEmailRequired
+		return nil, ErrEmailRequired
 	}
 
 	var userID string
@@ -244,16 +310,16 @@ func (s *Service) HandleCallback(
 
 	identity, err := s.repo.FindIdentityByProvider(ctx, provider, providerUser.ProviderUserID)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if identity != nil {
 		fetchedUser, err := s.getUserByID(ctx, identity.UserID)
 		if err != nil {
-			return "", "", err
+			return nil, err
 		}
 		if err := accountstatus.Allowed(fetchedUser); err != nil {
-			return "", "", err
+			return nil, err
 		}
 		userID = fetchedUser.ID
 		email = fetchedUser.Email
@@ -261,7 +327,7 @@ func (s *Service) HandleCallback(
 	} else {
 		existingUser, err := s.repo.FindUserByEmailForSocial(ctx, state.TenantID, state.Environment, providerUser.Email)
 		if err != nil {
-			return "", "", err
+			return nil, err
 		}
 
 		if existingUser != nil {
@@ -270,7 +336,7 @@ func (s *Service) HandleCallback(
 			// through Google even though the password path refuses them, and a
 			// soft-deleted address would be linked to rather than left reserved.
 			if err := accountstatus.Allowed(existingUser); err != nil {
-				return "", "", err
+				return nil, err
 			}
 			userID = existingUser.ID
 			email = existingUser.Email
@@ -278,7 +344,7 @@ func (s *Service) HandleCallback(
 		} else {
 			newUser, err := s.repo.CreateSocialUser(ctx, state.TenantID, state.Environment, providerUser.Email, providerUser.Name, providerUser.AvatarURL, providerUser.EmailVerified)
 			if err != nil {
-				return "", "", err
+				return nil, err
 			}
 			userID = newUser.ID
 			email = newUser.Email
@@ -292,25 +358,65 @@ func (s *Service) HandleCallback(
 	// resolves to empty naturally.
 	role = rbac.ResolveConsoleRoleClaim(ctx, s.repo.factory.GetClient(ctx, "", ""), userID)
 
-	jwtToken, err := jwtpkg.IssueAccessToken(userID, state.TenantID, string(state.Environment), email, name, role, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
+	// The refresh token is generated here rather than left to the session store's
+	// fallback, so that the credential this path mints is the same shape and
+	// strength as the one the password path mints.
+	tokenBytes := make([]byte, refreshTokenEntropyBytes)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, fmt.Errorf("failed generating refresh token: %w", err)
+	}
+
+	sess, rawRefreshToken, err := s.sessions.CreateSession(
+		ctx,
+		state.TenantID,
+		state.Environment,
+		userID,
+		hex.EncodeToString(tokenBytes),
+		ipAddress,
+		userAgent,
+		"",
+		"",
+		s.refreshTokenTTL(),
+	)
 	if err != nil {
-		return "", "", err
+		return nil, fmt.Errorf("failed creating session for social sign-in: %w", err)
+	}
+
+	jwtToken, err := jwtpkg.IssueAccessTokenWithSession(userID, state.TenantID, state.Environment, email, name, role, sess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
 
 	_, err = s.repo.UpsertIdentity(ctx, userID, provider, providerUser.ProviderUserID, providerUser.Email, providerUser.Name, providerUser.AvatarURL, providerUser.RawProfile, token.AccessToken, token.RefreshToken)
 	if err != nil {
-		return "", "", err
+		return nil, err
+	}
+
+	// Sign-in bookkeeping. The tokens above are already valid, so a failure here
+	// is logged and stepped over: refusing the sign-in would cost the user their
+	// session to save a timestamp, and the session row itself already records that
+	// the sign-in happened.
+	if err := s.repo.UpdateUserLastSignIn(ctx, userID); err != nil {
+		log.Printf("[SOCIAL] last sign-in stamp failed for user %s: %v", userID, err)
+	}
+	if err := s.repo.CreateSignInAuditLog(ctx, state.TenantID, state.ApplicationID, userID, provider, ipAddress, userAgent, origin); err != nil {
+		log.Printf("[SOCIAL] sign-in audit log failed for user %s: %v", userID, err)
 	}
 
 	postCallback := state.PostCallbackRedirect
-	if err := s.validatePostCallbackRedirect(ctx, state.TenantID, string(state.Environment), state.ApplicationID, postCallback); err != nil {
+	if err := s.validatePostCallbackRedirect(ctx, state.TenantID, state.Environment, state.ApplicationID, postCallback); err != nil {
 		if !errors.Is(err, ErrRedirectNotAllowed) {
-			return "", "", err
+			return nil, err
 		}
 		postCallback = ""
 	}
 
-	return jwtToken, postCallback, nil
+	return &CallbackResult{
+		AccessToken:          jwtToken,
+		RefreshToken:         rawRefreshToken,
+		SessionID:            sess.ID,
+		PostCallbackRedirect: postCallback,
+	}, nil
 }
 
 // ProviderSetupResponse describes a provider's configuration state and the
@@ -352,7 +458,7 @@ func (s *Service) GetSetupGuide(ctx context.Context, tenantID, provider string) 
 	for _, pName := range supported {
 		// Setup instructions are static per provider, so placeholder credentials
 		// are enough to construct a driver and ask for them.
-		p, err := NewProvider(pName, "x", "x")
+		p, err := s.newProvider(pName, "x", "x")
 		if err != nil {
 			continue
 		}

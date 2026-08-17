@@ -52,15 +52,23 @@ Location: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&clien
 ### 3. Callback Handler (`GET /v1/client/auth/social/:provider/callback`)
 * **Query Parameters**:
   * `code`: Provider authorization code.
-  * `state`: 32-byte CSRF state token generated in Step 2.
+  * `state`: CSRF state token generated in Step 2.
+
+The callback creates a session before returning, so the sign-in it produces is refreshable, appears in `GET /v1/client/sessions`, and is ended by a revocation or a ban like any other. The access token carries that session's `sid`. The refresh token is delivered only as the HttpOnly `authn_refresh_token` cookie — it is absent from both the JSON body and the redirect fragment, because a long-lived credential readable by page scripts would defeat the point of pairing it with a short-lived one.
 
 **Response (200 OK — JSON Mode)**:
+```http
+HTTP/1.1 200 OK
+Set-Cookie: authn_refresh_token=<opaque>; Path=/; HttpOnly; Secure; SameSite=Lax
+```
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "Bearer"
 }
 ```
+
+**Response (302 Found — Redirect Mode)**: same `Set-Cookie`, with the access token in the destination's URL fragment.
 
 ---
 
@@ -71,9 +79,9 @@ Location: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&clien
 | **Unconfigured Provider** | `GET /authorize` for disabled provider | `400 Bad Request` | `social provider not enabled for this tenant` |
 | **Admin Configuration** | `PUT /v1/tenant/social-providers/google` (`sk_...`) | `200 OK` | Encrypted persistence of client secrets |
 | **Missing Parameter** | `GET /authorize` without `redirect_uri` | `400 Bad Request` | `redirect_uri query parameter is required` |
-| **CSRF Token Generation** | `GET /authorize` with `redirect_uri` | `302 Found` | 32-byte hex state token generated & saved in Redis (10m TTL) |
+| **CSRF Token Generation** | `GET /authorize` with `redirect_uri` | `302 Found` | 16-byte hex state token generated & persisted as a `social_auth_states` row for `SOCIAL_AUTH_STATE_TTL` |
 | **Missing Callback Params** | `GET /callback` without `code` or `state` | `400 Bad Request` | Required query validation |
-| **Forged/Replayed State** | `GET /callback` with fake state | `400 Bad Request` | Single-use Redis consumption & validity check |
+| **Forged/Replayed State** | `GET /callback` with fake state | `400 Bad Request` | Row is deleted on first presentation, before the expiry check |
 | **Email Collision Check** | Social signup when email exists as password user | `409 Conflict` | Pre-account takeover defense (`email_exists_social_account`) |
 | **Admin Setup Guides** | `GET /v1/tenant/social-providers` | `200 OK` | Returns step-by-step console instructions & URL rules |
 | **Admin Provider Delete** | `DELETE /v1/tenant/social-providers/google` | `200 OK` | Config purged from database |

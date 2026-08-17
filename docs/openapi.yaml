@@ -3557,9 +3557,13 @@ paths:
       summary: Handle Social Provider Callback
       description: 'Processes the social provider redirect with code and state.
 
-        On success, redirects 302 to the application''s authorized destination with access token in URL fragment,
+        On success a session is created and the HttpOnly authn_refresh_token cookie is set, then the response
+
+        redirects 302 to the application''s authorized destination with access token in URL fragment,
 
         or returns 200 OK with access token in JSON body if no destination applies.
+
+        The refresh token is delivered only as a cookie and never appears in the fragment or the body.
 
         '
       operationId: socialCallback
@@ -3606,8 +3610,17 @@ paths:
               schema:
                 type: string
               description: Destination URL carrying access token in fragment (#access_token=...&token_type=Bearer)
+            Set-Cookie:
+              schema:
+                type: string
+              description: Sets HttpOnly authn_refresh_token cookie for the session this sign-in created
         '200':
           description: OK - Access token returned in body when no post_callback_redirect applies
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Sets HttpOnly authn_refresh_token cookie for the session this sign-in created
           content:
             application/json:
               schema:

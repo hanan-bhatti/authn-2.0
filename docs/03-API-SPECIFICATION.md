@@ -65,7 +65,7 @@ The **Authn Engine** exposes four distinct HTTP API surfaces:
 - `PUT /v1/tenant/social-providers/:provider` — Configure provider client ID & encrypted secret with format validation
 - `DELETE /v1/tenant/social-providers/:provider` — Remove provider configuration
 - `GET /v1/client/auth/social/:provider/authorize` — Initiate social auth, generate 10-min CSRF state token & 302 redirect
-- `GET /v1/client/auth/social/:provider/callback` — OAuth2 callback handler (exchanges code, finds/creates user, issues JWT)
+- `GET /v1/client/auth/social/:provider/callback` — OAuth2 callback handler (exchanges code, finds/creates user, creates a session, issues JWT with `sid` and sets the refresh cookie)
 
 ### 2.7 Role-Based Access Control & Fine-Grained Permissions (FR-12)
 - `GET /v1/tenant/roles` — List all roles for tenant with assigned permissions
@@ -540,9 +540,10 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 }
 ```
 - **Authorize Redirect (`GET /v1/client/auth/social/:provider/authorize`)**:
-  - Generates a 32-byte random hex CSRF state token stored in Redis with 10-minute TTL, then returns 302 redirect to provider's authorization page.
+  - Generates a 16-byte random hex CSRF state token persisted as a `social_auth_states` row for `SOCIAL_AUTH_STATE_TTL`, then returns 302 redirect to provider's authorization page.
 - **Callback Handler (`GET /v1/client/auth/social/:provider/callback`)**:
-  - Consumes single-use CSRF state token, exchanges code for provider tokens, retrieves user profile, handles Account Linking vs Signup vs Login, and issues JWT access token.
+  - Consumes single-use CSRF state token, exchanges code for provider tokens, retrieves user profile, handles Account Linking vs Signup vs Login, then creates a session and issues a JWT access token carrying its `sid`.
+  - Sets the HttpOnly `authn_refresh_token` cookie for that session. The refresh token is never placed in the URL fragment or the JSON body, so the resulting sign-in is refreshable, listed by `GET /v1/client/sessions`, and ended by a revocation or a ban exactly like a password sign-in.
 - **Edge Cases & Error Codes**:
   - `400 Bad Request`: Missing `redirect_uri`, missing `code`/`state`, or expired/invalid CSRF state token.
 ### 3.6 Passwordless Magic Links (`POST /v1/client/auth/magic-link` & `GET|POST /v1/client/auth/magic-link/verify`)
