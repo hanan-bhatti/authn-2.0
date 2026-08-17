@@ -96,7 +96,7 @@ type Handler struct {
 
 // NewHandler constructs a new Auth Handler instance.
 func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ratelimit.Limiter, resendLimiter ...*ratelimit.Limiter) *Handler {
-	telemetry := NewTelemetryService(service.repo, "super_secret_kms_key_32bytes_authn!", policyRepo)
+	telemetry := NewTelemetryService(service.repo, service.config.EncryptionKey, policyRepo)
 	var rLimiter *ratelimit.Limiter
 	if len(resendLimiter) > 0 {
 		rLimiter = resendLimiter[0]
