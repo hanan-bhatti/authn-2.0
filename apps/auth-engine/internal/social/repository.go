@@ -19,7 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
+	"fmt"
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
@@ -29,6 +29,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 )
 
 const (
@@ -145,22 +146,53 @@ func (r *Repository) ConsumeSocialAuthState(ctx context.Context, tenantID, state
 	return state, nil
 }
 
-// PurgeSocialAuthState deletes a tenant's expired state rows.
+// PurgeExpiredAuthState deletes state rows whose expiry has passed and returns
+// how many were removed. It requires a context carrying a privacy bypass,
+// because the sweep spans every tenant.
 //
-// Abandoned sign-ins never reach the callback that would consume their state,
-// so without a sweep those rows accumulate indefinitely.
+// Abandoned sign-ins never reach the callback that would consume their state, so
+// without a sweep those rows accumulate for the lifetime of the deployment. An
+// expired row has no remaining use: ConsumeSocialAuthState refuses one before
+// returning it, so nothing distinguishes deleting it from leaving it.
 //
-// Returns an error if the delete fails; callers treat it as non-fatal.
-func (r *Repository) PurgeSocialAuthState(ctx context.Context, tenantID string) error {
-	client := r.factory.GetClient(ctx, tenantID, configEnvironment)
+// Deletion is batched, in ID order, for the same reasons as the session sweep.
+func (r *Repository) PurgeExpiredAuthState(ctx context.Context, before time.Time, batchSize int) (int, error) {
+	if batchSize <= 0 {
+		return 0, fmt.Errorf("social auth state purge: batch size must be positive, got %d", batchSize)
+	}
 
-	_, err := client.SocialAuthState.Delete().
-		Where(
-			socialauthstate.TenantID(tenantID),
-			socialauthstate.ExpiresAtLT(time.Now()),
-		).Exec(ctx)
+	client := r.factory.GetClient(ctx, "", "")
+	total := 0
 
-	return err
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+
+		ids, err := client.SocialAuthState.Query().
+			Where(socialauthstate.ExpiresAtLT(before)).
+			Order(ent.Asc(socialauthstate.FieldID)).
+			Limit(batchSize).
+			IDs(ctx)
+		if err != nil {
+			return total, fmt.Errorf("selecting expired social auth state: %w", err)
+		}
+		if len(ids) == 0 {
+			return total, nil
+		}
+
+		removed, err := client.SocialAuthState.Delete().
+			Where(socialauthstate.IDIn(ids...)).
+			Exec(ctx)
+		if err != nil {
+			return total, fmt.Errorf("deleting expired social auth state: %w", err)
+		}
+		total += removed
+
+		if removed == 0 || len(ids) < batchSize {
+			return total, nil
+		}
+	}
 }
 
 // FindIdentityByProvider looks up the linked identity for a provider and that

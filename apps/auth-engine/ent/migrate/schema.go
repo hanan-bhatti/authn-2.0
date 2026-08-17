@@ -639,6 +639,16 @@ var (
 				Unique:  false,
 				Columns: []*schema.Column{SessionsColumns[14], SessionsColumns[2]},
 			},
+			{
+				Name:    "session_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SessionsColumns[11]},
+			},
+			{
+				Name:    "session_status_grace_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SessionsColumns[2], SessionsColumns[12]},
+			},
 		},
 	}
 	// SessionAppActivitiesColumns holds the columns for the "session_app_activities" table.
@@ -708,6 +718,11 @@ var (
 				Name:    "socialauthstate_tenant_id_expires_at",
 				Unique:  false,
 				Columns: []*schema.Column{SocialAuthStatesColumns[1], SocialAuthStatesColumns[7]},
+			},
+			{
+				Name:    "socialauthstate_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SocialAuthStatesColumns[7]},
 			},
 		},
 	}

@@ -87,5 +87,8 @@ func (SocialAuthState) Indexes() []ent.Index {
 		index.Fields("id").Unique(),
 		// Purge path: delete all expired states for a tenant efficiently
 		index.Fields("tenant_id", "expires_at"),
+		// The retention sweep runs across tenants, so it cannot use the composite
+		// above and needs expires_at as a leading column of its own.
+		index.Fields("expires_at"),
 	}
 }

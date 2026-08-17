@@ -216,6 +216,27 @@ type Config struct {
 	// SessionGracePeriod lets a just-rotated refresh token work briefly, so
 	// concurrent in-flight requests during rotation are not all logged out.
 	SessionGracePeriod time.Duration
+	// RetentionSweepInterval is how often the background sweep deletes records
+	// whose retention window has elapsed. Zero or negative falls back to the
+	// sweeper's own default rather than disabling the sweep, because a deployment
+	// that never sweeps grows without bound.
+	RetentionSweepInterval time.Duration
+	// SupersededSessionRetention is how long a session row that a refresh replaced
+	// is kept after its grace window closes. The row's only remaining purpose is
+	// to let a replay of its refresh token be recognised as token reuse rather
+	// than as an unknown credential, so this is the width of that detection
+	// window. It is also the highest-volume class of row in the schema — one per
+	// refresh — which is why it is kept far more briefly than the rest.
+	SupersededSessionRetention time.Duration
+	// TerminalSessionRetention is how long an expired or revoked session row is
+	// kept past its expiry. These rows carry the device, address and location
+	// history a user reads back from the session list, so the window is normally
+	// at least RefreshTokenTTL to keep that history complete.
+	TerminalSessionRetention time.Duration
+	// RetentionBatchSize bounds how many rows one delete statement removes. Small
+	// batches keep each statement short, so a sweep of a long-neglected table does
+	// not hold locks or extend the write-ahead log for minutes at a time.
+	RetentionBatchSize int
 	// EmailVerificationTTL is the lifetime of an email verification link.
 	EmailVerificationTTL time.Duration
 	// MagicLinkTTL is the lifetime of a passwordless sign-in link. Kept short

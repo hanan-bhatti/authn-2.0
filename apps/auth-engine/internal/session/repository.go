@@ -18,14 +18,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sessionactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 )
 
 // Sentinel errors for session lookup and refresh failures. Handlers match on
@@ -211,4 +213,87 @@ func (r *Repository) GetUserActiveSessions(ctx context.Context, userID string) (
 		).
 		Order(ent.Desc(session.FieldLastActiveAt)).
 		All(ctx)
+}
+
+// PurgeExpiredSessions deletes session rows that can no longer authenticate
+// anything and returns how many were removed. It requires a context carrying a
+// privacy bypass, because the sweep spans every tenant.
+//
+// The two cutoffs separate rows kept for different reasons. A superseded row —
+// one a refresh replaced — survives its grace window only so that a replay of
+// its token is recognised as reuse rather than as an unknown credential, and
+// supersededBefore bounds how long that recognition lasts. A row that aged out
+// or was revoked also carries the sign-in history a user reads back from the
+// session list, so terminalBefore is normally the longer of the two. Superseded
+// rows are the higher-volume class by a wide margin: one is created per refresh,
+// where the others need a sign-out or an expiry.
+//
+// Deletion is batched because a single unbounded DELETE against the largest
+// table in the schema holds locks and extends the write-ahead log for as long as
+// it runs — on a deployment's first sweep, that is the incident the sweep exists
+// to prevent. Batches are selected in ID order so that two servers sweeping at
+// once take row locks in the same sequence rather than deadlocking against each
+// other.
+func (r *Repository) PurgeExpiredSessions(ctx context.Context, supersededBefore, terminalBefore time.Time, batchSize int) (int, error) {
+	if batchSize <= 0 {
+		return 0, fmt.Errorf("session purge: batch size must be positive, got %d", batchSize)
+	}
+
+	client := r.factory.GetClient(ctx, "", "")
+	total := 0
+
+	passes := []struct {
+		name string
+		pred predicate.Session
+	}{
+		{
+			name: "superseded",
+			pred: session.And(
+				session.StatusEQ(session.StatusRotatedGrace),
+				session.GraceExpiresAtLT(supersededBefore),
+			),
+		},
+		{
+			name: "terminal",
+			pred: session.ExpiresAtLT(terminalBefore),
+		},
+	}
+
+	for _, pass := range passes {
+		for {
+			if err := ctx.Err(); err != nil {
+				return total, err
+			}
+
+			ids, err := client.Session.Query().
+				Where(pass.pred).
+				Order(ent.Asc(session.FieldID)).
+				Limit(batchSize).
+				IDs(ctx)
+			if err != nil {
+				return total, fmt.Errorf("selecting %s sessions to purge: %w", pass.name, err)
+			}
+			if len(ids) == 0 {
+				break
+			}
+
+			removed, err := client.Session.Delete().
+				Where(session.IDIn(ids...)).
+				Exec(ctx)
+			if err != nil {
+				return total, fmt.Errorf("deleting %s sessions: %w", pass.name, err)
+			}
+			total += removed
+
+			// A batch that selected rows but removed none means something outside this
+			// predicate is holding them — another server that swept first, or a
+			// constraint refusing the delete. Either way, re-selecting the same rows
+			// would spin, and the next sweep can revisit them.
+			if removed == 0 || len(ids) < batchSize {
+				break
+			}
+		}
+	}
+
+	return total, nil
 }

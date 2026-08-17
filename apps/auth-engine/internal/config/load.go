@@ -90,6 +90,11 @@ func Load() (*Config, error) {
 		RecoveryTokenTTL:     r.duration("RECOVERY_TOKEN_TTL", time.Hour),
 		InvitationTTL:        r.duration("INVITATION_TTL", 168*time.Hour),
 
+		RetentionSweepInterval:     r.duration("RETENTION_SWEEP_INTERVAL", 15*time.Minute),
+		SupersededSessionRetention: r.duration("SUPERSEDED_SESSION_RETENTION", 72*time.Hour),
+		TerminalSessionRetention:   r.duration("TERMINAL_SESSION_RETENTION", 720*time.Hour),
+		RetentionBatchSize:         r.positive("RETENTION_BATCH_SIZE", 1000),
+
 		RateLimitEnabled:            r.boolean("RATELIMIT_ENABLED", true),
 		RateLimitMaxAttempts:        r.positive("RATELIMIT_MAX_ATTEMPTS", 5),
 		RateLimitWindow:             r.duration("RATELIMIT_WINDOW", 15*time.Minute),

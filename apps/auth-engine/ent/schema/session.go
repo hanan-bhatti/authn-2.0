@@ -116,5 +116,11 @@ func (Session) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("refresh_token_hash").Unique(),
 		index.Fields("user_id", "status"),
+		// Retention sweeps select by whichever timestamp made a row inert:
+		// expires_at for a session that aged out or was revoked, grace_expires_at
+		// for one a refresh superseded. Sessions is the highest-volume table in the
+		// schema, so an unindexed sweep predicate would scan all of it on every run.
+		index.Fields("expires_at"),
+		index.Fields("status", "grace_expires_at"),
 	}
 }

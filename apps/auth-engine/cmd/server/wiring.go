@@ -11,7 +11,9 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
@@ -28,6 +30,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/provisioning"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/retention"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
@@ -156,6 +159,9 @@ func wireFeatures(
 	platformHandler := platform.NewHandler(provisioningService, platform.NewRepository(factory),
 		rateLimiter, cfg.PlatformTenantSlug)
 
+	sweeper := newRetentionSweeper(cfg, redisClient, authRepo, policyRepo, sessionRepo, socialRepo)
+	sweeper.Start()
+
 	return &appWiring{
 		pkMiddleware:         pkMiddleware,
 		clientAuthMiddleware: clientAuthMiddleware,
@@ -177,6 +183,57 @@ func wireFeatures(
 		platformHandler:      platformHandler,
 		cleanup: func() {
 			webhookDispatcher.Stop()
+			sweeper.Stop()
 		},
 	}
+}
+
+// newRetentionSweeper registers every table's retention rule with the background
+// scheduler.
+//
+// The cutoffs are computed inside each task rather than here, so that a process
+// running for weeks keeps sweeping against the current time instead of against
+// its own start time.
+func newRetentionSweeper(
+	cfg *config.Config,
+	redisClient *redis.Client,
+	authRepo *auth.Repository,
+	policyRepo *policy.Repository,
+	sessionRepo *session.Repository,
+	socialRepo *social.Repository,
+) *retention.Sweeper {
+	// The telemetry sweep needs a service to hang off, and this one is
+	// purge-only: the device-token key it also carries is unused by that path.
+	telemetry := auth.NewTelemetryService(authRepo, cfg.EncryptionKey, policyRepo)
+
+	return retention.New(cfg.RetentionSweepInterval, redisClient,
+		retention.Task{
+			Name: "sessions",
+			Run: func(ctx context.Context) (int, error) {
+				now := time.Now()
+				return sessionRepo.PurgeExpiredSessions(
+					ctx,
+					now.Add(-cfg.SupersededSessionRetention),
+					now.Add(-cfg.TerminalSessionRetention),
+					cfg.RetentionBatchSize,
+				)
+			},
+		},
+		retention.Task{
+			Name: "social auth state",
+			Run: func(ctx context.Context) (int, error) {
+				return socialRepo.PurgeExpiredAuthState(ctx, time.Now(), cfg.RetentionBatchSize)
+			},
+		},
+		// Subnet history and trusted devices are written once per device or
+		// network per user rather than once per request, and both sweep predicates
+		// are indexed, so this one deletes in a single statement.
+		retention.Task{
+			Name: "device telemetry",
+			Run: func(ctx context.Context) (int, error) {
+				subnets, devices, err := telemetry.PurgeExpiredTelemetry(ctx)
+				return subnets + devices, err
+			},
+		},
+	)
 }
