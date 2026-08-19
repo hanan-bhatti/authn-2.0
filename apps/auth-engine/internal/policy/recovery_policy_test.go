@@ -126,7 +126,7 @@ func TestGetAndUpdateRecoveryPolicy_Repository(t *testing.T) {
 	require.NoError(t, err)
 
 	// 1. Default Fallback
-	pDef, err := repo.GetRecoveryPolicy(ctx, tenantID)
+	pDef, err := repo.GetRecoveryPolicy(ctx, tenantID, "test")
 	require.NoError(t, err)
 	assert.True(t, pDef.GuardiansEnabled)
 	assert.Equal(t, 48, pDef.FreezeWindowHours)
@@ -136,13 +136,13 @@ func TestGetAndUpdateRecoveryPolicy_Repository(t *testing.T) {
 	custom.GuardiansEnabled = false
 	custom.FreezeWindowHours = 72
 
-	updated, err := repo.UpdateRecoveryPolicy(ctx, tenantID, custom)
+	updated, err := repo.UpdateRecoveryPolicy(ctx, tenantID, "test", custom)
 	require.NoError(t, err)
 	assert.False(t, updated.GuardiansEnabled)
 	assert.Equal(t, 72, updated.FreezeWindowHours)
 
 	// 3. Read back persisted policy
-	readBack, err := repo.GetRecoveryPolicy(ctx, tenantID)
+	readBack, err := repo.GetRecoveryPolicy(ctx, tenantID, "test")
 	require.NoError(t, err)
 	assert.False(t, readBack.GuardiansEnabled)
 	assert.Equal(t, 72, readBack.FreezeWindowHours)

@@ -42,13 +42,47 @@ type PasswordPolicy struct {
 	// ForceUpgradeOnSignin makes an existing user with a non-compliant password
 	// set a new one at their next sign-in.
 	ForceUpgradeOnSignin bool `json:"force_upgrade_on_signin"`
-	// MinLength is the minimum character count. ValidatePassword floors it at 8
-	// whatever is stored.
+	// MinLength is the minimum character count, floored at MinPasswordLength.
 	MinLength int `json:"min_length"`
-	// MaxLength is the maximum character count, capped at 4096. The cap exists
-	// because hashing is deliberately expensive: an unbounded password is a
-	// unbounded amount of work per login attempt.
+	// MaxLength is the maximum character count, capped at MaxPasswordLength. The
+	// cap exists because hashing is deliberately expensive: an unbounded password
+	// is an unbounded amount of work per login attempt.
 	MaxLength int `json:"max_length"`
+}
+
+// Bounds the engine enforces on every password whatever a tenant has stored.
+//
+// These are exported and used by everything that reads, writes or reports a
+// password policy, so that the value an administrator reads back, the value a
+// sign-in page is told, and the value a password is actually measured against
+// cannot drift apart. A stored minimum below the floor would otherwise be
+// published as the rule while the engine quietly enforced a stricter one, and the
+// mismatch surfaces to the user as a form that accepts a password the API refuses.
+const (
+	// MinPasswordLength is the shortest password the engine accepts.
+	MinPasswordLength = 8
+	// MaxPasswordLength caps the work a single sign-in attempt can demand of the
+	// password hasher.
+	MaxPasswordLength = 4096
+)
+
+// EffectivePasswordBounds returns the length bounds that will actually be applied
+// to a password under p: the stored minimum raised to MinPasswordLength when it
+// falls below it, and a maximum that is at least the minimum and never above
+// MaxPasswordLength.
+//
+// This is the one place the correction lives. Callers that report a policy to a
+// client must report these values rather than the stored ones.
+func EffectivePasswordBounds(p PasswordPolicy) (minLen, maxLen int) {
+	minLen = p.MinLength
+	if minLen < MinPasswordLength {
+		minLen = MinPasswordLength
+	}
+	maxLen = p.MaxLength
+	if maxLen < minLen || maxLen > MaxPasswordLength {
+		maxLen = MaxPasswordLength
+	}
+	return minLen, maxLen
 }
 
 // DefaultPasswordPolicy returns the password policy applied to a tenant that has
@@ -61,8 +95,8 @@ func DefaultPasswordPolicy() PasswordPolicy {
 		RequireNumeric:       true,
 		RequireSpecial:       false,
 		ForceUpgradeOnSignin: false,
-		MinLength:            8,
-		MaxLength:            4096,
+		MinLength:            MinPasswordLength,
+		MaxLength:            MaxPasswordLength,
 	}
 }
 
@@ -396,19 +430,12 @@ func parseLockoutStepDuration(step string) (time.Duration, error) {
 // satisfies all of them. The caller decides what a failure means: "require"
 // rejects, "notify" reports.
 //
-// The policy's own bounds are floored at 8 and capped at 4096 here, so a stored
-// policy weakened below the engine's own minimum cannot admit a shorter password.
+// Lengths are measured with EffectivePasswordBounds, so a stored policy weakened
+// below the engine's own minimum cannot admit a shorter password.
 func ValidatePassword(p PasswordPolicy, password string) []string {
 	var missing []string
 
-	minLen := p.MinLength
-	if minLen < 8 {
-		minLen = 8
-	}
-	maxLen := p.MaxLength
-	if maxLen < minLen || maxLen > 4096 {
-		maxLen = 4096
-	}
+	minLen, maxLen := EffectivePasswordBounds(p)
 
 	length := len(password)
 	if length < minLen {
