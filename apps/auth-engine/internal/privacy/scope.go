@@ -40,11 +40,13 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
@@ -77,8 +79,48 @@ func applicationScope(p *PrivacyContext) []predicate.Application {
 	return preds
 }
 
+// tenantEnvironmentScope confines a tenant's per-environment settings.
+//
+// The environment predicate carries more weight here than elsewhere. For a user it
+// decides which accounts are visible; for a settings row it decides which policy
+// governs a sign-in, so a context that names no environment matches both rows and
+// a caller expecting one answer gets two. Callers therefore constrain the
+// environment in the query as well, and treat this as the boundary rather than the
+// selector — see internal/policy.Repository.
+func tenantEnvironmentScope(p *PrivacyContext) []predicate.TenantEnvironment {
+	preds := []predicate.TenantEnvironment{tenantenvironment.TenantID(p.TenantID)}
+	if p.Environment != "" {
+		preds = append(preds, tenantenvironment.EnvironmentEQ(tenantenvironment.Environment(p.Environment)))
+	}
+	return preds
+}
+
+// sandboxMessageScope confines captured test messages.
+//
+// Rows hold one-time codes in plain text, so the environment predicate is doing
+// security work and not just filtering: without it a live-scoped caller could read
+// sandbox traffic, and the whole value of capturing a code is that it is readable.
+func sandboxMessageScope(p *PrivacyContext) []predicate.SandboxMessage {
+	preds := []predicate.SandboxMessage{sandboxmessage.TenantID(p.TenantID)}
+	if p.Environment != "" {
+		preds = append(preds, sandboxmessage.EnvironmentEQ(sandboxmessage.Environment(p.Environment)))
+	}
+	return preds
+}
+
+// organizationScope confines a tenant's workspaces to one environment.
+//
+// An organization is not a policy row that both environments read, it is a
+// workspace one of them owns, so a test key must not see a live customer's
+// workspace and a rehearsal must not appear in a live listing. The slug is unique
+// per tenant and environment for the same reason: a team rehearses under the slug
+// it means to ship.
 func organizationScope(p *PrivacyContext) []predicate.Organization {
-	return []predicate.Organization{organization.TenantID(p.TenantID)}
+	preds := []predicate.Organization{organization.TenantID(p.TenantID)}
+	if p.Environment != "" {
+		preds = append(preds, organization.EnvironmentEQ(organization.Environment(p.Environment)))
+	}
+	return preds
 }
 
 func auditLogScope(p *PrivacyContext) []predicate.AuditLog {
@@ -165,15 +207,22 @@ func identityScope(p *PrivacyContext) []predicate.Identity {
 	return []predicate.Identity{identity.HasUserWith(user.TenantID(p.TenantID))}
 }
 
+// orgMemberScope and orgInvitationScope narrow by the parent organization's
+// environment as well as its tenant.
+//
+// Without the environment the membership of a test workspace would be readable by
+// a live key even though the workspace itself is not, which is a roster leaking out
+// of an environment that is meant to be self-contained.
+
 func orgMemberScope(p *PrivacyContext) []predicate.OrgMember {
 	return []predicate.OrgMember{
-		orgmember.HasOrganizationWith(organization.TenantID(p.TenantID)),
+		orgmember.HasOrganizationWith(organizationScope(p)...),
 	}
 }
 
 func orgInvitationScope(p *PrivacyContext) []predicate.OrgInvitation {
 	return []predicate.OrgInvitation{
-		orginvitation.HasOrganizationWith(organization.TenantID(p.TenantID)),
+		orginvitation.HasOrganizationWith(organizationScope(p)...),
 	}
 }
 
@@ -189,6 +238,14 @@ func recoveryRequestScope(p *PrivacyContext) []predicate.RecoveryRequest {
 	return []predicate.RecoveryRequest{recoveryrequest.HasUserWith(user.TenantID(p.TenantID))}
 }
 
+// samlConnectionScope confines by tenant alone, not by the parent organization's
+// environment.
+//
+// A connection carries an environment of its own precisely so it can be promoted
+// from a trial into production without being re-registered at the identity
+// provider, and narrowing here by the workspace's environment would make a promoted
+// connection unreachable from the environment it was promoted into. The SAML flow
+// reads that field explicitly — see internal/saml.
 func samlConnectionScope(p *PrivacyContext) []predicate.SAMLConnection {
 	return []predicate.SAMLConnection{
 		samlconnection.HasOrganizationWith(organization.TenantID(p.TenantID)),
