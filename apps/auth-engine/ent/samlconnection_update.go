@@ -124,6 +124,20 @@ func (scu *SAMLConnectionUpdate) SetNillableEnforceSSO(b *bool) *SAMLConnectionU
 	return scu
 }
 
+// SetEnvironment sets the "environment" field.
+func (scu *SAMLConnectionUpdate) SetEnvironment(s samlconnection.Environment) *SAMLConnectionUpdate {
+	scu.mutation.SetEnvironment(s)
+	return scu
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (scu *SAMLConnectionUpdate) SetNillableEnvironment(s *samlconnection.Environment) *SAMLConnectionUpdate {
+	if s != nil {
+		scu.SetEnvironment(*s)
+	}
+	return scu
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (scu *SAMLConnectionUpdate) SetUpdatedAt(t time.Time) *SAMLConnectionUpdate {
 	scu.mutation.SetUpdatedAt(t)
@@ -204,6 +218,11 @@ func (scu *SAMLConnectionUpdate) check() error {
 			return &ValidationError{Name: "idp_certificate", err: fmt.Errorf(`ent: validator failed for field "SAMLConnection.idp_certificate": %w`, err)}
 		}
 	}
+	if v, ok := scu.mutation.Environment(); ok {
+		if err := samlconnection.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "SAMLConnection.environment": %w`, err)}
+		}
+	}
 	if scu.mutation.OrganizationCleared() && len(scu.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "SAMLConnection.organization"`)
 	}
@@ -247,6 +266,9 @@ func (scu *SAMLConnectionUpdate) sqlSave(ctx context.Context) (n int, err error)
 	}
 	if value, ok := scu.mutation.EnforceSSO(); ok {
 		_spec.SetField(samlconnection.FieldEnforceSSO, field.TypeBool, value)
+	}
+	if value, ok := scu.mutation.Environment(); ok {
+		_spec.SetField(samlconnection.FieldEnvironment, field.TypeEnum, value)
 	}
 	if value, ok := scu.mutation.UpdatedAt(); ok {
 		_spec.SetField(samlconnection.FieldUpdatedAt, field.TypeTime, value)
@@ -394,6 +416,20 @@ func (scuo *SAMLConnectionUpdateOne) SetNillableEnforceSSO(b *bool) *SAMLConnect
 	return scuo
 }
 
+// SetEnvironment sets the "environment" field.
+func (scuo *SAMLConnectionUpdateOne) SetEnvironment(s samlconnection.Environment) *SAMLConnectionUpdateOne {
+	scuo.mutation.SetEnvironment(s)
+	return scuo
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (scuo *SAMLConnectionUpdateOne) SetNillableEnvironment(s *samlconnection.Environment) *SAMLConnectionUpdateOne {
+	if s != nil {
+		scuo.SetEnvironment(*s)
+	}
+	return scuo
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (scuo *SAMLConnectionUpdateOne) SetUpdatedAt(t time.Time) *SAMLConnectionUpdateOne {
 	scuo.mutation.SetUpdatedAt(t)
@@ -487,6 +523,11 @@ func (scuo *SAMLConnectionUpdateOne) check() error {
 			return &ValidationError{Name: "idp_certificate", err: fmt.Errorf(`ent: validator failed for field "SAMLConnection.idp_certificate": %w`, err)}
 		}
 	}
+	if v, ok := scuo.mutation.Environment(); ok {
+		if err := samlconnection.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "SAMLConnection.environment": %w`, err)}
+		}
+	}
 	if scuo.mutation.OrganizationCleared() && len(scuo.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "SAMLConnection.organization"`)
 	}
@@ -547,6 +588,9 @@ func (scuo *SAMLConnectionUpdateOne) sqlSave(ctx context.Context) (_node *SAMLCo
 	}
 	if value, ok := scuo.mutation.EnforceSSO(); ok {
 		_spec.SetField(samlconnection.FieldEnforceSSO, field.TypeBool, value)
+	}
+	if value, ok := scuo.mutation.Environment(); ok {
+		_spec.SetField(samlconnection.FieldEnvironment, field.TypeEnum, value)
 	}
 	if value, ok := scuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(samlconnection.FieldUpdatedAt, field.TypeTime, value)

@@ -155,6 +155,26 @@ func TenantIDContainsFold(v string) predicate.Organization {
 	return predicate.Organization(sql.FieldContainsFold(FieldTenantID, v))
 }
 
+// EnvironmentEQ applies the EQ predicate on the "environment" field.
+func EnvironmentEQ(v Environment) predicate.Organization {
+	return predicate.Organization(sql.FieldEQ(FieldEnvironment, v))
+}
+
+// EnvironmentNEQ applies the NEQ predicate on the "environment" field.
+func EnvironmentNEQ(v Environment) predicate.Organization {
+	return predicate.Organization(sql.FieldNEQ(FieldEnvironment, v))
+}
+
+// EnvironmentIn applies the In predicate on the "environment" field.
+func EnvironmentIn(vs ...Environment) predicate.Organization {
+	return predicate.Organization(sql.FieldIn(FieldEnvironment, vs...))
+}
+
+// EnvironmentNotIn applies the NotIn predicate on the "environment" field.
+func EnvironmentNotIn(vs ...Environment) predicate.Organization {
+	return predicate.Organization(sql.FieldNotIn(FieldEnvironment, vs...))
+}
+
 // NameEQ applies the EQ predicate on the "name" field.
 func NameEQ(v string) predicate.Organization {
 	return predicate.Organization(sql.FieldEQ(FieldName, v))

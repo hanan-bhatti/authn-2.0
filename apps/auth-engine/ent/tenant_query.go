@@ -18,7 +18,9 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 )
@@ -36,6 +38,8 @@ type TenantQuery struct {
 	withRoles            *RoleQuery
 	withWebhookEndpoints *WebhookEndpointQuery
 	withAuditLogs        *AuditLogQuery
+	withEnvironments     *TenantEnvironmentQuery
+	withSandboxMessages  *SandboxMessageQuery
 	withManagedTenants   *ManagedTenantQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -198,6 +202,50 @@ func (tq *TenantQuery) QueryAuditLogs() *AuditLogQuery {
 			sqlgraph.From(tenant.Table, tenant.FieldID, selector),
 			sqlgraph.To(auditlog.Table, auditlog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, tenant.AuditLogsTable, tenant.AuditLogsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryEnvironments chains the current query on the "environments" edge.
+func (tq *TenantQuery) QueryEnvironments() *TenantEnvironmentQuery {
+	query := (&TenantEnvironmentClient{config: tq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := tq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := tq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenant.Table, tenant.FieldID, selector),
+			sqlgraph.To(tenantenvironment.Table, tenantenvironment.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tenant.EnvironmentsTable, tenant.EnvironmentsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySandboxMessages chains the current query on the "sandbox_messages" edge.
+func (tq *TenantQuery) QuerySandboxMessages() *SandboxMessageQuery {
+	query := (&SandboxMessageClient{config: tq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := tq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := tq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenant.Table, tenant.FieldID, selector),
+			sqlgraph.To(sandboxmessage.Table, sandboxmessage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tenant.SandboxMessagesTable, tenant.SandboxMessagesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(tq.driver.Dialect(), step)
 		return fromU, nil
@@ -425,6 +473,8 @@ func (tq *TenantQuery) Clone() *TenantQuery {
 		withRoles:            tq.withRoles.Clone(),
 		withWebhookEndpoints: tq.withWebhookEndpoints.Clone(),
 		withAuditLogs:        tq.withAuditLogs.Clone(),
+		withEnvironments:     tq.withEnvironments.Clone(),
+		withSandboxMessages:  tq.withSandboxMessages.Clone(),
 		withManagedTenants:   tq.withManagedTenants.Clone(),
 		// clone intermediate query.
 		sql:  tq.sql.Clone(),
@@ -495,6 +545,28 @@ func (tq *TenantQuery) WithAuditLogs(opts ...func(*AuditLogQuery)) *TenantQuery 
 		opt(query)
 	}
 	tq.withAuditLogs = query
+	return tq
+}
+
+// WithEnvironments tells the query-builder to eager-load the nodes that are connected to
+// the "environments" edge. The optional arguments are used to configure the query builder of the edge.
+func (tq *TenantQuery) WithEnvironments(opts ...func(*TenantEnvironmentQuery)) *TenantQuery {
+	query := (&TenantEnvironmentClient{config: tq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	tq.withEnvironments = query
+	return tq
+}
+
+// WithSandboxMessages tells the query-builder to eager-load the nodes that are connected to
+// the "sandbox_messages" edge. The optional arguments are used to configure the query builder of the edge.
+func (tq *TenantQuery) WithSandboxMessages(opts ...func(*SandboxMessageQuery)) *TenantQuery {
+	query := (&SandboxMessageClient{config: tq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	tq.withSandboxMessages = query
 	return tq
 }
 
@@ -587,13 +659,15 @@ func (tq *TenantQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Tenan
 	var (
 		nodes       = []*Tenant{}
 		_spec       = tq.querySpec()
-		loadedTypes = [7]bool{
+		loadedTypes = [9]bool{
 			tq.withApplications != nil,
 			tq.withUsers != nil,
 			tq.withOrganizations != nil,
 			tq.withRoles != nil,
 			tq.withWebhookEndpoints != nil,
 			tq.withAuditLogs != nil,
+			tq.withEnvironments != nil,
+			tq.withSandboxMessages != nil,
 			tq.withManagedTenants != nil,
 		}
 	)
@@ -654,6 +728,20 @@ func (tq *TenantQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Tenan
 		if err := tq.loadAuditLogs(ctx, query, nodes,
 			func(n *Tenant) { n.Edges.AuditLogs = []*AuditLog{} },
 			func(n *Tenant, e *AuditLog) { n.Edges.AuditLogs = append(n.Edges.AuditLogs, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := tq.withEnvironments; query != nil {
+		if err := tq.loadEnvironments(ctx, query, nodes,
+			func(n *Tenant) { n.Edges.Environments = []*TenantEnvironment{} },
+			func(n *Tenant, e *TenantEnvironment) { n.Edges.Environments = append(n.Edges.Environments, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := tq.withSandboxMessages; query != nil {
+		if err := tq.loadSandboxMessages(ctx, query, nodes,
+			func(n *Tenant) { n.Edges.SandboxMessages = []*SandboxMessage{} },
+			func(n *Tenant, e *SandboxMessage) { n.Edges.SandboxMessages = append(n.Edges.SandboxMessages, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -832,6 +920,66 @@ func (tq *TenantQuery) loadAuditLogs(ctx context.Context, query *AuditLogQuery, 
 	}
 	query.Where(predicate.AuditLog(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(tenant.AuditLogsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TenantID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "tenant_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (tq *TenantQuery) loadEnvironments(ctx context.Context, query *TenantEnvironmentQuery, nodes []*Tenant, init func(*Tenant), assign func(*Tenant, *TenantEnvironment)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Tenant)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(tenantenvironment.FieldTenantID)
+	}
+	query.Where(predicate.TenantEnvironment(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(tenant.EnvironmentsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TenantID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "tenant_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (tq *TenantQuery) loadSandboxMessages(ctx context.Context, query *SandboxMessageQuery, nodes []*Tenant, init func(*Tenant), assign func(*Tenant, *SandboxMessage)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Tenant)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(sandboxmessage.FieldTenantID)
+	}
+	query.Where(predicate.SandboxMessage(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(tenant.SandboxMessagesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

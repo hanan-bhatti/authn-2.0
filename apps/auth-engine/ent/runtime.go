@@ -19,12 +19,14 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/schema"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
@@ -186,15 +188,15 @@ func init() {
 	// organization.TenantIDValidator is a validator for the "tenant_id" field. It is called by the builders before save.
 	organization.TenantIDValidator = organizationDescTenantID.Validators[0].(func(string) error)
 	// organizationDescName is the schema descriptor for name field.
-	organizationDescName := organizationFields[2].Descriptor()
+	organizationDescName := organizationFields[3].Descriptor()
 	// organization.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	organization.NameValidator = organizationDescName.Validators[0].(func(string) error)
 	// organizationDescSlug is the schema descriptor for slug field.
-	organizationDescSlug := organizationFields[3].Descriptor()
+	organizationDescSlug := organizationFields[4].Descriptor()
 	// organization.SlugValidator is a validator for the "slug" field. It is called by the builders before save.
 	organization.SlugValidator = organizationDescSlug.Validators[0].(func(string) error)
 	// organizationDescCreatedAt is the schema descriptor for created_at field.
-	organizationDescCreatedAt := organizationFields[6].Descriptor()
+	organizationDescCreatedAt := organizationFields[7].Descriptor()
 	// organization.DefaultCreatedAt holds the default value on creation for the created_at field.
 	organization.DefaultCreatedAt = organizationDescCreatedAt.Default.(func() time.Time)
 	permissionFields := schema.Permission{}.Fields()
@@ -348,15 +350,29 @@ func init() {
 	// samlconnection.DefaultEnforceSSO holds the default value on creation for the enforce_sso field.
 	samlconnection.DefaultEnforceSSO = samlconnectionDescEnforceSSO.Default.(bool)
 	// samlconnectionDescCreatedAt is the schema descriptor for created_at field.
-	samlconnectionDescCreatedAt := samlconnectionFields[8].Descriptor()
+	samlconnectionDescCreatedAt := samlconnectionFields[9].Descriptor()
 	// samlconnection.DefaultCreatedAt holds the default value on creation for the created_at field.
 	samlconnection.DefaultCreatedAt = samlconnectionDescCreatedAt.Default.(func() time.Time)
 	// samlconnectionDescUpdatedAt is the schema descriptor for updated_at field.
-	samlconnectionDescUpdatedAt := samlconnectionFields[9].Descriptor()
+	samlconnectionDescUpdatedAt := samlconnectionFields[10].Descriptor()
 	// samlconnection.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	samlconnection.DefaultUpdatedAt = samlconnectionDescUpdatedAt.Default.(func() time.Time)
 	// samlconnection.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	samlconnection.UpdateDefaultUpdatedAt = samlconnectionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	sandboxmessageFields := schema.SandboxMessage{}.Fields()
+	_ = sandboxmessageFields
+	// sandboxmessageDescTenantID is the schema descriptor for tenant_id field.
+	sandboxmessageDescTenantID := sandboxmessageFields[1].Descriptor()
+	// sandboxmessage.TenantIDValidator is a validator for the "tenant_id" field. It is called by the builders before save.
+	sandboxmessage.TenantIDValidator = sandboxmessageDescTenantID.Validators[0].(func(string) error)
+	// sandboxmessageDescRecipient is the schema descriptor for recipient field.
+	sandboxmessageDescRecipient := sandboxmessageFields[4].Descriptor()
+	// sandboxmessage.RecipientValidator is a validator for the "recipient" field. It is called by the builders before save.
+	sandboxmessage.RecipientValidator = sandboxmessageDescRecipient.Validators[0].(func(string) error)
+	// sandboxmessageDescCreatedAt is the schema descriptor for created_at field.
+	sandboxmessageDescCreatedAt := sandboxmessageFields[10].Descriptor()
+	// sandboxmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sandboxmessage.DefaultCreatedAt = sandboxmessageDescCreatedAt.Default.(func() time.Time)
 	securityblacklistFields := schema.SecurityBlacklist{}.Fields()
 	_ = securityblacklistFields
 	// securityblacklistDescTenantID is the schema descriptor for tenant_id field.
@@ -452,15 +468,31 @@ func init() {
 	// tenant.DefaultFirstAdminClaimed holds the default value on creation for the first_admin_claimed field.
 	tenant.DefaultFirstAdminClaimed = tenantDescFirstAdminClaimed.Default.(bool)
 	// tenantDescCreatedAt is the schema descriptor for created_at field.
-	tenantDescCreatedAt := tenantFields[14].Descriptor()
+	tenantDescCreatedAt := tenantFields[7].Descriptor()
 	// tenant.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tenant.DefaultCreatedAt = tenantDescCreatedAt.Default.(func() time.Time)
 	// tenantDescUpdatedAt is the schema descriptor for updated_at field.
-	tenantDescUpdatedAt := tenantFields[15].Descriptor()
+	tenantDescUpdatedAt := tenantFields[8].Descriptor()
 	// tenant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	tenant.DefaultUpdatedAt = tenantDescUpdatedAt.Default.(func() time.Time)
 	// tenant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	tenant.UpdateDefaultUpdatedAt = tenantDescUpdatedAt.UpdateDefault.(func() time.Time)
+	tenantenvironmentFields := schema.TenantEnvironment{}.Fields()
+	_ = tenantenvironmentFields
+	// tenantenvironmentDescTenantID is the schema descriptor for tenant_id field.
+	tenantenvironmentDescTenantID := tenantenvironmentFields[1].Descriptor()
+	// tenantenvironment.TenantIDValidator is a validator for the "tenant_id" field. It is called by the builders before save.
+	tenantenvironment.TenantIDValidator = tenantenvironmentDescTenantID.Validators[0].(func(string) error)
+	// tenantenvironmentDescCreatedAt is the schema descriptor for created_at field.
+	tenantenvironmentDescCreatedAt := tenantenvironmentFields[11].Descriptor()
+	// tenantenvironment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tenantenvironment.DefaultCreatedAt = tenantenvironmentDescCreatedAt.Default.(func() time.Time)
+	// tenantenvironmentDescUpdatedAt is the schema descriptor for updated_at field.
+	tenantenvironmentDescUpdatedAt := tenantenvironmentFields[12].Descriptor()
+	// tenantenvironment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	tenantenvironment.DefaultUpdatedAt = tenantenvironmentDescUpdatedAt.Default.(func() time.Time)
+	// tenantenvironment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	tenantenvironment.UpdateDefaultUpdatedAt = tenantenvironmentDescUpdatedAt.UpdateDefault.(func() time.Time)
 	trusteddeviceFields := schema.TrustedDevice{}.Fields()
 	_ = trusteddeviceFields
 	// trusteddeviceDescUserID is the schema descriptor for user_id field.

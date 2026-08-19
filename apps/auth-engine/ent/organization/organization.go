@@ -3,6 +3,7 @@
 package organization
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -16,6 +17,8 @@ const (
 	FieldID = "id"
 	// FieldTenantID holds the string denoting the tenant_id field in the database.
 	FieldTenantID = "tenant_id"
+	// FieldEnvironment holds the string denoting the environment field in the database.
+	FieldEnvironment = "environment"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
 	// FieldSlug holds the string denoting the slug field in the database.
@@ -70,6 +73,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldTenantID,
+	FieldEnvironment,
 	FieldName,
 	FieldSlug,
 	FieldLogoURL,
@@ -98,6 +102,32 @@ var (
 	DefaultCreatedAt func() time.Time
 )
 
+// Environment defines the type for the "environment" enum field.
+type Environment string
+
+// EnvironmentTest is the default value of the Environment enum.
+const DefaultEnvironment = EnvironmentTest
+
+// Environment values.
+const (
+	EnvironmentTest Environment = "test"
+	EnvironmentLive Environment = "live"
+)
+
+func (e Environment) String() string {
+	return string(e)
+}
+
+// EnvironmentValidator is a validator for the "environment" field enum values. It is called by the builders before save.
+func EnvironmentValidator(e Environment) error {
+	switch e {
+	case EnvironmentTest, EnvironmentLive:
+		return nil
+	default:
+		return fmt.Errorf("organization: invalid enum value for environment field: %q", e)
+	}
+}
+
 // OrderOption defines the ordering options for the Organization queries.
 type OrderOption func(*sql.Selector)
 
@@ -109,6 +139,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByTenantID orders the results by the tenant_id field.
 func ByTenantID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTenantID, opts...).ToFunc()
+}
+
+// ByEnvironment orders the results by the environment field.
+func ByEnvironment(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEnvironment, opts...).ToFunc()
 }
 
 // ByName orders the results by the name field.

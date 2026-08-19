@@ -3,7 +3,6 @@
 package ent
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,20 +30,6 @@ type Tenant struct {
 	DomainVerificationToken string `json:"domain_verification_token,omitempty"`
 	// Atomic flag: true once the first tenant_admin role has been claimed via signup. Set via a conditional UPDATE (WHERE first_admin_claimed = false) to prevent concurrent signups from both receiving tenant_admin (TOCTOU race fix).
 	FirstAdminClaimed bool `json:"first_admin_claimed,omitempty"`
-	// JSON blob containing brand colors, logo URL, custom CSS, and email templates
-	BrandingConfig map[string]interface{} `json:"branding_config,omitempty"`
-	// JSON blob containing password complexity policy rules
-	PasswordPolicy map[string]interface{} `json:"password_policy,omitempty"`
-	// JSON blob containing tenant security policy settings (require_email_verification, email_verification_mode)
-	SecurityPolicy map[string]interface{} `json:"security_policy,omitempty"`
-	// JSON blob containing tenant account recovery policy rules
-	RecoveryPolicy map[string]interface{} `json:"recovery_policy,omitempty"`
-	// Per-provider OAuth2 configuration keyed by provider name (google, github, discord, etc.). Each entry holds: enabled bool, client_id string, client_secret_encrypted string (AES-256-GCM). Client secrets are never returned in API responses.
-	SocialProviders map[string]interface{} `json:"social_providers,omitempty"`
-	// JSON blob containing tenant role & permission restrictions and assignment policies
-	RolePolicy map[string]interface{} `json:"role_policy,omitempty"`
-	// JSON blob containing cookie SameSite mode and session/access token lifetimes. Lives here rather than in the environment because a customer changes it and it must take effect without a redeploy; the cookie Domain stays an env value because a server can only set cookies for a domain it is served from.
-	SessionPolicy map[string]interface{} `json:"session_policy,omitempty"`
 	// Timestamp when the tenant was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when the tenant was last updated
@@ -69,11 +54,15 @@ type TenantEdges struct {
 	WebhookEndpoints []*WebhookEndpoint `json:"webhook_endpoints,omitempty"`
 	// AuditLogs holds the value of the audit_logs edge.
 	AuditLogs []*AuditLog `json:"audit_logs,omitempty"`
+	// Environments holds the value of the environments edge.
+	Environments []*TenantEnvironment `json:"environments,omitempty"`
+	// SandboxMessages holds the value of the sandbox_messages edge.
+	SandboxMessages []*SandboxMessage `json:"sandbox_messages,omitempty"`
 	// ManagedTenants holds the value of the managed_tenants edge.
 	ManagedTenants []*ManagedTenant `json:"managed_tenants,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [7]bool
+	loadedTypes [9]bool
 }
 
 // ApplicationsOrErr returns the Applications value or an error if the edge
@@ -130,10 +119,28 @@ func (e TenantEdges) AuditLogsOrErr() ([]*AuditLog, error) {
 	return nil, &NotLoadedError{edge: "audit_logs"}
 }
 
+// EnvironmentsOrErr returns the Environments value or an error if the edge
+// was not loaded in eager-loading.
+func (e TenantEdges) EnvironmentsOrErr() ([]*TenantEnvironment, error) {
+	if e.loadedTypes[6] {
+		return e.Environments, nil
+	}
+	return nil, &NotLoadedError{edge: "environments"}
+}
+
+// SandboxMessagesOrErr returns the SandboxMessages value or an error if the edge
+// was not loaded in eager-loading.
+func (e TenantEdges) SandboxMessagesOrErr() ([]*SandboxMessage, error) {
+	if e.loadedTypes[7] {
+		return e.SandboxMessages, nil
+	}
+	return nil, &NotLoadedError{edge: "sandbox_messages"}
+}
+
 // ManagedTenantsOrErr returns the ManagedTenants value or an error if the edge
 // was not loaded in eager-loading.
 func (e TenantEdges) ManagedTenantsOrErr() ([]*ManagedTenant, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[8] {
 		return e.ManagedTenants, nil
 	}
 	return nil, &NotLoadedError{edge: "managed_tenants"}
@@ -144,8 +151,6 @@ func (*Tenant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case tenant.FieldBrandingConfig, tenant.FieldPasswordPolicy, tenant.FieldSecurityPolicy, tenant.FieldRecoveryPolicy, tenant.FieldSocialProviders, tenant.FieldRolePolicy, tenant.FieldSessionPolicy:
-			values[i] = new([]byte)
 		case tenant.FieldDomainVerified, tenant.FieldFirstAdminClaimed:
 			values[i] = new(sql.NullBool)
 		case tenant.FieldID, tenant.FieldName, tenant.FieldSlug, tenant.FieldCustomDomain, tenant.FieldDomainVerificationToken:
@@ -210,62 +215,6 @@ func (t *Tenant) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				t.FirstAdminClaimed = value.Bool
 			}
-		case tenant.FieldBrandingConfig:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field branding_config", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.BrandingConfig); err != nil {
-					return fmt.Errorf("unmarshal field branding_config: %w", err)
-				}
-			}
-		case tenant.FieldPasswordPolicy:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field password_policy", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.PasswordPolicy); err != nil {
-					return fmt.Errorf("unmarshal field password_policy: %w", err)
-				}
-			}
-		case tenant.FieldSecurityPolicy:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field security_policy", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.SecurityPolicy); err != nil {
-					return fmt.Errorf("unmarshal field security_policy: %w", err)
-				}
-			}
-		case tenant.FieldRecoveryPolicy:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field recovery_policy", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.RecoveryPolicy); err != nil {
-					return fmt.Errorf("unmarshal field recovery_policy: %w", err)
-				}
-			}
-		case tenant.FieldSocialProviders:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field social_providers", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.SocialProviders); err != nil {
-					return fmt.Errorf("unmarshal field social_providers: %w", err)
-				}
-			}
-		case tenant.FieldRolePolicy:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field role_policy", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.RolePolicy); err != nil {
-					return fmt.Errorf("unmarshal field role_policy: %w", err)
-				}
-			}
-		case tenant.FieldSessionPolicy:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field session_policy", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &t.SessionPolicy); err != nil {
-					return fmt.Errorf("unmarshal field session_policy: %w", err)
-				}
-			}
 		case tenant.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -321,6 +270,16 @@ func (t *Tenant) QueryAuditLogs() *AuditLogQuery {
 	return NewTenantClient(t.config).QueryAuditLogs(t)
 }
 
+// QueryEnvironments queries the "environments" edge of the Tenant entity.
+func (t *Tenant) QueryEnvironments() *TenantEnvironmentQuery {
+	return NewTenantClient(t.config).QueryEnvironments(t)
+}
+
+// QuerySandboxMessages queries the "sandbox_messages" edge of the Tenant entity.
+func (t *Tenant) QuerySandboxMessages() *SandboxMessageQuery {
+	return NewTenantClient(t.config).QuerySandboxMessages(t)
+}
+
 // QueryManagedTenants queries the "managed_tenants" edge of the Tenant entity.
 func (t *Tenant) QueryManagedTenants() *ManagedTenantQuery {
 	return NewTenantClient(t.config).QueryManagedTenants(t)
@@ -368,27 +327,6 @@ func (t *Tenant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("first_admin_claimed=")
 	builder.WriteString(fmt.Sprintf("%v", t.FirstAdminClaimed))
-	builder.WriteString(", ")
-	builder.WriteString("branding_config=")
-	builder.WriteString(fmt.Sprintf("%v", t.BrandingConfig))
-	builder.WriteString(", ")
-	builder.WriteString("password_policy=")
-	builder.WriteString(fmt.Sprintf("%v", t.PasswordPolicy))
-	builder.WriteString(", ")
-	builder.WriteString("security_policy=")
-	builder.WriteString(fmt.Sprintf("%v", t.SecurityPolicy))
-	builder.WriteString(", ")
-	builder.WriteString("recovery_policy=")
-	builder.WriteString(fmt.Sprintf("%v", t.RecoveryPolicy))
-	builder.WriteString(", ")
-	builder.WriteString("social_providers=")
-	builder.WriteString(fmt.Sprintf("%v", t.SocialProviders))
-	builder.WriteString(", ")
-	builder.WriteString("role_policy=")
-	builder.WriteString(fmt.Sprintf("%v", t.RolePolicy))
-	builder.WriteString(", ")
-	builder.WriteString("session_policy=")
-	builder.WriteString(fmt.Sprintf("%v", t.SessionPolicy))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(t.CreatedAt.Format(time.ANSIC))

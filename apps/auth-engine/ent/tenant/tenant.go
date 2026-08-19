@@ -26,20 +26,6 @@ const (
 	FieldDomainVerificationToken = "domain_verification_token"
 	// FieldFirstAdminClaimed holds the string denoting the first_admin_claimed field in the database.
 	FieldFirstAdminClaimed = "first_admin_claimed"
-	// FieldBrandingConfig holds the string denoting the branding_config field in the database.
-	FieldBrandingConfig = "branding_config"
-	// FieldPasswordPolicy holds the string denoting the password_policy field in the database.
-	FieldPasswordPolicy = "password_policy"
-	// FieldSecurityPolicy holds the string denoting the security_policy field in the database.
-	FieldSecurityPolicy = "security_policy"
-	// FieldRecoveryPolicy holds the string denoting the recovery_policy field in the database.
-	FieldRecoveryPolicy = "recovery_policy"
-	// FieldSocialProviders holds the string denoting the social_providers field in the database.
-	FieldSocialProviders = "social_providers"
-	// FieldRolePolicy holds the string denoting the role_policy field in the database.
-	FieldRolePolicy = "role_policy"
-	// FieldSessionPolicy holds the string denoting the session_policy field in the database.
-	FieldSessionPolicy = "session_policy"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -56,6 +42,10 @@ const (
 	EdgeWebhookEndpoints = "webhook_endpoints"
 	// EdgeAuditLogs holds the string denoting the audit_logs edge name in mutations.
 	EdgeAuditLogs = "audit_logs"
+	// EdgeEnvironments holds the string denoting the environments edge name in mutations.
+	EdgeEnvironments = "environments"
+	// EdgeSandboxMessages holds the string denoting the sandbox_messages edge name in mutations.
+	EdgeSandboxMessages = "sandbox_messages"
 	// EdgeManagedTenants holds the string denoting the managed_tenants edge name in mutations.
 	EdgeManagedTenants = "managed_tenants"
 	// Table holds the table name of the tenant in the database.
@@ -102,6 +92,20 @@ const (
 	AuditLogsInverseTable = "audit_logs"
 	// AuditLogsColumn is the table column denoting the audit_logs relation/edge.
 	AuditLogsColumn = "tenant_id"
+	// EnvironmentsTable is the table that holds the environments relation/edge.
+	EnvironmentsTable = "tenant_environments"
+	// EnvironmentsInverseTable is the table name for the TenantEnvironment entity.
+	// It exists in this package in order to avoid circular dependency with the "tenantenvironment" package.
+	EnvironmentsInverseTable = "tenant_environments"
+	// EnvironmentsColumn is the table column denoting the environments relation/edge.
+	EnvironmentsColumn = "tenant_id"
+	// SandboxMessagesTable is the table that holds the sandbox_messages relation/edge.
+	SandboxMessagesTable = "sandbox_messages"
+	// SandboxMessagesInverseTable is the table name for the SandboxMessage entity.
+	// It exists in this package in order to avoid circular dependency with the "sandboxmessage" package.
+	SandboxMessagesInverseTable = "sandbox_messages"
+	// SandboxMessagesColumn is the table column denoting the sandbox_messages relation/edge.
+	SandboxMessagesColumn = "tenant_id"
 	// ManagedTenantsTable is the table that holds the managed_tenants relation/edge.
 	ManagedTenantsTable = "managed_tenants"
 	// ManagedTenantsInverseTable is the table name for the ManagedTenant entity.
@@ -120,13 +124,6 @@ var Columns = []string{
 	FieldDomainVerified,
 	FieldDomainVerificationToken,
 	FieldFirstAdminClaimed,
-	FieldBrandingConfig,
-	FieldPasswordPolicy,
-	FieldSecurityPolicy,
-	FieldRecoveryPolicy,
-	FieldSocialProviders,
-	FieldRolePolicy,
-	FieldSessionPolicy,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -290,6 +287,34 @@ func ByAuditLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByEnvironmentsCount orders the results by environments count.
+func ByEnvironmentsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newEnvironmentsStep(), opts...)
+	}
+}
+
+// ByEnvironments orders the results by environments terms.
+func ByEnvironments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newEnvironmentsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// BySandboxMessagesCount orders the results by sandbox_messages count.
+func BySandboxMessagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSandboxMessagesStep(), opts...)
+	}
+}
+
+// BySandboxMessages orders the results by sandbox_messages terms.
+func BySandboxMessages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSandboxMessagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByManagedTenantsCount orders the results by managed_tenants count.
 func ByManagedTenantsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -343,6 +368,20 @@ func newAuditLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AuditLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, AuditLogsTable, AuditLogsColumn),
+	)
+}
+func newEnvironmentsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(EnvironmentsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, EnvironmentsTable, EnvironmentsColumn),
+	)
+}
+func newSandboxMessagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SandboxMessagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SandboxMessagesTable, SandboxMessagesColumn),
 	)
 }
 func newManagedTenantsStep() *sqlgraph.Step {

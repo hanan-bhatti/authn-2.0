@@ -177,6 +177,18 @@ func (f SAMLConnectionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SAMLConnectionMutation", m)
 }
 
+// The SandboxMessageFunc type is an adapter to allow the use of ordinary
+// function as SandboxMessage mutator.
+type SandboxMessageFunc func(context.Context, *ent.SandboxMessageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SandboxMessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SandboxMessageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SandboxMessageMutation", m)
+}
+
 // The SecurityBlacklistFunc type is an adapter to allow the use of ordinary
 // function as SecurityBlacklist mutator.
 type SecurityBlacklistFunc func(context.Context, *ent.SecurityBlacklistMutation) (ent.Value, error)
@@ -235,6 +247,18 @@ func (f TenantFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TenantMutation", m)
+}
+
+// The TenantEnvironmentFunc type is an adapter to allow the use of ordinary
+// function as TenantEnvironment mutator.
+type TenantEnvironmentFunc func(context.Context, *ent.TenantEnvironmentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TenantEnvironmentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TenantEnvironmentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TenantEnvironmentMutation", m)
 }
 
 // The TrustedDeviceFunc type is an adapter to allow the use of ordinary

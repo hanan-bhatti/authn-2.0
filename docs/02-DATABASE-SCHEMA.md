@@ -32,10 +32,12 @@ The **Authn** database layer is designed using **Ent ORM** (`entgo.io`), Meta's 
 erDiagram
     Tenant ||--|{ Application : "owns"
     Application ||--|{ ApiKey : "contains"
+    Tenant ||--|| TenantEnvironment : "configures per environment"
     Tenant ||--|{ User : "contains"
     Tenant ||--|{ Organization : "contains"
     Organization ||--|{ OrgMember : "has"
     Organization ||--|{ OrgInvitation : "sends"
+    Organization ||--o| SAMLConnection : "federates through"
     Tenant ||--|{ Role : "defines"
     Role ||--|{ Permission : "grants"
     User ||--|{ UserRole : "assigned"
@@ -52,6 +54,7 @@ erDiagram
     Tenant ||--|{ WebhookEndpoint : "configures"
     WebhookEndpoint ||--|{ WebhookEvent : "dispatches"
     Tenant ||--|{ AuditLog : "logs"
+    Tenant ||--|{ SandboxMessage : "captures in test"
 
     Tenant {
         string id PK
@@ -60,10 +63,23 @@ erDiagram
         string custom_domain UK
         boolean domain_verified
         string domain_verification_token
+        boolean first_admin_claimed
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    TenantEnvironment {
+        string id PK
+        string tenant_id FK
+        enum environment "test | live"
         json branding_config
         json password_policy
         json security_policy
         json recovery_policy
+        json social_providers
+        json role_policy
+        json session_policy
+        timestamp published_at
         timestamp created_at
         timestamp updated_at
     }
@@ -71,8 +87,9 @@ erDiagram
     Organization {
         string id PK
         string tenant_id FK
+        enum environment "test | live"
         string name
-        string slug UK
+        string slug
         string logo_url
         json metadata
         timestamp created_at
@@ -294,6 +311,34 @@ erDiagram
         enum status "pending | success | failed | retrying"
         timestamp created_at
     }
+
+    SAMLConnection {
+        string id PK
+        string organization_id FK
+        string idp_entity_id
+        string idp_sso_url
+        string idp_certificate
+        json allowed_domains
+        json attribute_mapping
+        boolean enforce_sso
+        enum environment "test | live"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    SandboxMessage {
+        string id PK
+        string tenant_id FK
+        enum environment "test | live"
+        enum channel "email | sms"
+        string recipient
+        string subject
+        text body
+        string template
+        string code
+        json metadata
+        timestamp created_at
+    }
 ```
 
 ---
@@ -301,7 +346,10 @@ erDiagram
 ## 3. Entity Data Dictionary
 
 ### 3.1 `Tenant`
-Stores workspace metadata, custom domain settings, and per-tenant policy configurations (`password_policy`, `security_policy`, `recovery_policy`).
+Stores workspace metadata, custom domain settings, and the `first_admin_claimed` flag that makes the first `tenant_admin` claim atomic. It holds no policy columns: every configurable policy lives on `TenantEnvironment` instead, because a policy stored on the tenant is one that governs both environments at once and so cannot be rehearsed.
+
+### 3.1a `TenantEnvironment`
+One row per `(tenant, environment)`, holding all seven policy blobs and the `published_at` stamp written each time settings are promoted onto it. A unique index on `(tenant_id, environment)` keeps a tenant from configuring one environment twice, which would leave the engine with two answers to every policy question and no rule for choosing.
 
 ### 3.2 `User`
 Stores user credentials, RFC 9106 Argon2id password hash, profile metadata, status (`active`, `banned`, `recovery_hold`), exponential lockout timestamp (`recovery_lockout_until`), and security review flag (`security_review_required`).
@@ -333,6 +381,11 @@ Stores user 2FA method configurations (`totp`, `sms_otp`, `backup_codes`, `webau
 | :--- | :--- | :--- |
 | `User` | `(tenant_id, environment, email)` | Fast unique user login & signup lookup |
 | `User` | `(tenant_id, environment, username)` | Fast profile lookup by username |
+| `TenantEnvironment` | `(tenant_id, environment)` UNIQUE | One settings row per environment; also the read path for every policy lookup |
+| `Organization` | `(tenant_id, environment, slug)` UNIQUE | Slug uniqueness within one environment, so the same slug is claimable once in test and once in live |
+| `Organization` | `(tenant_id, environment)` | Tenant workspace listing and the test-environment volume count |
+| `SandboxMessage` | `(tenant_id, environment, created_at)` | Newest-first inbox listing |
+| `SandboxMessage` | `(tenant_id, recipient, created_at)` | "The code that just went to this address" — the polling query a test harness runs |
 | `RecoveryRequest` | `(user_id, status)` | Active recovery request polling |
 | `RecoveryRequest` | `cancellation_token_hash` | Single-use signed cancellation link redemption |
 | `RecoveryRequest` | `claim_token_hash` | Account claim verification |

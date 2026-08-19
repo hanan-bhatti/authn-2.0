@@ -405,76 +405,6 @@ func FirstAdminClaimedNEQ(v bool) predicate.Tenant {
 	return predicate.Tenant(sql.FieldNEQ(FieldFirstAdminClaimed, v))
 }
 
-// BrandingConfigIsNil applies the IsNil predicate on the "branding_config" field.
-func BrandingConfigIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldBrandingConfig))
-}
-
-// BrandingConfigNotNil applies the NotNil predicate on the "branding_config" field.
-func BrandingConfigNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldBrandingConfig))
-}
-
-// PasswordPolicyIsNil applies the IsNil predicate on the "password_policy" field.
-func PasswordPolicyIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldPasswordPolicy))
-}
-
-// PasswordPolicyNotNil applies the NotNil predicate on the "password_policy" field.
-func PasswordPolicyNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldPasswordPolicy))
-}
-
-// SecurityPolicyIsNil applies the IsNil predicate on the "security_policy" field.
-func SecurityPolicyIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldSecurityPolicy))
-}
-
-// SecurityPolicyNotNil applies the NotNil predicate on the "security_policy" field.
-func SecurityPolicyNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldSecurityPolicy))
-}
-
-// RecoveryPolicyIsNil applies the IsNil predicate on the "recovery_policy" field.
-func RecoveryPolicyIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldRecoveryPolicy))
-}
-
-// RecoveryPolicyNotNil applies the NotNil predicate on the "recovery_policy" field.
-func RecoveryPolicyNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldRecoveryPolicy))
-}
-
-// SocialProvidersIsNil applies the IsNil predicate on the "social_providers" field.
-func SocialProvidersIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldSocialProviders))
-}
-
-// SocialProvidersNotNil applies the NotNil predicate on the "social_providers" field.
-func SocialProvidersNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldSocialProviders))
-}
-
-// RolePolicyIsNil applies the IsNil predicate on the "role_policy" field.
-func RolePolicyIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldRolePolicy))
-}
-
-// RolePolicyNotNil applies the NotNil predicate on the "role_policy" field.
-func RolePolicyNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldRolePolicy))
-}
-
-// SessionPolicyIsNil applies the IsNil predicate on the "session_policy" field.
-func SessionPolicyIsNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldIsNull(FieldSessionPolicy))
-}
-
-// SessionPolicyNotNil applies the NotNil predicate on the "session_policy" field.
-func SessionPolicyNotNil() predicate.Tenant {
-	return predicate.Tenant(sql.FieldNotNull(FieldSessionPolicy))
-}
-
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Tenant {
 	return predicate.Tenant(sql.FieldEQ(FieldCreatedAt, v))
@@ -685,6 +615,52 @@ func HasAuditLogs() predicate.Tenant {
 func HasAuditLogsWith(preds ...predicate.AuditLog) predicate.Tenant {
 	return predicate.Tenant(func(s *sql.Selector) {
 		step := newAuditLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasEnvironments applies the HasEdge predicate on the "environments" edge.
+func HasEnvironments() predicate.Tenant {
+	return predicate.Tenant(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, EnvironmentsTable, EnvironmentsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasEnvironmentsWith applies the HasEdge predicate on the "environments" edge with a given conditions (other predicates).
+func HasEnvironmentsWith(preds ...predicate.TenantEnvironment) predicate.Tenant {
+	return predicate.Tenant(func(s *sql.Selector) {
+		step := newEnvironmentsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasSandboxMessages applies the HasEdge predicate on the "sandbox_messages" edge.
+func HasSandboxMessages() predicate.Tenant {
+	return predicate.Tenant(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SandboxMessagesTable, SandboxMessagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSandboxMessagesWith applies the HasEdge predicate on the "sandbox_messages" edge with a given conditions (other predicates).
+func HasSandboxMessagesWith(preds ...predicate.SandboxMessage) predicate.Tenant {
+	return predicate.Tenant(func(s *sql.Selector) {
+		step := newSandboxMessagesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

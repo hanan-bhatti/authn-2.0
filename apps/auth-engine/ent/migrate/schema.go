@@ -291,8 +291,9 @@ var (
 	// OrganizationsColumns holds the columns for the "organizations" table.
 	OrganizationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live"}, Default: "test"},
 		{Name: "name", Type: field.TypeString},
-		{Name: "slug", Type: field.TypeString, Unique: true},
+		{Name: "slug", Type: field.TypeString},
 		{Name: "logo_url", Type: field.TypeString, Nullable: true},
 		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -306,16 +307,21 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "organizations_tenants_organizations",
-				Columns:    []*schema.Column{OrganizationsColumns[6]},
+				Columns:    []*schema.Column{OrganizationsColumns[7]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "organization_tenant_id_slug",
+				Name:    "organization_tenant_id_environment_slug",
 				Unique:  true,
-				Columns: []*schema.Column{OrganizationsColumns[6], OrganizationsColumns[2]},
+				Columns: []*schema.Column{OrganizationsColumns[7], OrganizationsColumns[1], OrganizationsColumns[3]},
+			},
+			{
+				Name:    "organization_tenant_id_environment",
+				Unique:  false,
+				Columns: []*schema.Column{OrganizationsColumns[7], OrganizationsColumns[1]},
 			},
 		},
 	}
@@ -537,6 +543,7 @@ var (
 		{Name: "allowed_domains", Type: field.TypeJSON},
 		{Name: "attribute_mapping", Type: field.TypeJSON, Nullable: true},
 		{Name: "enforce_sso", Type: field.TypeBool, Default: false},
+		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live"}, Default: "live"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "organization_id", Type: field.TypeString},
@@ -549,7 +556,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "saml_connections_organizations_saml_connections",
-				Columns:    []*schema.Column{SamlConnectionsColumns[9]},
+				Columns:    []*schema.Column{SamlConnectionsColumns[10]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -558,7 +565,47 @@ var (
 			{
 				Name:    "samlconnection_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{SamlConnectionsColumns[9]},
+				Columns: []*schema.Column{SamlConnectionsColumns[10]},
+			},
+		},
+	}
+	// SandboxMessagesColumns holds the columns for the "sandbox_messages" table.
+	SandboxMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live"}, Default: "test"},
+		{Name: "channel", Type: field.TypeEnum, Enums: []string{"email", "sms"}},
+		{Name: "recipient", Type: field.TypeString},
+		{Name: "subject", Type: field.TypeString, Nullable: true},
+		{Name: "body", Type: field.TypeString, Size: 2147483647},
+		{Name: "template", Type: field.TypeString, Nullable: true},
+		{Name: "code", Type: field.TypeString, Nullable: true},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "tenant_id", Type: field.TypeString},
+	}
+	// SandboxMessagesTable holds the schema information for the "sandbox_messages" table.
+	SandboxMessagesTable = &schema.Table{
+		Name:       "sandbox_messages",
+		Columns:    SandboxMessagesColumns,
+		PrimaryKey: []*schema.Column{SandboxMessagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "sandbox_messages_tenants_sandbox_messages",
+				Columns:    []*schema.Column{SandboxMessagesColumns[10]},
+				RefColumns: []*schema.Column{TenantsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "sandboxmessage_tenant_id_environment_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SandboxMessagesColumns[10], SandboxMessagesColumns[1], SandboxMessagesColumns[9]},
+			},
+			{
+				Name:    "sandboxmessage_tenant_id_recipient_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{SandboxMessagesColumns[10], SandboxMessagesColumns[3], SandboxMessagesColumns[9]},
 			},
 		},
 	}
@@ -735,13 +782,6 @@ var (
 		{Name: "domain_verified", Type: field.TypeBool, Default: false},
 		{Name: "domain_verification_token", Type: field.TypeString, Nullable: true},
 		{Name: "first_admin_claimed", Type: field.TypeBool, Default: false},
-		{Name: "branding_config", Type: field.TypeJSON, Nullable: true},
-		{Name: "password_policy", Type: field.TypeJSON, Nullable: true},
-		{Name: "security_policy", Type: field.TypeJSON, Nullable: true},
-		{Name: "recovery_policy", Type: field.TypeJSON, Nullable: true},
-		{Name: "social_providers", Type: field.TypeJSON, Nullable: true},
-		{Name: "role_policy", Type: field.TypeJSON, Nullable: true},
-		{Name: "session_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -760,6 +800,43 @@ var (
 				Name:    "tenant_custom_domain",
 				Unique:  true,
 				Columns: []*schema.Column{TenantsColumns[3]},
+			},
+		},
+	}
+	// TenantEnvironmentsColumns holds the columns for the "tenant_environments" table.
+	TenantEnvironmentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live"}},
+		{Name: "branding_config", Type: field.TypeJSON, Nullable: true},
+		{Name: "password_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "security_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "recovery_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "social_providers", Type: field.TypeJSON, Nullable: true},
+		{Name: "role_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "session_policy", Type: field.TypeJSON, Nullable: true},
+		{Name: "published_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "tenant_id", Type: field.TypeString},
+	}
+	// TenantEnvironmentsTable holds the schema information for the "tenant_environments" table.
+	TenantEnvironmentsTable = &schema.Table{
+		Name:       "tenant_environments",
+		Columns:    TenantEnvironmentsColumns,
+		PrimaryKey: []*schema.Column{TenantEnvironmentsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tenant_environments_tenants_environments",
+				Columns:    []*schema.Column{TenantEnvironmentsColumns[12]},
+				RefColumns: []*schema.Column{TenantsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tenantenvironment_tenant_id_environment",
+				Unique:  true,
+				Columns: []*schema.Column{TenantEnvironmentsColumns[12], TenantEnvironmentsColumns[1]},
 			},
 		},
 	}
@@ -1093,11 +1170,13 @@ var (
 		RecoveryRequestsTable,
 		RolesTable,
 		SamlConnectionsTable,
+		SandboxMessagesTable,
 		SecurityBlacklistsTable,
 		SessionsTable,
 		SessionAppActivitiesTable,
 		SocialAuthStatesTable,
 		TenantsTable,
+		TenantEnvironmentsTable,
 		TrustedDevicesTable,
 		TwoFactorMethodsTable,
 		UsersTable,
@@ -1126,9 +1205,11 @@ func init() {
 	RecoveryRequestsTable.ForeignKeys[0].RefTable = UsersTable
 	RolesTable.ForeignKeys[0].RefTable = TenantsTable
 	SamlConnectionsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	SandboxMessagesTable.ForeignKeys[0].RefTable = TenantsTable
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
 	SessionAppActivitiesTable.ForeignKeys[0].RefTable = ApplicationsTable
 	SessionAppActivitiesTable.ForeignKeys[1].RefTable = SessionsTable
+	TenantEnvironmentsTable.ForeignKeys[0].RefTable = TenantsTable
 	TrustedDevicesTable.ForeignKeys[0].RefTable = UsersTable
 	TwoFactorMethodsTable.ForeignKeys[0].RefTable = UsersTable
 	UsersTable.ForeignKeys[0].RefTable = TenantsTable

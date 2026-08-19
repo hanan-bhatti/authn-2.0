@@ -30,6 +30,20 @@ func (oc *OrganizationCreate) SetTenantID(s string) *OrganizationCreate {
 	return oc
 }
 
+// SetEnvironment sets the "environment" field.
+func (oc *OrganizationCreate) SetEnvironment(o organization.Environment) *OrganizationCreate {
+	oc.mutation.SetEnvironment(o)
+	return oc
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (oc *OrganizationCreate) SetNillableEnvironment(o *organization.Environment) *OrganizationCreate {
+	if o != nil {
+		oc.SetEnvironment(*o)
+	}
+	return oc
+}
+
 // SetName sets the "name" field.
 func (oc *OrganizationCreate) SetName(s string) *OrganizationCreate {
 	oc.mutation.SetName(s)
@@ -167,6 +181,10 @@ func (oc *OrganizationCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (oc *OrganizationCreate) defaults() {
+	if _, ok := oc.mutation.Environment(); !ok {
+		v := organization.DefaultEnvironment
+		oc.mutation.SetEnvironment(v)
+	}
 	if _, ok := oc.mutation.CreatedAt(); !ok {
 		v := organization.DefaultCreatedAt()
 		oc.mutation.SetCreatedAt(v)
@@ -181,6 +199,14 @@ func (oc *OrganizationCreate) check() error {
 	if v, ok := oc.mutation.TenantID(); ok {
 		if err := organization.TenantIDValidator(v); err != nil {
 			return &ValidationError{Name: "tenant_id", err: fmt.Errorf(`ent: validator failed for field "Organization.tenant_id": %w`, err)}
+		}
+	}
+	if _, ok := oc.mutation.Environment(); !ok {
+		return &ValidationError{Name: "environment", err: errors.New(`ent: missing required field "Organization.environment"`)}
+	}
+	if v, ok := oc.mutation.Environment(); ok {
+		if err := organization.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "Organization.environment": %w`, err)}
 		}
 	}
 	if _, ok := oc.mutation.Name(); !ok {
@@ -239,6 +265,10 @@ func (oc *OrganizationCreate) createSpec() (*Organization, *sqlgraph.CreateSpec)
 	if id, ok := oc.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
+	}
+	if value, ok := oc.mutation.Environment(); ok {
+		_spec.SetField(organization.FieldEnvironment, field.TypeEnum, value)
+		_node.Environment = value
 	}
 	if value, ok := oc.mutation.Name(); ok {
 		_spec.SetField(organization.FieldName, field.TypeString, value)

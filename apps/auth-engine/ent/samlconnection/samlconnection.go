@@ -3,6 +3,7 @@
 package samlconnection
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -28,6 +29,8 @@ const (
 	FieldAttributeMapping = "attribute_mapping"
 	// FieldEnforceSSO holds the string denoting the enforce_sso field in the database.
 	FieldEnforceSSO = "enforce_sso"
+	// FieldEnvironment holds the string denoting the environment field in the database.
+	FieldEnvironment = "environment"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -55,6 +58,7 @@ var Columns = []string{
 	FieldAllowedDomains,
 	FieldAttributeMapping,
 	FieldEnforceSSO,
+	FieldEnvironment,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -88,6 +92,32 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 )
 
+// Environment defines the type for the "environment" enum field.
+type Environment string
+
+// EnvironmentLive is the default value of the Environment enum.
+const DefaultEnvironment = EnvironmentLive
+
+// Environment values.
+const (
+	EnvironmentTest Environment = "test"
+	EnvironmentLive Environment = "live"
+)
+
+func (e Environment) String() string {
+	return string(e)
+}
+
+// EnvironmentValidator is a validator for the "environment" field enum values. It is called by the builders before save.
+func EnvironmentValidator(e Environment) error {
+	switch e {
+	case EnvironmentTest, EnvironmentLive:
+		return nil
+	default:
+		return fmt.Errorf("samlconnection: invalid enum value for environment field: %q", e)
+	}
+}
+
 // OrderOption defines the ordering options for the SAMLConnection queries.
 type OrderOption func(*sql.Selector)
 
@@ -119,6 +149,11 @@ func ByIdpCertificate(opts ...sql.OrderTermOption) OrderOption {
 // ByEnforceSSO orders the results by the enforce_sso field.
 func ByEnforceSSO(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnforceSSO, opts...).ToFunc()
+}
+
+// ByEnvironment orders the results by the environment field.
+func ByEnvironment(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEnvironment, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

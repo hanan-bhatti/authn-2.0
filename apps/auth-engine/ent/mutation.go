@@ -26,11 +26,13 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
@@ -64,11 +66,13 @@ const (
 	TypeRecoveryRequest     = "RecoveryRequest"
 	TypeRole                = "Role"
 	TypeSAMLConnection      = "SAMLConnection"
+	TypeSandboxMessage      = "SandboxMessage"
 	TypeSecurityBlacklist   = "SecurityBlacklist"
 	TypeSession             = "Session"
 	TypeSessionAppActivity  = "SessionAppActivity"
 	TypeSocialAuthState     = "SocialAuthState"
 	TypeTenant              = "Tenant"
+	TypeTenantEnvironment   = "TenantEnvironment"
 	TypeTrustedDevice       = "TrustedDevice"
 	TypeTwoFactorMethod     = "TwoFactorMethod"
 	TypeUser                = "User"
@@ -6252,6 +6256,7 @@ type OrganizationMutation struct {
 	op                      Op
 	typ                     string
 	id                      *string
+	environment             *organization.Environment
 	name                    *string
 	slug                    *string
 	logo_url                *string
@@ -6412,6 +6417,42 @@ func (m *OrganizationMutation) OldTenantID(ctx context.Context) (v string, err e
 // ResetTenantID resets all changes to the "tenant_id" field.
 func (m *OrganizationMutation) ResetTenantID() {
 	m.tenant = nil
+}
+
+// SetEnvironment sets the "environment" field.
+func (m *OrganizationMutation) SetEnvironment(o organization.Environment) {
+	m.environment = &o
+}
+
+// Environment returns the value of the "environment" field in the mutation.
+func (m *OrganizationMutation) Environment() (r organization.Environment, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironment returns the old "environment" field's value of the Organization entity.
+// If the Organization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrganizationMutation) OldEnvironment(ctx context.Context) (v organization.Environment, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironment: %w", err)
+	}
+	return oldValue.Environment, nil
+}
+
+// ResetEnvironment resets all changes to the "environment" field.
+func (m *OrganizationMutation) ResetEnvironment() {
+	m.environment = nil
 }
 
 // SetName sets the "name" field.
@@ -6843,9 +6884,12 @@ func (m *OrganizationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OrganizationMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 7)
 	if m.tenant != nil {
 		fields = append(fields, organization.FieldTenantID)
+	}
+	if m.environment != nil {
+		fields = append(fields, organization.FieldEnvironment)
 	}
 	if m.name != nil {
 		fields = append(fields, organization.FieldName)
@@ -6872,6 +6916,8 @@ func (m *OrganizationMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case organization.FieldTenantID:
 		return m.TenantID()
+	case organization.FieldEnvironment:
+		return m.Environment()
 	case organization.FieldName:
 		return m.Name()
 	case organization.FieldSlug:
@@ -6893,6 +6939,8 @@ func (m *OrganizationMutation) OldField(ctx context.Context, name string) (ent.V
 	switch name {
 	case organization.FieldTenantID:
 		return m.OldTenantID(ctx)
+	case organization.FieldEnvironment:
+		return m.OldEnvironment(ctx)
 	case organization.FieldName:
 		return m.OldName(ctx)
 	case organization.FieldSlug:
@@ -6918,6 +6966,13 @@ func (m *OrganizationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTenantID(v)
+		return nil
+	case organization.FieldEnvironment:
+		v, ok := value.(organization.Environment)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironment(v)
 		return nil
 	case organization.FieldName:
 		v, ok := value.(string)
@@ -7020,6 +7075,9 @@ func (m *OrganizationMutation) ResetField(name string) error {
 	switch name {
 	case organization.FieldTenantID:
 		m.ResetTenantID()
+		return nil
+	case organization.FieldEnvironment:
+		m.ResetEnvironment()
 		return nil
 	case organization.FieldName:
 		m.ResetName()
@@ -12627,6 +12685,7 @@ type SAMLConnectionMutation struct {
 	appendallowed_domains []string
 	attribute_mapping     *map[string]string
 	enforce_sso           *bool
+	environment           *samlconnection.Environment
 	created_at            *time.Time
 	updated_at            *time.Time
 	clearedFields         map[string]struct{}
@@ -13021,6 +13080,42 @@ func (m *SAMLConnectionMutation) ResetEnforceSSO() {
 	m.enforce_sso = nil
 }
 
+// SetEnvironment sets the "environment" field.
+func (m *SAMLConnectionMutation) SetEnvironment(s samlconnection.Environment) {
+	m.environment = &s
+}
+
+// Environment returns the value of the "environment" field in the mutation.
+func (m *SAMLConnectionMutation) Environment() (r samlconnection.Environment, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironment returns the old "environment" field's value of the SAMLConnection entity.
+// If the SAMLConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SAMLConnectionMutation) OldEnvironment(ctx context.Context) (v samlconnection.Environment, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironment: %w", err)
+	}
+	return oldValue.Environment, nil
+}
+
+// ResetEnvironment resets all changes to the "environment" field.
+func (m *SAMLConnectionMutation) ResetEnvironment() {
+	m.environment = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *SAMLConnectionMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -13154,7 +13249,7 @@ func (m *SAMLConnectionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SAMLConnectionMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.organization != nil {
 		fields = append(fields, samlconnection.FieldOrganizationID)
 	}
@@ -13175,6 +13270,9 @@ func (m *SAMLConnectionMutation) Fields() []string {
 	}
 	if m.enforce_sso != nil {
 		fields = append(fields, samlconnection.FieldEnforceSSO)
+	}
+	if m.environment != nil {
+		fields = append(fields, samlconnection.FieldEnvironment)
 	}
 	if m.created_at != nil {
 		fields = append(fields, samlconnection.FieldCreatedAt)
@@ -13204,6 +13302,8 @@ func (m *SAMLConnectionMutation) Field(name string) (ent.Value, bool) {
 		return m.AttributeMapping()
 	case samlconnection.FieldEnforceSSO:
 		return m.EnforceSSO()
+	case samlconnection.FieldEnvironment:
+		return m.Environment()
 	case samlconnection.FieldCreatedAt:
 		return m.CreatedAt()
 	case samlconnection.FieldUpdatedAt:
@@ -13231,6 +13331,8 @@ func (m *SAMLConnectionMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldAttributeMapping(ctx)
 	case samlconnection.FieldEnforceSSO:
 		return m.OldEnforceSSO(ctx)
+	case samlconnection.FieldEnvironment:
+		return m.OldEnvironment(ctx)
 	case samlconnection.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case samlconnection.FieldUpdatedAt:
@@ -13292,6 +13394,13 @@ func (m *SAMLConnectionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEnforceSSO(v)
+		return nil
+	case samlconnection.FieldEnvironment:
+		v, ok := value.(samlconnection.Environment)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironment(v)
 		return nil
 	case samlconnection.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -13386,6 +13495,9 @@ func (m *SAMLConnectionMutation) ResetField(name string) error {
 	case samlconnection.FieldEnforceSSO:
 		m.ResetEnforceSSO()
 		return nil
+	case samlconnection.FieldEnvironment:
+		m.ResetEnvironment()
+		return nil
 	case samlconnection.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -13468,6 +13580,957 @@ func (m *SAMLConnectionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown SAMLConnection edge %s", name)
+}
+
+// SandboxMessageMutation represents an operation that mutates the SandboxMessage nodes in the graph.
+type SandboxMessageMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	environment   *sandboxmessage.Environment
+	channel       *sandboxmessage.Channel
+	recipient     *string
+	subject       *string
+	body          *string
+	template      *string
+	code          *string
+	metadata      *map[string]interface{}
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	tenant        *string
+	clearedtenant bool
+	done          bool
+	oldValue      func(context.Context) (*SandboxMessage, error)
+	predicates    []predicate.SandboxMessage
+}
+
+var _ ent.Mutation = (*SandboxMessageMutation)(nil)
+
+// sandboxmessageOption allows management of the mutation configuration using functional options.
+type sandboxmessageOption func(*SandboxMessageMutation)
+
+// newSandboxMessageMutation creates new mutation for the SandboxMessage entity.
+func newSandboxMessageMutation(c config, op Op, opts ...sandboxmessageOption) *SandboxMessageMutation {
+	m := &SandboxMessageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSandboxMessage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSandboxMessageID sets the ID field of the mutation.
+func withSandboxMessageID(id string) sandboxmessageOption {
+	return func(m *SandboxMessageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SandboxMessage
+		)
+		m.oldValue = func(ctx context.Context) (*SandboxMessage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SandboxMessage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSandboxMessage sets the old SandboxMessage of the mutation.
+func withSandboxMessage(node *SandboxMessage) sandboxmessageOption {
+	return func(m *SandboxMessageMutation) {
+		m.oldValue = func(context.Context) (*SandboxMessage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SandboxMessageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SandboxMessageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SandboxMessage entities.
+func (m *SandboxMessageMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SandboxMessageMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SandboxMessageMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SandboxMessage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTenantID sets the "tenant_id" field.
+func (m *SandboxMessageMutation) SetTenantID(s string) {
+	m.tenant = &s
+}
+
+// TenantID returns the value of the "tenant_id" field in the mutation.
+func (m *SandboxMessageMutation) TenantID() (r string, exists bool) {
+	v := m.tenant
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTenantID returns the old "tenant_id" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldTenantID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTenantID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTenantID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTenantID: %w", err)
+	}
+	return oldValue.TenantID, nil
+}
+
+// ResetTenantID resets all changes to the "tenant_id" field.
+func (m *SandboxMessageMutation) ResetTenantID() {
+	m.tenant = nil
+}
+
+// SetEnvironment sets the "environment" field.
+func (m *SandboxMessageMutation) SetEnvironment(s sandboxmessage.Environment) {
+	m.environment = &s
+}
+
+// Environment returns the value of the "environment" field in the mutation.
+func (m *SandboxMessageMutation) Environment() (r sandboxmessage.Environment, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironment returns the old "environment" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldEnvironment(ctx context.Context) (v sandboxmessage.Environment, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironment: %w", err)
+	}
+	return oldValue.Environment, nil
+}
+
+// ResetEnvironment resets all changes to the "environment" field.
+func (m *SandboxMessageMutation) ResetEnvironment() {
+	m.environment = nil
+}
+
+// SetChannel sets the "channel" field.
+func (m *SandboxMessageMutation) SetChannel(s sandboxmessage.Channel) {
+	m.channel = &s
+}
+
+// Channel returns the value of the "channel" field in the mutation.
+func (m *SandboxMessageMutation) Channel() (r sandboxmessage.Channel, exists bool) {
+	v := m.channel
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChannel returns the old "channel" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldChannel(ctx context.Context) (v sandboxmessage.Channel, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChannel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChannel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChannel: %w", err)
+	}
+	return oldValue.Channel, nil
+}
+
+// ResetChannel resets all changes to the "channel" field.
+func (m *SandboxMessageMutation) ResetChannel() {
+	m.channel = nil
+}
+
+// SetRecipient sets the "recipient" field.
+func (m *SandboxMessageMutation) SetRecipient(s string) {
+	m.recipient = &s
+}
+
+// Recipient returns the value of the "recipient" field in the mutation.
+func (m *SandboxMessageMutation) Recipient() (r string, exists bool) {
+	v := m.recipient
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRecipient returns the old "recipient" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldRecipient(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRecipient is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRecipient requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRecipient: %w", err)
+	}
+	return oldValue.Recipient, nil
+}
+
+// ResetRecipient resets all changes to the "recipient" field.
+func (m *SandboxMessageMutation) ResetRecipient() {
+	m.recipient = nil
+}
+
+// SetSubject sets the "subject" field.
+func (m *SandboxMessageMutation) SetSubject(s string) {
+	m.subject = &s
+}
+
+// Subject returns the value of the "subject" field in the mutation.
+func (m *SandboxMessageMutation) Subject() (r string, exists bool) {
+	v := m.subject
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubject returns the old "subject" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldSubject(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubject is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubject requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubject: %w", err)
+	}
+	return oldValue.Subject, nil
+}
+
+// ClearSubject clears the value of the "subject" field.
+func (m *SandboxMessageMutation) ClearSubject() {
+	m.subject = nil
+	m.clearedFields[sandboxmessage.FieldSubject] = struct{}{}
+}
+
+// SubjectCleared returns if the "subject" field was cleared in this mutation.
+func (m *SandboxMessageMutation) SubjectCleared() bool {
+	_, ok := m.clearedFields[sandboxmessage.FieldSubject]
+	return ok
+}
+
+// ResetSubject resets all changes to the "subject" field.
+func (m *SandboxMessageMutation) ResetSubject() {
+	m.subject = nil
+	delete(m.clearedFields, sandboxmessage.FieldSubject)
+}
+
+// SetBody sets the "body" field.
+func (m *SandboxMessageMutation) SetBody(s string) {
+	m.body = &s
+}
+
+// Body returns the value of the "body" field in the mutation.
+func (m *SandboxMessageMutation) Body() (r string, exists bool) {
+	v := m.body
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBody returns the old "body" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldBody(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBody is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBody requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBody: %w", err)
+	}
+	return oldValue.Body, nil
+}
+
+// ResetBody resets all changes to the "body" field.
+func (m *SandboxMessageMutation) ResetBody() {
+	m.body = nil
+}
+
+// SetTemplate sets the "template" field.
+func (m *SandboxMessageMutation) SetTemplate(s string) {
+	m.template = &s
+}
+
+// Template returns the value of the "template" field in the mutation.
+func (m *SandboxMessageMutation) Template() (r string, exists bool) {
+	v := m.template
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTemplate returns the old "template" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldTemplate(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTemplate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTemplate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTemplate: %w", err)
+	}
+	return oldValue.Template, nil
+}
+
+// ClearTemplate clears the value of the "template" field.
+func (m *SandboxMessageMutation) ClearTemplate() {
+	m.template = nil
+	m.clearedFields[sandboxmessage.FieldTemplate] = struct{}{}
+}
+
+// TemplateCleared returns if the "template" field was cleared in this mutation.
+func (m *SandboxMessageMutation) TemplateCleared() bool {
+	_, ok := m.clearedFields[sandboxmessage.FieldTemplate]
+	return ok
+}
+
+// ResetTemplate resets all changes to the "template" field.
+func (m *SandboxMessageMutation) ResetTemplate() {
+	m.template = nil
+	delete(m.clearedFields, sandboxmessage.FieldTemplate)
+}
+
+// SetCode sets the "code" field.
+func (m *SandboxMessageMutation) SetCode(s string) {
+	m.code = &s
+}
+
+// Code returns the value of the "code" field in the mutation.
+func (m *SandboxMessageMutation) Code() (r string, exists bool) {
+	v := m.code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCode returns the old "code" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCode: %w", err)
+	}
+	return oldValue.Code, nil
+}
+
+// ClearCode clears the value of the "code" field.
+func (m *SandboxMessageMutation) ClearCode() {
+	m.code = nil
+	m.clearedFields[sandboxmessage.FieldCode] = struct{}{}
+}
+
+// CodeCleared returns if the "code" field was cleared in this mutation.
+func (m *SandboxMessageMutation) CodeCleared() bool {
+	_, ok := m.clearedFields[sandboxmessage.FieldCode]
+	return ok
+}
+
+// ResetCode resets all changes to the "code" field.
+func (m *SandboxMessageMutation) ResetCode() {
+	m.code = nil
+	delete(m.clearedFields, sandboxmessage.FieldCode)
+}
+
+// SetMetadata sets the "metadata" field.
+func (m *SandboxMessageMutation) SetMetadata(value map[string]interface{}) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *SandboxMessageMutation) Metadata() (r map[string]interface{}, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldMetadata(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (m *SandboxMessageMutation) ClearMetadata() {
+	m.metadata = nil
+	m.clearedFields[sandboxmessage.FieldMetadata] = struct{}{}
+}
+
+// MetadataCleared returns if the "metadata" field was cleared in this mutation.
+func (m *SandboxMessageMutation) MetadataCleared() bool {
+	_, ok := m.clearedFields[sandboxmessage.FieldMetadata]
+	return ok
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *SandboxMessageMutation) ResetMetadata() {
+	m.metadata = nil
+	delete(m.clearedFields, sandboxmessage.FieldMetadata)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SandboxMessageMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SandboxMessageMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SandboxMessage entity.
+// If the SandboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SandboxMessageMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SandboxMessageMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearTenant clears the "tenant" edge to the Tenant entity.
+func (m *SandboxMessageMutation) ClearTenant() {
+	m.clearedtenant = true
+	m.clearedFields[sandboxmessage.FieldTenantID] = struct{}{}
+}
+
+// TenantCleared reports if the "tenant" edge to the Tenant entity was cleared.
+func (m *SandboxMessageMutation) TenantCleared() bool {
+	return m.clearedtenant
+}
+
+// TenantIDs returns the "tenant" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TenantID instead. It exists only for internal usage by the builders.
+func (m *SandboxMessageMutation) TenantIDs() (ids []string) {
+	if id := m.tenant; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTenant resets all changes to the "tenant" edge.
+func (m *SandboxMessageMutation) ResetTenant() {
+	m.tenant = nil
+	m.clearedtenant = false
+}
+
+// Where appends a list predicates to the SandboxMessageMutation builder.
+func (m *SandboxMessageMutation) Where(ps ...predicate.SandboxMessage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SandboxMessageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SandboxMessageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SandboxMessage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SandboxMessageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SandboxMessageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SandboxMessage).
+func (m *SandboxMessageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SandboxMessageMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.tenant != nil {
+		fields = append(fields, sandboxmessage.FieldTenantID)
+	}
+	if m.environment != nil {
+		fields = append(fields, sandboxmessage.FieldEnvironment)
+	}
+	if m.channel != nil {
+		fields = append(fields, sandboxmessage.FieldChannel)
+	}
+	if m.recipient != nil {
+		fields = append(fields, sandboxmessage.FieldRecipient)
+	}
+	if m.subject != nil {
+		fields = append(fields, sandboxmessage.FieldSubject)
+	}
+	if m.body != nil {
+		fields = append(fields, sandboxmessage.FieldBody)
+	}
+	if m.template != nil {
+		fields = append(fields, sandboxmessage.FieldTemplate)
+	}
+	if m.code != nil {
+		fields = append(fields, sandboxmessage.FieldCode)
+	}
+	if m.metadata != nil {
+		fields = append(fields, sandboxmessage.FieldMetadata)
+	}
+	if m.created_at != nil {
+		fields = append(fields, sandboxmessage.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SandboxMessageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sandboxmessage.FieldTenantID:
+		return m.TenantID()
+	case sandboxmessage.FieldEnvironment:
+		return m.Environment()
+	case sandboxmessage.FieldChannel:
+		return m.Channel()
+	case sandboxmessage.FieldRecipient:
+		return m.Recipient()
+	case sandboxmessage.FieldSubject:
+		return m.Subject()
+	case sandboxmessage.FieldBody:
+		return m.Body()
+	case sandboxmessage.FieldTemplate:
+		return m.Template()
+	case sandboxmessage.FieldCode:
+		return m.Code()
+	case sandboxmessage.FieldMetadata:
+		return m.Metadata()
+	case sandboxmessage.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SandboxMessageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sandboxmessage.FieldTenantID:
+		return m.OldTenantID(ctx)
+	case sandboxmessage.FieldEnvironment:
+		return m.OldEnvironment(ctx)
+	case sandboxmessage.FieldChannel:
+		return m.OldChannel(ctx)
+	case sandboxmessage.FieldRecipient:
+		return m.OldRecipient(ctx)
+	case sandboxmessage.FieldSubject:
+		return m.OldSubject(ctx)
+	case sandboxmessage.FieldBody:
+		return m.OldBody(ctx)
+	case sandboxmessage.FieldTemplate:
+		return m.OldTemplate(ctx)
+	case sandboxmessage.FieldCode:
+		return m.OldCode(ctx)
+	case sandboxmessage.FieldMetadata:
+		return m.OldMetadata(ctx)
+	case sandboxmessage.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SandboxMessage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SandboxMessageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sandboxmessage.FieldTenantID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTenantID(v)
+		return nil
+	case sandboxmessage.FieldEnvironment:
+		v, ok := value.(sandboxmessage.Environment)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironment(v)
+		return nil
+	case sandboxmessage.FieldChannel:
+		v, ok := value.(sandboxmessage.Channel)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChannel(v)
+		return nil
+	case sandboxmessage.FieldRecipient:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRecipient(v)
+		return nil
+	case sandboxmessage.FieldSubject:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubject(v)
+		return nil
+	case sandboxmessage.FieldBody:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBody(v)
+		return nil
+	case sandboxmessage.FieldTemplate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTemplate(v)
+		return nil
+	case sandboxmessage.FieldCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCode(v)
+		return nil
+	case sandboxmessage.FieldMetadata:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
+		return nil
+	case sandboxmessage.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SandboxMessage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SandboxMessageMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SandboxMessageMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SandboxMessageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SandboxMessage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SandboxMessageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(sandboxmessage.FieldSubject) {
+		fields = append(fields, sandboxmessage.FieldSubject)
+	}
+	if m.FieldCleared(sandboxmessage.FieldTemplate) {
+		fields = append(fields, sandboxmessage.FieldTemplate)
+	}
+	if m.FieldCleared(sandboxmessage.FieldCode) {
+		fields = append(fields, sandboxmessage.FieldCode)
+	}
+	if m.FieldCleared(sandboxmessage.FieldMetadata) {
+		fields = append(fields, sandboxmessage.FieldMetadata)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SandboxMessageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SandboxMessageMutation) ClearField(name string) error {
+	switch name {
+	case sandboxmessage.FieldSubject:
+		m.ClearSubject()
+		return nil
+	case sandboxmessage.FieldTemplate:
+		m.ClearTemplate()
+		return nil
+	case sandboxmessage.FieldCode:
+		m.ClearCode()
+		return nil
+	case sandboxmessage.FieldMetadata:
+		m.ClearMetadata()
+		return nil
+	}
+	return fmt.Errorf("unknown SandboxMessage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SandboxMessageMutation) ResetField(name string) error {
+	switch name {
+	case sandboxmessage.FieldTenantID:
+		m.ResetTenantID()
+		return nil
+	case sandboxmessage.FieldEnvironment:
+		m.ResetEnvironment()
+		return nil
+	case sandboxmessage.FieldChannel:
+		m.ResetChannel()
+		return nil
+	case sandboxmessage.FieldRecipient:
+		m.ResetRecipient()
+		return nil
+	case sandboxmessage.FieldSubject:
+		m.ResetSubject()
+		return nil
+	case sandboxmessage.FieldBody:
+		m.ResetBody()
+		return nil
+	case sandboxmessage.FieldTemplate:
+		m.ResetTemplate()
+		return nil
+	case sandboxmessage.FieldCode:
+		m.ResetCode()
+		return nil
+	case sandboxmessage.FieldMetadata:
+		m.ResetMetadata()
+		return nil
+	case sandboxmessage.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SandboxMessage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SandboxMessageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.tenant != nil {
+		edges = append(edges, sandboxmessage.EdgeTenant)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SandboxMessageMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case sandboxmessage.EdgeTenant:
+		if id := m.tenant; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SandboxMessageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SandboxMessageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SandboxMessageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedtenant {
+		edges = append(edges, sandboxmessage.EdgeTenant)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SandboxMessageMutation) EdgeCleared(name string) bool {
+	switch name {
+	case sandboxmessage.EdgeTenant:
+		return m.clearedtenant
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SandboxMessageMutation) ClearEdge(name string) error {
+	switch name {
+	case sandboxmessage.EdgeTenant:
+		m.ClearTenant()
+		return nil
+	}
+	return fmt.Errorf("unknown SandboxMessage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SandboxMessageMutation) ResetEdge(name string) error {
+	switch name {
+	case sandboxmessage.EdgeTenant:
+		m.ResetTenant()
+		return nil
+	}
+	return fmt.Errorf("unknown SandboxMessage edge %s", name)
 }
 
 // SecurityBlacklistMutation represents an operation that mutates the SecurityBlacklist nodes in the graph.
@@ -16996,13 +18059,6 @@ type TenantMutation struct {
 	domain_verified           *bool
 	domain_verification_token *string
 	first_admin_claimed       *bool
-	branding_config           *map[string]interface{}
-	password_policy           *map[string]interface{}
-	security_policy           *map[string]interface{}
-	recovery_policy           *map[string]interface{}
-	social_providers          *map[string]interface{}
-	role_policy               *map[string]interface{}
-	session_policy            *map[string]interface{}
 	created_at                *time.Time
 	updated_at                *time.Time
 	clearedFields             map[string]struct{}
@@ -17024,6 +18080,12 @@ type TenantMutation struct {
 	audit_logs                map[string]struct{}
 	removedaudit_logs         map[string]struct{}
 	clearedaudit_logs         bool
+	environments              map[string]struct{}
+	removedenvironments       map[string]struct{}
+	clearedenvironments       bool
+	sandbox_messages          map[string]struct{}
+	removedsandbox_messages   map[string]struct{}
+	clearedsandbox_messages   bool
 	managed_tenants           map[string]struct{}
 	removedmanaged_tenants    map[string]struct{}
 	clearedmanaged_tenants    bool
@@ -17376,349 +18438,6 @@ func (m *TenantMutation) OldFirstAdminClaimed(ctx context.Context) (v bool, err 
 // ResetFirstAdminClaimed resets all changes to the "first_admin_claimed" field.
 func (m *TenantMutation) ResetFirstAdminClaimed() {
 	m.first_admin_claimed = nil
-}
-
-// SetBrandingConfig sets the "branding_config" field.
-func (m *TenantMutation) SetBrandingConfig(value map[string]interface{}) {
-	m.branding_config = &value
-}
-
-// BrandingConfig returns the value of the "branding_config" field in the mutation.
-func (m *TenantMutation) BrandingConfig() (r map[string]interface{}, exists bool) {
-	v := m.branding_config
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldBrandingConfig returns the old "branding_config" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldBrandingConfig(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldBrandingConfig is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldBrandingConfig requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldBrandingConfig: %w", err)
-	}
-	return oldValue.BrandingConfig, nil
-}
-
-// ClearBrandingConfig clears the value of the "branding_config" field.
-func (m *TenantMutation) ClearBrandingConfig() {
-	m.branding_config = nil
-	m.clearedFields[tenant.FieldBrandingConfig] = struct{}{}
-}
-
-// BrandingConfigCleared returns if the "branding_config" field was cleared in this mutation.
-func (m *TenantMutation) BrandingConfigCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldBrandingConfig]
-	return ok
-}
-
-// ResetBrandingConfig resets all changes to the "branding_config" field.
-func (m *TenantMutation) ResetBrandingConfig() {
-	m.branding_config = nil
-	delete(m.clearedFields, tenant.FieldBrandingConfig)
-}
-
-// SetPasswordPolicy sets the "password_policy" field.
-func (m *TenantMutation) SetPasswordPolicy(value map[string]interface{}) {
-	m.password_policy = &value
-}
-
-// PasswordPolicy returns the value of the "password_policy" field in the mutation.
-func (m *TenantMutation) PasswordPolicy() (r map[string]interface{}, exists bool) {
-	v := m.password_policy
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldPasswordPolicy returns the old "password_policy" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldPasswordPolicy(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldPasswordPolicy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldPasswordPolicy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldPasswordPolicy: %w", err)
-	}
-	return oldValue.PasswordPolicy, nil
-}
-
-// ClearPasswordPolicy clears the value of the "password_policy" field.
-func (m *TenantMutation) ClearPasswordPolicy() {
-	m.password_policy = nil
-	m.clearedFields[tenant.FieldPasswordPolicy] = struct{}{}
-}
-
-// PasswordPolicyCleared returns if the "password_policy" field was cleared in this mutation.
-func (m *TenantMutation) PasswordPolicyCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldPasswordPolicy]
-	return ok
-}
-
-// ResetPasswordPolicy resets all changes to the "password_policy" field.
-func (m *TenantMutation) ResetPasswordPolicy() {
-	m.password_policy = nil
-	delete(m.clearedFields, tenant.FieldPasswordPolicy)
-}
-
-// SetSecurityPolicy sets the "security_policy" field.
-func (m *TenantMutation) SetSecurityPolicy(value map[string]interface{}) {
-	m.security_policy = &value
-}
-
-// SecurityPolicy returns the value of the "security_policy" field in the mutation.
-func (m *TenantMutation) SecurityPolicy() (r map[string]interface{}, exists bool) {
-	v := m.security_policy
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSecurityPolicy returns the old "security_policy" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldSecurityPolicy(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSecurityPolicy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSecurityPolicy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSecurityPolicy: %w", err)
-	}
-	return oldValue.SecurityPolicy, nil
-}
-
-// ClearSecurityPolicy clears the value of the "security_policy" field.
-func (m *TenantMutation) ClearSecurityPolicy() {
-	m.security_policy = nil
-	m.clearedFields[tenant.FieldSecurityPolicy] = struct{}{}
-}
-
-// SecurityPolicyCleared returns if the "security_policy" field was cleared in this mutation.
-func (m *TenantMutation) SecurityPolicyCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldSecurityPolicy]
-	return ok
-}
-
-// ResetSecurityPolicy resets all changes to the "security_policy" field.
-func (m *TenantMutation) ResetSecurityPolicy() {
-	m.security_policy = nil
-	delete(m.clearedFields, tenant.FieldSecurityPolicy)
-}
-
-// SetRecoveryPolicy sets the "recovery_policy" field.
-func (m *TenantMutation) SetRecoveryPolicy(value map[string]interface{}) {
-	m.recovery_policy = &value
-}
-
-// RecoveryPolicy returns the value of the "recovery_policy" field in the mutation.
-func (m *TenantMutation) RecoveryPolicy() (r map[string]interface{}, exists bool) {
-	v := m.recovery_policy
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRecoveryPolicy returns the old "recovery_policy" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldRecoveryPolicy(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRecoveryPolicy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRecoveryPolicy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRecoveryPolicy: %w", err)
-	}
-	return oldValue.RecoveryPolicy, nil
-}
-
-// ClearRecoveryPolicy clears the value of the "recovery_policy" field.
-func (m *TenantMutation) ClearRecoveryPolicy() {
-	m.recovery_policy = nil
-	m.clearedFields[tenant.FieldRecoveryPolicy] = struct{}{}
-}
-
-// RecoveryPolicyCleared returns if the "recovery_policy" field was cleared in this mutation.
-func (m *TenantMutation) RecoveryPolicyCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldRecoveryPolicy]
-	return ok
-}
-
-// ResetRecoveryPolicy resets all changes to the "recovery_policy" field.
-func (m *TenantMutation) ResetRecoveryPolicy() {
-	m.recovery_policy = nil
-	delete(m.clearedFields, tenant.FieldRecoveryPolicy)
-}
-
-// SetSocialProviders sets the "social_providers" field.
-func (m *TenantMutation) SetSocialProviders(value map[string]interface{}) {
-	m.social_providers = &value
-}
-
-// SocialProviders returns the value of the "social_providers" field in the mutation.
-func (m *TenantMutation) SocialProviders() (r map[string]interface{}, exists bool) {
-	v := m.social_providers
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSocialProviders returns the old "social_providers" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldSocialProviders(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSocialProviders is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSocialProviders requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSocialProviders: %w", err)
-	}
-	return oldValue.SocialProviders, nil
-}
-
-// ClearSocialProviders clears the value of the "social_providers" field.
-func (m *TenantMutation) ClearSocialProviders() {
-	m.social_providers = nil
-	m.clearedFields[tenant.FieldSocialProviders] = struct{}{}
-}
-
-// SocialProvidersCleared returns if the "social_providers" field was cleared in this mutation.
-func (m *TenantMutation) SocialProvidersCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldSocialProviders]
-	return ok
-}
-
-// ResetSocialProviders resets all changes to the "social_providers" field.
-func (m *TenantMutation) ResetSocialProviders() {
-	m.social_providers = nil
-	delete(m.clearedFields, tenant.FieldSocialProviders)
-}
-
-// SetRolePolicy sets the "role_policy" field.
-func (m *TenantMutation) SetRolePolicy(value map[string]interface{}) {
-	m.role_policy = &value
-}
-
-// RolePolicy returns the value of the "role_policy" field in the mutation.
-func (m *TenantMutation) RolePolicy() (r map[string]interface{}, exists bool) {
-	v := m.role_policy
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRolePolicy returns the old "role_policy" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldRolePolicy(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRolePolicy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRolePolicy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRolePolicy: %w", err)
-	}
-	return oldValue.RolePolicy, nil
-}
-
-// ClearRolePolicy clears the value of the "role_policy" field.
-func (m *TenantMutation) ClearRolePolicy() {
-	m.role_policy = nil
-	m.clearedFields[tenant.FieldRolePolicy] = struct{}{}
-}
-
-// RolePolicyCleared returns if the "role_policy" field was cleared in this mutation.
-func (m *TenantMutation) RolePolicyCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldRolePolicy]
-	return ok
-}
-
-// ResetRolePolicy resets all changes to the "role_policy" field.
-func (m *TenantMutation) ResetRolePolicy() {
-	m.role_policy = nil
-	delete(m.clearedFields, tenant.FieldRolePolicy)
-}
-
-// SetSessionPolicy sets the "session_policy" field.
-func (m *TenantMutation) SetSessionPolicy(value map[string]interface{}) {
-	m.session_policy = &value
-}
-
-// SessionPolicy returns the value of the "session_policy" field in the mutation.
-func (m *TenantMutation) SessionPolicy() (r map[string]interface{}, exists bool) {
-	v := m.session_policy
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSessionPolicy returns the old "session_policy" field's value of the Tenant entity.
-// If the Tenant object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TenantMutation) OldSessionPolicy(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSessionPolicy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSessionPolicy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSessionPolicy: %w", err)
-	}
-	return oldValue.SessionPolicy, nil
-}
-
-// ClearSessionPolicy clears the value of the "session_policy" field.
-func (m *TenantMutation) ClearSessionPolicy() {
-	m.session_policy = nil
-	m.clearedFields[tenant.FieldSessionPolicy] = struct{}{}
-}
-
-// SessionPolicyCleared returns if the "session_policy" field was cleared in this mutation.
-func (m *TenantMutation) SessionPolicyCleared() bool {
-	_, ok := m.clearedFields[tenant.FieldSessionPolicy]
-	return ok
-}
-
-// ResetSessionPolicy resets all changes to the "session_policy" field.
-func (m *TenantMutation) ResetSessionPolicy() {
-	m.session_policy = nil
-	delete(m.clearedFields, tenant.FieldSessionPolicy)
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -18117,6 +18836,114 @@ func (m *TenantMutation) ResetAuditLogs() {
 	m.removedaudit_logs = nil
 }
 
+// AddEnvironmentIDs adds the "environments" edge to the TenantEnvironment entity by ids.
+func (m *TenantMutation) AddEnvironmentIDs(ids ...string) {
+	if m.environments == nil {
+		m.environments = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.environments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearEnvironments clears the "environments" edge to the TenantEnvironment entity.
+func (m *TenantMutation) ClearEnvironments() {
+	m.clearedenvironments = true
+}
+
+// EnvironmentsCleared reports if the "environments" edge to the TenantEnvironment entity was cleared.
+func (m *TenantMutation) EnvironmentsCleared() bool {
+	return m.clearedenvironments
+}
+
+// RemoveEnvironmentIDs removes the "environments" edge to the TenantEnvironment entity by IDs.
+func (m *TenantMutation) RemoveEnvironmentIDs(ids ...string) {
+	if m.removedenvironments == nil {
+		m.removedenvironments = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.environments, ids[i])
+		m.removedenvironments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedEnvironments returns the removed IDs of the "environments" edge to the TenantEnvironment entity.
+func (m *TenantMutation) RemovedEnvironmentsIDs() (ids []string) {
+	for id := range m.removedenvironments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// EnvironmentsIDs returns the "environments" edge IDs in the mutation.
+func (m *TenantMutation) EnvironmentsIDs() (ids []string) {
+	for id := range m.environments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetEnvironments resets all changes to the "environments" edge.
+func (m *TenantMutation) ResetEnvironments() {
+	m.environments = nil
+	m.clearedenvironments = false
+	m.removedenvironments = nil
+}
+
+// AddSandboxMessageIDs adds the "sandbox_messages" edge to the SandboxMessage entity by ids.
+func (m *TenantMutation) AddSandboxMessageIDs(ids ...string) {
+	if m.sandbox_messages == nil {
+		m.sandbox_messages = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.sandbox_messages[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSandboxMessages clears the "sandbox_messages" edge to the SandboxMessage entity.
+func (m *TenantMutation) ClearSandboxMessages() {
+	m.clearedsandbox_messages = true
+}
+
+// SandboxMessagesCleared reports if the "sandbox_messages" edge to the SandboxMessage entity was cleared.
+func (m *TenantMutation) SandboxMessagesCleared() bool {
+	return m.clearedsandbox_messages
+}
+
+// RemoveSandboxMessageIDs removes the "sandbox_messages" edge to the SandboxMessage entity by IDs.
+func (m *TenantMutation) RemoveSandboxMessageIDs(ids ...string) {
+	if m.removedsandbox_messages == nil {
+		m.removedsandbox_messages = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.sandbox_messages, ids[i])
+		m.removedsandbox_messages[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSandboxMessages returns the removed IDs of the "sandbox_messages" edge to the SandboxMessage entity.
+func (m *TenantMutation) RemovedSandboxMessagesIDs() (ids []string) {
+	for id := range m.removedsandbox_messages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SandboxMessagesIDs returns the "sandbox_messages" edge IDs in the mutation.
+func (m *TenantMutation) SandboxMessagesIDs() (ids []string) {
+	for id := range m.sandbox_messages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSandboxMessages resets all changes to the "sandbox_messages" edge.
+func (m *TenantMutation) ResetSandboxMessages() {
+	m.sandbox_messages = nil
+	m.clearedsandbox_messages = false
+	m.removedsandbox_messages = nil
+}
+
 // AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by ids.
 func (m *TenantMutation) AddManagedTenantIDs(ids ...string) {
 	if m.managed_tenants == nil {
@@ -18205,7 +19032,7 @@ func (m *TenantMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TenantMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 8)
 	if m.name != nil {
 		fields = append(fields, tenant.FieldName)
 	}
@@ -18223,27 +19050,6 @@ func (m *TenantMutation) Fields() []string {
 	}
 	if m.first_admin_claimed != nil {
 		fields = append(fields, tenant.FieldFirstAdminClaimed)
-	}
-	if m.branding_config != nil {
-		fields = append(fields, tenant.FieldBrandingConfig)
-	}
-	if m.password_policy != nil {
-		fields = append(fields, tenant.FieldPasswordPolicy)
-	}
-	if m.security_policy != nil {
-		fields = append(fields, tenant.FieldSecurityPolicy)
-	}
-	if m.recovery_policy != nil {
-		fields = append(fields, tenant.FieldRecoveryPolicy)
-	}
-	if m.social_providers != nil {
-		fields = append(fields, tenant.FieldSocialProviders)
-	}
-	if m.role_policy != nil {
-		fields = append(fields, tenant.FieldRolePolicy)
-	}
-	if m.session_policy != nil {
-		fields = append(fields, tenant.FieldSessionPolicy)
 	}
 	if m.created_at != nil {
 		fields = append(fields, tenant.FieldCreatedAt)
@@ -18271,20 +19077,6 @@ func (m *TenantMutation) Field(name string) (ent.Value, bool) {
 		return m.DomainVerificationToken()
 	case tenant.FieldFirstAdminClaimed:
 		return m.FirstAdminClaimed()
-	case tenant.FieldBrandingConfig:
-		return m.BrandingConfig()
-	case tenant.FieldPasswordPolicy:
-		return m.PasswordPolicy()
-	case tenant.FieldSecurityPolicy:
-		return m.SecurityPolicy()
-	case tenant.FieldRecoveryPolicy:
-		return m.RecoveryPolicy()
-	case tenant.FieldSocialProviders:
-		return m.SocialProviders()
-	case tenant.FieldRolePolicy:
-		return m.RolePolicy()
-	case tenant.FieldSessionPolicy:
-		return m.SessionPolicy()
 	case tenant.FieldCreatedAt:
 		return m.CreatedAt()
 	case tenant.FieldUpdatedAt:
@@ -18310,20 +19102,6 @@ func (m *TenantMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDomainVerificationToken(ctx)
 	case tenant.FieldFirstAdminClaimed:
 		return m.OldFirstAdminClaimed(ctx)
-	case tenant.FieldBrandingConfig:
-		return m.OldBrandingConfig(ctx)
-	case tenant.FieldPasswordPolicy:
-		return m.OldPasswordPolicy(ctx)
-	case tenant.FieldSecurityPolicy:
-		return m.OldSecurityPolicy(ctx)
-	case tenant.FieldRecoveryPolicy:
-		return m.OldRecoveryPolicy(ctx)
-	case tenant.FieldSocialProviders:
-		return m.OldSocialProviders(ctx)
-	case tenant.FieldRolePolicy:
-		return m.OldRolePolicy(ctx)
-	case tenant.FieldSessionPolicy:
-		return m.OldSessionPolicy(ctx)
 	case tenant.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case tenant.FieldUpdatedAt:
@@ -18379,55 +19157,6 @@ func (m *TenantMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFirstAdminClaimed(v)
 		return nil
-	case tenant.FieldBrandingConfig:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetBrandingConfig(v)
-		return nil
-	case tenant.FieldPasswordPolicy:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetPasswordPolicy(v)
-		return nil
-	case tenant.FieldSecurityPolicy:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSecurityPolicy(v)
-		return nil
-	case tenant.FieldRecoveryPolicy:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRecoveryPolicy(v)
-		return nil
-	case tenant.FieldSocialProviders:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSocialProviders(v)
-		return nil
-	case tenant.FieldRolePolicy:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRolePolicy(v)
-		return nil
-	case tenant.FieldSessionPolicy:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSessionPolicy(v)
-		return nil
 	case tenant.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -18478,27 +19207,6 @@ func (m *TenantMutation) ClearedFields() []string {
 	if m.FieldCleared(tenant.FieldDomainVerificationToken) {
 		fields = append(fields, tenant.FieldDomainVerificationToken)
 	}
-	if m.FieldCleared(tenant.FieldBrandingConfig) {
-		fields = append(fields, tenant.FieldBrandingConfig)
-	}
-	if m.FieldCleared(tenant.FieldPasswordPolicy) {
-		fields = append(fields, tenant.FieldPasswordPolicy)
-	}
-	if m.FieldCleared(tenant.FieldSecurityPolicy) {
-		fields = append(fields, tenant.FieldSecurityPolicy)
-	}
-	if m.FieldCleared(tenant.FieldRecoveryPolicy) {
-		fields = append(fields, tenant.FieldRecoveryPolicy)
-	}
-	if m.FieldCleared(tenant.FieldSocialProviders) {
-		fields = append(fields, tenant.FieldSocialProviders)
-	}
-	if m.FieldCleared(tenant.FieldRolePolicy) {
-		fields = append(fields, tenant.FieldRolePolicy)
-	}
-	if m.FieldCleared(tenant.FieldSessionPolicy) {
-		fields = append(fields, tenant.FieldSessionPolicy)
-	}
 	return fields
 }
 
@@ -18518,27 +19226,6 @@ func (m *TenantMutation) ClearField(name string) error {
 		return nil
 	case tenant.FieldDomainVerificationToken:
 		m.ClearDomainVerificationToken()
-		return nil
-	case tenant.FieldBrandingConfig:
-		m.ClearBrandingConfig()
-		return nil
-	case tenant.FieldPasswordPolicy:
-		m.ClearPasswordPolicy()
-		return nil
-	case tenant.FieldSecurityPolicy:
-		m.ClearSecurityPolicy()
-		return nil
-	case tenant.FieldRecoveryPolicy:
-		m.ClearRecoveryPolicy()
-		return nil
-	case tenant.FieldSocialProviders:
-		m.ClearSocialProviders()
-		return nil
-	case tenant.FieldRolePolicy:
-		m.ClearRolePolicy()
-		return nil
-	case tenant.FieldSessionPolicy:
-		m.ClearSessionPolicy()
 		return nil
 	}
 	return fmt.Errorf("unknown Tenant nullable field %s", name)
@@ -18566,27 +19253,6 @@ func (m *TenantMutation) ResetField(name string) error {
 	case tenant.FieldFirstAdminClaimed:
 		m.ResetFirstAdminClaimed()
 		return nil
-	case tenant.FieldBrandingConfig:
-		m.ResetBrandingConfig()
-		return nil
-	case tenant.FieldPasswordPolicy:
-		m.ResetPasswordPolicy()
-		return nil
-	case tenant.FieldSecurityPolicy:
-		m.ResetSecurityPolicy()
-		return nil
-	case tenant.FieldRecoveryPolicy:
-		m.ResetRecoveryPolicy()
-		return nil
-	case tenant.FieldSocialProviders:
-		m.ResetSocialProviders()
-		return nil
-	case tenant.FieldRolePolicy:
-		m.ResetRolePolicy()
-		return nil
-	case tenant.FieldSessionPolicy:
-		m.ResetSessionPolicy()
-		return nil
 	case tenant.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -18599,7 +19265,7 @@ func (m *TenantMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TenantMutation) AddedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.applications != nil {
 		edges = append(edges, tenant.EdgeApplications)
 	}
@@ -18617,6 +19283,12 @@ func (m *TenantMutation) AddedEdges() []string {
 	}
 	if m.audit_logs != nil {
 		edges = append(edges, tenant.EdgeAuditLogs)
+	}
+	if m.environments != nil {
+		edges = append(edges, tenant.EdgeEnvironments)
+	}
+	if m.sandbox_messages != nil {
+		edges = append(edges, tenant.EdgeSandboxMessages)
 	}
 	if m.managed_tenants != nil {
 		edges = append(edges, tenant.EdgeManagedTenants)
@@ -18664,6 +19336,18 @@ func (m *TenantMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case tenant.EdgeEnvironments:
+		ids := make([]ent.Value, 0, len(m.environments))
+		for id := range m.environments {
+			ids = append(ids, id)
+		}
+		return ids
+	case tenant.EdgeSandboxMessages:
+		ids := make([]ent.Value, 0, len(m.sandbox_messages))
+		for id := range m.sandbox_messages {
+			ids = append(ids, id)
+		}
+		return ids
 	case tenant.EdgeManagedTenants:
 		ids := make([]ent.Value, 0, len(m.managed_tenants))
 		for id := range m.managed_tenants {
@@ -18676,7 +19360,7 @@ func (m *TenantMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TenantMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.removedapplications != nil {
 		edges = append(edges, tenant.EdgeApplications)
 	}
@@ -18694,6 +19378,12 @@ func (m *TenantMutation) RemovedEdges() []string {
 	}
 	if m.removedaudit_logs != nil {
 		edges = append(edges, tenant.EdgeAuditLogs)
+	}
+	if m.removedenvironments != nil {
+		edges = append(edges, tenant.EdgeEnvironments)
+	}
+	if m.removedsandbox_messages != nil {
+		edges = append(edges, tenant.EdgeSandboxMessages)
 	}
 	if m.removedmanaged_tenants != nil {
 		edges = append(edges, tenant.EdgeManagedTenants)
@@ -18741,6 +19431,18 @@ func (m *TenantMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case tenant.EdgeEnvironments:
+		ids := make([]ent.Value, 0, len(m.removedenvironments))
+		for id := range m.removedenvironments {
+			ids = append(ids, id)
+		}
+		return ids
+	case tenant.EdgeSandboxMessages:
+		ids := make([]ent.Value, 0, len(m.removedsandbox_messages))
+		for id := range m.removedsandbox_messages {
+			ids = append(ids, id)
+		}
+		return ids
 	case tenant.EdgeManagedTenants:
 		ids := make([]ent.Value, 0, len(m.removedmanaged_tenants))
 		for id := range m.removedmanaged_tenants {
@@ -18753,7 +19455,7 @@ func (m *TenantMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TenantMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.clearedapplications {
 		edges = append(edges, tenant.EdgeApplications)
 	}
@@ -18771,6 +19473,12 @@ func (m *TenantMutation) ClearedEdges() []string {
 	}
 	if m.clearedaudit_logs {
 		edges = append(edges, tenant.EdgeAuditLogs)
+	}
+	if m.clearedenvironments {
+		edges = append(edges, tenant.EdgeEnvironments)
+	}
+	if m.clearedsandbox_messages {
+		edges = append(edges, tenant.EdgeSandboxMessages)
 	}
 	if m.clearedmanaged_tenants {
 		edges = append(edges, tenant.EdgeManagedTenants)
@@ -18794,6 +19502,10 @@ func (m *TenantMutation) EdgeCleared(name string) bool {
 		return m.clearedwebhook_endpoints
 	case tenant.EdgeAuditLogs:
 		return m.clearedaudit_logs
+	case tenant.EdgeEnvironments:
+		return m.clearedenvironments
+	case tenant.EdgeSandboxMessages:
+		return m.clearedsandbox_messages
 	case tenant.EdgeManagedTenants:
 		return m.clearedmanaged_tenants
 	}
@@ -18830,11 +19542,1152 @@ func (m *TenantMutation) ResetEdge(name string) error {
 	case tenant.EdgeAuditLogs:
 		m.ResetAuditLogs()
 		return nil
+	case tenant.EdgeEnvironments:
+		m.ResetEnvironments()
+		return nil
+	case tenant.EdgeSandboxMessages:
+		m.ResetSandboxMessages()
+		return nil
 	case tenant.EdgeManagedTenants:
 		m.ResetManagedTenants()
 		return nil
 	}
 	return fmt.Errorf("unknown Tenant edge %s", name)
+}
+
+// TenantEnvironmentMutation represents an operation that mutates the TenantEnvironment nodes in the graph.
+type TenantEnvironmentMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *string
+	environment      *tenantenvironment.Environment
+	branding_config  *map[string]interface{}
+	password_policy  *map[string]interface{}
+	security_policy  *map[string]interface{}
+	recovery_policy  *map[string]interface{}
+	social_providers *map[string]interface{}
+	role_policy      *map[string]interface{}
+	session_policy   *map[string]interface{}
+	published_at     *time.Time
+	created_at       *time.Time
+	updated_at       *time.Time
+	clearedFields    map[string]struct{}
+	tenant           *string
+	clearedtenant    bool
+	done             bool
+	oldValue         func(context.Context) (*TenantEnvironment, error)
+	predicates       []predicate.TenantEnvironment
+}
+
+var _ ent.Mutation = (*TenantEnvironmentMutation)(nil)
+
+// tenantenvironmentOption allows management of the mutation configuration using functional options.
+type tenantenvironmentOption func(*TenantEnvironmentMutation)
+
+// newTenantEnvironmentMutation creates new mutation for the TenantEnvironment entity.
+func newTenantEnvironmentMutation(c config, op Op, opts ...tenantenvironmentOption) *TenantEnvironmentMutation {
+	m := &TenantEnvironmentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTenantEnvironment,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTenantEnvironmentID sets the ID field of the mutation.
+func withTenantEnvironmentID(id string) tenantenvironmentOption {
+	return func(m *TenantEnvironmentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TenantEnvironment
+		)
+		m.oldValue = func(ctx context.Context) (*TenantEnvironment, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TenantEnvironment.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTenantEnvironment sets the old TenantEnvironment of the mutation.
+func withTenantEnvironment(node *TenantEnvironment) tenantenvironmentOption {
+	return func(m *TenantEnvironmentMutation) {
+		m.oldValue = func(context.Context) (*TenantEnvironment, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TenantEnvironmentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TenantEnvironmentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TenantEnvironment entities.
+func (m *TenantEnvironmentMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TenantEnvironmentMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TenantEnvironmentMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TenantEnvironment.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTenantID sets the "tenant_id" field.
+func (m *TenantEnvironmentMutation) SetTenantID(s string) {
+	m.tenant = &s
+}
+
+// TenantID returns the value of the "tenant_id" field in the mutation.
+func (m *TenantEnvironmentMutation) TenantID() (r string, exists bool) {
+	v := m.tenant
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTenantID returns the old "tenant_id" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldTenantID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTenantID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTenantID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTenantID: %w", err)
+	}
+	return oldValue.TenantID, nil
+}
+
+// ResetTenantID resets all changes to the "tenant_id" field.
+func (m *TenantEnvironmentMutation) ResetTenantID() {
+	m.tenant = nil
+}
+
+// SetEnvironment sets the "environment" field.
+func (m *TenantEnvironmentMutation) SetEnvironment(t tenantenvironment.Environment) {
+	m.environment = &t
+}
+
+// Environment returns the value of the "environment" field in the mutation.
+func (m *TenantEnvironmentMutation) Environment() (r tenantenvironment.Environment, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironment returns the old "environment" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldEnvironment(ctx context.Context) (v tenantenvironment.Environment, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironment: %w", err)
+	}
+	return oldValue.Environment, nil
+}
+
+// ResetEnvironment resets all changes to the "environment" field.
+func (m *TenantEnvironmentMutation) ResetEnvironment() {
+	m.environment = nil
+}
+
+// SetBrandingConfig sets the "branding_config" field.
+func (m *TenantEnvironmentMutation) SetBrandingConfig(value map[string]interface{}) {
+	m.branding_config = &value
+}
+
+// BrandingConfig returns the value of the "branding_config" field in the mutation.
+func (m *TenantEnvironmentMutation) BrandingConfig() (r map[string]interface{}, exists bool) {
+	v := m.branding_config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBrandingConfig returns the old "branding_config" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldBrandingConfig(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBrandingConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBrandingConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBrandingConfig: %w", err)
+	}
+	return oldValue.BrandingConfig, nil
+}
+
+// ClearBrandingConfig clears the value of the "branding_config" field.
+func (m *TenantEnvironmentMutation) ClearBrandingConfig() {
+	m.branding_config = nil
+	m.clearedFields[tenantenvironment.FieldBrandingConfig] = struct{}{}
+}
+
+// BrandingConfigCleared returns if the "branding_config" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) BrandingConfigCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldBrandingConfig]
+	return ok
+}
+
+// ResetBrandingConfig resets all changes to the "branding_config" field.
+func (m *TenantEnvironmentMutation) ResetBrandingConfig() {
+	m.branding_config = nil
+	delete(m.clearedFields, tenantenvironment.FieldBrandingConfig)
+}
+
+// SetPasswordPolicy sets the "password_policy" field.
+func (m *TenantEnvironmentMutation) SetPasswordPolicy(value map[string]interface{}) {
+	m.password_policy = &value
+}
+
+// PasswordPolicy returns the value of the "password_policy" field in the mutation.
+func (m *TenantEnvironmentMutation) PasswordPolicy() (r map[string]interface{}, exists bool) {
+	v := m.password_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPasswordPolicy returns the old "password_policy" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldPasswordPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPasswordPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPasswordPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPasswordPolicy: %w", err)
+	}
+	return oldValue.PasswordPolicy, nil
+}
+
+// ClearPasswordPolicy clears the value of the "password_policy" field.
+func (m *TenantEnvironmentMutation) ClearPasswordPolicy() {
+	m.password_policy = nil
+	m.clearedFields[tenantenvironment.FieldPasswordPolicy] = struct{}{}
+}
+
+// PasswordPolicyCleared returns if the "password_policy" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) PasswordPolicyCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldPasswordPolicy]
+	return ok
+}
+
+// ResetPasswordPolicy resets all changes to the "password_policy" field.
+func (m *TenantEnvironmentMutation) ResetPasswordPolicy() {
+	m.password_policy = nil
+	delete(m.clearedFields, tenantenvironment.FieldPasswordPolicy)
+}
+
+// SetSecurityPolicy sets the "security_policy" field.
+func (m *TenantEnvironmentMutation) SetSecurityPolicy(value map[string]interface{}) {
+	m.security_policy = &value
+}
+
+// SecurityPolicy returns the value of the "security_policy" field in the mutation.
+func (m *TenantEnvironmentMutation) SecurityPolicy() (r map[string]interface{}, exists bool) {
+	v := m.security_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSecurityPolicy returns the old "security_policy" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldSecurityPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSecurityPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSecurityPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSecurityPolicy: %w", err)
+	}
+	return oldValue.SecurityPolicy, nil
+}
+
+// ClearSecurityPolicy clears the value of the "security_policy" field.
+func (m *TenantEnvironmentMutation) ClearSecurityPolicy() {
+	m.security_policy = nil
+	m.clearedFields[tenantenvironment.FieldSecurityPolicy] = struct{}{}
+}
+
+// SecurityPolicyCleared returns if the "security_policy" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) SecurityPolicyCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldSecurityPolicy]
+	return ok
+}
+
+// ResetSecurityPolicy resets all changes to the "security_policy" field.
+func (m *TenantEnvironmentMutation) ResetSecurityPolicy() {
+	m.security_policy = nil
+	delete(m.clearedFields, tenantenvironment.FieldSecurityPolicy)
+}
+
+// SetRecoveryPolicy sets the "recovery_policy" field.
+func (m *TenantEnvironmentMutation) SetRecoveryPolicy(value map[string]interface{}) {
+	m.recovery_policy = &value
+}
+
+// RecoveryPolicy returns the value of the "recovery_policy" field in the mutation.
+func (m *TenantEnvironmentMutation) RecoveryPolicy() (r map[string]interface{}, exists bool) {
+	v := m.recovery_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRecoveryPolicy returns the old "recovery_policy" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldRecoveryPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRecoveryPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRecoveryPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRecoveryPolicy: %w", err)
+	}
+	return oldValue.RecoveryPolicy, nil
+}
+
+// ClearRecoveryPolicy clears the value of the "recovery_policy" field.
+func (m *TenantEnvironmentMutation) ClearRecoveryPolicy() {
+	m.recovery_policy = nil
+	m.clearedFields[tenantenvironment.FieldRecoveryPolicy] = struct{}{}
+}
+
+// RecoveryPolicyCleared returns if the "recovery_policy" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) RecoveryPolicyCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldRecoveryPolicy]
+	return ok
+}
+
+// ResetRecoveryPolicy resets all changes to the "recovery_policy" field.
+func (m *TenantEnvironmentMutation) ResetRecoveryPolicy() {
+	m.recovery_policy = nil
+	delete(m.clearedFields, tenantenvironment.FieldRecoveryPolicy)
+}
+
+// SetSocialProviders sets the "social_providers" field.
+func (m *TenantEnvironmentMutation) SetSocialProviders(value map[string]interface{}) {
+	m.social_providers = &value
+}
+
+// SocialProviders returns the value of the "social_providers" field in the mutation.
+func (m *TenantEnvironmentMutation) SocialProviders() (r map[string]interface{}, exists bool) {
+	v := m.social_providers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSocialProviders returns the old "social_providers" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldSocialProviders(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSocialProviders is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSocialProviders requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSocialProviders: %w", err)
+	}
+	return oldValue.SocialProviders, nil
+}
+
+// ClearSocialProviders clears the value of the "social_providers" field.
+func (m *TenantEnvironmentMutation) ClearSocialProviders() {
+	m.social_providers = nil
+	m.clearedFields[tenantenvironment.FieldSocialProviders] = struct{}{}
+}
+
+// SocialProvidersCleared returns if the "social_providers" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) SocialProvidersCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldSocialProviders]
+	return ok
+}
+
+// ResetSocialProviders resets all changes to the "social_providers" field.
+func (m *TenantEnvironmentMutation) ResetSocialProviders() {
+	m.social_providers = nil
+	delete(m.clearedFields, tenantenvironment.FieldSocialProviders)
+}
+
+// SetRolePolicy sets the "role_policy" field.
+func (m *TenantEnvironmentMutation) SetRolePolicy(value map[string]interface{}) {
+	m.role_policy = &value
+}
+
+// RolePolicy returns the value of the "role_policy" field in the mutation.
+func (m *TenantEnvironmentMutation) RolePolicy() (r map[string]interface{}, exists bool) {
+	v := m.role_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRolePolicy returns the old "role_policy" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldRolePolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRolePolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRolePolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRolePolicy: %w", err)
+	}
+	return oldValue.RolePolicy, nil
+}
+
+// ClearRolePolicy clears the value of the "role_policy" field.
+func (m *TenantEnvironmentMutation) ClearRolePolicy() {
+	m.role_policy = nil
+	m.clearedFields[tenantenvironment.FieldRolePolicy] = struct{}{}
+}
+
+// RolePolicyCleared returns if the "role_policy" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) RolePolicyCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldRolePolicy]
+	return ok
+}
+
+// ResetRolePolicy resets all changes to the "role_policy" field.
+func (m *TenantEnvironmentMutation) ResetRolePolicy() {
+	m.role_policy = nil
+	delete(m.clearedFields, tenantenvironment.FieldRolePolicy)
+}
+
+// SetSessionPolicy sets the "session_policy" field.
+func (m *TenantEnvironmentMutation) SetSessionPolicy(value map[string]interface{}) {
+	m.session_policy = &value
+}
+
+// SessionPolicy returns the value of the "session_policy" field in the mutation.
+func (m *TenantEnvironmentMutation) SessionPolicy() (r map[string]interface{}, exists bool) {
+	v := m.session_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionPolicy returns the old "session_policy" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldSessionPolicy(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionPolicy: %w", err)
+	}
+	return oldValue.SessionPolicy, nil
+}
+
+// ClearSessionPolicy clears the value of the "session_policy" field.
+func (m *TenantEnvironmentMutation) ClearSessionPolicy() {
+	m.session_policy = nil
+	m.clearedFields[tenantenvironment.FieldSessionPolicy] = struct{}{}
+}
+
+// SessionPolicyCleared returns if the "session_policy" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) SessionPolicyCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldSessionPolicy]
+	return ok
+}
+
+// ResetSessionPolicy resets all changes to the "session_policy" field.
+func (m *TenantEnvironmentMutation) ResetSessionPolicy() {
+	m.session_policy = nil
+	delete(m.clearedFields, tenantenvironment.FieldSessionPolicy)
+}
+
+// SetPublishedAt sets the "published_at" field.
+func (m *TenantEnvironmentMutation) SetPublishedAt(t time.Time) {
+	m.published_at = &t
+}
+
+// PublishedAt returns the value of the "published_at" field in the mutation.
+func (m *TenantEnvironmentMutation) PublishedAt() (r time.Time, exists bool) {
+	v := m.published_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublishedAt returns the old "published_at" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldPublishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublishedAt: %w", err)
+	}
+	return oldValue.PublishedAt, nil
+}
+
+// ClearPublishedAt clears the value of the "published_at" field.
+func (m *TenantEnvironmentMutation) ClearPublishedAt() {
+	m.published_at = nil
+	m.clearedFields[tenantenvironment.FieldPublishedAt] = struct{}{}
+}
+
+// PublishedAtCleared returns if the "published_at" field was cleared in this mutation.
+func (m *TenantEnvironmentMutation) PublishedAtCleared() bool {
+	_, ok := m.clearedFields[tenantenvironment.FieldPublishedAt]
+	return ok
+}
+
+// ResetPublishedAt resets all changes to the "published_at" field.
+func (m *TenantEnvironmentMutation) ResetPublishedAt() {
+	m.published_at = nil
+	delete(m.clearedFields, tenantenvironment.FieldPublishedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TenantEnvironmentMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TenantEnvironmentMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TenantEnvironmentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TenantEnvironmentMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TenantEnvironmentMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TenantEnvironment entity.
+// If the TenantEnvironment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TenantEnvironmentMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TenantEnvironmentMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearTenant clears the "tenant" edge to the Tenant entity.
+func (m *TenantEnvironmentMutation) ClearTenant() {
+	m.clearedtenant = true
+	m.clearedFields[tenantenvironment.FieldTenantID] = struct{}{}
+}
+
+// TenantCleared reports if the "tenant" edge to the Tenant entity was cleared.
+func (m *TenantEnvironmentMutation) TenantCleared() bool {
+	return m.clearedtenant
+}
+
+// TenantIDs returns the "tenant" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TenantID instead. It exists only for internal usage by the builders.
+func (m *TenantEnvironmentMutation) TenantIDs() (ids []string) {
+	if id := m.tenant; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTenant resets all changes to the "tenant" edge.
+func (m *TenantEnvironmentMutation) ResetTenant() {
+	m.tenant = nil
+	m.clearedtenant = false
+}
+
+// Where appends a list predicates to the TenantEnvironmentMutation builder.
+func (m *TenantEnvironmentMutation) Where(ps ...predicate.TenantEnvironment) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TenantEnvironmentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TenantEnvironmentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TenantEnvironment, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TenantEnvironmentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TenantEnvironmentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TenantEnvironment).
+func (m *TenantEnvironmentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TenantEnvironmentMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.tenant != nil {
+		fields = append(fields, tenantenvironment.FieldTenantID)
+	}
+	if m.environment != nil {
+		fields = append(fields, tenantenvironment.FieldEnvironment)
+	}
+	if m.branding_config != nil {
+		fields = append(fields, tenantenvironment.FieldBrandingConfig)
+	}
+	if m.password_policy != nil {
+		fields = append(fields, tenantenvironment.FieldPasswordPolicy)
+	}
+	if m.security_policy != nil {
+		fields = append(fields, tenantenvironment.FieldSecurityPolicy)
+	}
+	if m.recovery_policy != nil {
+		fields = append(fields, tenantenvironment.FieldRecoveryPolicy)
+	}
+	if m.social_providers != nil {
+		fields = append(fields, tenantenvironment.FieldSocialProviders)
+	}
+	if m.role_policy != nil {
+		fields = append(fields, tenantenvironment.FieldRolePolicy)
+	}
+	if m.session_policy != nil {
+		fields = append(fields, tenantenvironment.FieldSessionPolicy)
+	}
+	if m.published_at != nil {
+		fields = append(fields, tenantenvironment.FieldPublishedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, tenantenvironment.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, tenantenvironment.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TenantEnvironmentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case tenantenvironment.FieldTenantID:
+		return m.TenantID()
+	case tenantenvironment.FieldEnvironment:
+		return m.Environment()
+	case tenantenvironment.FieldBrandingConfig:
+		return m.BrandingConfig()
+	case tenantenvironment.FieldPasswordPolicy:
+		return m.PasswordPolicy()
+	case tenantenvironment.FieldSecurityPolicy:
+		return m.SecurityPolicy()
+	case tenantenvironment.FieldRecoveryPolicy:
+		return m.RecoveryPolicy()
+	case tenantenvironment.FieldSocialProviders:
+		return m.SocialProviders()
+	case tenantenvironment.FieldRolePolicy:
+		return m.RolePolicy()
+	case tenantenvironment.FieldSessionPolicy:
+		return m.SessionPolicy()
+	case tenantenvironment.FieldPublishedAt:
+		return m.PublishedAt()
+	case tenantenvironment.FieldCreatedAt:
+		return m.CreatedAt()
+	case tenantenvironment.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TenantEnvironmentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case tenantenvironment.FieldTenantID:
+		return m.OldTenantID(ctx)
+	case tenantenvironment.FieldEnvironment:
+		return m.OldEnvironment(ctx)
+	case tenantenvironment.FieldBrandingConfig:
+		return m.OldBrandingConfig(ctx)
+	case tenantenvironment.FieldPasswordPolicy:
+		return m.OldPasswordPolicy(ctx)
+	case tenantenvironment.FieldSecurityPolicy:
+		return m.OldSecurityPolicy(ctx)
+	case tenantenvironment.FieldRecoveryPolicy:
+		return m.OldRecoveryPolicy(ctx)
+	case tenantenvironment.FieldSocialProviders:
+		return m.OldSocialProviders(ctx)
+	case tenantenvironment.FieldRolePolicy:
+		return m.OldRolePolicy(ctx)
+	case tenantenvironment.FieldSessionPolicy:
+		return m.OldSessionPolicy(ctx)
+	case tenantenvironment.FieldPublishedAt:
+		return m.OldPublishedAt(ctx)
+	case tenantenvironment.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case tenantenvironment.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TenantEnvironment field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TenantEnvironmentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case tenantenvironment.FieldTenantID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTenantID(v)
+		return nil
+	case tenantenvironment.FieldEnvironment:
+		v, ok := value.(tenantenvironment.Environment)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironment(v)
+		return nil
+	case tenantenvironment.FieldBrandingConfig:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBrandingConfig(v)
+		return nil
+	case tenantenvironment.FieldPasswordPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPasswordPolicy(v)
+		return nil
+	case tenantenvironment.FieldSecurityPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSecurityPolicy(v)
+		return nil
+	case tenantenvironment.FieldRecoveryPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRecoveryPolicy(v)
+		return nil
+	case tenantenvironment.FieldSocialProviders:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSocialProviders(v)
+		return nil
+	case tenantenvironment.FieldRolePolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRolePolicy(v)
+		return nil
+	case tenantenvironment.FieldSessionPolicy:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionPolicy(v)
+		return nil
+	case tenantenvironment.FieldPublishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublishedAt(v)
+		return nil
+	case tenantenvironment.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case tenantenvironment.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TenantEnvironment field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TenantEnvironmentMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TenantEnvironmentMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TenantEnvironmentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TenantEnvironment numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TenantEnvironmentMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(tenantenvironment.FieldBrandingConfig) {
+		fields = append(fields, tenantenvironment.FieldBrandingConfig)
+	}
+	if m.FieldCleared(tenantenvironment.FieldPasswordPolicy) {
+		fields = append(fields, tenantenvironment.FieldPasswordPolicy)
+	}
+	if m.FieldCleared(tenantenvironment.FieldSecurityPolicy) {
+		fields = append(fields, tenantenvironment.FieldSecurityPolicy)
+	}
+	if m.FieldCleared(tenantenvironment.FieldRecoveryPolicy) {
+		fields = append(fields, tenantenvironment.FieldRecoveryPolicy)
+	}
+	if m.FieldCleared(tenantenvironment.FieldSocialProviders) {
+		fields = append(fields, tenantenvironment.FieldSocialProviders)
+	}
+	if m.FieldCleared(tenantenvironment.FieldRolePolicy) {
+		fields = append(fields, tenantenvironment.FieldRolePolicy)
+	}
+	if m.FieldCleared(tenantenvironment.FieldSessionPolicy) {
+		fields = append(fields, tenantenvironment.FieldSessionPolicy)
+	}
+	if m.FieldCleared(tenantenvironment.FieldPublishedAt) {
+		fields = append(fields, tenantenvironment.FieldPublishedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TenantEnvironmentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TenantEnvironmentMutation) ClearField(name string) error {
+	switch name {
+	case tenantenvironment.FieldBrandingConfig:
+		m.ClearBrandingConfig()
+		return nil
+	case tenantenvironment.FieldPasswordPolicy:
+		m.ClearPasswordPolicy()
+		return nil
+	case tenantenvironment.FieldSecurityPolicy:
+		m.ClearSecurityPolicy()
+		return nil
+	case tenantenvironment.FieldRecoveryPolicy:
+		m.ClearRecoveryPolicy()
+		return nil
+	case tenantenvironment.FieldSocialProviders:
+		m.ClearSocialProviders()
+		return nil
+	case tenantenvironment.FieldRolePolicy:
+		m.ClearRolePolicy()
+		return nil
+	case tenantenvironment.FieldSessionPolicy:
+		m.ClearSessionPolicy()
+		return nil
+	case tenantenvironment.FieldPublishedAt:
+		m.ClearPublishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TenantEnvironment nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TenantEnvironmentMutation) ResetField(name string) error {
+	switch name {
+	case tenantenvironment.FieldTenantID:
+		m.ResetTenantID()
+		return nil
+	case tenantenvironment.FieldEnvironment:
+		m.ResetEnvironment()
+		return nil
+	case tenantenvironment.FieldBrandingConfig:
+		m.ResetBrandingConfig()
+		return nil
+	case tenantenvironment.FieldPasswordPolicy:
+		m.ResetPasswordPolicy()
+		return nil
+	case tenantenvironment.FieldSecurityPolicy:
+		m.ResetSecurityPolicy()
+		return nil
+	case tenantenvironment.FieldRecoveryPolicy:
+		m.ResetRecoveryPolicy()
+		return nil
+	case tenantenvironment.FieldSocialProviders:
+		m.ResetSocialProviders()
+		return nil
+	case tenantenvironment.FieldRolePolicy:
+		m.ResetRolePolicy()
+		return nil
+	case tenantenvironment.FieldSessionPolicy:
+		m.ResetSessionPolicy()
+		return nil
+	case tenantenvironment.FieldPublishedAt:
+		m.ResetPublishedAt()
+		return nil
+	case tenantenvironment.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case tenantenvironment.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TenantEnvironment field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TenantEnvironmentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.tenant != nil {
+		edges = append(edges, tenantenvironment.EdgeTenant)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TenantEnvironmentMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case tenantenvironment.EdgeTenant:
+		if id := m.tenant; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TenantEnvironmentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TenantEnvironmentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TenantEnvironmentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedtenant {
+		edges = append(edges, tenantenvironment.EdgeTenant)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TenantEnvironmentMutation) EdgeCleared(name string) bool {
+	switch name {
+	case tenantenvironment.EdgeTenant:
+		return m.clearedtenant
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TenantEnvironmentMutation) ClearEdge(name string) error {
+	switch name {
+	case tenantenvironment.EdgeTenant:
+		m.ClearTenant()
+		return nil
+	}
+	return fmt.Errorf("unknown TenantEnvironment unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TenantEnvironmentMutation) ResetEdge(name string) error {
+	switch name {
+	case tenantenvironment.EdgeTenant:
+		m.ResetTenant()
+		return nil
+	}
+	return fmt.Errorf("unknown TenantEnvironment edge %s", name)
 }
 
 // TrustedDeviceMutation represents an operation that mutates the TrustedDevice nodes in the graph.

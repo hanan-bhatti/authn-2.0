@@ -45,6 +45,20 @@ func (ou *OrganizationUpdate) SetNillableTenantID(s *string) *OrganizationUpdate
 	return ou
 }
 
+// SetEnvironment sets the "environment" field.
+func (ou *OrganizationUpdate) SetEnvironment(o organization.Environment) *OrganizationUpdate {
+	ou.mutation.SetEnvironment(o)
+	return ou
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (ou *OrganizationUpdate) SetNillableEnvironment(o *organization.Environment) *OrganizationUpdate {
+	if o != nil {
+		ou.SetEnvironment(*o)
+	}
+	return ou
+}
+
 // SetName sets the "name" field.
 func (ou *OrganizationUpdate) SetName(s string) *OrganizationUpdate {
 	ou.mutation.SetName(s)
@@ -263,6 +277,11 @@ func (ou *OrganizationUpdate) check() error {
 			return &ValidationError{Name: "tenant_id", err: fmt.Errorf(`ent: validator failed for field "Organization.tenant_id": %w`, err)}
 		}
 	}
+	if v, ok := ou.mutation.Environment(); ok {
+		if err := organization.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "Organization.environment": %w`, err)}
+		}
+	}
 	if v, ok := ou.mutation.Name(); ok {
 		if err := organization.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Organization.name": %w`, err)}
@@ -290,6 +309,9 @@ func (ou *OrganizationUpdate) sqlSave(ctx context.Context) (n int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := ou.mutation.Environment(); ok {
+		_spec.SetField(organization.FieldEnvironment, field.TypeEnum, value)
 	}
 	if value, ok := ou.mutation.Name(); ok {
 		_spec.SetField(organization.FieldName, field.TypeString, value)
@@ -503,6 +525,20 @@ func (ouo *OrganizationUpdateOne) SetTenantID(s string) *OrganizationUpdateOne {
 func (ouo *OrganizationUpdateOne) SetNillableTenantID(s *string) *OrganizationUpdateOne {
 	if s != nil {
 		ouo.SetTenantID(*s)
+	}
+	return ouo
+}
+
+// SetEnvironment sets the "environment" field.
+func (ouo *OrganizationUpdateOne) SetEnvironment(o organization.Environment) *OrganizationUpdateOne {
+	ouo.mutation.SetEnvironment(o)
+	return ouo
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (ouo *OrganizationUpdateOne) SetNillableEnvironment(o *organization.Environment) *OrganizationUpdateOne {
+	if o != nil {
+		ouo.SetEnvironment(*o)
 	}
 	return ouo
 }
@@ -738,6 +774,11 @@ func (ouo *OrganizationUpdateOne) check() error {
 			return &ValidationError{Name: "tenant_id", err: fmt.Errorf(`ent: validator failed for field "Organization.tenant_id": %w`, err)}
 		}
 	}
+	if v, ok := ouo.mutation.Environment(); ok {
+		if err := organization.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "Organization.environment": %w`, err)}
+		}
+	}
 	if v, ok := ouo.mutation.Name(); ok {
 		if err := organization.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Organization.name": %w`, err)}
@@ -782,6 +823,9 @@ func (ouo *OrganizationUpdateOne) sqlSave(ctx context.Context) (_node *Organizat
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := ouo.mutation.Environment(); ok {
+		_spec.SetField(organization.FieldEnvironment, field.TypeEnum, value)
 	}
 	if value, ok := ouo.mutation.Name(); ok {
 		_spec.SetField(organization.FieldName, field.TypeString, value)

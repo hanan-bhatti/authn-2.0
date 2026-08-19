@@ -17,7 +17,9 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 )
@@ -131,90 +133,6 @@ func (tu *TenantUpdate) SetNillableFirstAdminClaimed(b *bool) *TenantUpdate {
 	return tu
 }
 
-// SetBrandingConfig sets the "branding_config" field.
-func (tu *TenantUpdate) SetBrandingConfig(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetBrandingConfig(m)
-	return tu
-}
-
-// ClearBrandingConfig clears the value of the "branding_config" field.
-func (tu *TenantUpdate) ClearBrandingConfig() *TenantUpdate {
-	tu.mutation.ClearBrandingConfig()
-	return tu
-}
-
-// SetPasswordPolicy sets the "password_policy" field.
-func (tu *TenantUpdate) SetPasswordPolicy(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetPasswordPolicy(m)
-	return tu
-}
-
-// ClearPasswordPolicy clears the value of the "password_policy" field.
-func (tu *TenantUpdate) ClearPasswordPolicy() *TenantUpdate {
-	tu.mutation.ClearPasswordPolicy()
-	return tu
-}
-
-// SetSecurityPolicy sets the "security_policy" field.
-func (tu *TenantUpdate) SetSecurityPolicy(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetSecurityPolicy(m)
-	return tu
-}
-
-// ClearSecurityPolicy clears the value of the "security_policy" field.
-func (tu *TenantUpdate) ClearSecurityPolicy() *TenantUpdate {
-	tu.mutation.ClearSecurityPolicy()
-	return tu
-}
-
-// SetRecoveryPolicy sets the "recovery_policy" field.
-func (tu *TenantUpdate) SetRecoveryPolicy(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetRecoveryPolicy(m)
-	return tu
-}
-
-// ClearRecoveryPolicy clears the value of the "recovery_policy" field.
-func (tu *TenantUpdate) ClearRecoveryPolicy() *TenantUpdate {
-	tu.mutation.ClearRecoveryPolicy()
-	return tu
-}
-
-// SetSocialProviders sets the "social_providers" field.
-func (tu *TenantUpdate) SetSocialProviders(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetSocialProviders(m)
-	return tu
-}
-
-// ClearSocialProviders clears the value of the "social_providers" field.
-func (tu *TenantUpdate) ClearSocialProviders() *TenantUpdate {
-	tu.mutation.ClearSocialProviders()
-	return tu
-}
-
-// SetRolePolicy sets the "role_policy" field.
-func (tu *TenantUpdate) SetRolePolicy(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetRolePolicy(m)
-	return tu
-}
-
-// ClearRolePolicy clears the value of the "role_policy" field.
-func (tu *TenantUpdate) ClearRolePolicy() *TenantUpdate {
-	tu.mutation.ClearRolePolicy()
-	return tu
-}
-
-// SetSessionPolicy sets the "session_policy" field.
-func (tu *TenantUpdate) SetSessionPolicy(m map[string]interface{}) *TenantUpdate {
-	tu.mutation.SetSessionPolicy(m)
-	return tu
-}
-
-// ClearSessionPolicy clears the value of the "session_policy" field.
-func (tu *TenantUpdate) ClearSessionPolicy() *TenantUpdate {
-	tu.mutation.ClearSessionPolicy()
-	return tu
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (tu *TenantUpdate) SetUpdatedAt(t time.Time) *TenantUpdate {
 	tu.mutation.SetUpdatedAt(t)
@@ -309,6 +227,36 @@ func (tu *TenantUpdate) AddAuditLogs(a ...*AuditLog) *TenantUpdate {
 		ids[i] = a[i].ID
 	}
 	return tu.AddAuditLogIDs(ids...)
+}
+
+// AddEnvironmentIDs adds the "environments" edge to the TenantEnvironment entity by IDs.
+func (tu *TenantUpdate) AddEnvironmentIDs(ids ...string) *TenantUpdate {
+	tu.mutation.AddEnvironmentIDs(ids...)
+	return tu
+}
+
+// AddEnvironments adds the "environments" edges to the TenantEnvironment entity.
+func (tu *TenantUpdate) AddEnvironments(t ...*TenantEnvironment) *TenantUpdate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return tu.AddEnvironmentIDs(ids...)
+}
+
+// AddSandboxMessageIDs adds the "sandbox_messages" edge to the SandboxMessage entity by IDs.
+func (tu *TenantUpdate) AddSandboxMessageIDs(ids ...string) *TenantUpdate {
+	tu.mutation.AddSandboxMessageIDs(ids...)
+	return tu
+}
+
+// AddSandboxMessages adds the "sandbox_messages" edges to the SandboxMessage entity.
+func (tu *TenantUpdate) AddSandboxMessages(s ...*SandboxMessage) *TenantUpdate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return tu.AddSandboxMessageIDs(ids...)
 }
 
 // AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by IDs.
@@ -457,6 +405,48 @@ func (tu *TenantUpdate) RemoveAuditLogs(a ...*AuditLog) *TenantUpdate {
 	return tu.RemoveAuditLogIDs(ids...)
 }
 
+// ClearEnvironments clears all "environments" edges to the TenantEnvironment entity.
+func (tu *TenantUpdate) ClearEnvironments() *TenantUpdate {
+	tu.mutation.ClearEnvironments()
+	return tu
+}
+
+// RemoveEnvironmentIDs removes the "environments" edge to TenantEnvironment entities by IDs.
+func (tu *TenantUpdate) RemoveEnvironmentIDs(ids ...string) *TenantUpdate {
+	tu.mutation.RemoveEnvironmentIDs(ids...)
+	return tu
+}
+
+// RemoveEnvironments removes "environments" edges to TenantEnvironment entities.
+func (tu *TenantUpdate) RemoveEnvironments(t ...*TenantEnvironment) *TenantUpdate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return tu.RemoveEnvironmentIDs(ids...)
+}
+
+// ClearSandboxMessages clears all "sandbox_messages" edges to the SandboxMessage entity.
+func (tu *TenantUpdate) ClearSandboxMessages() *TenantUpdate {
+	tu.mutation.ClearSandboxMessages()
+	return tu
+}
+
+// RemoveSandboxMessageIDs removes the "sandbox_messages" edge to SandboxMessage entities by IDs.
+func (tu *TenantUpdate) RemoveSandboxMessageIDs(ids ...string) *TenantUpdate {
+	tu.mutation.RemoveSandboxMessageIDs(ids...)
+	return tu
+}
+
+// RemoveSandboxMessages removes "sandbox_messages" edges to SandboxMessage entities.
+func (tu *TenantUpdate) RemoveSandboxMessages(s ...*SandboxMessage) *TenantUpdate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return tu.RemoveSandboxMessageIDs(ids...)
+}
+
 // ClearManagedTenants clears all "managed_tenants" edges to the ManagedTenant entity.
 func (tu *TenantUpdate) ClearManagedTenants() *TenantUpdate {
 	tu.mutation.ClearManagedTenants()
@@ -564,48 +554,6 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if value, ok := tu.mutation.FirstAdminClaimed(); ok {
 		_spec.SetField(tenant.FieldFirstAdminClaimed, field.TypeBool, value)
-	}
-	if value, ok := tu.mutation.BrandingConfig(); ok {
-		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)
-	}
-	if tu.mutation.BrandingConfigCleared() {
-		_spec.ClearField(tenant.FieldBrandingConfig, field.TypeJSON)
-	}
-	if value, ok := tu.mutation.PasswordPolicy(); ok {
-		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
-	}
-	if tu.mutation.PasswordPolicyCleared() {
-		_spec.ClearField(tenant.FieldPasswordPolicy, field.TypeJSON)
-	}
-	if value, ok := tu.mutation.SecurityPolicy(); ok {
-		_spec.SetField(tenant.FieldSecurityPolicy, field.TypeJSON, value)
-	}
-	if tu.mutation.SecurityPolicyCleared() {
-		_spec.ClearField(tenant.FieldSecurityPolicy, field.TypeJSON)
-	}
-	if value, ok := tu.mutation.RecoveryPolicy(); ok {
-		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
-	}
-	if tu.mutation.RecoveryPolicyCleared() {
-		_spec.ClearField(tenant.FieldRecoveryPolicy, field.TypeJSON)
-	}
-	if value, ok := tu.mutation.SocialProviders(); ok {
-		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
-	}
-	if tu.mutation.SocialProvidersCleared() {
-		_spec.ClearField(tenant.FieldSocialProviders, field.TypeJSON)
-	}
-	if value, ok := tu.mutation.RolePolicy(); ok {
-		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
-	}
-	if tu.mutation.RolePolicyCleared() {
-		_spec.ClearField(tenant.FieldRolePolicy, field.TypeJSON)
-	}
-	if value, ok := tu.mutation.SessionPolicy(); ok {
-		_spec.SetField(tenant.FieldSessionPolicy, field.TypeJSON, value)
-	}
-	if tu.mutation.SessionPolicyCleared() {
-		_spec.ClearField(tenant.FieldSessionPolicy, field.TypeJSON)
 	}
 	if value, ok := tu.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -880,6 +828,96 @@ func (tu *TenantUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if tu.mutation.EnvironmentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tu.mutation.RemovedEnvironmentsIDs(); len(nodes) > 0 && !tu.mutation.EnvironmentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tu.mutation.EnvironmentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if tu.mutation.SandboxMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tu.mutation.RemovedSandboxMessagesIDs(); len(nodes) > 0 && !tu.mutation.SandboxMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tu.mutation.SandboxMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if tu.mutation.ManagedTenantsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1041,90 +1079,6 @@ func (tuo *TenantUpdateOne) SetNillableFirstAdminClaimed(b *bool) *TenantUpdateO
 	return tuo
 }
 
-// SetBrandingConfig sets the "branding_config" field.
-func (tuo *TenantUpdateOne) SetBrandingConfig(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetBrandingConfig(m)
-	return tuo
-}
-
-// ClearBrandingConfig clears the value of the "branding_config" field.
-func (tuo *TenantUpdateOne) ClearBrandingConfig() *TenantUpdateOne {
-	tuo.mutation.ClearBrandingConfig()
-	return tuo
-}
-
-// SetPasswordPolicy sets the "password_policy" field.
-func (tuo *TenantUpdateOne) SetPasswordPolicy(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetPasswordPolicy(m)
-	return tuo
-}
-
-// ClearPasswordPolicy clears the value of the "password_policy" field.
-func (tuo *TenantUpdateOne) ClearPasswordPolicy() *TenantUpdateOne {
-	tuo.mutation.ClearPasswordPolicy()
-	return tuo
-}
-
-// SetSecurityPolicy sets the "security_policy" field.
-func (tuo *TenantUpdateOne) SetSecurityPolicy(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetSecurityPolicy(m)
-	return tuo
-}
-
-// ClearSecurityPolicy clears the value of the "security_policy" field.
-func (tuo *TenantUpdateOne) ClearSecurityPolicy() *TenantUpdateOne {
-	tuo.mutation.ClearSecurityPolicy()
-	return tuo
-}
-
-// SetRecoveryPolicy sets the "recovery_policy" field.
-func (tuo *TenantUpdateOne) SetRecoveryPolicy(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetRecoveryPolicy(m)
-	return tuo
-}
-
-// ClearRecoveryPolicy clears the value of the "recovery_policy" field.
-func (tuo *TenantUpdateOne) ClearRecoveryPolicy() *TenantUpdateOne {
-	tuo.mutation.ClearRecoveryPolicy()
-	return tuo
-}
-
-// SetSocialProviders sets the "social_providers" field.
-func (tuo *TenantUpdateOne) SetSocialProviders(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetSocialProviders(m)
-	return tuo
-}
-
-// ClearSocialProviders clears the value of the "social_providers" field.
-func (tuo *TenantUpdateOne) ClearSocialProviders() *TenantUpdateOne {
-	tuo.mutation.ClearSocialProviders()
-	return tuo
-}
-
-// SetRolePolicy sets the "role_policy" field.
-func (tuo *TenantUpdateOne) SetRolePolicy(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetRolePolicy(m)
-	return tuo
-}
-
-// ClearRolePolicy clears the value of the "role_policy" field.
-func (tuo *TenantUpdateOne) ClearRolePolicy() *TenantUpdateOne {
-	tuo.mutation.ClearRolePolicy()
-	return tuo
-}
-
-// SetSessionPolicy sets the "session_policy" field.
-func (tuo *TenantUpdateOne) SetSessionPolicy(m map[string]interface{}) *TenantUpdateOne {
-	tuo.mutation.SetSessionPolicy(m)
-	return tuo
-}
-
-// ClearSessionPolicy clears the value of the "session_policy" field.
-func (tuo *TenantUpdateOne) ClearSessionPolicy() *TenantUpdateOne {
-	tuo.mutation.ClearSessionPolicy()
-	return tuo
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (tuo *TenantUpdateOne) SetUpdatedAt(t time.Time) *TenantUpdateOne {
 	tuo.mutation.SetUpdatedAt(t)
@@ -1219,6 +1173,36 @@ func (tuo *TenantUpdateOne) AddAuditLogs(a ...*AuditLog) *TenantUpdateOne {
 		ids[i] = a[i].ID
 	}
 	return tuo.AddAuditLogIDs(ids...)
+}
+
+// AddEnvironmentIDs adds the "environments" edge to the TenantEnvironment entity by IDs.
+func (tuo *TenantUpdateOne) AddEnvironmentIDs(ids ...string) *TenantUpdateOne {
+	tuo.mutation.AddEnvironmentIDs(ids...)
+	return tuo
+}
+
+// AddEnvironments adds the "environments" edges to the TenantEnvironment entity.
+func (tuo *TenantUpdateOne) AddEnvironments(t ...*TenantEnvironment) *TenantUpdateOne {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return tuo.AddEnvironmentIDs(ids...)
+}
+
+// AddSandboxMessageIDs adds the "sandbox_messages" edge to the SandboxMessage entity by IDs.
+func (tuo *TenantUpdateOne) AddSandboxMessageIDs(ids ...string) *TenantUpdateOne {
+	tuo.mutation.AddSandboxMessageIDs(ids...)
+	return tuo
+}
+
+// AddSandboxMessages adds the "sandbox_messages" edges to the SandboxMessage entity.
+func (tuo *TenantUpdateOne) AddSandboxMessages(s ...*SandboxMessage) *TenantUpdateOne {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return tuo.AddSandboxMessageIDs(ids...)
 }
 
 // AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by IDs.
@@ -1367,6 +1351,48 @@ func (tuo *TenantUpdateOne) RemoveAuditLogs(a ...*AuditLog) *TenantUpdateOne {
 	return tuo.RemoveAuditLogIDs(ids...)
 }
 
+// ClearEnvironments clears all "environments" edges to the TenantEnvironment entity.
+func (tuo *TenantUpdateOne) ClearEnvironments() *TenantUpdateOne {
+	tuo.mutation.ClearEnvironments()
+	return tuo
+}
+
+// RemoveEnvironmentIDs removes the "environments" edge to TenantEnvironment entities by IDs.
+func (tuo *TenantUpdateOne) RemoveEnvironmentIDs(ids ...string) *TenantUpdateOne {
+	tuo.mutation.RemoveEnvironmentIDs(ids...)
+	return tuo
+}
+
+// RemoveEnvironments removes "environments" edges to TenantEnvironment entities.
+func (tuo *TenantUpdateOne) RemoveEnvironments(t ...*TenantEnvironment) *TenantUpdateOne {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return tuo.RemoveEnvironmentIDs(ids...)
+}
+
+// ClearSandboxMessages clears all "sandbox_messages" edges to the SandboxMessage entity.
+func (tuo *TenantUpdateOne) ClearSandboxMessages() *TenantUpdateOne {
+	tuo.mutation.ClearSandboxMessages()
+	return tuo
+}
+
+// RemoveSandboxMessageIDs removes the "sandbox_messages" edge to SandboxMessage entities by IDs.
+func (tuo *TenantUpdateOne) RemoveSandboxMessageIDs(ids ...string) *TenantUpdateOne {
+	tuo.mutation.RemoveSandboxMessageIDs(ids...)
+	return tuo
+}
+
+// RemoveSandboxMessages removes "sandbox_messages" edges to SandboxMessage entities.
+func (tuo *TenantUpdateOne) RemoveSandboxMessages(s ...*SandboxMessage) *TenantUpdateOne {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return tuo.RemoveSandboxMessageIDs(ids...)
+}
+
 // ClearManagedTenants clears all "managed_tenants" edges to the ManagedTenant entity.
 func (tuo *TenantUpdateOne) ClearManagedTenants() *TenantUpdateOne {
 	tuo.mutation.ClearManagedTenants()
@@ -1504,48 +1530,6 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 	}
 	if value, ok := tuo.mutation.FirstAdminClaimed(); ok {
 		_spec.SetField(tenant.FieldFirstAdminClaimed, field.TypeBool, value)
-	}
-	if value, ok := tuo.mutation.BrandingConfig(); ok {
-		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)
-	}
-	if tuo.mutation.BrandingConfigCleared() {
-		_spec.ClearField(tenant.FieldBrandingConfig, field.TypeJSON)
-	}
-	if value, ok := tuo.mutation.PasswordPolicy(); ok {
-		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
-	}
-	if tuo.mutation.PasswordPolicyCleared() {
-		_spec.ClearField(tenant.FieldPasswordPolicy, field.TypeJSON)
-	}
-	if value, ok := tuo.mutation.SecurityPolicy(); ok {
-		_spec.SetField(tenant.FieldSecurityPolicy, field.TypeJSON, value)
-	}
-	if tuo.mutation.SecurityPolicyCleared() {
-		_spec.ClearField(tenant.FieldSecurityPolicy, field.TypeJSON)
-	}
-	if value, ok := tuo.mutation.RecoveryPolicy(); ok {
-		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
-	}
-	if tuo.mutation.RecoveryPolicyCleared() {
-		_spec.ClearField(tenant.FieldRecoveryPolicy, field.TypeJSON)
-	}
-	if value, ok := tuo.mutation.SocialProviders(); ok {
-		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
-	}
-	if tuo.mutation.SocialProvidersCleared() {
-		_spec.ClearField(tenant.FieldSocialProviders, field.TypeJSON)
-	}
-	if value, ok := tuo.mutation.RolePolicy(); ok {
-		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
-	}
-	if tuo.mutation.RolePolicyCleared() {
-		_spec.ClearField(tenant.FieldRolePolicy, field.TypeJSON)
-	}
-	if value, ok := tuo.mutation.SessionPolicy(); ok {
-		_spec.SetField(tenant.FieldSessionPolicy, field.TypeJSON, value)
-	}
-	if tuo.mutation.SessionPolicyCleared() {
-		_spec.ClearField(tenant.FieldSessionPolicy, field.TypeJSON)
 	}
 	if value, ok := tuo.mutation.UpdatedAt(); ok {
 		_spec.SetField(tenant.FieldUpdatedAt, field.TypeTime, value)
@@ -1813,6 +1797,96 @@ func (tuo *TenantUpdateOne) sqlSave(ctx context.Context) (_node *Tenant, err err
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(auditlog.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if tuo.mutation.EnvironmentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tuo.mutation.RemovedEnvironmentsIDs(); len(nodes) > 0 && !tuo.mutation.EnvironmentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tuo.mutation.EnvironmentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if tuo.mutation.SandboxMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tuo.mutation.RemovedSandboxMessagesIDs(); len(nodes) > 0 && !tuo.mutation.SandboxMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := tuo.mutation.SandboxMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

@@ -57,27 +57,6 @@ func (Tenant) Fields() []ent.Field {
 		field.Bool("first_admin_claimed").
 			Default(false).
 			Comment("Atomic flag: true once the first tenant_admin role has been claimed via signup. Set via a conditional UPDATE (WHERE first_admin_claimed = false) to prevent concurrent signups from both receiving tenant_admin (TOCTOU race fix)."),
-		field.JSON("branding_config", map[string]interface{}{}).
-			Optional().
-			Comment("JSON blob containing brand colors, logo URL, custom CSS, and email templates"),
-		field.JSON("password_policy", map[string]interface{}{}).
-			Optional().
-			Comment("JSON blob containing password complexity policy rules"),
-		field.JSON("security_policy", map[string]interface{}{}).
-			Optional().
-			Comment("JSON blob containing tenant security policy settings (require_email_verification, email_verification_mode)"),
-		field.JSON("recovery_policy", map[string]interface{}{}).
-			Optional().
-			Comment("JSON blob containing tenant account recovery policy rules"),
-		field.JSON("social_providers", map[string]interface{}{}).
-			Optional().
-			Comment("Per-provider OAuth2 configuration keyed by provider name (google, github, discord, etc.). Each entry holds: enabled bool, client_id string, client_secret_encrypted string (AES-256-GCM). Client secrets are never returned in API responses."),
-		field.JSON("role_policy", map[string]interface{}{}).
-			Optional().
-			Comment("JSON blob containing tenant role & permission restrictions and assignment policies"),
-		field.JSON("session_policy", map[string]interface{}{}).
-			Optional().
-			Comment("JSON blob containing cookie SameSite mode and session/access token lifetimes. Lives here rather than in the environment because a customer changes it and it must take effect without a redeploy; the cookie Domain stays an env value because a server can only set cookies for a domain it is served from."),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
@@ -98,6 +77,12 @@ func (Tenant) Edges() []ent.Edge {
 		edge.To("roles", Role.Type),
 		edge.To("webhook_endpoints", WebhookEndpoint.Type),
 		edge.To("audit_logs", AuditLog.Type),
+		// environments hold the settings a customer can change, one row per
+		// environment. They are an edge rather than columns on this row because test
+		// and live must be configurable independently — see
+		// ent/schema/tenant_environment.go.
+		edge.To("environments", TenantEnvironment.Type),
+		edge.To("sandbox_messages", SandboxMessage.Type),
 		// managed_tenants are the control plane's ownership records, and exist only
 		// on the platform tenant: each row says "this platform user owns that
 		// customer tenant". The edge is declared so the join is generated, but the

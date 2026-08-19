@@ -15,7 +15,9 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/managedtenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 )
@@ -92,48 +94,6 @@ func (tc *TenantCreate) SetNillableFirstAdminClaimed(b *bool) *TenantCreate {
 	if b != nil {
 		tc.SetFirstAdminClaimed(*b)
 	}
-	return tc
-}
-
-// SetBrandingConfig sets the "branding_config" field.
-func (tc *TenantCreate) SetBrandingConfig(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetBrandingConfig(m)
-	return tc
-}
-
-// SetPasswordPolicy sets the "password_policy" field.
-func (tc *TenantCreate) SetPasswordPolicy(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetPasswordPolicy(m)
-	return tc
-}
-
-// SetSecurityPolicy sets the "security_policy" field.
-func (tc *TenantCreate) SetSecurityPolicy(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetSecurityPolicy(m)
-	return tc
-}
-
-// SetRecoveryPolicy sets the "recovery_policy" field.
-func (tc *TenantCreate) SetRecoveryPolicy(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetRecoveryPolicy(m)
-	return tc
-}
-
-// SetSocialProviders sets the "social_providers" field.
-func (tc *TenantCreate) SetSocialProviders(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetSocialProviders(m)
-	return tc
-}
-
-// SetRolePolicy sets the "role_policy" field.
-func (tc *TenantCreate) SetRolePolicy(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetRolePolicy(m)
-	return tc
-}
-
-// SetSessionPolicy sets the "session_policy" field.
-func (tc *TenantCreate) SetSessionPolicy(m map[string]interface{}) *TenantCreate {
-	tc.mutation.SetSessionPolicy(m)
 	return tc
 }
 
@@ -259,6 +219,36 @@ func (tc *TenantCreate) AddAuditLogs(a ...*AuditLog) *TenantCreate {
 		ids[i] = a[i].ID
 	}
 	return tc.AddAuditLogIDs(ids...)
+}
+
+// AddEnvironmentIDs adds the "environments" edge to the TenantEnvironment entity by IDs.
+func (tc *TenantCreate) AddEnvironmentIDs(ids ...string) *TenantCreate {
+	tc.mutation.AddEnvironmentIDs(ids...)
+	return tc
+}
+
+// AddEnvironments adds the "environments" edges to the TenantEnvironment entity.
+func (tc *TenantCreate) AddEnvironments(t ...*TenantEnvironment) *TenantCreate {
+	ids := make([]string, len(t))
+	for i := range t {
+		ids[i] = t[i].ID
+	}
+	return tc.AddEnvironmentIDs(ids...)
+}
+
+// AddSandboxMessageIDs adds the "sandbox_messages" edge to the SandboxMessage entity by IDs.
+func (tc *TenantCreate) AddSandboxMessageIDs(ids ...string) *TenantCreate {
+	tc.mutation.AddSandboxMessageIDs(ids...)
+	return tc
+}
+
+// AddSandboxMessages adds the "sandbox_messages" edges to the SandboxMessage entity.
+func (tc *TenantCreate) AddSandboxMessages(s ...*SandboxMessage) *TenantCreate {
+	ids := make([]string, len(s))
+	for i := range s {
+		ids[i] = s[i].ID
+	}
+	return tc.AddSandboxMessageIDs(ids...)
 }
 
 // AddManagedTenantIDs adds the "managed_tenants" edge to the ManagedTenant entity by IDs.
@@ -418,34 +408,6 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 		_spec.SetField(tenant.FieldFirstAdminClaimed, field.TypeBool, value)
 		_node.FirstAdminClaimed = value
 	}
-	if value, ok := tc.mutation.BrandingConfig(); ok {
-		_spec.SetField(tenant.FieldBrandingConfig, field.TypeJSON, value)
-		_node.BrandingConfig = value
-	}
-	if value, ok := tc.mutation.PasswordPolicy(); ok {
-		_spec.SetField(tenant.FieldPasswordPolicy, field.TypeJSON, value)
-		_node.PasswordPolicy = value
-	}
-	if value, ok := tc.mutation.SecurityPolicy(); ok {
-		_spec.SetField(tenant.FieldSecurityPolicy, field.TypeJSON, value)
-		_node.SecurityPolicy = value
-	}
-	if value, ok := tc.mutation.RecoveryPolicy(); ok {
-		_spec.SetField(tenant.FieldRecoveryPolicy, field.TypeJSON, value)
-		_node.RecoveryPolicy = value
-	}
-	if value, ok := tc.mutation.SocialProviders(); ok {
-		_spec.SetField(tenant.FieldSocialProviders, field.TypeJSON, value)
-		_node.SocialProviders = value
-	}
-	if value, ok := tc.mutation.RolePolicy(); ok {
-		_spec.SetField(tenant.FieldRolePolicy, field.TypeJSON, value)
-		_node.RolePolicy = value
-	}
-	if value, ok := tc.mutation.SessionPolicy(); ok {
-		_spec.SetField(tenant.FieldSessionPolicy, field.TypeJSON, value)
-		_node.SessionPolicy = value
-	}
 	if value, ok := tc.mutation.CreatedAt(); ok {
 		_spec.SetField(tenant.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -543,6 +505,38 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(auditlog.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := tc.mutation.EnvironmentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.EnvironmentsTable,
+			Columns: []string{tenant.EnvironmentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tenantenvironment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := tc.mutation.SandboxMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   tenant.SandboxMessagesTable,
+			Columns: []string{tenant.SandboxMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(sandboxmessage.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

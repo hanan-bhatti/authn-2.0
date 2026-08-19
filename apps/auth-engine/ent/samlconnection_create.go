@@ -71,6 +71,20 @@ func (scc *SAMLConnectionCreate) SetNillableEnforceSSO(b *bool) *SAMLConnectionC
 	return scc
 }
 
+// SetEnvironment sets the "environment" field.
+func (scc *SAMLConnectionCreate) SetEnvironment(s samlconnection.Environment) *SAMLConnectionCreate {
+	scc.mutation.SetEnvironment(s)
+	return scc
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (scc *SAMLConnectionCreate) SetNillableEnvironment(s *samlconnection.Environment) *SAMLConnectionCreate {
+	if s != nil {
+		scc.SetEnvironment(*s)
+	}
+	return scc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (scc *SAMLConnectionCreate) SetCreatedAt(t time.Time) *SAMLConnectionCreate {
 	scc.mutation.SetCreatedAt(t)
@@ -149,6 +163,10 @@ func (scc *SAMLConnectionCreate) defaults() {
 		v := samlconnection.DefaultEnforceSSO
 		scc.mutation.SetEnforceSSO(v)
 	}
+	if _, ok := scc.mutation.Environment(); !ok {
+		v := samlconnection.DefaultEnvironment
+		scc.mutation.SetEnvironment(v)
+	}
 	if _, ok := scc.mutation.CreatedAt(); !ok {
 		v := samlconnection.DefaultCreatedAt()
 		scc.mutation.SetCreatedAt(v)
@@ -198,6 +216,14 @@ func (scc *SAMLConnectionCreate) check() error {
 	}
 	if _, ok := scc.mutation.EnforceSSO(); !ok {
 		return &ValidationError{Name: "enforce_sso", err: errors.New(`ent: missing required field "SAMLConnection.enforce_sso"`)}
+	}
+	if _, ok := scc.mutation.Environment(); !ok {
+		return &ValidationError{Name: "environment", err: errors.New(`ent: missing required field "SAMLConnection.environment"`)}
+	}
+	if v, ok := scc.mutation.Environment(); ok {
+		if err := samlconnection.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "SAMLConnection.environment": %w`, err)}
+		}
 	}
 	if _, ok := scc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "SAMLConnection.created_at"`)}
@@ -266,6 +292,10 @@ func (scc *SAMLConnectionCreate) createSpec() (*SAMLConnection, *sqlgraph.Create
 	if value, ok := scc.mutation.EnforceSSO(); ok {
 		_spec.SetField(samlconnection.FieldEnforceSSO, field.TypeBool, value)
 		_node.EnforceSSO = value
+	}
+	if value, ok := scc.mutation.Environment(); ok {
+		_spec.SetField(samlconnection.FieldEnvironment, field.TypeEnum, value)
+		_node.Environment = value
 	}
 	if value, ok := scc.mutation.CreatedAt(); ok {
 		_spec.SetField(samlconnection.FieldCreatedAt, field.TypeTime, value)

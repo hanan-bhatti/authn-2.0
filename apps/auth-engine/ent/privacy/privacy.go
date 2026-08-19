@@ -446,6 +446,30 @@ func (f SAMLConnectionMutationRuleFunc) EvalMutation(ctx context.Context, m ent.
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SAMLConnectionMutation", m)
 }
 
+// The SandboxMessageQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type SandboxMessageQueryRuleFunc func(context.Context, *ent.SandboxMessageQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f SandboxMessageQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SandboxMessageQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.SandboxMessageQuery", q)
+}
+
+// The SandboxMessageMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type SandboxMessageMutationRuleFunc func(context.Context, *ent.SandboxMessageMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f SandboxMessageMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.SandboxMessageMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SandboxMessageMutation", m)
+}
+
 // The SecurityBlacklistQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type SecurityBlacklistQueryRuleFunc func(context.Context, *ent.SecurityBlacklistQuery) error
@@ -564,6 +588,30 @@ func (f TenantMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.TenantMutation", m)
+}
+
+// The TenantEnvironmentQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type TenantEnvironmentQueryRuleFunc func(context.Context, *ent.TenantEnvironmentQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f TenantEnvironmentQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.TenantEnvironmentQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.TenantEnvironmentQuery", q)
+}
+
+// The TenantEnvironmentMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type TenantEnvironmentMutationRuleFunc func(context.Context, *ent.TenantEnvironmentMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f TenantEnvironmentMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.TenantEnvironmentMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.TenantEnvironmentMutation", m)
 }
 
 // The TrustedDeviceQueryRuleFunc type is an adapter to allow the use of ordinary
