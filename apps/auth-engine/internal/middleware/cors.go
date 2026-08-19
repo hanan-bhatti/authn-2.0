@@ -24,6 +24,24 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 )
 
+// exposedResponseHeaders are the engine's own response headers a browser client
+// is permitted to read cross-origin.
+//
+// A browser hides every response header from a cross-origin caller except a fixed
+// safelist — Cache-Control, Content-Language, Content-Type, Expires, Last-Modified
+// and Pragma. Anything else must be named here or fetch() reports it as absent,
+// with no error to say why. Both of these are read by clients: Retry-After carries
+// the server's own backoff interval, without which a rate-limited client can only
+// guess, and X-Authn-Degraded-Mode tells a client that Redis is down and some
+// checks are running in a reduced mode.
+//
+// This list is fixed rather than configured: it names headers the engine sets
+// itself, so a deployment has nothing to add to it.
+var exposedResponseHeaders = []string{
+	"X-Authn-Degraded-Mode",
+	"Retry-After",
+}
+
 // CORS returns a Fiber middleware enforcing the configured cross-origin policy.
 //
 // Origins come from CORS_ALLOWED_ORIGINS and are matched exactly, so only a
@@ -63,6 +81,7 @@ func CORS(cfg *config.Config) fiber.Handler {
 		},
 		AllowMethods:     strings.Join(cfg.CORSAllowedMethods, ","),
 		AllowHeaders:     strings.Join(cfg.CORSAllowedHeaders, ","),
+		ExposeHeaders:    strings.Join(exposedResponseHeaders, ","),
 		AllowCredentials: cfg.CORSAllowCredentials,
 		MaxAge:           int(cfg.CORSMaxAge.Seconds()),
 	})
