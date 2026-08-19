@@ -135,9 +135,9 @@ type createTenantRequest struct {
 // for an unusable name, slug or environment; 409 when the slug is taken; 429 when
 // the caller has exhausted their provisioning budget.
 func (h *Handler) CreateTenant(c *fiber.Ctx) error {
-	platformTenantID, err := middleware.RequireTenantID(c)
-	if err != nil {
-		return err
+	platformTenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	ownerUserID := middleware.PlatformUserID(c)
 	if ownerUserID == "" {
