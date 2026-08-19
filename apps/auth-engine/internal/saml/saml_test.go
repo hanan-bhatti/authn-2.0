@@ -37,6 +37,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	_ "github.com/mattn/go-sqlite3"
 	dsig "github.com/russellhaering/goxmldsig"
@@ -58,6 +59,12 @@ func testConfig() *config.Config {
 		AppBaseURL:                testAppBaseURL,
 		SAMLAssertionConsumerPath: "/v1/saml/acs",
 		SAMLSPEntityIDPrefix:      testSPEntityIDPrefix,
+		// A signing key is required rather than incidental: a validated assertion
+		// now ends in an access token, and an unsigned or blank-keyed token would
+		// be rejected by this deployment's own middleware.
+		EncryptionKey:   "test-encryption-key-for-saml-sso-suite",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 24 * time.Hour,
 	}
 }
 
@@ -92,7 +99,7 @@ func setupTestSAMLService(t *testing.T) (*saml.Service, *clientfactory.ClientFac
 		t.Fatalf("failed to seed organization: %v", err)
 	}
 
-	svc := saml.NewService(factory, nil, testConfig())
+	svc := saml.NewService(factory, nil, session.NewRepository(factory), testConfig())
 
 	cleanup := func() {
 		_ = factory.Close()
@@ -382,10 +389,14 @@ const testIdPEntityID = "http://www.okta.com/exk123"
 
 // newACSFixture provisions a service with one active SAML connection trusting
 // idp's certificate for the siemens.com domain.
-func newACSFixture(t *testing.T, idp *signingIdentity) (*saml.Service, context.Context, func()) {
+//
+// The factory is returned as well as the service, because the assertions that
+// matter about a completed sign-in are about rows it wrote — the session it is
+// carried by, and the accounts it chose between.
+func newACSFixture(t *testing.T, idp *signingIdentity) (*saml.Service, context.Context, *clientfactory.ClientFactory, func()) {
 	t.Helper()
 
-	svc, _, cleanup := setupTestSAMLService(t)
+	svc, factory, cleanup := setupTestSAMLService(t)
 	ctx := privacy.NewBypassContext(context.Background())
 
 	_, err := svc.CreateSAMLConnection(ctx, "tnt_test", "usr_admin", saml.CreateSAMLRequest{
@@ -401,28 +412,28 @@ func newACSFixture(t *testing.T, idp *signingIdentity) (*saml.Service, context.C
 		t.Fatalf("failed to create SAML connection: %v", err)
 	}
 
-	return svc, ctx, cleanup
+	return svc, ctx, factory, cleanup
 }
 
 // A correctly signed assertion authenticates its subject and provisions them
 // into the organization the connection belongs to.
 func TestProcessACSAcceptsSignedAssertion(t *testing.T) {
 	idp := newSigningIdentity(t)
-	svc, ctx, cleanup := newACSFixture(t, idp)
+	svc, ctx, _, cleanup := newACSFixture(t, idp)
 	defer cleanup()
 
 	payload := base64.StdEncoding.EncodeToString(
 		[]byte(idp.sign(t, buildACSResponse(acsResponseOptions{}))))
 
-	userObj, orgObj, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent")
+	result, err := svc.ProcessACS(ctx, payload, "", "127.0.0.1", "TestAgent")
 	if err != nil {
 		t.Fatalf("a correctly signed assertion must be accepted, got: %v", err)
 	}
-	if userObj.Email != "alex@siemens.com" || !userObj.EmailVerified {
-		t.Errorf("unexpected user payload: %+v", userObj)
+	if result.User.Email != "alex@siemens.com" || !result.User.EmailVerified {
+		t.Errorf("unexpected user payload: %+v", result.User)
 	}
-	if orgObj.ID != "org_siemens" {
-		t.Errorf("expected org_siemens, got %q", orgObj.ID)
+	if result.Organization.ID != "org_siemens" {
+		t.Errorf("expected org_siemens, got %q", result.Organization.ID)
 	}
 }
 
@@ -503,17 +514,17 @@ func TestProcessACSRejectsUnverifiableAssertions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			idp := newSigningIdentity(t)
-			svc, ctx, cleanup := newACSFixture(t, idp)
+			svc, ctx, _, cleanup := newACSFixture(t, idp)
 			defer cleanup()
 
 			payload := base64.StdEncoding.EncodeToString([]byte(tc.build(t, idp)))
 
-			userObj, _, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent")
+			result, err := svc.ProcessACS(ctx, payload, "", "127.0.0.1", "TestAgent")
 			if err == nil {
-				t.Fatalf("assertion was accepted but must be rejected; it authenticated %v", userObj)
+				t.Fatalf("assertion was accepted but must be rejected; it authenticated %v", result.User)
 			}
-			if userObj != nil {
-				t.Errorf("a rejected assertion must not yield a user, got %+v", userObj)
+			if result != nil {
+				t.Errorf("a rejected assertion must not yield a session, got %+v", result)
 			}
 		})
 	}
@@ -523,16 +534,16 @@ func TestProcessACSRejectsUnverifiableAssertions(t *testing.T) {
 // window must not re-authenticate the subject.
 func TestProcessACSRejectsReplayedAssertion(t *testing.T) {
 	idp := newSigningIdentity(t)
-	svc, ctx, cleanup := newACSFixture(t, idp)
+	svc, ctx, _, cleanup := newACSFixture(t, idp)
 	defer cleanup()
 
 	payload := base64.StdEncoding.EncodeToString(
 		[]byte(idp.sign(t, buildACSResponse(acsResponseOptions{assertionID: "assertion-replay-1"}))))
 
-	if _, _, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent"); err != nil {
+	if _, err := svc.ProcessACS(ctx, payload, "", "127.0.0.1", "TestAgent"); err != nil {
 		t.Fatalf("first presentation must succeed, got: %v", err)
 	}
-	if _, _, err := svc.ProcessACS(ctx, payload, "127.0.0.1", "TestAgent"); err == nil {
+	if _, err := svc.ProcessACS(ctx, payload, "", "127.0.0.1", "TestAgent"); err == nil {
 		t.Fatal("replaying the same assertion must be rejected")
 	}
 }
