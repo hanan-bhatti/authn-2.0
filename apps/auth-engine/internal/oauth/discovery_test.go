@@ -35,10 +35,12 @@ func TestOIDCDiscoveryEndpoint(t *testing.T) {
 	app := fiber.New()
 	handler.RegisterRoutes(app, nil)
 
-	// 1. Successful GET Request
+	// 1. Successful GET Request. Discovery is unauthenticated, and the two
+	// credential headers carry deliberately invalid values: the endpoint must
+	// answer from configuration alone rather than attempt to resolve them.
 	req := httptest.NewRequest("GET", "/.well-known/openid-configuration", nil)
 	req.Header.Set("Authorization", "Bearer invalid_garbage_token")
-	req.Header.Set("X-Publishable-Key", "pk_invalid_123")
+	req.Header.Set("X-Authn-Publishable-Key", "pk_invalid_123")
 
 	resp, err := app.Test(req)
 	if err != nil {

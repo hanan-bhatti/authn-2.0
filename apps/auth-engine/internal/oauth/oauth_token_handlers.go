@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
@@ -204,19 +205,24 @@ func (h *Handler) TokenExchange(c *fiber.Ctx) error {
 				"refresh token is invalid, expired, or has been revoked")
 		}
 
+		// The tenant comes from the publishable key this endpoint is guarded by,
+		// not from the rotated session: cookie attributes are a property of the
+		// tenant whose browser is being written to. The environment comes from the
+		// same key, so the cookie is governed by the policy of the environment the
+		// caller is authenticating against, and the `expires_in` below reports the
+		// lifetime that environment's ceiling actually allowed.
+		tenantID, _ := c.Locals("tenant_id").(string)
+		environment := middleware.GetEnvironment(c)
+
 		if newRawRefreshToken != "" {
-			// The tenant comes from the publishable key this endpoint is guarded by,
-			// not from the rotated session: cookie attributes are a property of the
-			// tenant whose browser is being written to.
-			tenantID, _ := c.Locals("tenant_id").(string)
-			h.cookies.SetRefreshToken(c, tenantID, newRawRefreshToken,
-				h.cookies.RefreshTokenTTL(c.UserContext(), tenantID))
+			h.cookies.SetRefreshToken(c, tenantID, environment, newRawRefreshToken,
+				h.cookies.RefreshTokenTTL(c.UserContext(), tenantID, environment))
 		}
 
 		res := fiber.Map{
 			"access_token": accessToken,
 			"token_type":   "Bearer",
-			"expires_in":   h.service.accessTokenExpiresIn(),
+			"expires_in":   h.service.accessTokenExpiresIn(environment),
 			"user":         userDTO,
 		}
 

@@ -94,13 +94,17 @@ func NewService(repo *Repository, cfg *config.Config, sessions *session.Reposito
 	return &Service{repo: repo, cfg: cfg, sessions: sessions, newProvider: NewProvider}
 }
 
-// refreshTokenTTL is how long a session created here may be refreshed before the
-// user signs in again, matching the lifetime the password path uses.
-func (s *Service) refreshTokenTTL() time.Duration {
-	if s.cfg != nil && s.cfg.RefreshTokenTTL > 0 {
-		return s.cfg.RefreshTokenTTL
+// refreshTokenTTL is how long a session created here in environment may be
+// refreshed before the user signs in again, matching the lifetime the password
+// path uses and bounded by the same test-environment ceiling.
+func (s *Service) refreshTokenTTL(environment string) time.Duration {
+	if s.cfg == nil {
+		return defaultRefreshTokenTTL
 	}
-	return defaultRefreshTokenTTL
+	if s.cfg.RefreshTokenTTL > 0 {
+		return s.cfg.RefreshTokenTTLFor(environment)
+	}
+	return s.cfg.ClampSessionTTL(environment, defaultRefreshTokenTTL)
 }
 
 // validatePostCallbackRedirect reports whether target is an authorized
@@ -196,7 +200,7 @@ func (s *Service) InitiateAuthorize(
 		return "", err
 	}
 
-	clientID, clientSecret, enabled, err := s.repo.GetDecryptedProviderConfig(ctx, tenantID, provider)
+	clientID, clientSecret, enabled, err := s.repo.GetDecryptedProviderConfig(ctx, tenantID, environment, provider)
 	if err != nil {
 		return "", err
 	}
@@ -269,7 +273,11 @@ func (s *Service) HandleCallback(
 		return nil, err
 	}
 
-	clientID, clientSecret, _, err := s.repo.GetDecryptedProviderConfig(ctx, tenantID, provider)
+	// The credentials come from the environment recorded on the state row, not
+	// from the current request. The provider issued its code against whichever
+	// OAuth application began the flow, and only that application's secret can
+	// redeem it.
+	clientID, clientSecret, _, err := s.repo.GetDecryptedProviderConfig(ctx, tenantID, state.Environment, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -376,13 +384,13 @@ func (s *Service) HandleCallback(
 		userAgent,
 		"",
 		"",
-		s.refreshTokenTTL(),
+		s.refreshTokenTTL(state.Environment),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating session for social sign-in: %w", err)
 	}
 
-	jwtToken, err := jwtpkg.IssueAccessTokenWithSession(userID, state.TenantID, state.Environment, email, name, role, sess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
+	jwtToken, err := jwtpkg.IssueAccessTokenWithSession(userID, state.TenantID, state.Environment, email, name, role, sess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(state.Environment))
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -442,9 +450,12 @@ type ProviderSetupResponse struct {
 // see what is available rather than only what is already set up. Secrets are
 // never included.
 //
+// environment selects which set of credentials is reported, so the settings
+// screen shows the test client ID to a test key and the live one to a live key.
+//
 // Returns a storage error if the tenant's configuration cannot be read.
-func (s *Service) GetSetupGuide(ctx context.Context, tenantID, provider string) ([]ProviderSetupResponse, error) {
-	configs, err := s.repo.GetAllProviderConfigs(ctx, tenantID)
+func (s *Service) GetSetupGuide(ctx context.Context, tenantID, environment, provider string) ([]ProviderSetupResponse, error) {
+	configs, err := s.repo.GetAllProviderConfigs(ctx, tenantID, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -482,16 +493,21 @@ func (s *Service) GetSetupGuide(ctx context.Context, tenantID, provider string) 
 	return res, nil
 }
 
-// ConfigureProvider validates and stores a provider's credentials.
+// ConfigureProvider validates and stores a provider's credentials for one
+// environment.
 //
 // The format check runs only when a secret is supplied, because an empty secret
 // means "keep the stored one" rather than "clear it".
+//
+// The write is confined to environment, so a tenant can point its test sign-in
+// page at a throwaway OAuth application while its live one keeps the credentials
+// its real users depend on.
 //
 // Returns *ErrInvalidClientCredentials for a malformed credential, or a storage
 // error.
 func (s *Service) ConfigureProvider(
 	ctx context.Context,
-	tenantID, provider string,
+	tenantID, environment, provider string,
 	enabled bool,
 	clientID, clientSecret string,
 ) error {
@@ -500,14 +516,15 @@ func (s *Service) ConfigureProvider(
 			return err
 		}
 	}
-	return s.repo.SetProviderConfig(ctx, tenantID, provider, enabled, clientID, clientSecret)
+	return s.repo.SetProviderConfig(ctx, tenantID, environment, provider, enabled, clientID, clientSecret)
 }
 
-// RemoveProvider deletes a provider's configuration for a tenant.
+// RemoveProvider deletes a provider's configuration from one of the tenant's
+// environments, leaving the other untouched.
 //
 // Returns a storage error if the write fails.
-func (s *Service) RemoveProvider(ctx context.Context, tenantID, provider string) error {
-	return s.repo.DeleteProviderConfig(ctx, tenantID, provider)
+func (s *Service) RemoveProvider(ctx context.Context, tenantID, environment, provider string) error {
+	return s.repo.DeleteProviderConfig(ctx, tenantID, environment, provider)
 }
 
 // getUserByID loads a user by ID, returning an error if no such user exists.

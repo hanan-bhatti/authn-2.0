@@ -77,16 +77,16 @@ func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.S
 	}
 }
 
-// accessTokenExpiresIn returns the access token lifetime in whole seconds, for
-// the `expires_in` field of a token response.
+// accessTokenExpiresIn returns the access token lifetime for environment in whole
+// seconds, for the `expires_in` field of a token response.
 //
-// It reads the same Config value handed to the signer, so the number advertised
-// here and the `exp` stamped into the token are derived from one setting and
-// cannot drift apart.
-func (s *Service) accessTokenExpiresIn() int {
-	ttl := s.cfg.AccessTokenTTL
+// It resolves the lifetime the same way the signer does, so the number advertised
+// here and the `exp` stamped into the token are derived from one setting and cannot
+// drift apart — including where the test-environment ceiling shortens it.
+func (s *Service) accessTokenExpiresIn(environment string) int {
+	ttl := s.cfg.AccessTokenTTLFor(environment)
 	if ttl <= 0 {
-		ttl = jwtpkg.AccessTokenTTL()
+		ttl = s.cfg.ClampAccessTokenTTL(environment, jwtpkg.AccessTokenTTL())
 	}
 	return int(ttl.Seconds())
 }
