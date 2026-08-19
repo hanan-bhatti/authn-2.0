@@ -26,6 +26,16 @@ type Handler struct {
 	factory *clientfactory.ClientFactory
 }
 
+// Page size bounds for the log listing. Audit logs are the highest-volume table
+// in the engine — every authentication event appends one — so the maximum is what
+// keeps a single request from selecting a tenant's entire history into memory and
+// rendering it twice, once as rows and once as DTOs. A caller wanting the whole
+// history pages through it.
+const (
+	defaultPageSize = 50
+	maxPageSize     = 200
+)
+
 // NewHandler returns an Audit handler bound to client factory.
 func NewHandler(factory *clientfactory.ClientFactory) *Handler {
 	return &Handler{factory: factory}
@@ -56,9 +66,9 @@ type AuditLogDTO struct {
 
 // ListAuditLogs handles GET /v1/admin/audit-logs.
 func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
-	tenantID, err := middleware.RequireTenantID(c)
-	if err != nil {
-		return err
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 
 	client := h.factory.GetClient(c.UserContext(), tenantID, "")
@@ -77,11 +87,14 @@ func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
 		return httperr.SendInternal(c, "audit.count", err)
 	}
 
-	limit := 50
+	limit := defaultPageSize
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 			limit = l
 		}
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
 	}
 
 	offset := 0
@@ -122,5 +135,10 @@ func (h *Handler) ListAuditLogs(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"logs":  dtos,
 		"total": total,
+		// The window is echoed because it is not always the one that was asked for:
+		// a page size past the maximum comes back clamped, and a caller that could
+		// not see that would read a short page as the end of the history.
+		"limit":  limit,
+		"offset": offset,
 	})
 }
