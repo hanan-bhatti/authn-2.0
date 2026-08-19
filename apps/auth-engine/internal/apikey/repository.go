@@ -206,16 +206,24 @@ func (r *Repository) EnsureDefaultApiKeyExists(ctx context.Context, keyID string
 		// Default to the least privileged shape, and widen only on an explicit
 		// prefix match, so an unrecognised value seeds a test publishable key
 		// rather than a live secret one.
+		//
+		// The environment follows the same match as the type. The middleware
+		// resolves a request's environment from this column, so a row whose prefix
+		// reads live while its column reads test would address test data behind a
+		// credential an operator reads as live.
 		keyType := apikey.TypePublishable
 		prefix := "pk_test_"
+		env := apikey.EnvironmentTest
 		if strings.HasPrefix(rawKey, "sk_test_") {
 			keyType = apikey.TypeSecret
 			prefix = "sk_test_"
 		} else if strings.HasPrefix(rawKey, "sk_live_") {
 			keyType = apikey.TypeSecret
 			prefix = "sk_live_"
+			env = apikey.EnvironmentLive
 		} else if strings.HasPrefix(rawKey, "pk_live_") {
 			prefix = "pk_live_"
+			env = apikey.EnvironmentLive
 		}
 
 		_, err := client.ApiKey.Create().
@@ -225,7 +233,7 @@ func (r *Repository) EnsureDefaultApiKeyExists(ctx context.Context, keyID string
 			SetType(keyType).
 			SetKeyPrefix(prefix).
 			SetKeyHash(keyHash).
-			SetEnvironment(apikey.EnvironmentTest).
+			SetEnvironment(env).
 			Save(ctx)
 		if err != nil && !ent.IsConstraintError(err) {
 			return fmt.Errorf("failed auto-creating default api key: %w", err)
