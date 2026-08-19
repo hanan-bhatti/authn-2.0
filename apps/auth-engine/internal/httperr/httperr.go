@@ -14,9 +14,11 @@
 package httperr
 
 import (
+	"errors"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/quota"
 )
 
 // Code is a stable, machine-readable error identifier returned as the `code`
@@ -50,6 +52,12 @@ const (
 	CodeTenantAdminRequired  Code = "tenant_admin_required"
 	CodeImpersonationBlocked Code = "impersonation_blocked"
 
+	// CodeLiveKeyRequired reports a test credential addressing something that only
+	// exists in live: a webhook endpoint, or a SAML connection real employees sign
+	// in through. Distinct from forbidden because the fix is to present the live
+	// key rather than to gain a permission — the same operator already holds both.
+	CodeLiveKeyRequired Code = "live_key_required"
+
 	// Tenant and origin binding. Both mean the credential is individually valid
 	// but does not belong with the rest of the request: a session from another
 	// tenant, or a browser origin the application never registered.
@@ -64,6 +72,10 @@ const (
 	// Throttling and availability.
 	CodeRateLimited        Code = "rate_limited"
 	CodeServiceUnavailable Code = "service_unavailable"
+	// CodeTestQuotaExceeded reports a test environment that holds its limit of
+	// something. Distinct from rate_limited because waiting does not help: the
+	// ceiling is on stored rows, so room is made by deleting or by moving to live.
+	CodeTestQuotaExceeded Code = "test_quota_exceeded"
 
 	// Catch-all. Never carries internal detail to the client.
 	CodeInternal Code = "internal_error"
@@ -100,7 +112,17 @@ func Send(c *fiber.Ctx, status int, code Code, msg string) error {
 // names — to unauthenticated callers, so the detail stays in the log and the
 // client receives a fixed message. op names the operation ("auth.login",
 // "org.create") so the log line is actionable.
+//
+// A test-environment ceiling is the one exception. It arrives here because it is
+// raised beneath the query builder and travels up as an ordinary error through
+// every create path, but it is a client fault with a message written to be read:
+// answering 500 would tell an operator the engine is broken when the truth is
+// that their test environment is full.
 func SendInternal(c *fiber.Ctx, op string, err error) error {
+	var overQuota *quota.Exceeded
+	if errors.As(err, &overQuota) {
+		return Send(c, fiber.StatusForbidden, CodeTestQuotaExceeded, overQuota.Error())
+	}
 	if err != nil {
 		log.Printf("[error] %s %s %s: %v", c.Method(), c.Path(), op, err)
 	}

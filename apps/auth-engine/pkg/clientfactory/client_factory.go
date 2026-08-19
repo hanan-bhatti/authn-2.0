@@ -22,6 +22,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/quota"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/database"
 )
 
@@ -41,6 +42,10 @@ type PoolOptions struct {
 	ConnMaxLifetime time.Duration
 	// AutoMigrate creates or updates schema tables at startup.
 	AutoMigrate bool
+	// TestLimits bounds how much data a tenant may hold in the test environment.
+	// A zero value bounds nothing, which is what a caller that has no opinion
+	// should get; the loader fills it from configuration.
+	TestLimits quota.Limits
 }
 
 // ClientFactory hands out the Ent client a request should use.
@@ -108,6 +113,10 @@ func NewFromURL(databaseURL string, opts PoolOptions) (*ClientFactory, error) {
 	}
 
 	privacy.AttachPrivacyInterceptors(client)
+	// After the privacy interceptors, so the counting query behind a ceiling is
+	// narrowed to the caller's tenant and environment by the same rules everything
+	// else is read under.
+	quota.AttachHook(client, opts.TestLimits)
 
 	return &ClientFactory{
 		defaultClient: client,
@@ -141,6 +150,26 @@ func NewClientFactory(driverName string, dataSourceName string) (*ClientFactory,
 		defaultClient: client,
 		pools:         make(map[string]*ent.Client),
 	}, nil
+}
+
+// ApplyTestLimits installs test-environment ceilings on every pool this factory
+// holds.
+//
+// NewFromURL takes them in its options, which is how the server configures them.
+// This exists for the callers that open a factory before they have configuration
+// to hand it — chiefly the test harness, which opens an in-memory database and
+// then decides what each suite should be bounded by.
+//
+// Calling it twice stacks two hooks, so a caller that means to change a ceiling
+// should build a new factory rather than reapply.
+func (f *ClientFactory) ApplyTestLimits(limits quota.Limits) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	quota.AttachHook(f.defaultClient, limits)
+	for _, poolClient := range f.pools {
+		quota.AttachHook(poolClient, limits)
+	}
 }
 
 // GetClient returns the Ent client serving a tenant and environment, falling
