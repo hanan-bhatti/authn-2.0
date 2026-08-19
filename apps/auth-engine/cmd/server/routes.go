@@ -37,6 +37,8 @@ func registerRoutes(
 	w.authHandler.RegisterRoutes(app, w.pkMiddleware)
 	w.userHandler.RegisterRoutes(app, w.clientAuthMiddleware, w.pkMiddleware)
 	w.policyHandler.RegisterRoutes(app, w.adminMiddleware) // sk_ OR console JWT
+	// pk_ for the public bootstrap document, sk_ OR console JWT for branding.
+	w.appConfigHandler.RegisterRoutes(app, w.pkMiddleware, w.adminMiddleware)
 	w.oauthHandler.RegisterRoutes(app, w.pkMiddleware, w.adminMiddleware)
 	w.socialHandler.RegisterRoutes(app, w.pkMiddleware, w.adminMiddleware)
 	w.sessionHandler.RegisterRoutes(app, w.pkMiddleware, w.adminMiddleware)
@@ -47,6 +49,11 @@ func registerRoutes(
 	w.orgHandler.RegisterRoutes(app, w.clientAuthMiddleware, w.pkMiddleware, w.adminMiddleware)
 	w.samlHandler.RegisterRoutes(app, w.pkMiddleware, w.adminMiddleware)
 	w.auditHandler.RegisterRoutes(app, w.adminMiddleware)
+	w.userAdminHandler.RegisterRoutes(app, w.adminMiddleware)
+	// The inbox refuses a live credential from inside the handler rather than by
+	// mounting differently, so an operator holding the wrong key is told which
+	// environment they are addressing instead of reading an empty inbox.
+	w.sandboxHandler.RegisterRoutes(app, w.adminMiddleware)
 	// Nil when no platform tenant is configured, in which case nothing mounts and
 	// /v1/platform is a plain 404.
 	w.platformHandler.RegisterRoutes(app, w.platformMiddleware)

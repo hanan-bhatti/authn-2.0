@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/appconfig"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/audit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
@@ -32,11 +33,14 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/retention"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sandbox"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sms"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/social"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/useradmin"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/redis/go-redis/v9"
@@ -52,6 +56,7 @@ type appWiring struct {
 	authHandler          *auth.Handler
 	userHandler          *user.Handler
 	policyHandler        *policy.Handler
+	appConfigHandler     *appconfig.Handler
 	oauthHandler         *oauth.Handler
 	socialHandler        *social.Handler
 	sessionHandler       *session.Handler
@@ -62,6 +67,8 @@ type appWiring struct {
 	orgHandler           *org.Handler
 	samlHandler          *saml.Handler
 	auditHandler         *audit.Handler
+	userAdminHandler     *useradmin.Handler
+	sandboxHandler       *sandbox.Handler
 	platformHandler      *platform.Handler
 	cleanup              func()
 }
@@ -90,16 +97,52 @@ func wireFeatures(
 	settingsResolver := settings.NewResolver(factory, policyRepo, redisClient, 0)
 	policyHandler = policyHandler.WithSettingsInvalidator(settingsResolver)
 
-	emailProvider, err := email.NewEmailProvider(cfg)
+	// The bootstrap document a sign-in page fetches before it renders. It reuses
+	// the settings resolver's cache for the application lookup, because this is the
+	// one request every page load makes ahead of everything else.
+	appConfigHandler := appconfig.NewHandler(
+		appconfig.NewService(appconfig.NewRepository(factory), policyRepo, settingsResolver, cfg),
+	)
+
+	// The sandbox store is built before the providers so both can be wrapped
+	// before any service takes a reference to one.
+	sandboxStore := sandbox.NewStore(factory)
+
+	directEmail, err := email.NewEmailProvider(cfg)
 	if err != nil {
 		log.Printf("email: provider initialization failed: %v; falling back to noop (messages are logged, not sent)", err)
-		emailProvider = email.NewNoopProvider()
+		directEmail = email.NewNoopProvider()
 	} else {
 		log.Printf("email: driver=%s from=%s", cfg.EmailDriver, cfg.EmailFromAddress)
 	}
 
+	directSMS, err := sms.NewSMSProvider(cfg)
+	if err != nil {
+		log.Printf("sms: provider initialization failed: %v; falling back to noop (messages are logged, not sent)", err)
+		directSMS = sms.NewNoopProvider()
+	} else {
+		log.Printf("sms: driver=%s", cfg.SMSDriver)
+	}
+
+	// emailProvider and smsProvider capture rather than deliver when the sender is
+	// acting in the test environment, and every service below is given these
+	// rather than the direct ones.
+	//
+	// Wrapping once here is what makes the sandbox cover every sender the engine
+	// has, including ones added later: a send site nobody remembered to route
+	// through the sandbox is a real message leaving a test environment, addressed
+	// to whoever a fixture named. The direct providers survive under their own
+	// names for the one endpoint whose purpose is to reach a provider.
+	emailProvider := sandbox.WrapEmail(directEmail, sandboxStore)
+	smsProvider := sandbox.WrapSMS(directSMS, sandboxStore)
+
+	// Delivery verification borrows the resend limiter, which already exists to
+	// bound sends that cost money per message.
+	sandboxHandler := sandbox.NewHandler(sandboxStore, factory, cfg, directEmail, directSMS).
+		WithLimiter(resendLimiter)
+
 	authRepo := auth.NewRepository(factory)
-	authService := auth.NewService(authRepo, cfg, emailProvider)
+	authService := auth.NewService(authRepo, cfg, emailProvider, smsProvider)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithBlocklist(bl).
 		WithSessionPolicyResolver(settingsResolver)
@@ -119,7 +162,7 @@ func wireFeatures(
 
 	// Social sign-in issues its session through the same store the session
 	// endpoints read, so a Google login is listed and revoked like any other.
-	socialRepo := social.NewRepository(factory, cfg.EncryptionKey)
+	socialRepo := social.NewRepository(factory, policyRepo, cfg.EncryptionKey)
 	socialService := social.NewService(socialRepo, cfg, sessionRepo)
 	socialHandler := social.NewHandler(socialService).
 		WithSessionPolicyResolver(settingsResolver)
@@ -141,14 +184,23 @@ func wireFeatures(
 	orgService := org.NewService(factory, webhookDispatcher, cfg)
 	orgHandler := org.NewHandler(orgService)
 
-	samlService := saml.NewService(factory, webhookDispatcher, cfg)
-	samlHandler := saml.NewHandler(samlService)
+	// Enterprise SSO issues its session through the same store the session
+	// endpoints read, so an Okta login is listed and revoked like any other.
+	samlService := saml.NewService(factory, webhookDispatcher, sessionRepo, cfg)
+	samlHandler := saml.NewHandler(samlService).
+		WithSessionPolicyResolver(settingsResolver)
 
 	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher, cfg)
 	userHandler := user.NewHandler(userService)
 	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey, bl)
 
 	auditHandler := audit.NewHandler(factory)
+
+	// User administration shares the session repository and the token blocklist
+	// with the authentication path, because restricting an account has to reach
+	// the sessions and the access tokens that path issued.
+	userAdminService := useradmin.NewService(useradmin.NewRepository(factory), sessionRepo, bl, cfg)
+	userAdminHandler := useradmin.NewHandler(userAdminService)
 
 	// The hosted control plane exists only where a platform tenant is configured.
 	// Leaving the middleware nil in an OSS deployment leaves the routes
@@ -162,7 +214,7 @@ func wireFeatures(
 	platformHandler := platform.NewHandler(provisioningService, platform.NewRepository(factory),
 		rateLimiter, cfg.PlatformTenantSlug)
 
-	sweeper := newRetentionSweeper(cfg, redisClient, authRepo, policyRepo, sessionRepo, socialRepo)
+	sweeper := newRetentionSweeper(cfg, redisClient, authRepo, policyRepo, sessionRepo, socialRepo, sandboxStore)
 	sweeper.Start()
 
 	return &appWiring{
@@ -173,6 +225,7 @@ func wireFeatures(
 		authHandler:          authHandler,
 		userHandler:          userHandler,
 		policyHandler:        policyHandler,
+		appConfigHandler:     appConfigHandler,
 		oauthHandler:         oauthHandler,
 		socialHandler:        socialHandler,
 		sessionHandler:       sessionHandler,
@@ -183,6 +236,8 @@ func wireFeatures(
 		orgHandler:           orgHandler,
 		samlHandler:          samlHandler,
 		auditHandler:         auditHandler,
+		userAdminHandler:     userAdminHandler,
+		sandboxHandler:       sandboxHandler,
 		platformHandler:      platformHandler,
 		cleanup: func() {
 			webhookDispatcher.Stop()
@@ -204,6 +259,7 @@ func newRetentionSweeper(
 	policyRepo *policy.Repository,
 	sessionRepo *session.Repository,
 	socialRepo *social.Repository,
+	sandboxStore *sandbox.Store,
 ) *retention.Sweeper {
 	// The telemetry sweep needs a service to hang off, and this one is
 	// purge-only: the device-token key it also carries is unused by that path.
@@ -236,6 +292,34 @@ func newRetentionSweeper(
 			Run: func(ctx context.Context) (int, error) {
 				subnets, devices, err := telemetry.PurgeExpiredTelemetry(ctx)
 				return subnets + devices, err
+			},
+		},
+		// Captured test-environment messages hold verification links and one-time
+		// codes in plain text, so the window is short: a harness reads its message
+		// within seconds of triggering it, and everything kept past that is an
+		// archive of credentials that still work.
+		retention.Task{
+			Name: "sandbox messages",
+			Run: func(ctx context.Context) (int, error) {
+				return sandboxStore.PurgeExpired(
+					ctx,
+					time.Now().Add(-cfg.SandboxMessageRetention),
+					cfg.RetentionBatchSize,
+				)
+			},
+		},
+		// This is what keeps the test-environment user ceiling from becoming a wall.
+		// Suites create accounts by the thousand and abandon them, and a tenant that
+		// reached its limit through months of accumulated runs would start failing
+		// runs that have nothing wrong with them.
+		retention.Task{
+			Name: "idle test users",
+			Run: func(ctx context.Context) (int, error) {
+				return authRepo.PurgeIdleTestUsers(
+					ctx,
+					time.Now().Add(-cfg.TestUserRetention),
+					cfg.RetentionBatchSize,
+				)
 			},
 		},
 	)

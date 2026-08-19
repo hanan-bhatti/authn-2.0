@@ -21,7 +21,7 @@ The **Server Boot & Pre-flight Engine** handles runtime initialization, environm
 ### 2.2 Global Middleware Stack (`internal/middleware/`)
 1. **`recover.New()`**: Prevents panic crashes from taking down the process.
 2. **`logger.New()`**: Structured HTTP request & latency logging.
-3. **`DynamicCORS()`**: Allows multi-tenant cross-origin requests (`X-Authn-Api-Key`, `X-Authn-Tenant-Id`, `X-Authn-Environment`).
+3. **`CORS()`**: Applies the deployment-wide cross-origin policy, admitting the request headers handlers read (`Authorization`, `X-Authn-Publishable-Key`, `X-Authn-Secret-Key`, `X-Authn-Client-Type`) and exposing the response headers clients read (`X-Authn-Degraded-Mode`, `Retry-After`). Tenant and environment are derived from the presented key, never taken from a request header.
 4. **`DegradedModeHeader()`**: Dynamically injects `X-Authn-Degraded-Mode: true` if a Redis outage is detected.
 
 ### 2.3 Health Check API (`GET /v1/health`)
