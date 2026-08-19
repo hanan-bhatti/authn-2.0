@@ -237,6 +237,41 @@ type Config struct {
 	// batches keep each statement short, so a sweep of a long-neglected table does
 	// not hold locks or extend the write-ahead log for minutes at a time.
 	RetentionBatchSize int
+	// SandboxMessageRetention is how long a captured test-environment message is
+	// kept before the sweep removes it. Captures hold verification links and
+	// one-time codes in plain text so a harness can read them, which makes a long
+	// window an accumulating archive of usable credentials rather than a
+	// convenience — a test reads its message within seconds of triggering it.
+	SandboxMessageRetention time.Duration
+	// TestUserRetention is how long a test-environment account is kept past its last
+	// sign-in before the sweep deletes it along with everything hanging off it.
+	// Suites create accounts by the thousand and abandon them, so without a window
+	// they accumulate until they reach TestMaxUsers and start failing runs that have
+	// nothing wrong with them. Live accounts are never swept: an idle customer is
+	// still a customer.
+	TestUserRetention time.Duration
+	// TestAccessTokenTTL is the ceiling on a test-environment access token's
+	// lifetime. A harness needing one for longer than a few minutes is running
+	// something other than a test, and until it expires the token is a bearer
+	// credential for whoever has read it out of a log.
+	TestAccessTokenTTL time.Duration
+	// TestSessionTTL is the ceiling on a test-environment session's lifetime, and so
+	// on how long its refresh token keeps minting access tokens. A test signs in when
+	// it runs, so nothing there needs a session that survives to the next run, and a
+	// month-long one is a live credential idling in a sandbox nobody watches.
+	TestSessionTTL time.Duration
+	// TestMaxUsers is the ceiling on how many users one tenant may hold in the test
+	// environment. A test environment is free and unmetered, so the ceiling is what
+	// keeps it a development surface rather than the cheapest place to run a
+	// product: it sits far above what any suite needs and far below a user base.
+	TestMaxUsers int
+	// TestMaxOrganizations is the ceiling on a tenant's test-environment
+	// organizations. An organization carries an environment of its own, so a tenant's
+	// live workspaces neither count against this nor are refused by it.
+	TestMaxOrganizations int
+	// TestMaxAPIKeys is the ceiling on test API keys for one tenant, counting the
+	// pair provisioning installs alongside a new application.
+	TestMaxAPIKeys int
 	// EmailVerificationTTL is the lifetime of an email verification link.
 	EmailVerificationTTL time.Duration
 	// MagicLinkTTL is the lifetime of a passwordless sign-in link. Kept short
@@ -420,6 +455,57 @@ func (c *Config) Address() string {
 // cookie is never sent over HTTP to a non-localhost origin.
 func (c *Config) CookieSecure() bool {
 	return strings.HasPrefix(strings.ToLower(c.AppBaseURL), "https://")
+}
+
+// dataEnvironmentTest names the test data environment — the one a tenant's test
+// keys address, holding its own users, applications and settings.
+//
+// It is deliberately not EnvTest above. That constant names a deployment tier,
+// and the two are independent: a production deployment serves both data
+// environments, and a development one serves live data to whoever configured it.
+const dataEnvironmentTest = "test"
+
+// AccessTokenTTLFor returns the access token lifetime to sign for environment.
+func (c *Config) AccessTokenTTLFor(environment string) time.Duration {
+	return c.ClampAccessTokenTTL(environment, c.AccessTokenTTL)
+}
+
+// RefreshTokenTTLFor returns the session lifetime to record for environment.
+func (c *Config) RefreshTokenTTLFor(environment string) time.Duration {
+	return c.ClampSessionTTL(environment, c.RefreshTokenTTL)
+}
+
+// ClampAccessTokenTTL bounds ttl by the test-environment access token ceiling.
+//
+// It takes a lifetime rather than reading one, so a value resolved elsewhere — a
+// tenant's own session policy, which may ask for a day — passes through the same
+// ceiling as the deployment default.
+func (c *Config) ClampAccessTokenTTL(environment string, ttl time.Duration) time.Duration {
+	return clampTestTTL(environment, ttl, c.TestAccessTokenTTL)
+}
+
+// ClampSessionTTL bounds ttl by the test-environment session ceiling.
+//
+// It governs the session row and the refresh cookie alike, so the credential and
+// the record it refreshes against expire together rather than leaving a browser
+// holding a cookie for a session the database dropped weeks earlier.
+func (c *Config) ClampSessionTTL(environment string, ttl time.Duration) time.Duration {
+	return clampTestTTL(environment, ttl, c.TestSessionTTL)
+}
+
+// clampTestTTL returns ttl, or ceiling when environment is the test one and ttl
+// runs past it. It lowers and never raises, so a deployment or tenant that asked
+// for something shorter keeps it, and live is returned untouched.
+//
+// A non-positive ceiling leaves the lifetime alone. That is the safe reading of an
+// unset field: a zero-valued Config — one nobody loaded — bounds nothing, where a
+// zero read as "expire immediately" would take out every test sign-in. The loader
+// refuses a non-positive duration, so a configured deployment is always bounded.
+func clampTestTTL(environment string, ttl, ceiling time.Duration) time.Duration {
+	if environment != dataEnvironmentTest || ceiling <= 0 || ttl <= ceiling {
+		return ttl
+	}
+	return ceiling
 }
 
 // SocialCallbackURL returns the absolute redirect URI to register in a social

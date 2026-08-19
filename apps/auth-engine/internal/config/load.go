@@ -94,6 +94,14 @@ func Load() (*Config, error) {
 		SupersededSessionRetention: r.duration("SUPERSEDED_SESSION_RETENTION", 72*time.Hour),
 		TerminalSessionRetention:   r.duration("TERMINAL_SESSION_RETENTION", 720*time.Hour),
 		RetentionBatchSize:         r.positive("RETENTION_BATCH_SIZE", 1000),
+		SandboxMessageRetention:    r.duration("SANDBOX_MESSAGE_RETENTION", 24*time.Hour),
+		TestUserRetention:          r.duration("TEST_USER_RETENTION", 720*time.Hour),
+
+		TestAccessTokenTTL:   r.duration("TEST_ACCESS_TOKEN_TTL", 15*time.Minute),
+		TestSessionTTL:       r.duration("TEST_SESSION_TTL", 24*time.Hour),
+		TestMaxUsers:         r.positive("TEST_MAX_USERS", 500),
+		TestMaxOrganizations: r.positive("TEST_MAX_ORGANIZATIONS", 25),
+		TestMaxAPIKeys:       r.positive("TEST_MAX_API_KEYS", 20),
 
 		RateLimitEnabled:            r.boolean("RATELIMIT_ENABLED", true),
 		RateLimitMaxAttempts:        r.positive("RATELIMIT_MAX_ATTEMPTS", 5),
@@ -186,7 +194,15 @@ func Load() (*Config, error) {
 }
 
 // defaultCORSHeaders lists the request headers the engine's own clients send.
-// Anything not listed here is rejected by the browser during preflight.
+// Anything not listed here is rejected by the browser during preflight, so a
+// header the engine reads but omits here is unreachable from a browser however
+// correct the handler is.
+//
+// The list is confined to headers a handler actually reads. Advertising one that
+// nothing consumes invites a client to send it and a later contributor to honour
+// it — and for a tenant or environment header that would mean taking the scope of
+// a request from the caller instead of from their key, which is the whole of
+// multi-tenant isolation.
 func defaultCORSHeaders() []string {
 	return []string{
 		"Origin",
@@ -195,9 +211,7 @@ func defaultCORSHeaders() []string {
 		"Authorization",
 		"X-Authn-Publishable-Key",
 		"X-Authn-Secret-Key",
-		"X-Authn-Api-Key",
-		"X-Authn-Tenant-Id",
-		"X-Authn-Environment",
+		"X-Authn-Client-Type",
 	}
 }
 
