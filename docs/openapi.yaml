@@ -54,6 +54,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_API_KEYS
+            keys in the test environment, counting the publishable/secret pair
+            provisioning installs with each application. Live credentials are not
+            bounded by this ceiling. Not 429 — waiting does not help, because the
+            ceiling is on stored rows; room is made by revoking keys.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Named application not found in tenant
           content:
@@ -299,7 +310,7 @@ paths:
       - Impersonation (Client)
       security:
       - PublishableKey: []
-      - BearerAuth: []
+        BearerAuth: []
       responses:
         '200':
           description: Impersonation session exited successfully
@@ -322,27 +333,26 @@ paths:
   /v1/tenant/password-policy:
     get:
       summary: Get Password Policy
-      description: Returns the tenant-level password complexity requirements.
+      description: >-
+        Returns the password complexity requirements of one environment. Tenant and
+        environment both come from the authenticating credential: a sk_test_ key reads the
+        test policy and a sk_live_ key the live one, and neither can address the other. The
+        environment is echoed in the response so a caller can tell which one it just read.
       operationId: getPasswordPolicy
       tags:
       - Policy (Tenant)
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       responses:
         '200':
-          description: Tenant password policy
+          description: Password policy of the credential's environment
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PasswordPolicy'
+                allOf:
+                - $ref: '#/components/schemas/PasswordPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
         '401':
           description: Missing or invalid secret key or admin console token
           content:
@@ -357,20 +367,18 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
     put:
       summary: Update Password Policy
-      description: Configures tenant-level password complexity requirements.
+      description: >-
+        Configures the password complexity requirements of one environment. The write lands
+        in the environment of the key that made it and nowhere else, so tightening the rule
+        in test leaves live untouched until you either repeat the call with a live key or
+        publish test onto live. environment is not accepted in the body; supplying it has no
+        effect.
       operationId: updatePasswordPolicy
       tags:
       - Policy (Tenant)
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       requestBody:
         required: true
         content:
@@ -383,7 +391,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PasswordPolicy'
+                allOf:
+                - $ref: '#/components/schemas/PasswordPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
         '400':
           description: Invalid request body
           content:
@@ -405,27 +415,24 @@ paths:
   /v1/tenant/security-policy:
     get:
       summary: Get Security Policy
-      description: Returns tenant-level security enforcement settings (email verification, token reuse policy).
+      description: >-
+        Returns one environment's security enforcement settings (email verification, token
+        reuse policy). Tenant and environment both come from the authenticating credential.
       operationId: getSecurityPolicy
       tags:
       - Policy (Tenant)
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       responses:
         '200':
-          description: Tenant security policy
+          description: Security policy of the credential's environment
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecurityPolicy'
+                allOf:
+                - $ref: '#/components/schemas/SecurityPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
         '401':
           description: Missing or invalid secret key or admin console token
           content:
@@ -440,20 +447,16 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
     put:
       summary: Update Security Policy
-      description: Updates tenant-level security enforcement settings.
+      description: >-
+        Updates one environment's security enforcement settings. The write lands in the
+        environment of the key that made it, so requiring verified email in test does not
+        require it in live.
       operationId: updateSecurityPolicy
       tags:
       - Policy (Tenant)
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       requestBody:
         required: true
         content:
@@ -466,7 +469,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecurityPolicy'
+                allOf:
+                - $ref: '#/components/schemas/SecurityPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
         '400':
           description: Invalid request body
           content:
@@ -488,27 +493,25 @@ paths:
   /v1/tenant/recovery-policy:
     get:
       summary: Get Recovery Policy
-      description: Returns tenant-level account recovery rules (proof methods, freeze windows, lockout schedule).
+      description: >-
+        Returns one environment's account recovery rules (proof methods, freeze windows,
+        lockout schedule). Tenant and environment both come from the authenticating
+        credential.
       operationId: getRecoveryPolicy
       tags:
       - Policy (Tenant)
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       responses:
         '200':
-          description: Tenant recovery policy
+          description: Recovery policy of the credential's environment
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RecoveryPolicy'
+                allOf:
+                - $ref: '#/components/schemas/RecoveryPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
         '401':
           description: Missing or invalid secret key or admin console token
           content:
@@ -523,20 +526,17 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
     put:
       summary: Update Recovery Policy
-      description: Configures tenant-level account recovery rules. Policy bounds are strictly validated.
+      description: >-
+        Configures one environment's account recovery rules. Policy bounds are strictly
+        validated. The write lands in the environment of the key that made it, which is what
+        makes these rules safe to experiment with: a freeze window that locks a test fixture
+        out costs nothing, the same mistake in live locks out a customer.
       operationId: updateRecoveryPolicy
       tags:
       - Policy (Tenant)
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       requestBody:
         required: true
         content:
@@ -549,7 +549,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RecoveryPolicy'
+                allOf:
+                - $ref: '#/components/schemas/RecoveryPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
         '400':
           description: Invalid request body or recovery policy bounds rejection
           content:
@@ -558,6 +560,642 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/session-policy:
+    get:
+      summary: Get Session Policy
+      description: >-
+        Returns one environment's session and cookie settings — the refresh cookie's SameSite
+        attribute and the access and refresh token lifetimes. A zero lifetime means the
+        environment inherits the deployment default rather than that sessions expire
+        instantly. Tenant and environment both come from the authenticating credential.
+      operationId: getSessionPolicy
+      tags:
+      - Policy (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Session policy of the credential's environment
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SessionPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      summary: Update Session Policy
+      description: >-
+        Configures one environment's session and cookie settings. Nothing here is rejected
+        for being out of range: token lifetimes are clamped into their window and an
+        unrecognised cookie_same_site becomes lax. The stored policy may therefore differ
+        from what was sent, so read the response rather than assuming the request applied
+        verbatim. A stored policy has to resolve to something usable because it is read on
+        the login path, where there is no caller left to report a validation error to. The
+        write lands in the environment of the key that made it.
+      operationId: updateSessionPolicy
+      tags:
+      - Policy (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionPolicy'
+      responses:
+        '200':
+          description: Session policy as stored, after clamping
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SessionPolicy'
+                - $ref: '#/components/schemas/EnvironmentEnvelope'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/settings:
+    get:
+      summary: Get All Settings For One Environment
+      description: >-
+        Returns every policy column of the credential's environment in one read, as stored.
+        The typed per-policy endpoints above are the ones to configure against; this is for a
+        console that needs to show what an environment currently holds. Each social
+        provider's client secret is replaced by a client_secret_set boolean. A column that is
+        absent or empty means nothing has been configured there and the engine's defaults
+        apply.
+      operationId: getTenantSettings
+      tags:
+      - Policy (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Stored settings of the credential's environment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSettingsResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/settings/diff:
+    get:
+      summary: Compare Test And Live Settings
+      description: >-
+        Returns both environments' stored settings and the names of the columns that differ.
+        This answers "what will change in live if I publish test", which is the question to
+        ask before POST /v1/tenant/settings/publish. Both environments are returned whichever
+        key authenticated the request, because comparing them is the whole point and reading
+        across the boundary exposes nothing the same tenant does not already own. Secrets are
+        redacted on both sides.
+      operationId: getTenantSettingsDiff
+      tags:
+      - Policy (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Both environments' settings and the differing column names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSettingsDiffResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/settings/publish:
+    post:
+      summary: Publish One Environment's Settings Onto The Other
+      description: >-
+        Copies every policy column from one environment onto the other and records the
+        promotion in the audit trail. This is what makes a separate test environment worth
+        configuring: a policy is written in test, exercised against test sign-ins, and only
+        then applied to live.
+
+        The copy is wholesale rather than selective — all seven columns, not a chosen few —
+        because a half-published configuration is a state nobody chose and nobody tested. It
+        follows that publishing an empty source clears the destination, which is the faithful
+        meaning of "make live match test"; call GET /v1/tenant/settings/diff first if you are
+        unsure what that would do.
+
+        The destination must be the environment of the key making the request, so promoting
+        into live requires a sk_live_ key. Omitting the body means test to live.
+      operationId: publishTenantSettings
+      tags:
+      - Policy (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishSettingsRequest'
+      responses:
+        '200':
+          description: Settings published, with the names of the columns that changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishSettingsResponse'
+        '400':
+          description: >-
+            Unparseable body, an environment name that is neither test nor live, or from and
+            to naming the same environment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            The key does not govern the destination — "publishing into live requires a live
+            secret key". This is the guard that stops a test key overwriting a live
+            configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Unknown tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/sandbox/messages:
+    get:
+      summary: List Captured Test-Environment Messages
+      description: >-
+        Returns one page of the messages the test environment captured instead of sending,
+        newest first. In the test environment the engine does not deliver email or SMS at all:
+        interception happens at the provider interface, so every message the engine sends is
+        captured, including message types added later.
+
+        The rendered body is omitted here and present only on a single-message read, because a
+        listing carrying every rendered document would be tens of times larger than the fields
+        anyone pages through an inbox for. The two values a test actually reads — code and
+        metadata.link — are extracted at capture time and present either way, so completing a
+        flow against the sandbox never means parsing HTML.
+
+        total counts every message matching the filter before paging, which a test polling for
+        a message cannot learn from the page length.
+      operationId: listSandboxMessages
+      tags:
+      - Sandbox (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      parameters:
+      - in: query
+        name: recipient
+        schema:
+          type: string
+        description: Exact email address or E.164 number. Not a prefix or substring match.
+      - in: query
+        name: channel
+        schema:
+          type: string
+          enum:
+          - email
+          - sms
+        description: Restrict to one channel
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 50
+          maximum: 200
+        description: Page size. Above 200 is clamped to 200; a non-integer is rejected.
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          default: 0
+        description: How many of the newest messages to skip. Negative is treated as 0; a non-integer is rejected.
+      responses:
+        '200':
+          description: One page of captures, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxMessageListResponse'
+        '400':
+          description: channel is neither email nor sms, or limit or offset is not an integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            The credential addresses live. Nothing is ever captured outside test, so an empty
+            list would be a true answer to the wrong question — and "my message is missing" is
+            a far worse thing to leave an operator concluding than "you are looking at the
+            wrong environment".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      summary: Empty The Sandbox Inbox
+      description: >-
+        Deletes every capture belonging to the calling tenant's test environment and reports
+        how many were removed. Run it at the start of a test run so an assertion on "the newest
+        message" is not answered by the previous run's captures.
+      operationId: purgeSandboxMessages
+      tags:
+      - Sandbox (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Inbox emptied, with the number of captures removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxPurgeResponse'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The credential addresses live, where nothing is captured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/sandbox/messages/{id}:
+    get:
+      summary: Read One Captured Message
+      description: >-
+        Returns a single capture including body — the message exactly as the provider would
+        have received it. This is the endpoint to use when the rendered document itself is
+        under test; the extracted code and link are on the listing too.
+      operationId: getSandboxMessage
+      tags:
+      - Sandbox (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        description: Captured message ID
+      responses:
+        '200':
+          description: The capture, including its rendered body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxMessageResponse'
+        '400':
+          description: Message ID missing from the path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The credential addresses live, where nothing is captured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: >-
+            No such capture, or it belongs to another tenant. The two are deliberately
+            indistinguishable, since telling the caller that the ID exists somewhere is itself
+            the disclosure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/delivery/verify:
+    post:
+      summary: Send One Real Message Through The Configured Provider
+      description: >-
+        Sends a single real message through the configured email or SMS driver, deliberately
+        bypassing the sandbox. That bypass is the entire purpose: a captured message never
+        reaches a provider, so no amount of sandbox traffic establishes that the credentials in
+        configuration work. Sending is the only test of a send.
+
+        The recipient is the signed-in operator's own stored address and there is no field to
+        supply one, so this endpoint cannot be aimed at a third party by construction rather
+        than by validation. That is also why a secret key is refused: it identifies an
+        application rather than a person, and there is no address behind it that anybody has
+        proven control of.
+
+        driver names the backend that answered, so an operator can see which one handled the
+        message instead of inferring it from configuration they may not be looking at.
+      operationId: verifyDelivery
+      tags:
+      - Sandbox (Tenant)
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyDeliveryRequest'
+      responses:
+        '200':
+          description: The provider accepted the message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyDeliveryResponse'
+        '400':
+          description: Unparseable body, or channel is neither email nor sms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            A secret key was used rather than a console session (code forbidden); the
+            operator's own email address is unverified (code email_verification_required); or
+            channel sms was asked for with no verified phone number on the operator's account
+            (code forbidden).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: The signed-in operator's account could not be read in this environment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: >-
+            More than three verifications for this tenant and channel in one rate-limit window.
+            Retry-After carries the remaining seconds. The cap is low because the endpoint
+            sends to the operator's own address through their own provider account, so the
+            second message tells them exactly what the first one did.
+          headers:
+            Retry-After:
+              description: Seconds until the window resets
+              schema:
+                type: integer
+                example: 900
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: >-
+            The provider rejected the message. Its own error text is included verbatim, since
+            that string is the answer the caller came for.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: No provider is configured for that channel, or the rate-limit service is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/client/app-config:
+    get:
+      summary: Get App Bootstrap Configuration
+      description: Returns the single document a sign-in page fetches before it renders — the tenant's branding, the sign-in
+        and second-factor methods to offer, the effective password rules, the email verification mode, and the enabled account
+        recovery methods. Tenant, application and environment are resolved from the publishable key and never from the request,
+        so a caller cannot bootstrap a workspace their key does not belong to. Every field is treated as public, because a
+        publishable key ships in browser bundles - the recovery thresholds an attacker could pace an attempt against, social
+        provider credentials, and the CORS and redirect allowlists are all deliberately withheld. There is no failure path
+        beyond the guard; each underlying read degrades to a documented default so a page can always render.
+      operationId: getAppConfig
+      tags:
+      - App Config (Client)
+      security:
+      - PublishableKey: []
+      responses:
+        '200':
+          description: Bootstrap document for the application the key belongs to
+          headers:
+            Cache-Control:
+              description: Always "private, max-age=60". The key travels in a header, so every tenant's document lives at
+                the same URL and a shared cache keyed on the URL alone would serve one tenant's configuration to the next
+                caller.
+              schema:
+                type: string
+                example: private, max-age=60
+            Vary:
+              description: Always "X-Authn-Publishable-Key, Origin", so a browser cache cannot reuse one application's answer
+                for another.
+              schema:
+                type: string
+                example: X-Authn-Publishable-Key, Origin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppConfig'
+        '401':
+          description: Missing, invalid, expired, revoked, or wrong-type publishable key. A secret key offered in the publishable
+            key header is refused here.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Request Origin is not registered for the application this publishable key belongs to
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/tenant/branding:
+    get:
+      summary: Get Tenant Branding
+      description: Returns the tenant's stored presentational configuration — the same object the public bootstrap document
+        serves as its "branding" member. The tenant is taken from the credential, so no target may be named.
+      operationId: getTenantBranding
+      tags:
+      - App Config (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Tenant branding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branding'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      summary: Update Tenant Branding
+      description: Replaces the tenant's presentational configuration. The stored value is replaced rather than merged, because
+        branding is edited as a whole form and a merge would make clearing a logo impossible - an empty string and an absent
+        key are indistinguishable after a JSON round trip. Values are normalized on the way in, trimmed and with a scheme-less
+        URL resolved to https rather than http. Values that could escape a CSS declaration or the enclosing style element
+        are refused outright rather than escaped, since branding renders on the page where a user types their password. A
+        publishable key is refused here - anyone who loads a sign-in page holds one.
+      operationId: updateTenantBranding
+      tags:
+      - App Config (Tenant)
+      security:
+      - SecretKey: []
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Branding'
+      responses:
+        '200':
+          description: Stored branding, after normalization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branding'
+        '400':
+          description: Unparseable body, or a value rejected by validation. The message names the offending field.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Tenant not provisioned. A settings write never creates the tenant it addresses.
           content:
             application/json:
               schema:
@@ -578,12 +1216,6 @@ paths:
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-        description: Target tenant ID (overridden if provided in request body)
       requestBody:
         required: true
         content:
@@ -636,13 +1268,6 @@ paths:
       security:
       - SecretKey: []
       - BearerAuth: []
-      parameters:
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       responses:
         '200':
           description: List of tenant roles
@@ -679,12 +1304,6 @@ paths:
         schema:
           type: string
         description: Unique role ID identifier
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       requestBody:
         required: true
         content:
@@ -739,12 +1358,6 @@ paths:
         schema:
           type: string
         description: Unique user ID to assign the role to
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       requestBody:
         required: true
         content:
@@ -811,12 +1424,6 @@ paths:
         schema:
           type: string
         description: Role slug identifier to revoke
-      - in: query
-        name: tenant_id
-        schema:
-          type: string
-          default: tnt_00000000000000000000000000000001
-        description: Target tenant ID
       responses:
         '200':
           description: Role revoked from user successfully
@@ -845,7 +1452,7 @@ paths:
       - RBAC (Client)
       security:
       - PublishableKey: []
-      - BearerAuth: []
+        BearerAuth: []
       responses:
         '200':
           description: Caller's roles and effective permissions
@@ -896,6 +1503,17 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A webhook endpoint has no environment of its
+            own: there is one list per tenant and the dispatcher delivers every event
+            to all of it, so the list is live configuration whichever key wrote it.
+            Registering an entry therefore requires a live secret key. The three read
+            routes accept either.
           content:
             application/json:
               schema:
@@ -1023,6 +1641,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. The endpoint list is shared by both
+            environments, so repointing an entry with a test key would redirect a live
+            event. Requires a live secret key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Webhook endpoint not found
           content:
@@ -1070,6 +1697,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. Deleting an entry silences a live integration,
+            so it requires a live secret key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Webhook endpoint not found
           content:
@@ -1108,6 +1743,14 @@ paths:
                 $ref: '#/components/schemas/SendTestPingResponse'
         '401':
           description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A ping makes a live endpoint receive a real HTTP
+            request, so it requires a live secret key.
           content:
             application/json:
               schema:
@@ -1151,6 +1794,14 @@ paths:
                 $ref: '#/components/schemas/EndpointResponse'
         '401':
           description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. Rotation invalidates the signature every live
+            receiver verifies, so it requires a live secret key.
           content:
             application/json:
               schema:
@@ -1239,6 +1890,14 @@ paths:
                 $ref: '#/components/schemas/RedeliverResponse'
         '401':
           description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A redelivery is a real HTTP request to a live
+            endpoint, so it requires a live secret key.
           content:
             application/json:
               schema:
@@ -1374,6 +2033,16 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment. Live credentials are not bounded by
+            this ceiling. Not 429 — waiting does not help, because the ceiling is
+            on stored rows; room is made by deleting users or using a live key.
           content:
             application/json:
               schema:
@@ -1722,6 +2391,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '429':
           description: Request throttled due to rate limiting
           content:
@@ -1783,6 +2462,16 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
           content:
             application/json:
               schema:
@@ -2338,7 +3027,7 @@ paths:
       operationId: CancelRecoveryAuth
       security:
       - PublishableKey: []
-      - BearerAuth: []
+        BearerAuth: []
       requestBody:
         required: true
         content:
@@ -3240,7 +3929,7 @@ paths:
       - OAuth & OIDC
       security:
       - PublishableKey: []
-      - BearerAuth: []
+        BearerAuth: []
       parameters:
       - in: query
         name: client_id
@@ -3872,13 +4561,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrgResponse'
         '400':
-          description: Validation error or tenant organization limit reached
+          description: Validation error, or the slug is already taken in this environment
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds
+            TEST_MAX_ORGANIZATIONS workspaces in the test environment. Live
+            credentials are not bounded by this ceiling. Not 429 — waiting does
+            not help, because the ceiling is on stored rows.
           content:
             application/json:
               schema:
@@ -4540,6 +5239,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Invitation token not found
           content:
@@ -4624,7 +5333,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrgResponse'
         '400':
-          description: Validation error or tenant organization limit reached
+          description: Validation error, or the slug is already taken in this environment
           content:
             application/json:
               schema:
@@ -4636,7 +5345,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - tenant_admin role or admin 2FA required
+          description: >-
+            Forbidden - tenant_admin role or admin 2FA required, or code
+            `test_quota_exceeded` when the tenant already holds
+            TEST_MAX_ORGANIZATIONS workspaces in the test environment. Live
+            credentials are not bounded by that ceiling. Not 429 — waiting does
+            not help, because the ceiling is on stored rows.
           content:
             application/json:
               schema:
@@ -4753,7 +5467,11 @@ paths:
 
         Processes SAMLResponse assertions submitted via HTTP POST binding (JSON or URL-encoded form data).
 
-        This is an unauthenticated protocol endpoint; security is guaranteed by XML signature verification and assertion validation.
+        This is an unauthenticated protocol endpoint; security is guaranteed by XML signature verification and assertion validation. The tenant is derived from the assertion Issuer rather than supplied by the caller.
+
+        A validated assertion is carried on a real session in the same store the password and social paths write to, so an SSO sign-in is listed in the user''s device list and revoked like any other. The refresh token is delivered only as an HttpOnly cookie, under the tenant''s configured SameSite and lifetime policy.
+
+        The response shape depends on RelayState. With a registered destination the browser is redirected there with the access token in the URL fragment; without one, or with a destination the tenant has not registered, the token is returned in the 200 body instead.
 
         '
       requestBody:
@@ -4766,12 +5484,39 @@ paths:
             schema:
               $ref: '#/components/schemas/ACSRequest'
       responses:
+        '302':
+          description: 'Assertion validated and RelayState named a registered destination.
+
+            The access token is in the URL fragment, which is never transmitted to any server; it must not be moved to the query string, where it would land in browser history, access logs, proxy logs and the Referer of any cross-origin subresource. The refresh token is in the Set-Cookie header and never in the Location.
+
+            '
+          headers:
+            Location:
+              description: The registered destination, with the access token appended in the fragment.
+              schema:
+                type: string
+                example: https://app.acme.com/sso/landing#access_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c3JfMWEyYjNjNGQifQ.8STDe5Dno&token_type=Bearer
+            Set-Cookie:
+              description: HttpOnly refresh cookie for the new session.
+              schema:
+                type: string
+                example: authn_refresh_token=a8cd8149c3ff1fe8bfacf85517c6094f; path=/; HttpOnly; secure; SameSite=Lax
         '200':
-          description: SAML SSO authentication successful
+          description: 'Assertion validated, and no usable resume destination was supplied.
+
+            This is the normal outcome for an identity-provider-initiated sign-in, which carries no RelayState. It is also the fallback when RelayState named a destination the tenant has not registered: the assertion has already been consumed by that point and is single-use, so refusing would cost the user a sign-in they cannot retry. The refusal is logged server-side.
+
+            '
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ACSResponse'
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh cookie for the new session.
+              schema:
+                type: string
+                example: authn_refresh_token=a8cd8149c3ff1fe8bfacf85517c6094f; path=/; HttpOnly; secure; SameSite=Lax
         '400':
           description: Missing or malformed SAMLResponse payload
           content:
@@ -4782,7 +5527,11 @@ paths:
                 error: missing SAMLResponse payload
                 code: missing_parameter
         '403':
-          description: SAML assertion validation failed
+          description: 'SAML assertion validation failed.
+
+            Covers a bad signature, an unknown issuer, an expired or already-used assertion, a wrong audience, a domain the connection is not authorized for, and a missing subject email. The reason is deliberately not itemized: this endpoint accepts unauthenticated input, and distinguishing the cases would let anyone map a tenant''s SSO configuration by posting crafted assertions.
+
+            '
           content:
             application/json:
               schema:
@@ -4946,6 +5695,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A test credential may not file a connection in
+            `live`. Because `environment` defaults to `live`, omitting it is the same
+            request as naming it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: a live SAML connection can only be created, changed or deleted with a live key
+                code: live_key_required
         '409':
           description: SAML connection already exists for this organization
           content:
@@ -5052,6 +5813,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A test credential may not edit a connection that
+            sits in `live`, nor promote a test one into it. Editing a connection that
+            stays in `test` is permitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: a live SAML connection can only be created, changed or deleted with a live key
+                code: live_key_required
         '404':
           description: SAML connection configuration not found
           content:
@@ -5099,6 +5872,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A test credential may not delete a connection
+            that sits in `live`. Deleting one locks every employee out of the
+            organization, so it is the same live act as configuring it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: a live SAML connection can only be created, changed or deleted with a live key
+                code: live_key_required
         '404':
           description: SAML connection configuration not found
           content:
@@ -5160,7 +5945,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - Requires tenant admin privileges
+          description: >-
+            Either the credential lacks tenant admin privileges, or code
+            `live_key_required`: a test credential may not file a connection in
+            `live`. Because `environment` defaults to `live`, omitting it is the same
+            request as naming it.
           content:
             application/json:
               schema:
@@ -5278,7 +6067,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - Requires tenant admin privileges
+          description: >-
+            Either the credential lacks tenant admin privileges, or code
+            `live_key_required`: a test credential may not edit a connection that sits
+            in `live`, nor promote a test one into it. Editing a connection that stays
+            in `test` is permitted.
           content:
             application/json:
               schema:
@@ -5331,7 +6124,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - Requires tenant admin privileges
+          description: >-
+            Either the credential lacks tenant admin privileges, or code
+            `live_key_required`: a test credential may not delete a connection that
+            sits in `live`. Deleting one locks every employee out of the organization,
+            so it is the same live act as configuring it.
           content:
             application/json:
               schema:
@@ -6648,6 +7445,393 @@ components:
         impersonator_id:
           type: string
           example: usr_admin_99
+    EnvironmentEnvelope:
+      type: object
+      required:
+      - environment
+      properties:
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          description: >-
+            The environment this response describes, echoed from the credential that
+            authenticated the request. A sk_test_ key reads and writes test settings, a
+            sk_live_ key live ones, and there is no way to reach one environment while
+            holding the other's key. It is echoed because "I changed the policy and
+            nothing happened" is otherwise indistinguishable from having configured the
+            other environment by mistake.
+          example: test
+    SessionPolicy:
+      type: object
+      required:
+      - cookie_same_site
+      - access_token_ttl_minutes
+      - refresh_token_ttl_days
+      properties:
+        cookie_same_site:
+          type: string
+          enum:
+          - lax
+          - none
+          description: >-
+            SameSite attribute of the refresh cookie. Use lax when your applications sit
+            under one parent domain; none is required when the browser must send the cookie
+            to a genuinely different site, and pairs with Secure. Requesting none is stored
+            as asked but honoured only when the cookie will also carry Secure; over plaintext
+            HTTP the cookie is written Lax instead, because browsers drop a non-Secure
+            SameSite=None cookie outright and a same-site session beats no session.
+          example: lax
+        access_token_ttl_minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: >-
+            Access token lifetime in minutes. Zero inherits the deployment default. Values
+            outside the range are clamped into it rather than rejected, so a policy write
+            never fails on a number an administrator can simply be shown the effect of.
+          example: 15
+        refresh_token_ttl_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: >-
+            How long a session may be refreshed before the person signs in again. Zero
+            inherits the deployment default, and out-of-range values are clamped.
+          example: 30
+    TenantSettings:
+      type: object
+      description: >-
+        Every policy column of one environment's settings row, as stored. A column absent
+        or empty means nothing has been configured and the engine's defaults apply, which
+        is why no column is required here. Each social provider's client secret is replaced
+        by a client_secret_set boolean.
+      properties:
+        branding_config:
+          type: object
+          additionalProperties: true
+          description: Hosted-page branding for this environment.
+        password_policy:
+          type: object
+          additionalProperties: true
+          description: Password complexity requirements. Shaped like PasswordPolicy.
+        security_policy:
+          type: object
+          additionalProperties: true
+          description: Security enforcement settings. Shaped like SecurityPolicy.
+        recovery_policy:
+          type: object
+          additionalProperties: true
+          description: Account recovery rules. Shaped like RecoveryPolicy.
+        social_providers:
+          type: object
+          additionalProperties: true
+          description: >-
+            Social provider configuration keyed by provider, with each client secret
+            replaced by client_secret_set. Configuring a provider in test does not
+            configure it in live; each environment holds its own OAuth client.
+        role_policy:
+          type: object
+          additionalProperties: true
+          description: Default role assignment for members created in this environment.
+        session_policy:
+          type: object
+          additionalProperties: true
+          description: Session and cookie settings. Shaped like SessionPolicy.
+    TenantSettingsResponse:
+      type: object
+      required:
+      - environment
+      - settings
+      properties:
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          description: Environment the settings belong to, taken from the credential.
+          example: test
+        settings:
+          $ref: '#/components/schemas/TenantSettings'
+    TenantSettingsDiffResponse:
+      type: object
+      required:
+      - environment
+      - test
+      - live
+      - differs
+      properties:
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          description: >-
+            Environment of the credential that made the request. Both environments are
+            returned whichever key was used, since comparing them is the point.
+          example: test
+        test:
+          $ref: '#/components/schemas/TenantSettings'
+        live:
+          $ref: '#/components/schemas/TenantSettings'
+        differs:
+          type: array
+          items:
+            type: string
+          description: >-
+            Names of the policy columns whose stored values differ between the two
+            environments, in a stable order. This is exactly what publishing test would
+            change in live. An empty array means the two environments already match.
+          example:
+          - password_policy
+          - session_policy
+    PublishSettingsRequest:
+      type: object
+      description: >-
+        Names the environments a publish moves settings between. The body may be omitted
+        entirely, which means test to live.
+      properties:
+        from:
+          type: string
+          enum:
+          - test
+          - live
+          default: test
+          description: Environment whose settings are copied. Read across the boundary, since a publish that could not read test could not publish anything.
+          example: test
+        to:
+          type: string
+          enum:
+          - test
+          - live
+          default: live
+          description: >-
+            Environment overwritten. Must match the environment of the key making the
+            request, so publishing into live requires a sk_live_ key. That is the guard
+            that stops a test key overwriting a live configuration. Must also differ from
+            from, because copying an environment onto itself would stamp a promotion in the
+            audit trail that never happened.
+          example: live
+    PublishSettingsResponse:
+      type: object
+      required:
+      - message
+      - from
+      - to
+      - changed
+      - settings
+      properties:
+        message:
+          type: string
+          example: settings published
+        from:
+          type: string
+          enum:
+          - test
+          - live
+          example: test
+        to:
+          type: string
+          enum:
+          - test
+          - live
+          example: live
+        changed:
+          type: array
+          items:
+            type: string
+          description: >-
+            Names of the columns the publish altered, measured against the destination as
+            it stood before the write. An empty array means the destination already matched
+            the source, so the publish recorded itself and changed nothing else. Only names
+            are reported and never values, because the values include provider secrets.
+          example:
+          - password_policy
+          - session_policy
+        settings:
+          allOf:
+          - $ref: '#/components/schemas/TenantSettings'
+          description: What the destination now holds, which is a verbatim copy of the source.
+    SandboxMessage:
+      type: object
+      required:
+      - id
+      - channel
+      - environment
+      - recipient
+      - created_at
+      properties:
+        id:
+          type: string
+          example: sbxmsg_2f9c1a7b4e0d
+        channel:
+          type: string
+          enum:
+          - email
+          - sms
+          example: email
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          description: >-
+            Always test in practice. The column exists so this table is narrowed by the same
+            interceptor predicate as every other environment-scoped one, which is what stops a
+            live key reading sandbox traffic.
+          example: test
+        recipient:
+          type: string
+          description: The address the message was aimed at — an email address, or E.164 for SMS.
+          example: ada@example.test
+        subject:
+          type: string
+          description: Absent for SMS, which has none.
+          example: Verify your email address
+        template:
+          type: string
+          enum:
+          - email_verification
+          - magic_link
+          - two_factor_code
+          - impersonation_notice
+          - email_change
+          - recovery_email_verification
+          description: >-
+            Which template produced the message, classified from the subject using the sender's
+            own subject constants. An unrecognised subject stores an empty value rather than a
+            guess: this field exists so a test can assert which message was triggered, and a
+            wrong answer would defeat that more thoroughly than an absent one.
+          example: email_verification
+        code:
+          type: string
+          description: >-
+            The one-time code, lifted out at capture time so completing a flow does not mean
+            parsing rendered HTML. Read from the plain-text alternative in preference to the
+            HTML one, since both carry the same code and only one is wrapped in a stylesheet.
+            Absent when the message carries none.
+          example: '482915'
+        metadata:
+          type: object
+          additionalProperties: true
+          description: >-
+            link is the action URL carrying the authenticating token; text_body is the
+            plain-text alternative of an email.
+          example:
+            link: https://api.authn.com/v1/client/auth/verify-email?token=32b3c1b7a1695dbb
+            text_body: Welcome to Acme! Please verify your email address...
+        body:
+          type: string
+          description: >-
+            The message exactly as the provider would have received it. Returned only on a
+            single-message read, never in a listing.
+          example: <!DOCTYPE html><html>...</html>
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-19T11:04:22Z'
+    SandboxMessageListResponse:
+      type: object
+      required:
+      - environment
+      - messages
+      - total
+      properties:
+        environment:
+          type: string
+          enum:
+          - test
+          description: Environment the inbox belongs to, taken from the credential.
+          example: test
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/SandboxMessage'
+          description: One page of captures, newest first, so messages[0] is what the flow just triggered produced. body is omitted here.
+        total:
+          type: integer
+          description: >-
+            Every message matching the filter, counted before paging. A test polling for a
+            message cannot learn this from the page length, which is why it is reported
+            separately.
+          example: 2
+    SandboxMessageResponse:
+      type: object
+      required:
+      - environment
+      - message
+      properties:
+        environment:
+          type: string
+          enum:
+          - test
+          example: test
+        message:
+          allOf:
+          - $ref: '#/components/schemas/SandboxMessage'
+          description: The capture including its rendered body.
+    SandboxPurgeResponse:
+      type: object
+      required:
+      - message
+      - environment
+      - removed
+      properties:
+        message:
+          type: string
+          example: sandbox inbox emptied
+        environment:
+          type: string
+          enum:
+          - test
+          example: test
+        removed:
+          type: integer
+          description: Captures deleted. Only the calling tenant's test messages are touched.
+          example: 12
+    VerifyDeliveryRequest:
+      type: object
+      required:
+      - channel
+      description: >-
+        Notably absent is a recipient. The address is the signed-in operator's own, which makes
+        it impossible to aim this endpoint at somebody else rather than merely against the
+        rules — and a check of whether a provider accepts mail does not need a choice of target
+        to answer.
+      properties:
+        channel:
+          type: string
+          enum:
+          - email
+          - sms
+          description: Which configured driver to exercise.
+          example: email
+    VerifyDeliveryResponse:
+      type: object
+      required:
+      - message
+      - channel
+      - recipient
+      - driver
+      properties:
+        message:
+          type: string
+          example: delivery test accepted by the provider
+        channel:
+          type: string
+          enum:
+          - email
+          - sms
+          example: email
+        recipient:
+          type: string
+          description: The operator's own verified email address or phone number, read from their account.
+          example: operator@acme.com
+        driver:
+          type: string
+          description: The configured backend that accepted the message.
+          example: aws_ses
     PasswordPolicy:
       type: object
       required:
@@ -6801,6 +7985,259 @@ components:
           minimum: 1
           maximum: 10
           example: 3
+    Branding:
+      type: object
+      description: A tenant's presentational configuration. Every field is public and every field may be empty; empty means
+        the client inherits its own defaults rather than that a required value is missing. The stored column is a free-form
+        JSON object shared with settings that are not public, and it is narrowed by unmarshalling into this fixed shape, so
+        a key added to the column for another purpose cannot reach the public document.
+      properties:
+        app_name:
+          type: string
+          maxLength: 100
+          description: Product name on the sign-in card. Empty means fall back to the application or tenant name.
+          example: Acme Identity
+        logo_url:
+          type: string
+          description: 'Primary logo. http(s) only; the javascript: and data: schemes are refused.'
+          example: https://cdn.acme.example/logo.svg
+        logo_dark_url:
+          type: string
+          description: Dark-scheme counterpart to logo_url.
+          example: https://cdn.acme.example/logo-dark.svg
+        favicon_url:
+          type: string
+          example: https://cdn.acme.example/favicon.ico
+        primary_color:
+          type: string
+          pattern: ^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$
+          description: Accent applied to buttons and links. Hex only, because the value is interpolated into a stylesheet
+            and a free-form CSS colour can carry a whole declaration.
+          example: '#1a73e8'
+        background_color:
+          type: string
+          pattern: ^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$
+          example: '#ffffff'
+        text_color:
+          type: string
+          pattern: ^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$
+          example: '#0f172a'
+        button_text_color:
+          type: string
+          pattern: ^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$
+          example: '#ffffff'
+        font_family:
+          type: string
+          maxLength: 200
+          description: CSS font-family list, without the property name or terminating semicolon. The characters ; { } < >
+            are refused, since they are what let a value end one declaration and begin another.
+          example: Inter, -apple-system, sans-serif
+        support_url:
+          type: string
+          example: https://acme.example/support
+        terms_url:
+          type: string
+          example: https://acme.example/terms
+        privacy_url:
+          type: string
+          example: https://acme.example/privacy
+        custom_css:
+          type: string
+          maxLength: 16384
+          description: Appended to the hosted stylesheet. The characters < and > are refused, because the stylesheet is delivered
+            inside a style element and a payload containing "</style><script>" would close it and execute.
+          example: '.authn-card { border-radius: 12px }'
+    ApplicationInfo:
+      type: object
+      description: The calling application's public identity. Its allowed CORS origins and exact redirect URIs are deliberately
+        absent - they are the allowlists an open-redirect attempt is measured against.
+      properties:
+        id:
+          type: string
+          example: app_00000000000000000000000000000001
+        name:
+          type: string
+          example: Acme Web
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          description: Taken from the key rather than the request, so a client is told which environment its own credential
+            addresses. Renders a test-mode banner.
+          example: test
+    TenantInfo:
+      type: object
+      description: The owning workspace's public identity - what a sign-in page may display, and nothing more.
+      properties:
+        name:
+          type: string
+          example: Acme Corp
+        slug:
+          type: string
+          example: acme
+    SignInMethods:
+      type: object
+      description: The first factors a sign-in page should offer. Several fields are unconditionally true; they describe the
+        surface the engine compiles in, and are reported rather than assumed so a client reads every capability from one place
+        instead of splitting the question between what it asks the server and what it hardcodes.
+      properties:
+        password:
+          type: boolean
+          description: Always true. The engine's base credential, with no switch.
+          example: true
+        magic_link:
+          type: boolean
+          description: Follows the deployment's FEATURE_MAGIC_LINK_ENABLED flag.
+          example: true
+        passkey:
+          type: boolean
+          description: Always true. The WebAuthn relying party is always configured, defaulting to the deployment host.
+          example: true
+        enterprise_sso:
+          type: boolean
+          description: True when the tenant has at least one SAML connection, which is what makes an SSO option worth showing.
+            Which connection serves a given user is resolved per email domain by POST /v1/client/auth/domain-lookup, since
+            that depends on an address the user has not typed yet.
+          example: false
+        social_providers:
+          type: array
+          description: Names of the providers the tenant has enabled, sorted so a cacheable response does not differ between
+            reads. Names only - the engine performs the authorization redirect itself, so a browser never needs a provider's
+            client ID. Always an array, never null.
+          items:
+            type: string
+          example:
+          - github
+          - google
+    SecondFactors:
+      type: object
+      description: The second factors a tenant's users may hold, so a page can label an MFA challenge before it knows which
+        factor the user enrolled.
+      properties:
+        totp:
+          type: boolean
+          description: Authenticator-app codes. Always true.
+          example: true
+        sms:
+          type: boolean
+          description: Requires the deployment to name a real SMS driver. A tenant can enable phone codes on a deployment
+            that cannot deliver a text; offering the factor there produces a code that never arrives.
+          example: false
+        passkey:
+          type: boolean
+          description: WebAuthn as a second factor. Always true.
+          example: true
+        recovery_codes:
+          type: boolean
+          description: Single-use backup codes. Always true.
+          example: true
+        push:
+          type: boolean
+          description: Follows the deployment's FEATURE_PUSH_2FA_ENABLED flag.
+          example: false
+    PasswordRules:
+      type: object
+      description: The password policy as a client should apply it. The lengths are the effective bounds the engine will enforce,
+        not the stored ones - a tenant may store a minimum below the engine's own floor, and publishing that would produce
+        a form accepting a password the API then rejects.
+      properties:
+        min_length:
+          type: integer
+          example: 8
+        max_length:
+          type: integer
+          example: 4096
+        require_uppercase:
+          type: boolean
+          example: false
+        require_lowercase:
+          type: boolean
+          example: false
+        require_numeric:
+          type: boolean
+          example: true
+        require_special:
+          type: boolean
+          example: false
+        enforced:
+          type: boolean
+          description: Whether a non-compliant password is refused. False means the tenant is in notify mode - the password
+            is accepted and the unmet criteria reported, so a page should warn rather than block. The policy's require and
+            notify modes collapse to this one flag because a client only needs to know whether to block or to warn.
+          example: true
+    EmailVerification:
+      type: object
+      description: How the tenant treats a user whose address is unverified, which decides what a page does after a successful
+        sign-up.
+      properties:
+        required:
+          type: boolean
+          example: false
+        mode:
+          type: string
+          enum:
+          - soft
+          - hard
+          description: hard refuses an unverified user access, so a page shows a blocking screen. soft admits them with the
+            state flagged on the token, so a page shows a dismissible banner. Reported as soft when the stored value is empty,
+            which is both the documented default and the permissive of the two.
+          example: soft
+    AccountRecovery:
+      type: object
+      description: Which proofs a locked-out user may offer, so the "can't sign in?" flow can render its options. The recovery
+        policy's thresholds - lockout schedule, reset window, freeze window, claim-token TTL, trusted-device window, per-window
+        attempt cap and the subnet widths attempts are grouped by - are absent by design, because an attacker who can read
+        them can pace an attempt to stay under every one.
+      properties:
+        guardians:
+          type: boolean
+          example: true
+        phone_otp:
+          type: boolean
+          description: Additionally requires the deployment to name a real SMS driver, since a tenant can enable the method
+            on a deployment that cannot deliver a text.
+          example: false
+        email_otp:
+          type: boolean
+          example: true
+        old_password:
+          type: boolean
+          example: true
+        security_questions:
+          type: boolean
+          example: true
+        min_guardians:
+          type: integer
+          description: Bounds the enrolment screen validates against before submitting.
+          example: 1
+        max_guardians:
+          type: integer
+          example: 5
+    AppConfig:
+      type: object
+      description: The document a sign-in page fetches once, before it renders, to learn how it should look, which sign-in
+        options to offer, and what it may accept as a password. It answers all three in one round trip because a page making
+        three calls would render three times, and because two of the three are policies the client must agree with the server
+        about. Every member is an explicit projection rather than a stored policy struct, so a field reaches this API only
+        when someone puts it here on purpose.
+      properties:
+        application:
+          $ref: '#/components/schemas/ApplicationInfo'
+        tenant:
+          $ref: '#/components/schemas/TenantInfo'
+        branding:
+          $ref: '#/components/schemas/Branding'
+        sign_in_methods:
+          $ref: '#/components/schemas/SignInMethods'
+        second_factors:
+          $ref: '#/components/schemas/SecondFactors'
+        password_rules:
+          $ref: '#/components/schemas/PasswordRules'
+        email_verification:
+          $ref: '#/components/schemas/EmailVerification'
+        account_recovery:
+          $ref: '#/components/schemas/AccountRecovery'
     CreateRoleRequest:
       type: object
       required:
@@ -8210,7 +9647,7 @@ components:
           minLength: 2
           maxLength: 50
           pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-          description: URL-friendly identifier unique within tenant (derived from name if omitted)
+          description: URL-friendly identifier, unique within the tenant and environment (derived from name if omitted)
           example: acme-corp
         logo_url:
           type: string
@@ -8304,6 +9741,7 @@ components:
       required:
       - id
       - tenant_id
+      - environment
       - name
       - slug
       - created_at
@@ -8316,13 +9754,23 @@ components:
           type: string
           description: Owning tenant identifier
           example: tnt_live_1234
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          description: >-
+            Environment the workspace belongs to, taken from the credential that
+            created it and never from the request. A workspace is visible only to
+            keys in its own environment; a cross-environment read answers 404.
+          example: test
         name:
           type: string
           description: Workspace display name
           example: Acme Corp
         slug:
           type: string
-          description: URL-friendly identifier unique within tenant
+          description: URL-friendly identifier, unique within the tenant and environment
           example: acme-corp
         logo_url:
           type: string
@@ -8529,17 +9977,37 @@ components:
           description: Base64-encoded SAML 2.0 Response XML document.
         RelayState:
           type: string
-          description: Optional opaque state parameter echoed back from authentication request.
+          description: 'Destination the browser resumes at once the assertion validates.
+
+            Treated as untrusted input: it is echoed back by the identity provider from whatever started the flow, and anyone can start one. It is accepted only when it is an absolute http(s) URL matching a destination the tenant registered in exact_redirect_uris on one of its applications, either exactly or by scheme and host. An unregistered, relative or non-http(s) value is refused and logged, and the response degrades to 200 with the token in the body rather than failing the sign-in.
+
+            '
+          example: https://app.acme.com/sso/landing
     ACSResponse:
       type: object
       required:
       - message
+      - access_token
+      - token_type
       - user
       - organization
       properties:
         message:
           type: string
           example: SAML SSO authentication successful
+        access_token:
+          type: string
+          description: 'Signed JWT for the new session, carrying the sid claim of the session row it belongs to.
+
+            Returned in the body only when no usable RelayState was supplied. When one was, the response is a 302 and this token travels in the URL fragment instead.
+
+            '
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfMWEyYjNjNGQifQ.8STDe5DnoQDODuHKhVXN8R8nJcxxZqfMEEfUaMwg8tE
+        token_type:
+          type: string
+          enum:
+          - Bearer
+          example: Bearer
         user:
           type: object
           required:
@@ -8664,6 +10132,18 @@ components:
           default: false
           description: If true, direct password and social authentication are disabled for users in allowed_domains.
           example: true
+        environment:
+          type: string
+          enum: [test, live]
+          default: live
+          description: >-
+            Environment that users authenticated through this connection are provisioned into.
+            Defaults to live, unlike every other environment field in the API, because a
+            connection only exists once an administrator has supplied a real Identity
+            Provider's certificate and SSO URL. Set it to test to trial a provider against
+            sandbox accounts, then PATCH it to live once the assertions map to the right
+            people.
+          example: live
     UpdateSAMLRequest:
       type: object
       properties:
@@ -8706,6 +10186,16 @@ components:
           type: boolean
           description: Replaces the SSO enforcement flag when non-null.
           example: false
+        environment:
+          type: string
+          enum: [test, live]
+          description: >-
+            Moves where future sign-ins through this provider are provisioned, when non-null.
+            This is how a trialled connection is promoted to production. It governs sign-ins
+            from this point on and does not migrate the accounts already created: an employee
+            who signed in during the trial keeps their test account and is given a separate
+            live one on their next sign-in.
+          example: live
     SAMLConnectionResponse:
       type: object
       required:
@@ -8716,6 +10206,7 @@ components:
       - idp_certificate
       - allowed_domains
       - enforce_sso
+      - environment
       - created_at
       - updated_at
       properties:
@@ -8760,6 +10251,11 @@ components:
           type: boolean
           description: Flag indicating if SSO is strictly mandatory for allowed_domains.
           example: true
+        environment:
+          type: string
+          enum: [test, live]
+          description: Environment that users authenticated through this connection are provisioned into.
+          example: live
         created_at:
           type: string
           format: date-time

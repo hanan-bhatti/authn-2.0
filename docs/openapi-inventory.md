@@ -77,29 +77,29 @@ This document contains the single authoritative list of all registered HTTP rout
 | 67 | `GET` | `/v1/tenant/organizations/:orgId` | `org` | `TenantGetOrganization` | `internal/org/handler.go:69` | `SecretKey` (sk_) or Admin JWT |
 | 68 | `POST` | `/v1/tenant/organizations` | `org` | `TenantCreateOrganization` | `internal/org/handler.go:70` | `SecretKey` (sk_) or Admin JWT |
 | 69 | `DELETE` | `/v1/tenant/organizations/:orgId` | `org` | `TenantDeleteOrganization` | `internal/org/handler.go:71` | `SecretKey` (sk_) or Admin JWT |
-| 70 | `GET` | `/v1/tenant/password-policy` | `policy` | `GetPolicy` | `internal/policy/handler.go:140` | `SecretKey` (sk_) or Admin JWT |
-| 71 | `PUT` | `/v1/tenant/password-policy` | `policy` | `UpdatePolicy` | `internal/policy/handler.go:141` | `SecretKey` (sk_) or Admin JWT |
-| 72 | `GET` | `/v1/tenant/security-policy` | `policy` | `GetSecurityPolicy` | `internal/policy/handler.go:144` | `SecretKey` (sk_) or Admin JWT |
-| 73 | `PUT` | `/v1/tenant/security-policy` | `policy` | `UpdateSecurityPolicy` | `internal/policy/handler.go:145` | `SecretKey` (sk_) or Admin JWT |
-| 74 | `GET` | `/v1/tenant/recovery-policy` | `policy` | `GetRecoveryPolicy` | `internal/policy/handler.go:148` | `SecretKey` (sk_) or Admin JWT |
-| 75 | `PUT` | `/v1/tenant/recovery-policy` | `policy` | `UpdateRecoveryPolicy` | `internal/policy/handler.go:149` | `SecretKey` (sk_) or Admin JWT |
+| 70 | `GET` | `/v1/tenant/password-policy` | `policy` | `GetPolicy` | `internal/policy/handler.go:434` | `SecretKey` (sk_) or Admin JWT |
+| 71 | `PUT` | `/v1/tenant/password-policy` | `policy` | `UpdatePolicy` | `internal/policy/handler.go:435` | `SecretKey` (sk_) or Admin JWT |
+| 72 | `GET` | `/v1/tenant/security-policy` | `policy` | `GetSecurityPolicy` | `internal/policy/handler.go:438` | `SecretKey` (sk_) or Admin JWT |
+| 73 | `PUT` | `/v1/tenant/security-policy` | `policy` | `UpdateSecurityPolicy` | `internal/policy/handler.go:439` | `SecretKey` (sk_) or Admin JWT |
+| 74 | `GET` | `/v1/tenant/recovery-policy` | `policy` | `GetRecoveryPolicy` | `internal/policy/handler.go:442` | `SecretKey` (sk_) or Admin JWT |
+| 75 | `PUT` | `/v1/tenant/recovery-policy` | `policy` | `UpdateRecoveryPolicy` | `internal/policy/handler.go:443` | `SecretKey` (sk_) or Admin JWT |
 | 76 | `POST` | `/v1/tenant/roles` | `rbac` | `CreateRole` | `internal/rbac/handler.go:53` | `SecretKey` (sk_) or Admin JWT |
 | 77 | `GET` | `/v1/tenant/roles` | `rbac` | `ListRoles` | `internal/rbac/handler.go:54` | `SecretKey` (sk_) or Admin JWT |
 | 78 | `PUT` | `/v1/tenant/roles/:role_id/permissions` | `rbac` | `UpdateRolePermissions` | `internal/rbac/handler.go:55` | `SecretKey` (sk_) or Admin JWT |
 | 79 | `POST` | `/v1/admin/users/:user_id/roles` | `rbac` | `AssignUserRole` | `internal/rbac/handler.go:61` | `SecretKey` (sk_) or Admin JWT |
 | 80 | `DELETE` | `/v1/admin/users/:user_id/roles/:role_slug` | `rbac` | `RevokeUserRole` | `internal/rbac/handler.go:62` | `SecretKey` (sk_) or Admin JWT |
 | 81 | `GET` | `/v1/client/user/permissions` | `rbac` | `GetUserPermissions` | `internal/rbac/handler.go:71` | `PublishableKey` + `BearerAuth` |
-| 82 | `POST` | `/v1/saml/acs` | `saml` | `ProcessACS` | `internal/saml/handler.go:55` | None (Protocol Assertion) |
-| 83 | `GET` | `/v1/saml/metadata/:orgId` | `saml` | `GetSPMetadata` | `internal/saml/handler.go:56` | None (Public XML) |
-| 84 | `POST` | `/v1/client/auth/domain-lookup` | `saml` | `LookupDomainSSO` | `internal/saml/handler.go:59` | `PublishableKey` (pk_) |
-| 85 | `POST` | `/v1/client/organizations/:orgId/saml` | `saml` | `CreateSAMLConnection` | `internal/saml/handler.go:61` | `PublishableKey` + `BearerAuth` |
-| 86 | `GET` | `/v1/client/organizations/:orgId/saml` | `saml` | `GetSAMLConnection` | `internal/saml/handler.go:62` | `PublishableKey` + `BearerAuth` |
-| 87 | `PATCH` | `/v1/client/organizations/:orgId/saml` | `saml` | `UpdateSAMLConnection` | `internal/saml/handler.go:63` | `PublishableKey` + `BearerAuth` |
-| 88 | `DELETE` | `/v1/client/organizations/:orgId/saml` | `saml` | `DeleteSAMLConnection` | `internal/saml/handler.go:64` | `PublishableKey` + `BearerAuth` |
-| 89 | `POST` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `CreateSAMLConnection` | `internal/saml/handler.go:68` | `SecretKey` (sk_) or Admin JWT |
-| 90 | `GET` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `GetSAMLConnection` | `internal/saml/handler.go:69` | `SecretKey` (sk_) or Admin JWT |
-| 91 | `PATCH` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `UpdateSAMLConnection` | `internal/saml/handler.go:70` | `SecretKey` (sk_) or Admin JWT |
-| 92 | `DELETE` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `DeleteSAMLConnection` | `internal/saml/handler.go:71` | `SecretKey` (sk_) or Admin JWT |
+| 82 | `POST` | `/v1/saml/acs` | `saml` | `ProcessACS` | `internal/saml/handler.go:76` | None (Protocol Assertion; 302 to a registered RelayState, else 200) |
+| 83 | `GET` | `/v1/saml/metadata/:orgId` | `saml` | `GetSPMetadata` | `internal/saml/handler.go:77` | None (Public XML) |
+| 84 | `POST` | `/v1/client/auth/domain-lookup` | `saml` | `LookupDomainSSO` | `internal/saml/handler.go:80` | `PublishableKey` (pk_) |
+| 85 | `POST` | `/v1/client/organizations/:orgId/saml` | `saml` | `CreateSAMLConnection` | `internal/saml/handler.go:82` | `PublishableKey` + `BearerAuth` — **live key** when the connection is in `live` or the request moves it there |
+| 86 | `GET` | `/v1/client/organizations/:orgId/saml` | `saml` | `GetSAMLConnection` | `internal/saml/handler.go:83` | `PublishableKey` + `BearerAuth` |
+| 87 | `PATCH` | `/v1/client/organizations/:orgId/saml` | `saml` | `UpdateSAMLConnection` | `internal/saml/handler.go:84` | `PublishableKey` + `BearerAuth` — **live key** when the connection is in `live` or the request moves it there |
+| 88 | `DELETE` | `/v1/client/organizations/:orgId/saml` | `saml` | `DeleteSAMLConnection` | `internal/saml/handler.go:85` | `PublishableKey` + `BearerAuth` — **live key** when the connection is in `live` or the request moves it there |
+| 89 | `POST` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `CreateSAMLConnection` | `internal/saml/handler.go:89` | `SecretKey` (sk_) or Admin JWT — **live key** when the connection is in `live` or the request moves it there |
+| 90 | `GET` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `GetSAMLConnection` | `internal/saml/handler.go:90` | `SecretKey` (sk_) or Admin JWT |
+| 91 | `PATCH` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `UpdateSAMLConnection` | `internal/saml/handler.go:91` | `SecretKey` (sk_) or Admin JWT — **live key** when the connection is in `live` or the request moves it there |
+| 92 | `DELETE` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `DeleteSAMLConnection` | `internal/saml/handler.go:92` | `SecretKey` (sk_) or Admin JWT — **live key** when the connection is in `live` or the request moves it there |
 | 93 | `GET` | `/v1/client/sessions` | `session` | `ListSessions` | `internal/session/handler.go:57` | `PublishableKey` (pk_) |
 | 94 | `POST` | `/v1/client/sessions/revoke` | `session` | `RevokeSession` | `internal/session/handler.go:58` | `PublishableKey` (pk_) |
 | 95 | `POST` | `/v1/client/sessions/revoke-others` | `session` | `RevokeOtherSessions` | `internal/session/handler.go:59` | `PublishableKey` (pk_) |
@@ -125,15 +125,43 @@ This document contains the single authoritative list of all registered HTTP rout
 | 115 | `GET` | `/v1/client/user/social-accounts` | `user` | `ListSocialAccounts` | `internal/user/handler.go:129` | `PublishableKey` + `BearerAuth` |
 | 116 | `DELETE` | `/v1/client/user/social-accounts/:provider` | `user` | `UnlinkSocialAccount` | `internal/user/handler.go:130` | `PublishableKey` + `BearerAuth` |
 | 117 | `DELETE` | `/v1/client/user/account` | `user` | `DeleteAccount` | `internal/user/handler.go:131` | `PublishableKey` + `BearerAuth` |
-| 118 | `POST` | `/v1/admin/webhooks/endpoints` | `webhook` | `CreateEndpoint` | `internal/webhook/handler.go:35` | `SecretKey` (sk_) or Admin JWT |
-| 119 | `GET` | `/v1/admin/webhooks/endpoints` | `webhook` | `ListEndpoints` | `internal/webhook/handler.go:36` | `SecretKey` (sk_) or Admin JWT |
-| 120 | `GET` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `GetEndpoint` | `internal/webhook/handler.go:37` | `SecretKey` (sk_) or Admin JWT |
-| 121 | `PUT` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `UpdateEndpoint` | `internal/webhook/handler.go:38` | `SecretKey` (sk_) or Admin JWT |
-| 122 | `DELETE` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `DeleteEndpoint` | `internal/webhook/handler.go:39` | `SecretKey` (sk_) or Admin JWT |
-| 123 | `POST` | `/v1/admin/webhooks/endpoints/:id/ping` | `webhook` | `SendTestPing` | `internal/webhook/handler.go:40` | `SecretKey` (sk_) or Admin JWT |
-| 124 | `POST` | `/v1/admin/webhooks/endpoints/:id/rotate-secret` | `webhook` | `RotateSecret` | `internal/webhook/handler.go:41` | `SecretKey` (sk_) or Admin JWT |
-| 125 | `GET` | `/v1/admin/webhooks/deliveries` | `webhook` | `ListDeliveries` | `internal/webhook/handler.go:44` | `SecretKey` (sk_) or Admin JWT |
-| 126 | `POST` | `/v1/admin/webhooks/deliveries/:id/redeliver` | `webhook` | `Redeliver` | `internal/webhook/handler.go:45` | `SecretKey` (sk_) or Admin JWT |
+| 118 | `POST` | `/v1/admin/webhooks/endpoints` | `webhook` | `CreateEndpoint` | `internal/webhook/handler.go:44` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 119 | `GET` | `/v1/admin/webhooks/endpoints` | `webhook` | `ListEndpoints` | `internal/webhook/handler.go:45` | `SecretKey` (sk_) or Admin JWT |
+| 120 | `GET` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `GetEndpoint` | `internal/webhook/handler.go:46` | `SecretKey` (sk_) or Admin JWT |
+| 121 | `PUT` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `UpdateEndpoint` | `internal/webhook/handler.go:47` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 122 | `DELETE` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `DeleteEndpoint` | `internal/webhook/handler.go:48` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 123 | `POST` | `/v1/admin/webhooks/endpoints/:id/ping` | `webhook` | `SendTestPing` | `internal/webhook/handler.go:49` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 124 | `POST` | `/v1/admin/webhooks/endpoints/:id/rotate-secret` | `webhook` | `RotateSecret` | `internal/webhook/handler.go:50` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 125 | `GET` | `/v1/admin/webhooks/deliveries` | `webhook` | `ListDeliveries` | `internal/webhook/handler.go:53` | `SecretKey` (sk_) or Admin JWT |
+| 126 | `POST` | `/v1/admin/webhooks/deliveries/:id/redeliver` | `webhook` | `Redeliver` | `internal/webhook/handler.go:54` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 127 | `GET` | `/v1/client/app-config` | `appconfig` | `GetAppConfig` | `internal/appconfig/handler.go:144` | `PublishableKey` (pk_) |
+| 128 | `GET` | `/v1/tenant/branding` | `appconfig` | `GetBranding` | `internal/appconfig/handler.go:146` | `SecretKey` (sk_) or Admin JWT |
+| 129 | `PUT` | `/v1/tenant/branding` | `appconfig` | `UpdateBranding` | `internal/appconfig/handler.go:147` | `SecretKey` (sk_) or Admin JWT |
+| 130 | `GET` | `/v1/tenant/session-policy` | `policy` | `GetSessionPolicy` | `internal/policy/handler.go:446` | `SecretKey` (sk_) or Admin JWT |
+| 131 | `PUT` | `/v1/tenant/session-policy` | `policy` | `UpdateSessionPolicy` | `internal/policy/handler.go:447` | `SecretKey` (sk_) or Admin JWT |
+| 132 | `GET` | `/v1/tenant/settings` | `policy` | `GetSettings` | `internal/policy/handler.go:450` | `SecretKey` (sk_) or Admin JWT |
+| 133 | `GET` | `/v1/tenant/settings/diff` | `policy` | `GetSettingsDiff` | `internal/policy/handler.go:451` | `SecretKey` (sk_) or Admin JWT |
+| 134 | `POST` | `/v1/tenant/settings/publish` | `policy` | `PublishSettings` | `internal/policy/handler.go:452` | `SecretKey` (sk_) or Admin JWT (destination environment must match the key) |
+| 135 | `GET` | `/v1/tenant/sandbox/messages` | `sandbox` | `ListMessages` | `internal/sandbox/handler.go:102` | `SecretKey` (sk_test_) or Admin JWT (a live credential is `403`) |
+| 136 | `DELETE` | `/v1/tenant/sandbox/messages` | `sandbox` | `PurgeMessages` | `internal/sandbox/handler.go:103` | `SecretKey` (sk_test_) or Admin JWT (a live credential is `403`) |
+| 137 | `GET` | `/v1/tenant/sandbox/messages/:id` | `sandbox` | `GetMessage` | `internal/sandbox/handler.go:104` | `SecretKey` (sk_test_) or Admin JWT (a live credential is `403`) |
+| 138 | `POST` | `/v1/tenant/delivery/verify` | `sandbox` | `VerifyDelivery` | `internal/sandbox/handler.go:107` | Admin JWT only (a secret key is `403`; sends to the signed-in operator's own address) |
+| 139 | `GET` | `/v1/admin/audit-logs` | `audit` | `ListAuditLogs` | `internal/audit/handler.go:50` | `SecretKey` (sk_) or Admin JWT |
+| 140 | `GET` | `/v1/admin/audit-logs/` | `audit` | `ListAuditLogs` | `internal/audit/handler.go:51` | `SecretKey` (sk_) or Admin JWT |
+| 141 | `GET` | `/v1/admin/users` | `useradmin` | `ListUsers` | `internal/useradmin/handler.go:67` | `SecretKey` (sk_) or Admin JWT |
+| 142 | `GET` | `/v1/admin/users/` | `useradmin` | `ListUsers` | `internal/useradmin/handler.go:68` | `SecretKey` (sk_) or Admin JWT |
+| 143 | `GET` | `/v1/admin/users/:user_id` | `useradmin` | `GetUser` | `internal/useradmin/handler.go:69` | `SecretKey` (sk_) or Admin JWT |
+| 144 | `PATCH` | `/v1/admin/users/:user_id` | `useradmin` | `UpdateUser` | `internal/useradmin/handler.go:70` | `SecretKey` (sk_) or Admin JWT |
+| 145 | `DELETE` | `/v1/admin/users/:user_id` | `useradmin` | `DeleteUser` | `internal/useradmin/handler.go:71` | `SecretKey` (sk_) or Admin JWT |
+| 146 | `POST` | `/v1/admin/users/:user_id/ban` | `useradmin` | `BanUser` | `internal/useradmin/handler.go:73` | `SecretKey` (sk_) or Admin JWT |
+| 147 | `POST` | `/v1/admin/users/:user_id/unban` | `useradmin` | `UnbanUser` | `internal/useradmin/handler.go:74` | `SecretKey` (sk_) or Admin JWT |
+| 148 | `POST` | `/v1/admin/users/:user_id/suspend` | `useradmin` | `SuspendUser` | `internal/useradmin/handler.go:75` | `SecretKey` (sk_) or Admin JWT |
+| 149 | `POST` | `/v1/admin/users/:user_id/unsuspend` | `useradmin` | `UnsuspendUser` | `internal/useradmin/handler.go:76` | `SecretKey` (sk_) or Admin JWT |
+| 150 | `POST` | `/v1/admin/users/:user_id/restore` | `useradmin` | `RestoreUser` | `internal/useradmin/handler.go:77` | `SecretKey` (sk_) or Admin JWT |
+| 151 | `POST` | `/v1/admin/users/:user_id/logout` | `useradmin` | `ForceLogout` | `internal/useradmin/handler.go:78` | `SecretKey` (sk_) or Admin JWT |
+| 152 | `POST` | `/v1/admin/users/:user_id/verify-email` | `useradmin` | `VerifyEmail` | `internal/useradmin/handler.go:79` | `SecretKey` (sk_) or Admin JWT |
+| 153 | `POST` | `/v1/platform/tenants` | `platform` | `CreateTenant` | `internal/platform/handler.go:105` | Platform session `BearerAuth` (API keys refused; mounted only when a platform tenant is configured) |
+| 154 | `GET` | `/v1/platform/tenants` | `platform` | `ListTenants` | `internal/platform/handler.go:106` | Platform session `BearerAuth` (API keys refused; mounted only when a platform tenant is configured) |
 
 ---
 
@@ -144,6 +172,10 @@ This document contains the single authoritative list of all registered HTTP rout
 | `docs/endpoints/cross-domain-resume.md` | ❌ No | **FLAGGED FOR HUMAN REVIEW**: Document exists for `/v1/client/auth/cross-domain/resume`, but no corresponding route is registered in `apps/auth-engine`. |
 | `docs/endpoints/lockout-engine.md` | ℹ️ Pentest Doc | Describes security lockout logic evaluated inside `POST /v1/client/auth/login`. |
 | `docs/endpoints/system-health.md` | ✅ Yes | Maps to `/v1/health`, `/v1/ready`, `/healthz`, `/readyz`. |
+| `docs/endpoints/client-app-config.md` | ✅ Yes | Maps to routes 127-129. |
+| `docs/endpoints/tenant-settings.md` | ✅ Yes | Maps to routes 70-75, 128-134 plus the social provider routes 102-105 — the per-environment settings surface and the publish path. |
+| `docs/endpoints/tenant-sandbox-inbox.md` | ✅ Yes | Maps to routes 135-138 — the test-environment message inbox and provider delivery verification. |
+| `docs/endpoints/platform-tenants.md` | ✅ Yes | Maps to routes 153-154. Mounted only when a platform tenant is configured; otherwise `/v1/platform` is a plain `404`. |
 
 ---
 
@@ -158,6 +190,8 @@ Each subagent will extract its assigned routes into `docs/openapi-fragments/<chu
 - **`chunk-oauth-social`**: Routes 46-52, 100-105 (OIDC Discovery, JWKS, UserInfo, Authorize, Token, JWKS Rotation, Apps, Social Providers).
 - **`chunk-saml`**: Routes 82-92 (SAML ACS, metadata, domain lookup, client & tenant SAML connection management).
 - **`chunk-user-session`**: Routes 93-99, 106-117 (User profile, email changes, password updates, social account unlinking, session management & revocation).
-- **`chunk-admin-system`**: Routes 39-45, 70-81, 118-126 (API keys, Impersonation & policy, Password/Security/Recovery Policies, RBAC roles & permissions, Webhook endpoints & delivery logs).
+- **`chunk-admin-system`**: Routes 39-45, 70-81, 118-126, 130-138 (API keys, Impersonation & policy, Password/Security/Recovery/Session Policies, per-environment settings read/diff/publish, RBAC roles & permissions, Webhook endpoints & delivery logs, sandbox message inbox & delivery verification).
 
-Total inventoried endpoints in Go code: **126 route registrations across 13 handler modules**.
+Total inventoried endpoints in this table: **154 route registrations across 18 handler modules**.
+
+> **Known gap**: routes 139-154 — `internal/audit`, `internal/useradmin` and `internal/platform` — are inventoried above but have no OpenAPI fragment and no entry in `openapi.yaml`. They are registered in `cmd/server/routes.go` and served, so the gap is in the specification rather than in the engine. `docs/endpoints/platform-tenants.md` documents 153-154 in prose.

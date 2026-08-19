@@ -14,7 +14,11 @@ paths:
       description: |
         Assertion Consumer Service endpoint for SAML 2.0 Identity Providers.
         Processes SAMLResponse assertions submitted via HTTP POST binding (JSON or URL-encoded form data).
-        This is an unauthenticated protocol endpoint; security is guaranteed by XML signature verification and assertion validation.
+        This is an unauthenticated protocol endpoint; security is guaranteed by XML signature verification and assertion validation. The tenant is derived from the assertion Issuer rather than supplied by the caller.
+
+        A validated assertion is carried on a real session in the same store the password and social paths write to, so an SSO sign-in is listed in the user's device list and revoked like any other. The refresh token is delivered only as an HttpOnly cookie, under the tenant's configured SameSite and lifetime policy.
+
+        The response shape depends on RelayState. With a registered destination the browser is redirected there with the access token in the URL fragment; without one, or with a destination the tenant has not registered, the token is returned in the 200 body instead.
       requestBody:
         required: true
         content:
@@ -25,12 +29,37 @@ paths:
             schema:
               $ref: '#/components/schemas/ACSRequest'
       responses:
+        '302':
+          description: |
+            Assertion validated and RelayState named a registered destination.
+
+            The access token is in the URL fragment, which is never transmitted to any server; it must not be moved to the query string, where it would land in browser history, access logs, proxy logs and the Referer of any cross-origin subresource. The refresh token is in the Set-Cookie header and never in the Location.
+          headers:
+            Location:
+              description: The registered destination, with the access token appended in the fragment.
+              schema:
+                type: string
+                example: https://app.acme.com/sso/landing#access_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c3JfMWEyYjNjNGQifQ.8STDe5Dno&token_type=Bearer
+            Set-Cookie:
+              description: HttpOnly refresh cookie for the new session.
+              schema:
+                type: string
+                example: authn_refresh_token=a8cd8149c3ff1fe8bfacf85517c6094f; path=/; HttpOnly; secure; SameSite=Lax
         '200':
-          description: SAML SSO authentication successful
+          description: |
+            Assertion validated, and no usable resume destination was supplied.
+
+            This is the normal outcome for an identity-provider-initiated sign-in, which carries no RelayState. It is also the fallback when RelayState named a destination the tenant has not registered: the assertion has already been consumed by that point and is single-use, so refusing would cost the user a sign-in they cannot retry. The refusal is logged server-side.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ACSResponse'
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh cookie for the new session.
+              schema:
+                type: string
+                example: authn_refresh_token=a8cd8149c3ff1fe8bfacf85517c6094f; path=/; HttpOnly; secure; SameSite=Lax
         '400':
           description: Missing or malformed SAMLResponse payload
           content:
@@ -41,7 +70,10 @@ paths:
                 error: missing SAMLResponse payload
                 code: missing_parameter
         '403':
-          description: SAML assertion validation failed
+          description: |
+            SAML assertion validation failed.
+
+            Covers a bad signature, an unknown issuer, an expired or already-used assertion, a wrong audience, a domain the connection is not authorized for, and a missing subject email. The reason is deliberately not itemized: this endpoint accepts unauthenticated input, and distinguishing the cases would let anyone map a tenant's SSO configuration by posting crafted assertions.
           content:
             application/json:
               schema:
@@ -204,6 +236,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A test credential may not file a connection in
+            `live`. Because `environment` defaults to `live`, omitting it is the same
+            request as naming it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: a live SAML connection can only be created, changed or deleted with a live key
+                code: live_key_required
         '409':
           description: SAML connection already exists for this organization
           content:
@@ -310,6 +354,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A test credential may not edit a connection that
+            sits in `live`, nor promote a test one into it. Editing a connection that
+            stays in `test` is permitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: a live SAML connection can only be created, changed or deleted with a live key
+                code: live_key_required
         '404':
           description: SAML connection configuration not found
           content:
@@ -357,6 +413,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `live_key_required`. A test credential may not delete a connection
+            that sits in `live`. Deleting one locks every employee out of the
+            organization, so it is the same live act as configuring it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error: a live SAML connection can only be created, changed or deleted with a live key
+                code: live_key_required
         '404':
           description: SAML connection configuration not found
           content:
@@ -418,7 +486,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - Requires tenant admin privileges
+          description: >-
+            Either the credential lacks tenant admin privileges, or code
+            `live_key_required`: a test credential may not file a connection in
+            `live`. Because `environment` defaults to `live`, omitting it is the same
+            request as naming it.
           content:
             application/json:
               schema:
@@ -536,7 +608,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - Requires tenant admin privileges
+          description: >-
+            Either the credential lacks tenant admin privileges, or code
+            `live_key_required`: a test credential may not edit a connection that sits
+            in `live`, nor promote a test one into it. Editing a connection that stays
+            in `test` is permitted.
           content:
             application/json:
               schema:
@@ -589,7 +665,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - Requires tenant admin privileges
+          description: >-
+            Either the credential lacks tenant admin privileges, or code
+            `live_key_required`: a test credential may not delete a connection that
+            sits in `live`. Deleting one locks every employee out of the organization,
+            so it is the same live act as configuring it.
           content:
             application/json:
               schema:
@@ -652,18 +732,36 @@ components:
           description: Base64-encoded SAML 2.0 Response XML document.
         RelayState:
           type: string
-          description: Optional opaque state parameter echoed back from authentication request.
+          description: |
+            Destination the browser resumes at once the assertion validates.
+
+            Treated as untrusted input: it is echoed back by the identity provider from whatever started the flow, and anyone can start one. It is accepted only when it is an absolute http(s) URL matching a destination the tenant registered in exact_redirect_uris on one of its applications, either exactly or by scheme and host. An unregistered, relative or non-http(s) value is refused and logged, and the response degrades to 200 with the token in the body rather than failing the sign-in.
+          example: https://app.acme.com/sso/landing
 
     ACSResponse:
       type: object
       required:
         - message
+        - access_token
+        - token_type
         - user
         - organization
       properties:
         message:
           type: string
           example: SAML SSO authentication successful
+        access_token:
+          type: string
+          description: |
+            Signed JWT for the new session, carrying the sid claim of the session row it belongs to.
+
+            Returned in the body only when no usable RelayState was supplied. When one was, the response is a 302 and this token travels in the URL fragment instead.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfMWEyYjNjNGQifQ.8STDe5DnoQDODuHKhVXN8R8nJcxxZqfMEEfUaMwg8tE
+        token_type:
+          type: string
+          enum:
+            - Bearer
+          example: Bearer
         user:
           type: object
           required:
@@ -785,6 +883,18 @@ components:
           default: false
           description: If true, direct password and social authentication are disabled for users in allowed_domains.
           example: true
+        environment:
+          type: string
+          enum: [test, live]
+          default: live
+          description: >-
+            Environment that users authenticated through this connection are provisioned into.
+            Defaults to live, unlike every other environment field in the API, because a
+            connection only exists once an administrator has supplied a real Identity
+            Provider's certificate and SSO URL. Set it to test to trial a provider against
+            sandbox accounts, then PATCH it to live once the assertions map to the right
+            people.
+          example: live
 
     UpdateSAMLRequest:
       type: object
@@ -823,6 +933,16 @@ components:
           type: boolean
           description: Replaces the SSO enforcement flag when non-null.
           example: false
+        environment:
+          type: string
+          enum: [test, live]
+          description: >-
+            Moves where future sign-ins through this provider are provisioned, when non-null.
+            This is how a trialled connection is promoted to production. It governs sign-ins
+            from this point on and does not migrate the accounts already created: an employee
+            who signed in during the trial keeps their test account and is given a separate
+            live one on their next sign-in.
+          example: live
 
     SAMLConnectionResponse:
       type: object
@@ -834,6 +954,7 @@ components:
         - idp_certificate
         - allowed_domains
         - enforce_sso
+        - environment
         - created_at
         - updated_at
       properties:
@@ -873,6 +994,11 @@ components:
           type: boolean
           description: Flag indicating if SSO is strictly mandatory for allowed_domains.
           example: true
+        environment:
+          type: string
+          enum: [test, live]
+          description: Environment that users authenticated through this connection are provisioned into.
+          example: live
         created_at:
           type: string
           format: date-time
