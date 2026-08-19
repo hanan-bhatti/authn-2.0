@@ -68,6 +68,10 @@ func ExtractAccessToken(c *fiber.Ctx) string {
 // promise all rest on.
 func RequireClientAuth(signingSecret string, bl *tokenblocklist.Blocklist) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		if guardCompleted(c, guardClientAuth) {
+			return c.Next()
+		}
+
 		tokenStr := ExtractAccessToken(c)
 
 		if strings.TrimSpace(tokenStr) == "" {
@@ -122,6 +126,7 @@ func RequireClientAuth(signingSecret string, bl *tokenblocklist.Blocklist) fiber
 		c.Locals("tenant_id", claims.TenantID)
 		c.Locals("environment", claims.Environment)
 
+		markGuardCompleted(c, guardClientAuth)
 		return c.Next()
 	}
 }

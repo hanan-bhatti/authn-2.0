@@ -29,6 +29,14 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
+const (
+	// EnvironmentTest is the environment an unresolved request falls back to, so a
+	// routing or configuration mistake lands in the sandbox rather than in live.
+	EnvironmentTest = "test"
+	// EnvironmentLive is the environment serving a tenant's real customers.
+	EnvironmentLive = "live"
+)
+
 // Primary2FAValidator reports how many active primary second factors a user has
 // enrolled. It is an interface so this package does not depend on the MFA
 // package, which depends on this one.
@@ -64,6 +72,10 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, bl *t
 	}
 
 	return func(c *fiber.Ctx) error {
+		if guardCompleted(c, guardAdminAuth) {
+			return c.Next()
+		}
+
 		raw := strings.TrimSpace(c.Get("X-Authn-Secret-Key"))
 		if raw == "" {
 			authHeader := c.Get("Authorization")
@@ -92,6 +104,7 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, bl *t
 			c.Locals("environment", envStr)
 			c.Locals("api_key_id", key.ID)
 			c.Locals("admin_auth_method", "secret_key")
+			markGuardCompleted(c, guardAdminAuth)
 			return c.Next()
 		}
 
@@ -148,6 +161,7 @@ func RequireAdminAuth(apiKeyService *apikey.Service, signingSecret string, bl *t
 			c.Locals("console_user_id", claims.Sub)
 			c.Locals("console_user_email", claims.Email)
 			c.Locals("admin_auth_method", "console_jwt")
+			markGuardCompleted(c, guardAdminAuth)
 			return c.Next()
 		}
 
@@ -170,21 +184,24 @@ func GetTenantID(c *fiber.Ctx) string {
 	return ""
 }
 
-// RequireTenantID returns the authenticated caller's tenant, or a 401 response
-// when no guard resolved one.
+// RequireTenantID returns the authenticated caller's tenant, or answers 401 and
+// reports false. A caller that gets false must return nil without writing
+// anything further: the response is already sent, and a second answer would
+// replace it with whatever the global error handler makes of it.
 //
 // Handlers must take the tenant from here rather than from the query string, a
 // path parameter or the request body. The tenant decides which rows the request
 // reaches, so accepting a caller-supplied value lets anyone holding a valid
-// credential for one tenant address every other tenant by naming it. Returning
-// an error on an empty value keeps a routing mistake a 401 instead of a
+// credential for one tenant address every other tenant by naming it. Reporting
+// false on an empty value keeps a routing mistake a 401 instead of a
 // cross-tenant read or write against a fallback tenant.
-func RequireTenantID(c *fiber.Ctx) (string, error) {
+func RequireTenantID(c *fiber.Ctx) (string, bool) {
 	if tenantID := GetTenantID(c); tenantID != "" {
-		return tenantID, nil
+		return tenantID, true
 	}
-	return "", httperr.Unauthorized(c, httperr.CodeUnauthorized,
+	_ = httperr.Unauthorized(c, httperr.CodeUnauthorized,
 		"tenant could not be resolved from the supplied credential")
+	return "", false
 }
 
 // GetEnvironment returns the environment resolved by whichever auth middleware
@@ -197,5 +214,24 @@ func GetEnvironment(c *fiber.Ctx) string {
 	if val, ok := c.Locals("environment").(string); ok && val != "" {
 		return val
 	}
-	return "test"
+	return EnvironmentTest
+}
+
+// RequireLiveKey is a middleware that refuses a request whose credential
+// addresses the test environment.
+//
+// It guards configuration that has no test counterpart and governs live traffic
+// regardless of which key wrote it. A webhook endpoint is the case: there is one
+// list per tenant and the dispatcher delivers to all of it, so a test key
+// repointing or deleting an entry would change where a live event lands. Holding
+// that behind the live key keeps the reach of a test key inside test.
+//
+// Reads are deliberately left open, matching the settings publish rule: seeing
+// the other environment's configuration crosses nothing, changing it does.
+func RequireLiveKey(c *fiber.Ctx) error {
+	if GetEnvironment(c) == EnvironmentLive {
+		return c.Next()
+	}
+	return httperr.Forbidden(c, httperr.CodeLiveKeyRequired,
+		"this configuration governs the live environment and can only be changed with a live key")
 }
