@@ -5,7 +5,13 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "dist/**"]
     },
-    "lint": {},
+    // Typechecking a package means resolving its workspace dependencies, and a
+    // dependency is resolved from the declarations its build emits, not from its
+    // source. Without the upstream build, `tsc` in a consuming package cannot
+    // find the sibling at all and reports every import of it as a missing module.
+    "lint": {
+      "dependsOn": ["^build"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
