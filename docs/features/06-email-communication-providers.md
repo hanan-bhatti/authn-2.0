@@ -124,3 +124,13 @@ docker run -d --name authn-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
 * **SMTP Host**: `localhost:1025`
 * **Web UI Inbox**: `http://localhost:8025`
 * **REST API**: `http://localhost:8025/api/v1/messages`
+
+---
+
+## 7. Test-Environment Capture (Sandbox)
+
+In the **test environment the provider is never reached at all**. `sandbox.WrapEmail` decorates whichever driver section 2 selected, and a send made while acting in `test` is stored for the inbox API instead of dispatched. Live sends are handed to the driver untouched.
+
+This is a layer above Mailpit rather than an alternative to it. Mailpit is an SMTP server that catches what the driver dispatches, so it needs the driver to work and it serves one deployment's developers; the sandbox intercepts in-process, so it needs no infrastructure and every tenant's test environment gets its own inbox scoped to its own data.
+
+The one endpoint that deliberately bypasses the wrapper is `POST /v1/tenant/delivery/verify`, which exists to prove the credentials in section 2.3 reach a provider that accepts mail — something no captured message can establish. See [`18-sandbox-message-inbox.md`](18-sandbox-message-inbox.md).
