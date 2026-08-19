@@ -326,13 +326,37 @@ func NewService(repo *Repository, cfg *config.Config, emailProvider emailPkg.Ema
 	}
 }
 
-// refreshTokenTTL returns how long a newly created session may be refreshed before the user must
-// sign in again, falling back to defaultRefreshTokenTTL when Config leaves it unset.
-func (s *Service) refreshTokenTTL() time.Duration {
+// refreshTokenTTL returns how long a newly created session in environment may be refreshed before
+// the user must sign in again, falling back to defaultRefreshTokenTTL when Config leaves it unset.
+func (s *Service) refreshTokenTTL(environment string) time.Duration {
 	if s.config != nil && s.config.RefreshTokenTTL > 0 {
-		return s.config.RefreshTokenTTL
+		return s.clampSessionTTL(environment, s.config.RefreshTokenTTL)
 	}
-	return defaultRefreshTokenTTL
+	return s.clampSessionTTL(environment, defaultRefreshTokenTTL)
+}
+
+// clampSessionTTL bounds a session lifetime by the test-environment ceiling, leaving it alone when no
+// Config was supplied.
+//
+// Paths that name a lifetime of their own — the passkey login's week — go through here too, so the
+// ceiling does not depend on which path opened the session.
+func (s *Service) clampSessionTTL(environment string, ttl time.Duration) time.Duration {
+	if s.config == nil {
+		return ttl
+	}
+	return s.config.ClampSessionTTL(environment, ttl)
+}
+
+// accessTokenTTL returns how long an access token issued for environment stays valid, capped for the
+// test environment.
+//
+// A nil Config yields zero, which leaves the lifetime to the signer's own default rather than naming
+// a second one here.
+func (s *Service) accessTokenTTL(environment string) time.Duration {
+	if s.config == nil {
+		return 0
+	}
+	return s.config.AccessTokenTTLFor(environment)
 }
 
 // sessionGracePeriod returns how long a just-rotated refresh token keeps working, falling back to
@@ -488,14 +512,14 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := idgen.New("ses")
-	expiresAt := time.Now().Add(s.refreshTokenTTL())
+	expiresAt := time.Now().Add(s.refreshTokenTTL(env))
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
 		return nil, "", "", err
 	}
 
-	// Issue 15-minute JWT Access Token (role embedded for console auth)
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, role, sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
+	// The role claim rides along so the console can authorize without a second lookup.
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, role, sessionID, s.config.EncryptionKey, s.accessTokenTTL(env))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -549,7 +573,7 @@ func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error 
 		return fmt.Errorf("failed rendering email template: %w", err)
 	}
 
-	return s.emailProvider.Send(ctx, u.Email, "Verify your email address", htmlBody, textBody)
+	return s.emailProvider.Send(ctx, u.Email, emailPkg.SubjectEmailVerification, htmlBody, textBody)
 }
 
 // VerifyEmailToken validates the single-use token and sets email_verified = true.
@@ -657,7 +681,7 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 		return fmt.Errorf("failed rendering magic link email template: %w", err)
 	}
 
-	if err := s.emailProvider.Send(ctx, u.Email, "Log in to Authn Platform", htmlBody, textBody); err != nil {
+	if err := s.emailProvider.Send(ctx, u.Email, emailPkg.SubjectMagicLink, htmlBody, textBody); err != nil {
 		return fmt.Errorf("failed sending magic link email: %w", err)
 	}
 
@@ -723,13 +747,13 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	hRef := sha256.Sum256([]byte(rawRefreshToken))
 	refHash := hex.EncodeToString(hRef[:])
 
-	expiresAt := time.Now().Add(s.refreshTokenTTL())
+	expiresAt := time.Now().Add(s.refreshTokenTTL(string(u.Environment)))
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, refHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", fmt.Errorf("failed creating magic link session: %w", err)
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(string(u.Environment)))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -822,14 +846,13 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := idgen.New("ses")
-	expiresAt := time.Now().Add(s.refreshTokenTTL())
+	expiresAt := time.Now().Add(s.refreshTokenTTL(env))
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
 		return nil, "", "", err
 	}
 
-	// Issue 15-minute JWT Access Token
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(env))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -892,6 +915,9 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 			return nil, "", "", err
 		}
 
+		tenantID := string(u.TenantID)
+		env := string(u.Environment)
+
 		// Generate new 32-byte opaque refresh token
 		tokenBytes := make([]byte, 32)
 		if _, err := rand.Read(tokenBytes); err != nil {
@@ -902,7 +928,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		newTokenHash := hex.EncodeToString(newHash[:])
 
 		newSessionID := idgen.New("ses")
-		expiresAt := time.Now().Add(s.refreshTokenTTL())
+		expiresAt := time.Now().Add(s.refreshTokenTTL(env))
 
 		// Create new active session
 		_, err = s.repo.CreateSession(ctx, newSessionID, u.ID, newTokenHash, userAgent, ipAddress, expiresAt)
@@ -913,10 +939,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Transition old session to 'rotated_grace' with 10-second grace window
 		_ = s.repo.MarkSessionRotatedWithGrace(ctx, sess.ID, newSessionID, s.sessionGracePeriod())
 
-		// Issue new 15-minute access token
-		tenantID := string(u.TenantID)
-		env := string(u.Environment)
-		accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
+		accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey, s.accessTokenTTL(env))
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -945,7 +968,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 					if err == nil && accountstatus.Allowed(u) == nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), supersededSess.ID, s.config.EncryptionKey, s.config.AccessTokenTTL)
+						accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), supersededSess.ID, s.config.EncryptionKey, s.accessTokenTTL(env))
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -1156,12 +1179,12 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := idgen.New("ses")
-	expiresAt := time.Now().Add(s.refreshTokenTTL())
+	expiresAt := time.Now().Add(s.refreshTokenTTL(string(u.Environment)))
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(string(u.Environment)))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -1361,7 +1384,7 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 		expiresIn := int(ttl.Minutes())
 		htmlBody := fmt.Sprintf("<p>Your 2FA verification code is: <strong>%s</strong> (expires in %d minutes)</p>", code, expiresIn)
 		textBody := fmt.Sprintf("Your 2FA verification code is: %s (expires in %d minutes)", code, expiresIn)
-		if err := s.emailProvider.Send(ctx, u.Email, "Your Authn 2FA Verification Code", htmlBody, textBody); err != nil {
+		if err := s.emailProvider.Send(ctx, u.Email, emailPkg.SubjectTwoFactorCode, htmlBody, textBody); err != nil {
 			return fmt.Errorf("failed sending OTP via SMS and email fallback: %w", err)
 		}
 	}
@@ -2017,7 +2040,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionIDStr := idgen.New("sess")
-	sessionTTL := webAuthnLoginSessionTTL
+	sessionTTL := s.clampSessionTTL(string(u.Environment), webAuthnLoginSessionTTL)
 	now := time.Now()
 	expiresAt := now.Add(sessionTTL)
 
@@ -2025,7 +2048,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionIDStr, s.config.EncryptionKey, s.config.AccessTokenTTL)
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionIDStr, s.config.EncryptionKey, s.accessTokenTTL(string(u.Environment)))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

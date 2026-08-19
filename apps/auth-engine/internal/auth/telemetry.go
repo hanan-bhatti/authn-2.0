@@ -155,7 +155,7 @@ func (s *TelemetryService) EvaluateTrust(ctx context.Context, userID, deviceCook
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
 		if u, err := s.repo.GetUserByID(ctx, userID); err == nil && u != nil {
-			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID)
+			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
 		} else {
 			recPolicy = policy.DefaultRecoveryPolicy()
 		}
@@ -224,10 +224,15 @@ func (s *TelemetryService) EvaluateTrust(ctx context.Context, userID, deviceCook
 }
 
 // IsBlacklisted evaluates if the incoming IP, subnet, or device fingerprint is on the 7-day security blacklist for this user.
-func (s *TelemetryService) IsBlacklisted(ctx context.Context, tenantID, userID, ipAddress, userAgent, acceptLang string) (bool, error) {
+//
+// environment selects which of the tenant's two recovery policies supplies the
+// subnet widths. The widths decide how wide a net a single blacklist entry casts,
+// so reading them from the wrong environment would measure the request against a
+// configuration its administrator never applied to it.
+func (s *TelemetryService) IsBlacklisted(ctx context.Context, tenantID, environment, userID, ipAddress, userAgent, acceptLang string) (bool, error) {
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
-		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, tenantID)
+		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, tenantID, environment)
 	} else {
 		recPolicy = policy.DefaultRecoveryPolicy()
 	}
@@ -250,7 +255,7 @@ func (s *TelemetryService) RecordSuccessfulLoginTelemetry(ctx context.Context, u
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
 		if u, err := s.repo.GetUserByID(ctx, userID); err == nil && u != nil {
-			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID)
+			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
 		} else {
 			recPolicy = policy.DefaultRecoveryPolicy()
 		}

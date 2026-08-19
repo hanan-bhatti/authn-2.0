@@ -38,9 +38,9 @@ func (h *Handler) InitiateRecovery(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email address is required")
 	}
 
-	tenantID, err := middleware.RequireTenantID(c)
-	if err != nil {
-		return err
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	env := middleware.GetEnvironment(c)
 
@@ -167,7 +167,7 @@ func (h *Handler) ClaimAccount(c *fiber.Ctx) error {
 	}
 
 	if res.DeviceCookie != "" {
-		h.cookies.SetTrustedDevice(c, getTenantID(c), res.DeviceCookie, trustedDeviceCookieTTL)
+		h.cookies.SetTrustedDevice(c, getTenantID(c), middleware.GetEnvironment(c), res.DeviceCookie, trustedDeviceCookieTTL)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(res)

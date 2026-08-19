@@ -5,19 +5,18 @@
  *
  * The one place session cookies are built.
  *
- * These cookies were previously assembled inline at seven call sites, each
- * repeating HTTPOnly, Secure and SameSite, and two of them disagreeing about
- * Path. That disagreement was not cosmetic: a refresh cookie scoped to
- * /v1/client is never sent to /v1/oauth/token, so the same browser could hold two
- * cookies of the same name and present the wrong one. Per-tenant SameSite would
- * have had to be threaded through all seven copies to be added at all.
+ * Every handler that issues a session goes through here, so HTTPOnly, Secure,
+ * SameSite and Path are decided once. Path matters most: two endpoints consume the
+ * refresh cookie, and a cookie scoped to only one of their prefixes is simply never
+ * sent to the other, leaving a browser holding a cookie it cannot use.
  *
- * Every attribute is decided here, from two inputs:
+ * Every attribute comes from one of two inputs:
  *
- *   - the tenant's session policy, read from the database, for SameSite and
- *     lifetimes, because a customer changes those and must not wait for a deploy
- *   - the deployment's own configuration, for Secure and Domain, because those
- *     are facts about where the server runs rather than customer preferences
+ *   - the tenant's session policy for the environment being signed into, read from
+ *     the database, for SameSite and lifetimes, because a customer changes those and
+ *     must not wait for a deploy
+ *   - the deployment's own configuration, for Secure and Domain, because those are
+ *     facts about where the server runs rather than customer preferences
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -66,10 +65,10 @@ const (
 // so tests can supply a policy without a database. settings.Resolver satisfies
 // it.
 type SessionPolicyResolver interface {
-	// SessionPolicy returns the tenant's policy. It does not fail: callers on the
-	// login path need an answer, so implementations return documented defaults
-	// rather than an error.
-	SessionPolicy(ctx context.Context, tenantID string) policy.SessionPolicy
+	// SessionPolicy returns the policy for one of the tenant's two environments. It
+	// does not fail: callers on the login path need an answer, so implementations
+	// return documented defaults rather than an error.
+	SessionPolicy(ctx context.Context, tenantID, environment string) policy.SessionPolicy
 }
 
 // Writer builds and sets session cookies.
@@ -90,17 +89,23 @@ func NewWriter(cfg *config.Config, policies SessionPolicyResolver) *Writer {
 
 // SetRefreshToken writes the refresh cookie for tenantID, expiring after ttl.
 //
+// environment selects which of the tenant's two session policies decides SameSite.
+// It is passed rather than inferred because this package sits below the middleware
+// that resolves it, and a cookie written under the wrong environment's policy would
+// be dropped by the browser on a cross-site sign-in that the other environment
+// permits.
+//
 // A zero or negative ttl writes a session cookie — one the browser drops when it
 // closes — rather than a cookie that expires immediately, which would discard a
 // perfectly good refresh token.
-func (w *Writer) SetRefreshToken(c *fiber.Ctx, tenantID, value string, ttl time.Duration) {
+func (w *Writer) SetRefreshToken(c *fiber.Ctx, tenantID, environment, value string, ttl time.Duration) {
 	w.clearLegacyPath(c, RefreshTokenName)
-	w.set(c, RefreshTokenName, value, tenantID, ttl)
+	w.set(c, RefreshTokenName, value, tenantID, environment, ttl)
 }
 
 // SetTrustedDevice writes the trusted-device cookie for tenantID.
-func (w *Writer) SetTrustedDevice(c *fiber.Ctx, tenantID, value string, ttl time.Duration) {
-	w.set(c, TrustedDeviceName, value, tenantID, ttl)
+func (w *Writer) SetTrustedDevice(c *fiber.Ctx, tenantID, environment, value string, ttl time.Duration) {
+	w.set(c, TrustedDeviceName, value, tenantID, environment, ttl)
 }
 
 // ClearRefreshToken expires the refresh cookie, at both the current path and the
@@ -110,32 +115,40 @@ func (w *Writer) ClearRefreshToken(c *fiber.Ctx) {
 	w.expire(c, RefreshTokenName, legacyClientPath)
 }
 
-// SessionPolicy returns the policy that would govern a cookie for tenantID.
-// Handlers computing a token lifetime from the same policy use this, so the token
-// and the cookie carrying it cannot disagree about how long they last.
-func (w *Writer) SessionPolicy(ctx context.Context, tenantID string) policy.SessionPolicy {
+// SessionPolicy returns the policy that would govern a cookie for tenantID in one
+// environment. Handlers computing a token lifetime from the same policy use this, so
+// the token and the cookie carrying it cannot disagree about how long they last.
+func (w *Writer) SessionPolicy(ctx context.Context, tenantID, environment string) policy.SessionPolicy {
 	if w.policies == nil {
 		return policy.DefaultSessionPolicy()
 	}
-	return w.policies.SessionPolicy(ctx, tenantID)
+	return w.policies.SessionPolicy(ctx, tenantID, environment)
 }
 
 // RefreshTokenTTL returns the refresh lifetime for tenantID, falling back to the
 // deployment default when the tenant has not set one.
-func (w *Writer) RefreshTokenTTL(ctx context.Context, tenantID string) time.Duration {
-	return w.SessionPolicy(ctx, tenantID).RefreshTokenTTL(w.cfg.RefreshTokenTTL)
+//
+// A tenant may configure up to a year, which the test-environment ceiling then
+// bounds: the tenant's setting is one value across both environments, so the
+// ceiling is what keeps asking for a year in live from also handing test a
+// year-long credential.
+func (w *Writer) RefreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	return w.cfg.ClampSessionTTL(environment,
+		w.SessionPolicy(ctx, tenantID, environment).RefreshTokenTTL(w.cfg.RefreshTokenTTL))
 }
 
 // AccessTokenTTL returns the access lifetime for tenantID, falling back to the
-// deployment default when the tenant has not set one.
-func (w *Writer) AccessTokenTTL(ctx context.Context, tenantID string) time.Duration {
-	return w.SessionPolicy(ctx, tenantID).AccessTokenTTL(w.cfg.AccessTokenTTL)
+// deployment default when the tenant has not set one, and bounded by the
+// test-environment ceiling for the same reason as the refresh lifetime.
+func (w *Writer) AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	return w.cfg.ClampAccessTokenTTL(environment,
+		w.SessionPolicy(ctx, tenantID, environment).AccessTokenTTL(w.cfg.AccessTokenTTL))
 }
 
 // set builds one cookie and writes it.
-func (w *Writer) set(c *fiber.Ctx, name, value, tenantID string, ttl time.Duration) {
+func (w *Writer) set(c *fiber.Ctx, name, value, tenantID, environment string, ttl time.Duration) {
 	secure := w.cfg.CookieSecure()
-	sameSite := w.resolveSameSite(c, tenantID, secure)
+	sameSite := w.resolveSameSite(c, tenantID, environment, secure)
 
 	cookie := &fiber.Cookie{
 		Name:     name,
@@ -168,8 +181,8 @@ func (w *Writer) set(c *fiber.Ctx, name, value, tenantID string, ttl time.Durati
 // booted, and a validated-once answer would be stale. Falling back to Lax is a
 // working same-site session instead of no session at all, which is the better
 // failure for a deployment that has not yet moved to HTTPS.
-func (w *Writer) resolveSameSite(c *fiber.Ctx, tenantID string, secure bool) string {
-	pol := w.SessionPolicy(c.UserContext(), tenantID)
+func (w *Writer) resolveSameSite(c *fiber.Ctx, tenantID, environment string, secure bool) string {
+	pol := w.SessionPolicy(c.UserContext(), tenantID, environment)
 	if pol.CookieSameSite != policy.SameSiteNone {
 		return "Lax"
 	}

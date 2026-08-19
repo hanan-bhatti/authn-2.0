@@ -353,8 +353,8 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 	// secret is not handed out twice, and the cookie the browser already holds is
 	// still the live one, so it must be left alone.
 	if fromCookie && res.RefreshToken != "" {
-		h.cookies.SetRefreshToken(c, tenantID, res.RefreshToken,
-			h.cookies.RefreshTokenTTL(c.UserContext(), tenantID))
+		h.cookies.SetRefreshToken(c, tenantID, environment, res.RefreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), tenantID, environment))
 	}
 
 	return c.JSON(res)

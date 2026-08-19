@@ -129,8 +129,8 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 		if clientType == "native" || clientType == "mobile" {
 			refreshTokenBody = refreshToken
 		} else {
-			h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
-				h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
+			h.cookies.SetRefreshToken(c, u.TenantID, string(u.Environment), refreshToken,
+				h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID, string(u.Environment)))
 		}
 
 		return c.Status(fiber.StatusOK).JSON(AuthResponse{
