@@ -19,15 +19,16 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 )
 
 // CreateOrganization creates an organization and makes the creator its first
 // org_admin.
 //
 // The slug is derived from the name when the caller supplies none, and must be
-// unique within the tenant. Returns ErrOrgSlugExists on collision,
-// ErrMetadataTooLarge for oversized metadata, or a validation sentinel from
-// req.Validate.
+// unique within the tenant and environment. Returns ErrOrgSlugExists on
+// collision, ErrMetadataTooLarge for oversized metadata, or a validation
+// sentinel from req.Validate.
 func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID string, req CreateOrgRequest, ip, userAgent string) (*OrgResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -42,8 +43,28 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 
 	client := s.factory.GetClient(ctx, tenantID, "")
 
+	// The environment comes from the caller's scope rather than the request, so the
+	// workspace is written into the one environment that can read it back. A request
+	// field here would let a test key file a workspace it could not then see.
+	//
+	// A context naming no environment — a bypass, or provisioning — gets the schema
+	// default rather than a guess, so a seeded organization lands in test and never
+	// silently in live.
+	environment := organization.DefaultEnvironment
+	if p, ok := privacy.FromContext(ctx); ok && p.Environment != "" {
+		environment = organization.Environment(p.Environment)
+	}
+
+	// Named explicitly rather than left to the interceptor, because a bypass context
+	// is narrowed by nothing and would see the other environment's workspaces. This
+	// check has to bound exactly what the unique index bounds, or it reports a
+	// collision on a slug the insert would have accepted.
 	exists, err := client.Organization.Query().
-		Where(organization.TenantID(tenantID), organization.Slug(req.Slug)).
+		Where(
+			organization.TenantID(tenantID),
+			organization.EnvironmentEQ(environment),
+			organization.Slug(req.Slug),
+		).
 		Exist(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check slug uniqueness: %w", err)
@@ -63,6 +84,7 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 	builder := client.Organization.Create().
 		SetID(orgID).
 		SetTenantID(tenantID).
+		SetEnvironment(environment).
 		SetName(req.Name).
 		SetSlug(req.Slug)
 
@@ -205,9 +227,9 @@ func (s *Service) ListOrganizationsForTenant(ctx context.Context, tenantID strin
 // UpdateOrganization applies a partial update to an organization.
 //
 // The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
-// bypasses that check. A changed slug must stay unique within the tenant.
-// Returns ErrOrgNotFound, ErrOrgSlugExists, ErrMetadataTooLarge, or an
-// authorization sentinel.
+// bypasses that check. A changed slug must stay unique within the tenant and the
+// organization's own environment. Returns ErrOrgNotFound, ErrOrgSlugExists,
+// ErrMetadataTooLarge, or an authorization sentinel.
 func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, orgID string, req UpdateOrgRequest, isAdmin bool, ip, userAgent string) (*OrgResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -240,8 +262,16 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 		updater.SetName(*req.Name)
 	}
 	if req.Slug != nil && *req.Slug != o.Slug {
+		// Bounded by the environment of the row being renamed, which is what the unique
+		// index bounds. A tenant renaming a test workspace is not blocked by a live one
+		// already holding the name it wants.
 		exists, err := client.Organization.Query().
-			Where(organization.TenantID(tenantID), organization.Slug(*req.Slug), organization.IDNEQ(orgID)).
+			Where(
+				organization.TenantID(tenantID),
+				organization.EnvironmentEQ(o.Environment),
+				organization.Slug(*req.Slug),
+				organization.IDNEQ(orgID),
+			).
 			Exist(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check slug uniqueness: %w", err)
