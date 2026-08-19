@@ -31,6 +31,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
@@ -308,7 +309,12 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 				AppName:         s.appName(),
 			})
 			if err == nil {
-				_ = s.emailProvider.Send(context.Background(), toEmail, "🛡️ Security Notice: Support Access to Your Account", htmlBody, textBody)
+				// A fresh context, because this goroutine outlives the request, but
+				// a scoped one: the sandbox reads the environment off it to decide
+				// whether a test-environment notice is captured or mailed to the
+				// account holder for real.
+				sendCtx := privacy.NewContext(context.Background(), tenantID, "", env)
+				_ = s.emailProvider.Send(sendCtx, toEmail, email.SubjectImpersonation, htmlBody, textBody)
 			}
 		}(targetUser.Email, targetUser.Name, req.Reason, req.TicketID, durationMinutes)
 	}
