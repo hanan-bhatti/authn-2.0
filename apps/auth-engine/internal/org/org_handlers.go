@@ -182,22 +182,26 @@ func (h *Handler) TenantGetOrganization(c *fiber.Ctx) error {
 	return h.GetOrganization(c)
 }
 
-// TenantCreateOrganization creates an organization on the tenant-admin tier,
-// attributed to the admin actor rather than to an end user. Answers 201, or 400
-// for a validation failure.
+// TenantCreateOrganization creates an organization on the tenant-admin tier.
+// Answers 201, or 400 for a validation failure.
+//
+// It names no actor. An administrative credential identifies a key or a console
+// operator, not a member of the organization being created, so there is nobody for
+// the service to enroll as its first admin — the same attribution
+// TenantDeleteOrganization makes. Membership on an organization created this way is
+// granted through the member routes.
 func (h *Handler) TenantCreateOrganization(c *fiber.Ctx) error {
 	tenantID, errResp, ok := requireTenantID(c)
 	if !ok {
 		return errResp
 	}
-	actorID := "admin"
 
 	var req CreateOrgRequest
 	if err := c.BodyParser(&req); err != nil {
 		return httperr.InvalidBody(c)
 	}
 
-	resp, err := h.service.CreateOrganization(c.UserContext(), tenantID, actorID, req, c.IP(), c.Get("User-Agent"))
+	resp, err := h.service.CreateOrganization(c.UserContext(), tenantID, "", req, c.IP(), c.Get("User-Agent"))
 	if err != nil {
 		if resp, handled := mapOrgValidationErr(c, err); handled {
 			return resp
