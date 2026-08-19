@@ -62,7 +62,7 @@ func TestMagicLinkProvisionsAndAuthenticates(t *testing.T) {
 
 	requestMagicLink(t, env, address)
 
-	token, ok := env.emails.tokenFor(address)
+	token, ok := env.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no magic-link email carrying a token was sent to %s", address)
 	}
@@ -97,7 +97,7 @@ func TestMagicLinkIsSingleUse(t *testing.T) {
 
 	requestMagicLink(t, env, address)
 
-	token, ok := env.emails.tokenFor(address)
+	token, ok := env.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no magic-link email carrying a token was sent to %s", address)
 	}

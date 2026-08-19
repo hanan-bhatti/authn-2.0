@@ -69,7 +69,7 @@ func TestEmailVerificationRoundTrip(t *testing.T) {
 		t.Fatal("a newly registered account reported email_verified=true before any link was followed")
 	}
 
-	token, ok := env.emails.tokenFor(address)
+	token, ok := env.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no verification email carrying a token was sent to %s", address)
 	}
@@ -167,7 +167,7 @@ func TestEmailVerificationPolicyModes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newTestEnv(t, nil, nil)
 
-			if _, err := env.policyRepo.UpdateSecurityPolicy(env.bypassContext(), testTenant, tc.policy); err != nil {
+			if _, err := env.policyRepo.UpdateSecurityPolicy(env.bypassContext(), testTenant, "test", tc.policy); err != nil {
 				t.Fatalf("applying the tenant security policy: %v", err)
 			}
 
@@ -211,7 +211,7 @@ func TestHardModeUnlocksAfterVerification(t *testing.T) {
 		RequireEmailVerification: true,
 		EmailVerificationMode:    "hard",
 	}
-	if _, err := env.policyRepo.UpdateSecurityPolicy(env.bypassContext(), testTenant, hardMode); err != nil {
+	if _, err := env.policyRepo.UpdateSecurityPolicy(env.bypassContext(), testTenant, "test", hardMode); err != nil {
 		t.Fatalf("applying the hard-mode security policy: %v", err)
 	}
 
@@ -233,7 +233,7 @@ func TestHardModeUnlocksAfterVerification(t *testing.T) {
 		t.Fatalf("login before verification: got status %d, want 403; body %s", resp.status, resp.body)
 	}
 
-	token, ok := env.emails.tokenFor(address)
+	token, ok := env.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no verification email carrying a token was sent to %s", address)
 	}
