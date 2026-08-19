@@ -133,9 +133,9 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 
 	actorID := h.getActorID(c)
@@ -157,9 +157,9 @@ func (h *Handler) CreateRole(c *fiber.Ctx) error {
 // ListRoles handles GET /v1/tenant/roles, answering 200 with every role in the
 // tenant and its permissions, or 500 when the query fails.
 func (h *Handler) ListRoles(c *fiber.Ctx) error {
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 
 	roles, err := h.svc.ListRoles(c.UserContext(), tenantID)
@@ -176,9 +176,9 @@ func (h *Handler) ListRoles(c *fiber.Ctx) error {
 // otherwise.
 func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 	roleID := c.Params("role_id")
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 
 	var req struct {
@@ -206,9 +206,9 @@ func (h *Handler) UpdateRolePermissions(c *fiber.Ctx) error {
 // user or role does not exist, and 500 otherwise.
 func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 
 	var req struct {
@@ -244,9 +244,9 @@ func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 func (h *Handler) RevokeUserRole(c *fiber.Ctx) error {
 	targetUserID := c.Params("user_id")
 	roleSlug := c.Params("role_slug")
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 
 	actorID := h.getActorID(c)

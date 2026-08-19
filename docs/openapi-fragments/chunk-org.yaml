@@ -22,13 +22,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrgResponse'
         '400':
-          description: Validation error or tenant organization limit reached
+          description: Validation error, or the slug is already taken in this environment
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid publishable key or user session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds
+            TEST_MAX_ORGANIZATIONS workspaces in the test environment. Live
+            credentials are not bounded by this ceiling. Not 429 — waiting does
+            not help, because the ceiling is on stored rows.
           content:
             application/json:
               schema:
@@ -689,6 +699,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Invitation token not found
           content:
@@ -773,7 +793,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrgResponse'
         '400':
-          description: Validation error or tenant organization limit reached
+          description: Validation error, or the slug is already taken in this environment
           content:
             application/json:
               schema:
@@ -785,7 +805,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: Forbidden - tenant_admin role or admin 2FA required
+          description: >-
+            Forbidden - tenant_admin role or admin 2FA required, or code
+            `test_quota_exceeded` when the tenant already holds
+            TEST_MAX_ORGANIZATIONS workspaces in the test environment. Live
+            credentials are not bounded by that ceiling. Not 429 — waiting does
+            not help, because the ceiling is on stored rows.
           content:
             application/json:
               schema:
@@ -927,7 +952,7 @@ components:
           minLength: 2
           maxLength: 50
           pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
-          description: URL-friendly identifier unique within tenant (derived from name if omitted)
+          description: URL-friendly identifier, unique within the tenant and environment (derived from name if omitted)
           example: acme-corp
         logo_url:
           type: string
@@ -1027,6 +1052,7 @@ components:
       required:
         - id
         - tenant_id
+        - environment
         - name
         - slug
         - created_at
@@ -1039,13 +1065,23 @@ components:
           type: string
           description: Owning tenant identifier
           example: tnt_live_1234
+        environment:
+          type: string
+          enum:
+            - test
+            - live
+          description: >-
+            Environment the workspace belongs to, taken from the credential that
+            created it and never from the request. A workspace is visible only to
+            keys in its own environment; a cross-environment read answers 404.
+          example: test
         name:
           type: string
           description: Workspace display name
           example: Acme Corp
         slug:
           type: string
-          description: URL-friendly identifier unique within tenant
+          description: URL-friendly identifier, unique within the tenant and environment
           example: acme-corp
         logo_url:
           type: string

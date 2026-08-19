@@ -1027,13 +1027,13 @@ components:
     PublishableKey:
       type: apiKey
       in: header
-      name: X-Publishable-Key
-      description: Tenant publishable key (pk_...)
+      name: X-Authn-Publishable-Key
+      description: Client-side publishable key (pk_test_... or pk_live_...)
     SecretKey:
       type: apiKey
       in: header
-      name: X-Secret-Key
-      description: Secret key for admin operations (sk_...)
+      name: X-Authn-Secret-Key
+      description: Backend server / SDK secret key (sk_test_... or sk_live_...)
     BearerAuth:
       type: http
       scheme: bearer

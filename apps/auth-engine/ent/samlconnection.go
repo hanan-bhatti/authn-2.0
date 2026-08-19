@@ -34,6 +34,8 @@ type SAMLConnection struct {
 	AttributeMapping map[string]string `json:"attribute_mapping,omitempty"`
 	// Flag indicating if password and social logins are strictly disabled for allowed domains
 	EnforceSSO bool `json:"enforce_sso,omitempty"`
+	// Environment that users authenticated through this connection are provisioned into. Defaults to live, unlike every other environment field in the schema, because a connection only exists once an administrator has pasted a real identity provider's certificate and SSO URL — the people arriving through it are that organization's actual employees. Point a connection at test to trial a new identity provider without minting live accounts.
+	Environment samlconnection.Environment `json:"environment,omitempty"`
 	// Creation timestamp
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Last update timestamp
@@ -73,7 +75,7 @@ func (*SAMLConnection) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case samlconnection.FieldEnforceSSO:
 			values[i] = new(sql.NullBool)
-		case samlconnection.FieldID, samlconnection.FieldOrganizationID, samlconnection.FieldIdpEntityID, samlconnection.FieldIdpSSOURL, samlconnection.FieldIdpCertificate:
+		case samlconnection.FieldID, samlconnection.FieldOrganizationID, samlconnection.FieldIdpEntityID, samlconnection.FieldIdpSSOURL, samlconnection.FieldIdpCertificate, samlconnection.FieldEnvironment:
 			values[i] = new(sql.NullString)
 		case samlconnection.FieldCreatedAt, samlconnection.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -143,6 +145,12 @@ func (sc *SAMLConnection) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field enforce_sso", values[i])
 			} else if value.Valid {
 				sc.EnforceSSO = value.Bool
+			}
+		case samlconnection.FieldEnvironment:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field environment", values[i])
+			} else if value.Valid {
+				sc.Environment = samlconnection.Environment(value.String)
 			}
 		case samlconnection.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -217,6 +225,9 @@ func (sc *SAMLConnection) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("enforce_sso=")
 	builder.WriteString(fmt.Sprintf("%v", sc.EnforceSSO))
+	builder.WriteString(", ")
+	builder.WriteString("environment=")
+	builder.WriteString(fmt.Sprintf("%v", sc.Environment))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(sc.CreatedAt.Format(time.ANSIC))

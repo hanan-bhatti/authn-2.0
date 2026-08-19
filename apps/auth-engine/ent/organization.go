@@ -22,6 +22,8 @@ type Organization struct {
 	ID string `json:"id,omitempty"`
 	// Owning Tenant ID
 	TenantID string `json:"tenant_id,omitempty"`
+	// Workspace environment mode
+	Environment organization.Environment `json:"environment,omitempty"`
 	// Organization workspace name
 	Name string `json:"name,omitempty"`
 	// URL-friendly organization slug
@@ -98,7 +100,7 @@ func (*Organization) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case organization.FieldMetadata:
 			values[i] = new([]byte)
-		case organization.FieldID, organization.FieldTenantID, organization.FieldName, organization.FieldSlug, organization.FieldLogoURL:
+		case organization.FieldID, organization.FieldTenantID, organization.FieldEnvironment, organization.FieldName, organization.FieldSlug, organization.FieldLogoURL:
 			values[i] = new(sql.NullString)
 		case organization.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -128,6 +130,12 @@ func (o *Organization) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field tenant_id", values[i])
 			} else if value.Valid {
 				o.TenantID = value.String
+			}
+		case organization.FieldEnvironment:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field environment", values[i])
+			} else if value.Valid {
+				o.Environment = organization.Environment(value.String)
 			}
 		case organization.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -219,6 +227,9 @@ func (o *Organization) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", o.ID))
 	builder.WriteString("tenant_id=")
 	builder.WriteString(o.TenantID)
+	builder.WriteString(", ")
+	builder.WriteString("environment=")
+	builder.WriteString(fmt.Sprintf("%v", o.Environment))
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(o.Name)

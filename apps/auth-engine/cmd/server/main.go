@@ -21,6 +21,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/quota"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/database"
 	"github.com/redis/go-redis/v9"
@@ -56,6 +57,12 @@ func main() {
 		MaxIdleConns:    cfg.DatabaseMaxIdleConns,
 		ConnMaxLifetime: cfg.DatabaseConnMaxLifetime,
 		AutoMigrate:     cfg.DatabaseAutoMigrate,
+		TestLimits: quota.Limits{
+			Users:         cfg.TestMaxUsers,
+			Organizations: cfg.TestMaxOrganizations,
+			APIKeys:       cfg.TestMaxAPIKeys,
+			SessionTTL:    cfg.TestSessionTTL,
+		},
 	})
 	if err != nil {
 		log.Fatalf("database initialization failed: %v", err)

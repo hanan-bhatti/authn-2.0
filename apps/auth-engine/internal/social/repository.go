@@ -26,8 +26,8 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/identity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
@@ -40,11 +40,6 @@ const (
 
 	// idSuffixLength is how much of a generated UUID is kept in a record ID.
 	idSuffixLength = 12
-
-	// configEnvironment is the environment used for tenant-level reads. Provider
-	// credentials hang off the tenant record and are shared by every
-	// environment, so the value only has to be one the client factory accepts.
-	configEnvironment = "test"
 )
 
 var (
@@ -59,14 +54,18 @@ var (
 type Repository struct {
 	// factory yields tenant- and environment-scoped database clients.
 	factory *clientfactory.ClientFactory
+	// policies holds the per-environment settings row that carries provider
+	// credentials, so a tenant's test providers are configured independently of
+	// its live ones.
+	policies *policy.Repository
 	// encryptKey is the AES-256-GCM key protecting provider secrets and stored
 	// provider tokens at rest.
 	encryptKey string
 }
 
 // NewRepository constructs a Repository using encryptKey for at-rest encryption.
-func NewRepository(factory *clientfactory.ClientFactory, encryptKey string) *Repository {
-	return &Repository{factory: factory, encryptKey: encryptKey}
+func NewRepository(factory *clientfactory.ClientFactory, policies *policy.Repository, encryptKey string) *Repository {
+	return &Repository{factory: factory, policies: policies, encryptKey: encryptKey}
 }
 
 // CreateSocialAuthState records a new CSRF state token, valid for ttl, and
@@ -120,7 +119,9 @@ func (r *Repository) CreateSocialAuthState(
 // Returns ErrStateNotFound when the token is unknown or already consumed, and
 // ErrStateExpired when it is past its expiry.
 func (r *Repository) ConsumeSocialAuthState(ctx context.Context, tenantID, stateToken string) (*ent.SocialAuthState, error) {
-	client := r.factory.GetClient(ctx, tenantID, configEnvironment)
+	// No environment is named because the row itself records which one the flow
+	// began in, and that is not known until after the read.
+	client := r.factory.GetClient(ctx, tenantID, "")
 
 	state, err := client.SocialAuthState.Query().
 		Where(
@@ -379,25 +380,19 @@ func (r *Repository) CreateSignInAuditLog(
 	return nil
 }
 
-// GetProviderConfig reads one provider's configuration from the tenant record.
+// GetProviderConfig reads one provider's configuration for one environment.
 //
 // The client secret is returned still encrypted; use GetDecryptedProviderConfig
 // when the plaintext is actually needed.
 //
 // Returns (nil, nil) when the provider is not configured.
-func (r *Repository) GetProviderConfig(ctx context.Context, tenantID, provider string) (*ProviderConfig, error) {
-	client := r.factory.GetClient(ctx, tenantID, configEnvironment)
-
-	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+func (r *Repository) GetProviderConfig(ctx context.Context, tenantID, environment, provider string) (*ProviderConfig, error) {
+	providers, err := r.policies.GetSocialProviders(ctx, tenantID, environment)
 	if err != nil {
 		return nil, err
 	}
 
-	if t.SocialProviders == nil {
-		return nil, nil
-	}
-
-	val, ok := t.SocialProviders[provider]
+	val, ok := providers[provider]
 	if !ok {
 		return nil, nil
 	}
@@ -415,27 +410,21 @@ func (r *Repository) GetProviderConfig(ctx context.Context, tenantID, provider s
 	return &conf, nil
 }
 
-// GetAllProviderConfigs returns every configured provider for a tenant, keyed
-// by provider name, with secrets left encrypted.
+// GetAllProviderConfigs returns every provider configured for one environment,
+// keyed by provider name, with secrets left encrypted.
 //
 // An entry that fails to decode is skipped rather than failing the whole read,
 // so one malformed provider cannot break the settings screen.
 //
 // Returns an empty map when nothing is configured.
-func (r *Repository) GetAllProviderConfigs(ctx context.Context, tenantID string) (map[string]*ProviderConfig, error) {
-	client := r.factory.GetClient(ctx, tenantID, configEnvironment)
-
-	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+func (r *Repository) GetAllProviderConfigs(ctx context.Context, tenantID, environment string) (map[string]*ProviderConfig, error) {
+	providers, err := r.policies.GetSocialProviders(ctx, tenantID, environment)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]*ProviderConfig)
-	if t.SocialProviders == nil {
-		return result, nil
-	}
-
-	for k, v := range t.SocialProviders {
+	result := make(map[string]*ProviderConfig, len(providers))
+	for k, v := range providers {
 		b, err := json.Marshal(v)
 		if err != nil {
 			continue
@@ -450,8 +439,12 @@ func (r *Repository) GetAllProviderConfigs(ctx context.Context, tenantID string)
 	return result, nil
 }
 
-// SetProviderConfig writes a provider's configuration, encrypting clientSecret
-// before storage.
+// SetProviderConfig writes a provider's configuration for one environment,
+// encrypting clientSecret before storage.
+//
+// The two environments hold independent credentials, which is the point: a tenant
+// registers a separate OAuth application with the provider for its test sign-ins,
+// pointed at a test callback URL, and configuring it cannot disturb the live one.
 //
 // An empty clientSecret keeps the stored ciphertext, so an administrator can
 // toggle a provider or correct its client ID without re-entering a secret they
@@ -460,18 +453,14 @@ func (r *Repository) GetAllProviderConfigs(ctx context.Context, tenantID string)
 // Returns an error if encryption or the write fails.
 func (r *Repository) SetProviderConfig(
 	ctx context.Context,
-	tenantID, provider string,
+	tenantID, environment, provider string,
 	enabled bool,
 	clientID, clientSecret string,
 ) error {
-	client := r.factory.GetClient(ctx, tenantID, configEnvironment)
-
-	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+	providers, err := r.policies.GetSocialProviders(ctx, tenantID, environment)
 	if err != nil {
 		return err
 	}
-
-	providers := t.SocialProviders
 	if providers == nil {
 		providers = make(map[string]interface{})
 	}
@@ -515,29 +504,26 @@ func (r *Repository) SetProviderConfig(
 
 	providers[provider] = newConfMap
 
-	return client.Tenant.UpdateOneID(tenantID).SetSocialProviders(providers).Exec(ctx)
+	return r.policies.UpdateSocialProviders(ctx, tenantID, environment, providers)
 }
 
-// DeleteProviderConfig removes a provider's configuration from the tenant,
+// DeleteProviderConfig removes a provider's configuration from one environment,
 // discarding its stored secret.
 //
 // Returns an error if the read or write fails; removing an absent provider
 // succeeds.
-func (r *Repository) DeleteProviderConfig(ctx context.Context, tenantID, provider string) error {
-	client := r.factory.GetClient(ctx, tenantID, configEnvironment)
-
-	t, err := client.Tenant.Query().Where(tenant.ID(tenantID)).Only(ctx)
+func (r *Repository) DeleteProviderConfig(ctx context.Context, tenantID, environment, provider string) error {
+	providers, err := r.policies.GetSocialProviders(ctx, tenantID, environment)
 	if err != nil {
 		return err
 	}
-
-	if t.SocialProviders == nil {
+	if providers == nil {
 		return nil
 	}
 
-	delete(t.SocialProviders, provider)
+	delete(providers, provider)
 
-	return client.Tenant.UpdateOneID(tenantID).SetSocialProviders(t.SocialProviders).Exec(ctx)
+	return r.policies.UpdateSocialProviders(ctx, tenantID, environment, providers)
 }
 
 // GetDecryptedProviderConfig returns a provider's client ID, plaintext client
@@ -548,8 +534,8 @@ func (r *Repository) DeleteProviderConfig(ctx context.Context, tenantID, provide
 //
 // Returns zero values when the provider is not configured, or an error if
 // decryption fails.
-func (r *Repository) GetDecryptedProviderConfig(ctx context.Context, tenantID, provider string) (clientID, clientSecret string, enabled bool, err error) {
-	conf, err := r.GetProviderConfig(ctx, tenantID, provider)
+func (r *Repository) GetDecryptedProviderConfig(ctx context.Context, tenantID, environment, provider string) (clientID, clientSecret string, enabled bool, err error) {
+	conf, err := r.GetProviderConfig(ctx, tenantID, environment, provider)
 	if err != nil {
 		return "", "", false, err
 	}

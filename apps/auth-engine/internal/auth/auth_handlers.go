@@ -33,9 +33,9 @@ func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	req.TenantID = tenantID
 
@@ -100,8 +100,8 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
 	} else {
-		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
-			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
+		h.cookies.SetRefreshToken(c, u.TenantID, string(u.Environment), refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID, string(u.Environment)))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -123,9 +123,9 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	req.TenantID = tenantID
 
@@ -150,7 +150,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 	// Validate tenant password policy (defaulting to 8-character NIST 800-63B baseline)
 	var policyWarning *PolicyWarningDTO
 	if h.policyRepo != nil {
-		pol, err := h.policyRepo.GetPasswordPolicy(c.UserContext(), req.TenantID)
+		pol, err := h.policyRepo.GetPasswordPolicy(c.UserContext(), req.TenantID, req.Environment)
 		if err != nil {
 			pol = policy.DefaultPasswordPolicy()
 		}
@@ -184,7 +184,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 
 	// Check tenant security policy compliance (require_email_verification notice on signup)
 	if h.policyRepo != nil {
-		secPol, err := h.policyRepo.GetSecurityPolicy(c.UserContext(), req.TenantID)
+		secPol, err := h.policyRepo.GetSecurityPolicy(c.UserContext(), req.TenantID, req.Environment)
 		if err == nil && secPol.RequireEmailVerification && !u.EmailVerified {
 			if policyWarning == nil {
 				policyWarning = &PolicyWarningDTO{}
@@ -203,8 +203,8 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
-		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
-			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
+		h.cookies.SetRefreshToken(c, u.TenantID, string(u.Environment), refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID, string(u.Environment)))
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
@@ -229,9 +229,9 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	req.TenantID = tenantID
 
@@ -294,7 +294,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	// Check password policy compliance & force upgrade flags on login
 	var policyWarning *PolicyWarningDTO
 	if h.policyRepo != nil {
-		pol, err := h.policyRepo.GetPasswordPolicy(c.UserContext(), req.TenantID)
+		pol, err := h.policyRepo.GetPasswordPolicy(c.UserContext(), req.TenantID, req.Environment)
 		if err == nil {
 			missingCriteria := policy.ValidatePassword(pol, req.Password)
 			if len(missingCriteria) > 0 && pol.ForceUpgradeOnSignin {
@@ -306,7 +306,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		}
 
 		// Check tenant security policy compliance (require_email_verification enforcement)
-		secPol, err := h.policyRepo.GetSecurityPolicy(c.UserContext(), req.TenantID)
+		secPol, err := h.policyRepo.GetSecurityPolicy(c.UserContext(), req.TenantID, req.Environment)
 		if err == nil && secPol.RequireEmailVerification && !u.EmailVerified {
 			if secPol.EmailVerificationMode == "hard" {
 				return sendWithDetails(c, fiber.StatusForbidden, httperr.CodeEmailVerificationRequired,
@@ -330,8 +330,8 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		refreshTokenBody = refreshToken
 	} else {
 		// Web clients receive refresh token strictly via HttpOnly cookie (XSS protection)
-		h.cookies.SetRefreshToken(c, u.TenantID, refreshToken,
-			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID))
+		h.cookies.SetRefreshToken(c, u.TenantID, string(u.Environment), refreshToken,
+			h.cookies.RefreshTokenTTL(c.UserContext(), u.TenantID, string(u.Environment)))
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
@@ -383,9 +383,9 @@ func (h *Handler) ResendVerification(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	tenantID, terr := middleware.RequireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	req.TenantID = tenantID
 

@@ -98,6 +98,18 @@ func scopeQuery(next ent.Querier) ent.Querier {
 			}
 			query.Where(applicationScope(p)...)
 
+		case *ent.TenantEnvironmentQuery:
+			if !scoped {
+				return nil, scopeError("TenantEnvironment", "query")
+			}
+			query.Where(tenantEnvironmentScope(p)...)
+
+		case *ent.SandboxMessageQuery:
+			if !scoped {
+				return nil, scopeError("SandboxMessage", "query")
+			}
+			query.Where(sandboxMessageScope(p)...)
+
 		case *ent.OrganizationQuery:
 			if !scoped {
 				return nil, scopeError("Organization", "query")
@@ -342,6 +354,18 @@ func narrowMutation(m ent.Mutation, p *PrivacyContext, scoped bool) error {
 			return scopeError("Application", "mutation")
 		}
 		mut.Where(applicationScope(p)...)
+
+	case *ent.TenantEnvironmentMutation:
+		if !scoped {
+			return scopeError("TenantEnvironment", "mutation")
+		}
+		mut.Where(tenantEnvironmentScope(p)...)
+
+	case *ent.SandboxMessageMutation:
+		if !scoped {
+			return scopeError("SandboxMessage", "mutation")
+		}
+		mut.Where(sandboxMessageScope(p)...)
 
 	case *ent.OrganizationMutation:
 		if !scoped {

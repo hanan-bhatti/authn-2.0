@@ -89,9 +89,13 @@ type SessionTokenPairResponse struct {
 // not fail. That reply omits the refresh token, since the new secret was already
 // returned to whichever request performed the rotation.
 //
+// A session ended deliberately rather than rotated is not reuse, and is reported
+// as ErrSessionRevoked without invoking the reuse policy.
+//
 // Returns ErrSessionNotFound if the token matches no session, ErrSessionExpired
-// if the session's own lifetime has elapsed, and ErrSessionCompromised when reuse
-// was detected and sessions were revoked.
+// if the session's own lifetime has elapsed, ErrSessionRevoked when the session
+// was revoked outright, and ErrSessionCompromised when reuse was detected and
+// sessions were revoked.
 func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment, rawRefreshToken, clientIP, userAgent string) (*SessionTokenPairResponse, error) {
 	if rawRefreshToken == "" {
 		return nil, errors.New("refresh_token is required")
@@ -106,10 +110,14 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 	// revokeOnCompromise applies the tenant's TokenReusePolicy. "session_revoke"
 	// kills only the offending session; every other value, including an
 	// unreadable policy, falls back to revoking all of the user's sessions.
+	//
+	// The policy is read for the environment the refresh is happening in, since a
+	// tenant configures the two independently and a sandbox reuse policy has no
+	// business deciding how a live compromise is handled.
 	revokeOnCompromise := func(tID, uID, sID string) {
 		if s.repo.Factory() != nil && tID != "" {
 			policyRepo := policy.NewRepository(s.repo.Factory())
-			secPol, err := policyRepo.GetSecurityPolicy(ctx, tID)
+			secPol, err := policyRepo.GetSecurityPolicy(ctx, tID, environment)
 			if err == nil && secPol.TokenReusePolicy == "session_revoke" {
 				_ = s.repo.RevokeSession(ctx, sID)
 				return
@@ -118,10 +126,19 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		_, _ = s.repo.RevokeAllUserSessions(ctx, uID, "")
 	}
 
-	// A revoked session's token reaching this point is reuse by definition.
+	// A revoked session carrying a successor is reuse: the secret presented here
+	// was already exchanged for another one, which is what a stolen token looks
+	// like. With no successor the session was ended outright — an administrator
+	// signing the account out, a restriction, or the sweeper — and its holder is
+	// the legitimate owner of a token that has simply stopped working. Reporting
+	// that as theft would misname it, and under the default reuse policy would also
+	// revoke every session the owner has established since.
 	if sess.Status == session.StatusRevoked {
-		revokeOnCompromise(tenantID, sess.UserID, sess.ID)
-		return nil, ErrSessionCompromised
+		if sess.SupersededBySessionID != nil {
+			revokeOnCompromise(tenantID, sess.UserID, sess.ID)
+			return nil, ErrSessionCompromised
+		}
+		return nil, ErrSessionRevoked
 	}
 
 	if sess.Status == session.StatusRotatedGrace {
@@ -143,7 +160,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					return nil, err
 				}
 
-				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), supersededSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
+				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), supersededSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(environment))
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
@@ -152,7 +169,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					AccessToken:  accessToken,
 					RefreshToken: "",
 					TokenType:    "Bearer",
-					ExpiresIn:    s.accessTokenExpiresIn(),
+					ExpiresIn:    s.accessTokenExpiresIn(environment),
 					SessionID:    supersededSess.ID,
 				}, nil
 			}
@@ -175,12 +192,12 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		return nil, err
 	}
 
-	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", s.cfg.SessionGracePeriod, s.cfg.RefreshTokenTTL)
+	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", s.cfg.SessionGracePeriod, s.cfg.RefreshTokenTTLFor(environment))
 	if err != nil {
 		return nil, fmt.Errorf("failed to rotate session: %w", err)
 	}
 
-	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTL)
+	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(environment))
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
 	}
@@ -189,7 +206,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		AccessToken:  accessToken,
 		RefreshToken: newRawToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    s.accessTokenExpiresIn(),
+		ExpiresIn:    s.accessTokenExpiresIn(environment),
 		SessionID:    newSess.ID,
 	}, nil
 }
@@ -292,10 +309,14 @@ func (s *Service) ResolveSessionByRefreshToken(ctx context.Context, rawRefreshTo
 	return sess.ID, sess.UserID, nil
 }
 
-// accessTokenExpiresIn returns the configured access token lifetime in whole
+// accessTokenExpiresIn returns the access token lifetime for environment in whole
 // seconds, the unit the OAuth token response uses.
-func (s *Service) accessTokenExpiresIn() int {
-	return int(s.cfg.AccessTokenTTL.Seconds())
+//
+// It resolves the lifetime the same way the signer does, so the number advertised
+// here and the `exp` actually signed cannot disagree — including where the test
+// ceiling shortens it.
+func (s *Service) accessTokenExpiresIn(environment string) int {
+	return int(s.cfg.AccessTokenTTLFor(environment).Seconds())
 }
 
 // getUserByID loads the user record backing a session, for the claims placed in

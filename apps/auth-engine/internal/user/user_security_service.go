@@ -18,6 +18,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
@@ -47,7 +48,7 @@ func (s *Service) ChangePassword(ctx context.Context, tenantID, env, userID stri
 	}
 
 	if s.policyRepo != nil {
-		pol, err := s.policyRepo.GetPasswordPolicy(sysCtx, tenantID)
+		pol, err := s.policyRepo.GetPasswordPolicy(sysCtx, tenantID, env)
 		if err == nil {
 			missing := policy.ValidatePassword(pol, newPassword)
 			if len(missing) > 0 {
@@ -132,9 +133,14 @@ func (s *Service) RequestEmailChange(ctx context.Context, tenantID, env, userID,
 	}
 
 	if s.emailProvider != nil {
-		subject := "Verify your new email address"
+		subject := email.SubjectEmailChange
 		body := fmt.Sprintf("Click the link to verify your new email: %s/v1/client/user/email/verify?token=%s", s.verificationBaseURL(), tokenStr)
-		_ = s.emailProvider.Send(sysCtx, newEmail, subject, body, body)
+		// Sent on a scoped context rather than the bypassing one the reads use.
+		// The bypass exists so this operation can find an account without a
+		// request's tenant filter; carrying it into the send would strip the
+		// environment the sandbox needs to decide whether a test-environment
+		// message is captured or delivered to the address for real.
+		_ = s.emailProvider.Send(privacy.NewContext(ctx, tenantID, "", env), newEmail, subject, body, body)
 	}
 
 	return tokenStr, nil
@@ -241,9 +247,12 @@ func (s *Service) SetRecoveryEmail(ctx context.Context, tenantID, env, userID, r
 	}
 
 	if s.emailProvider != nil {
-		subject := "Verify your secondary recovery email"
+		subject := email.SubjectRecoveryEmail
 		body := fmt.Sprintf("Click the link to verify your recovery email: %s/v1/client/user/recovery-email/verify?token=%s", s.verificationBaseURL(), tokenStr)
-		_ = s.emailProvider.Send(sysCtx, recoveryEmail, subject, body, body)
+		// Scoped for the same reason the email-change notice is: the sandbox reads
+		// the environment off this context to decide whether to capture the message
+		// or deliver it.
+		_ = s.emailProvider.Send(privacy.NewContext(ctx, tenantID, "", env), recoveryEmail, subject, body, body)
 	}
 
 	return tokenStr, nil

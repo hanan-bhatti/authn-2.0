@@ -28,6 +28,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/application"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -48,7 +49,7 @@ type Service struct {
 // and validate on the request path.
 func NewService(factory *clientfactory.ClientFactory, keys *apikey.Service) *Service {
 	return &Service{
-		repo: &Repository{factory: factory},
+		repo: &Repository{factory: factory, policies: policy.NewRepository(factory)},
 		keys: keys,
 	}
 }
@@ -57,6 +58,10 @@ func NewService(factory *clientfactory.ClientFactory, keys *apikey.Service) *Ser
 type Repository struct {
 	// factory supplies the database client.
 	factory *clientfactory.ClientFactory
+	// policies creates the tenant's two settings rows. It is built from the same
+	// factory rather than injected, because it holds no state of its own and a
+	// second one would be indistinguishable from this.
+	policies *policy.Repository
 }
 
 // FindTenantBySlug returns the tenant owning slug, or nil when none does.
@@ -77,13 +82,18 @@ func (r *Repository) FindTenantBySlug(ctx context.Context, slug string) (*ent.Te
 	return t, nil
 }
 
-// CreateTenant inserts the tenant row.
+// CreateTenant inserts the tenant row and the two settings rows that hang off it.
 //
 // claimFirstAdmin pre-closes the one-time first-admin slot. Leaving it false —
 // the customer case — lets the first person to sign up claim tenant_admin
 // atomically through the existing ClaimFirstAdminRole path. Setting it true is
 // for the platform tenant, whose publishable key is public by construction and
 // whose administrator must therefore never be decided by whoever signs up first.
+//
+// Both settings rows are created here even though a policy write would create the
+// one it needs on demand, so that the tenant's configuration is a thing that
+// exists and can be listed, diffed and stamped from the moment it is provisioned
+// rather than from the first time somebody changes a setting.
 //
 // Returns an error when the insert fails; a uniqueness conflict means a
 // concurrent caller won the same slug and the caller should re-read.
@@ -97,6 +107,23 @@ func (r *Repository) CreateTenant(ctx context.Context, tenantID, name, slug stri
 		Save(sysCtx)
 	if err != nil {
 		return fmt.Errorf("failed creating tenant %s: %w", tenantID, err)
+	}
+
+	if err := r.policies.EnsureEnvironments(sysCtx, tenantID); err != nil {
+		return fmt.Errorf("failed creating settings for tenant %s: %w", tenantID, err)
+	}
+	return nil
+}
+
+// EnsureEnvironments creates whichever of the tenant's two settings rows are
+// missing, and succeeds when both are already present.
+//
+// Provisioning calls this on the repeat path, where the tenant already exists and
+// only the rows it is missing need filling in.
+func (r *Repository) EnsureEnvironments(ctx context.Context, tenantID string) error {
+	sysCtx := privacy.NewBypassContext(ctx)
+	if err := r.policies.EnsureEnvironments(sysCtx, tenantID); err != nil {
+		return fmt.Errorf("failed ensuring settings for tenant %s: %w", tenantID, err)
 	}
 	return nil
 }

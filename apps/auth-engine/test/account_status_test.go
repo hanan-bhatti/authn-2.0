@@ -277,7 +277,7 @@ func TestRefusedMagicLinkIsNotSpent(t *testing.T) {
 	const address = "magic_restricted@example.com"
 
 	requestMagicLink(t, env, address)
-	token, ok := env.emails.tokenFor(address)
+	token, ok := env.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no magic-link email carrying a token was sent to %s", address)
 	}
@@ -319,7 +319,7 @@ func TestSoftDeletedAddressStaysReserved(t *testing.T) {
 	// A magic link is the other way to arrive at an address without a password. It
 	// provisions unknown addresses, so it must not provision this one back into use.
 	requestMagicLink(t, env, address)
-	if token, ok := env.emails.tokenFor(address); ok {
+	if token, ok := env.tokenFor(t, address); ok {
 		resp := env.do(t, http.MethodPost, "/v1/client/auth/magic-link/verify",
 			map[string]string{"token": token})
 		if resp.status == http.StatusOK {

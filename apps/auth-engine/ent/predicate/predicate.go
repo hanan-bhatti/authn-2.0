@@ -48,6 +48,9 @@ type Role func(*sql.Selector)
 // SAMLConnection is the predicate function for samlconnection builders.
 type SAMLConnection func(*sql.Selector)
 
+// SandboxMessage is the predicate function for sandboxmessage builders.
+type SandboxMessage func(*sql.Selector)
+
 // SecurityBlacklist is the predicate function for securityblacklist builders.
 type SecurityBlacklist func(*sql.Selector)
 
@@ -62,6 +65,9 @@ type SocialAuthState func(*sql.Selector)
 
 // Tenant is the predicate function for tenant builders.
 type Tenant func(*sql.Selector)
+
+// TenantEnvironment is the predicate function for tenantenvironment builders.
+type TenantEnvironment func(*sql.Selector)
 
 // TrustedDevice is the predicate function for trusteddevice builders.
 type TrustedDevice func(*sql.Selector)

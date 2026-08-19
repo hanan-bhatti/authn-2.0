@@ -16,6 +16,12 @@
  * message is what lets these tests complete a real token round trip without an
  * SMTP catcher running alongside them.
  *
+ * Capture goes through the engine's own sandbox rather than around it, because
+ * these tests run in the test environment and that is what the test environment
+ * does. A harness that intercepted mail ahead of the sandbox would be testing an
+ * arrangement no deployment runs, and would report a broken sandbox as a passing
+ * suite.
+ *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
 
@@ -36,18 +42,26 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/apikey"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/appconfig"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/audit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/oauth"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/org"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/platform"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/provisioning"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/quota"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/saml"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sandbox"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/useradmin"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -55,6 +69,20 @@ import (
 // the demo key the seeder installs, so a request captured from local
 // development can be replayed against this harness unchanged.
 const publishableKey = "pk_test_demo12345678901234567890123456789012"
+
+// secretKey is the backend credential the admin surface accepts, belonging to the
+// same seeded application. The admin guard takes either this or a console JWT,
+// and the secret-key path is the one a test can present without first standing up
+// an administrator account and a second-factor enrolment.
+const secretKey = "sk_test_demo12345678901234567890123456789012"
+
+// liveSecretKey is a secret key addressing the live environment of the same
+// application.
+//
+// It exists so a test can present a credential that is valid and admits nothing:
+// the environment a request acts in follows its key, so this is how the
+// test-environment-only surfaces are asked to refuse.
+const liveSecretKey = "sk_live_demo12345678901234567890123456789012"
 
 // testTenant and testEnvironment are the tenant and environment every request
 // in this package is scoped to. testApplication is the application the
@@ -101,6 +129,10 @@ func memoryDSN() string {
 
 // captureEmailProvider implements email.EmailProvider by recording messages
 // instead of sending them.
+//
+// It sits behind the sandbox as the provider a message reaches when it is not
+// captured, which is where a send made off the request path — on a context
+// carrying no environment — arrives.
 type captureEmailProvider struct {
 	mu   sync.Mutex
 	sent []emailMessage
@@ -156,6 +188,14 @@ func (p *captureEmailProvider) tokenFor(recipient string) (string, bool) {
 		body = newest.text
 	}
 
+	return tokenFromBody(body)
+}
+
+// tokenFromBody pulls the "token" query parameter out of a rendered message.
+//
+// Returns false when the body carries no token, so a caller can report that
+// rather than asserting against an empty string.
+func tokenFromBody(body string) (string, bool) {
 	idx := strings.Index(body, "token=")
 	if idx == -1 {
 		return "", false
@@ -173,14 +213,100 @@ func (p *captureEmailProvider) tokenFor(recipient string) (string, bool) {
 	return token, true
 }
 
+// captureSMSProvider implements sms.SMSProvider by recording messages instead of
+// sending them.
+//
+// Like the email recorder it sits behind the sandbox, so it holds only the text
+// messages that were meant to reach a carrier rather than the sandbox inbox.
+type captureSMSProvider struct {
+	mu   sync.Mutex
+	sent []smsMessage
+}
+
+// smsMessage is one captured outbound text message.
+type smsMessage struct {
+	to   string
+	body string
+}
+
+// SendSMS records the message and always succeeds.
+func (p *captureSMSProvider) SendSMS(_ context.Context, toPhoneNumber, message string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sent = append(p.sent, smsMessage{to: toPhoneNumber, body: message})
+	return nil
+}
+
+// messagesTo returns every captured text message addressed to the given number,
+// oldest first.
+func (p *captureSMSProvider) messagesTo(number string) []smsMessage {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var out []smsMessage
+	for _, m := range p.sent {
+		if m.to == number {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // testEnv is one in-process engine instance under test.
 type testEnv struct {
-	factory    *clientfactory.ClientFactory
-	cfg        *config.Config
-	emails     *captureEmailProvider
-	policyRepo *policy.Repository
-	authRepo   *auth.Repository
-	app        *fiber.App
+	factory *clientfactory.ClientFactory
+	cfg     *config.Config
+	// emails is the provider behind the sandbox, holding only the messages that
+	// were delivered rather than captured.
+	emails *captureEmailProvider
+	// texts is the SMS provider behind the sandbox, on the same terms as emails.
+	texts *captureSMSProvider
+	// sandboxStore is the store the test environment's messages are captured into,
+	// and what tokenFor reads.
+	sandboxStore *sandbox.Store
+	policyRepo   *policy.Repository
+	authRepo     *auth.Repository
+	app          *fiber.App
+}
+
+// envSettings collects the deviations from the default harness a suite asks for.
+//
+// The zero value is what every test got before there was anything to vary, so a
+// suite that supplies no option boots the same engine it always did.
+type envSettings struct {
+	// testLimits bounds how much the booted engine lets a tenant hold in the test
+	// environment. Empty leaves the engine unbounded.
+	testLimits quota.Limits
+	// testAccessTokenTTL and testSessionTTL are the test-environment lifetime
+	// ceilings. Zero leaves the engine unbounded, which is what every suite but the
+	// one asserting on them wants: the harness signs in against a test key, so a
+	// ceiling applied everywhere would silently shorten every credential the other
+	// suites reason about.
+	testAccessTokenTTL time.Duration
+	testSessionTTL     time.Duration
+}
+
+// envOption adjusts the engine a test boots.
+type envOption func(*envSettings)
+
+// withTestLimits boots the engine with test-environment ceilings in force.
+//
+// Only the suite that asserts on a ceiling asks for one. Applying ceilings
+// everywhere would put every other suite one fixture away from a refusal that has
+// nothing to do with what it is testing.
+func withTestLimits(limits quota.Limits) envOption {
+	return func(s *envSettings) { s.testLimits = limits }
+}
+
+// withTTLCeilings boots the engine with test-environment lifetime ceilings.
+//
+// Both must be shorter than the deployment defaults below for a clamp to be
+// observable at all: a ceiling equal to the default cannot be told from no ceiling.
+func withTTLCeilings(accessTokenTTL, sessionTTL time.Duration) envOption {
+	return func(s *envSettings) {
+		s.testAccessTokenTTL = accessTokenTTL
+		s.testSessionTTL = sessionTTL
+	}
 }
 
 // newTestEnv builds a wired engine: a private in-memory schema, a seeded
@@ -191,8 +317,13 @@ type testEnv struct {
 // unthrottled exactly as the real server does when rate limiting is off.
 //
 // The database is closed automatically when the test finishes.
-func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *testEnv {
+func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter, opts ...envOption) *testEnv {
 	t.Helper()
+
+	var chosen envSettings
+	for _, opt := range opts {
+		opt(&chosen)
+	}
 
 	dsn := memoryDSN()
 	factory, err := clientfactory.NewClientFactory("sqlite3", dsn)
@@ -205,17 +336,29 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 		}
 	})
 
+	// Applied here rather than at the call site so the ceilings sit behind the
+	// privacy interceptors the factory has just installed, which is the order the
+	// server builds its client in and the order that makes a count per tenant.
+	factory.ApplyTestLimits(chosen.testLimits)
+
 	cfg := &config.Config{
-		Env:                config.EnvTest,
-		DatabaseURL:        dsn,
-		EncryptionKey:      "super_secret_32_byte_kms_encryption_key_authn_2026!",
-		APIKeyPepper:       "super_secret_32_byte_api_key_pepper_authn_2026!",
+		Env:           config.EnvTest,
+		DatabaseURL:   dsn,
+		EncryptionKey: "super_secret_32_byte_kms_encryption_key_authn_2026!",
+		APIKeyPepper:  "super_secret_32_byte_api_key_pepper_authn_2026!",
+		// The loader defaults this and refuses anything that is not an absolute
+		// http(s) URL, so a deployment always has one. Leaving it empty here would
+		// render links with no scheme or host — a shape no deployment emits, which
+		// anything reading a link out of a message would then be tested against.
+		AppBaseURL:         "http://localhost:8080",
 		JWTSigningKeyPath:  "./keys/rsa_private.pem",
 		EmailDriver:        "noop",
 		RateLimitEnabled:   rateLimiter != nil,
 		SessionGracePeriod: sessionGracePeriod,
 		AccessTokenTTL:     15 * time.Minute,
 		RefreshTokenTTL:    720 * time.Hour,
+		TestAccessTokenTTL: chosen.testAccessTokenTTL,
+		TestSessionTTL:     chosen.testSessionTTL,
 		// The seeded tenant is also the control plane, so the platform routes mount
 		// and a user who signs up through the ordinary client routes is a platform
 		// member — the same arrangement the hosted deployment runs.
@@ -231,7 +374,13 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 
 	policyRepo := policy.NewRepository(factory)
 	emails := &captureEmailProvider{}
-	var emailProvider email.EmailProvider = emails
+	texts := &captureSMSProvider{}
+
+	// The provider is wrapped exactly as the server wraps it, so a send made while
+	// acting in the test environment is captured by the engine rather than by the
+	// harness. Sends on a bypassing context still reach the recorder behind it.
+	sandboxStore := sandbox.NewStore(factory)
+	var emailProvider email.EmailProvider = sandbox.WrapEmail(emails, sandboxStore)
 
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider)
@@ -262,6 +411,89 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 	// arbitrary user ID behind a credential that establishes no identity.
 	sessionHandler.RegisterRoutes(app, pkMiddleware, nil)
 
+	// The administrative user directory. The guard is the real one, since what the
+	// tests assert about these routes — that they reach only the caller's tenant,
+	// and that a restriction placed through them is refused by the auth paths —
+	// is a property of the guard and the handler acting together.
+	//
+	// No second-factor validator is supplied. It constrains console operators only,
+	// and these tests authenticate with a secret key, which names a key rather than
+	// a person and has no factor to enrol.
+	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.EncryptionKey, nil)
+	useradmin.NewHandler(
+		useradmin.NewService(useradmin.NewRepository(factory), sessionRepo, nil, cfg),
+	).RegisterRoutes(app, adminMiddleware)
+
+	// The audit trail, behind the same guard. It is mounted with the real one
+	// because the entries name who signed in and from where, so who may read them
+	// is as much a part of the route as what it returns.
+	audit.NewHandler(factory).RegisterRoutes(app, adminMiddleware)
+
+	// Key issuance, behind the same guard. The route is here so a ceiling can be
+	// driven against a tenant that is not starting from zero: provisioning has
+	// already installed the keys below, and a ceiling that ignored them would be
+	// counting something other than what the tenant holds.
+	apikey.NewHandler(apiKeyService).RegisterRoutes(app, adminMiddleware)
+
+	// The sandbox inbox and delivery verification, behind the same guard the server
+	// puts them behind. The providers handed to the handler are the ones behind the
+	// sandbox, matching the server: verification exists to reach a provider, so it
+	// must not be routed back into the capture it is trying to bypass.
+	//
+	// The resend limiter is the one the server gives it, so the route is bounded
+	// here whenever a test supplies a limiter and unbounded when it does not.
+	sandbox.NewHandler(sandboxStore, factory, cfg, emails, texts).
+		WithLimiter(resendLimiter).
+		RegisterRoutes(app, adminMiddleware)
+
+	// The bootstrap document a sign-in page fetches before it renders, mounted with
+	// both of its guards. The pairing is the point: the document is public, and the
+	// branding that shapes it is not, so the two credentials have to be tested
+	// against the same handler rather than against a stand-in for either one.
+	appconfig.NewHandler(
+		appconfig.NewService(appconfig.NewRepository(factory), policyRepo, settingsResolver, cfg),
+	).RegisterRoutes(app, pkMiddleware, adminMiddleware)
+
+	// Webhook management, behind the same admin guard the server uses. Which
+	// credential may change the endpoint list is a property of the routes rather
+	// than of the service, so it is only reachable through the mounted handler.
+	//
+	// The dispatcher is constructed but never started: no test here asserts on a
+	// delivered event, and an unstarted dispatcher queues into its buffer rather
+	// than spawning workers the harness would then have to shut down.
+	webhookRepo := webhook.NewRepository(factory)
+	webhook.NewHandler(
+		webhook.NewService(webhookRepo,
+			webhook.NewDispatcher(webhookRepo, cfg.EncryptionKey, cfg.WebhookWorkerCount), cfg),
+	).RegisterRoutes(app, adminMiddleware)
+
+	// SAML, on both tiers, mounted before the organization families below for the
+	// same reason they are mounted last: the client tier attaches a session
+	// requirement to the whole /v1/client prefix, and Fiber applies prefix
+	// middleware to whatever is registered after it.
+	//
+	// The dispatcher is nil, matching the organization block: nothing here asserts
+	// on a delivered event.
+	saml.NewHandler(saml.NewService(factory, nil, sessionRepo, cfg)).
+		RegisterRoutes(app, pkMiddleware, adminMiddleware)
+
+	// Organizations, on both tiers, because the tiers differ in who the actor is
+	// rather than in what they reach. A client-tier caller needs an end-user session
+	// on top of the publishable key, since the service resolves membership from it;
+	// the tenant tier presents an administrative credential and acts across every
+	// organization in the tenant.
+	//
+	// Mounted after every other /v1/client family, as the server mounts it. The
+	// client tier attaches its session requirement to the whole /v1/client prefix,
+	// and Fiber applies prefix middleware to the routes registered after it, so
+	// moving this block earlier would put a bearer token in front of the public
+	// bootstrap document.
+	//
+	// The dispatcher is nil, which the service reads as "webhooks are off"; nothing
+	// here asserts on a delivered event.
+	org.NewHandler(org.NewService(factory, nil, cfg)).RegisterRoutes(app,
+		middleware.RequireClientAuth(cfg.EncryptionKey, nil), pkMiddleware, adminMiddleware)
+
 	// The control plane gets the real guard rather than a stand-in, because the
 	// properties worth testing here — that provisioning attributes ownership to the
 	// signed-in caller and that an unverified address cannot reach it — are
@@ -288,15 +520,59 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter) *te
 	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000001", testApplication, publishableKey, cfg.APIKeyPepper); err != nil {
 		t.Fatalf("seeding API key: %v", err)
 	}
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000002", testApplication, secretKey, cfg.APIKeyPepper); err != nil {
+		t.Fatalf("seeding secret key: %v", err)
+	}
+	if err := apiKeyRepo.EnsureDefaultApiKeyExists(ctx, "key_00000000000000000000000000000003", testApplication, liveSecretKey, cfg.APIKeyPepper); err != nil {
+		t.Fatalf("seeding live secret key: %v", err)
+	}
 
 	return &testEnv{
-		factory:    factory,
-		cfg:        cfg,
-		emails:     emails,
-		policyRepo: policyRepo,
-		authRepo:   authRepo,
-		app:        app,
+		factory:      factory,
+		cfg:          cfg,
+		emails:       emails,
+		texts:        texts,
+		sandboxStore: sandboxStore,
+		policyRepo:   policyRepo,
+		authRepo:     authRepo,
+		app:          app,
 	}
+}
+
+// tokenFor returns the "token" query parameter from the newest message addressed
+// to recipient.
+//
+// The sandbox is consulted first, because a request made through the publishable
+// key acts in the test environment and its messages are captured rather than
+// delivered. The recorder behind the sandbox is the fallback, which is where a
+// send made on a bypassing context — one carrying no environment to judge —
+// arrives.
+//
+// Returns false when neither holds a message for that recipient, so a caller can
+// report that rather than asserting against an empty string.
+func (e *testEnv) tokenFor(t *testing.T, recipient string) (string, bool) {
+	t.Helper()
+
+	ctx := privacy.NewContext(context.Background(), testTenant, "", testEnvironment)
+	messages, _, err := e.sandboxStore.List(ctx, sandbox.Filter{Recipient: recipient})
+	if err != nil {
+		t.Fatalf("reading the sandbox inbox for %s: %v", recipient, err)
+	}
+
+	// List is newest first, so the first entry is the message a flow just
+	// triggered.
+	for _, m := range messages {
+		if link, ok := m.Metadata["link"].(string); ok {
+			if token, ok := tokenFromBody(link); ok {
+				return token, true
+			}
+		}
+		if token, ok := tokenFromBody(m.Body); ok {
+			return token, true
+		}
+	}
+
+	return e.emails.tokenFor(recipient)
 }
 
 // bypassContext returns a context that skips the privacy interceptor's tenant
@@ -308,8 +584,12 @@ func (e *testEnv) bypassContext() context.Context {
 
 // response is a decoded HTTP reply from the engine.
 type response struct {
-	status  int
-	body    []byte
+	status int
+	body   []byte
+	// headers is the reply's header set, for the assertions that are about a
+	// header rather than a body — a cache directive, for instance, which is part
+	// of the contract of a response served to many tenants from one URL.
+	headers http.Header
 	cookies []*http.Cookie
 }
 
@@ -373,7 +653,7 @@ func (e *testEnv) do(t *testing.T, method, path string, payload any, decorate ..
 		t.Fatalf("reading %s %s response: %v", method, path, err)
 	}
 
-	return response{status: resp.StatusCode, body: raw, cookies: resp.Cookies()}
+	return response{status: resp.StatusCode, body: raw, headers: resp.Header, cookies: resp.Cookies()}
 }
 
 // signUp registers a user and returns the signup reply.

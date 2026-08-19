@@ -28,21 +28,30 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// RegisterRoutes mounts the webhook management endpoints on app behind
+// adminMiddleware.
+//
+// A webhook endpoint has no environment of its own: there is one list per tenant
+// and the dispatcher delivers every event to all of it. That makes the list live
+// configuration whichever key wrote it, so every route that changes it — or that
+// makes it emit an HTTP request — sits behind middleware.RequireLiveKey as well.
+// Listing and reading stay open to either key, so a console signed in against
+// test can still show a tenant what is configured.
 func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware fiber.Handler) {
 	admin := app.Group("/v1/admin/webhooks", adminMiddleware)
 
 	// Endpoint Management
-	admin.Post("/endpoints", h.CreateEndpoint)
+	admin.Post("/endpoints", middleware.RequireLiveKey, h.CreateEndpoint)
 	admin.Get("/endpoints", h.ListEndpoints)
 	admin.Get("/endpoints/:id", h.GetEndpoint)
-	admin.Put("/endpoints/:id", h.UpdateEndpoint)
-	admin.Delete("/endpoints/:id", h.DeleteEndpoint)
-	admin.Post("/endpoints/:id/ping", h.SendTestPing)
-	admin.Post("/endpoints/:id/rotate-secret", h.RotateSecret)
+	admin.Put("/endpoints/:id", middleware.RequireLiveKey, h.UpdateEndpoint)
+	admin.Delete("/endpoints/:id", middleware.RequireLiveKey, h.DeleteEndpoint)
+	admin.Post("/endpoints/:id/ping", middleware.RequireLiveKey, h.SendTestPing)
+	admin.Post("/endpoints/:id/rotate-secret", middleware.RequireLiveKey, h.RotateSecret)
 
 	// Delivery History Logs
 	admin.Get("/deliveries", h.ListDeliveries)
-	admin.Post("/deliveries/:id/redeliver", h.Redeliver)
+	admin.Post("/deliveries/:id/redeliver", middleware.RequireLiveKey, h.Redeliver)
 }
 
 func (h *Handler) CreateEndpoint(c *fiber.Ctx) error {

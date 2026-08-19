@@ -46,7 +46,7 @@ func TestRecoveryPolicy_TenantBehaviorCustomization(t *testing.T) {
 
 	pA := policy.DefaultRecoveryPolicy()
 	pA.GuardiansEnabled = false
-	_, err = policyRepo.UpdateRecoveryPolicy(ctx, tenantA, pA)
+	_, err = policyRepo.UpdateRecoveryPolicy(ctx, tenantA, "test", pA)
 	require.NoError(t, err)
 
 	clientA := factory.GetClient(ctx, tenantA, "test")
@@ -73,7 +73,7 @@ func TestRecoveryPolicy_TenantBehaviorCustomization(t *testing.T) {
 	pB := policy.DefaultRecoveryPolicy()
 	pB.MinGuardians = 2
 	pB.MaxGuardians = 4
-	_, err = policyRepo.UpdateRecoveryPolicy(ctx, tenantB, pB)
+	_, err = policyRepo.UpdateRecoveryPolicy(ctx, tenantB, "test", pB)
 	require.NoError(t, err)
 
 	clientB := factory.GetClient(ctx, tenantB, "test")

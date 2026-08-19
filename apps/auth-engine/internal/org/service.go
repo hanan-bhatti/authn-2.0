@@ -216,13 +216,14 @@ func (s *Service) toOrgResponse(o *ent.Organization) *OrgResponse {
 		return nil
 	}
 	return &OrgResponse{
-		ID:        o.ID,
-		TenantID:  o.TenantID,
-		Name:      o.Name,
-		Slug:      o.Slug,
-		LogoURL:   o.LogoURL,
-		Metadata:  o.Metadata,
-		CreatedAt: o.CreatedAt,
+		ID:          o.ID,
+		TenantID:    o.TenantID,
+		Environment: string(o.Environment),
+		Name:        o.Name,
+		Slug:        o.Slug,
+		LogoURL:     o.LogoURL,
+		Metadata:    o.Metadata,
+		CreatedAt:   o.CreatedAt,
 	}
 }
 

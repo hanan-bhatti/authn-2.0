@@ -22,6 +22,8 @@ import (
 	"testing"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/org"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -162,6 +164,172 @@ func TestOrganizationLifecycle(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected NotFound error after deletion, got nil")
 	}
+}
+
+// TestCreateOrganizationWithNoActorEnrollsNobody covers the tenant-admin tier,
+// which names no actor: the caller is a key or a console operator rather than a
+// member of the organization being created.
+//
+// The organization is created and nobody is enrolled in it. An actor that is not a
+// user would fail the membership foreign key, so a placeholder here would cost a
+// refused insert on every administrative create and leave the same empty
+// membership behind.
+func TestCreateOrganizationWithNoActorEnrollsNobody(t *testing.T) {
+	svc, factory, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := privacy.NewBypassContext(context.Background())
+
+	created, err := svc.CreateOrganization(ctx, "tnt_test", "", org.CreateOrgRequest{
+		Name: "Admin Provisioned",
+		Slug: "admin-provisioned",
+	}, "127.0.0.1", "TestAgent")
+	if err != nil {
+		t.Fatalf("failed to create org with no actor: %v", err)
+	}
+
+	members, err := factory.GetClient(ctx, "tnt_test", "").OrgMember.Query().
+		Where(orgmember.OrganizationID(created.ID)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("failed to count members: %v", err)
+	}
+	if members != 0 {
+		t.Errorf("expected 0 members on an admin-created org, got %d", members)
+	}
+}
+
+// TestCreateOrganizationStampsTheEnvironmentFromTheContext pins the one branch the
+// HTTP tests cannot reach: what a context naming no environment produces.
+//
+// A scoped caller's workspace has to land in the environment that caller reads, or
+// it is unreachable from the moment it is created. A bypass context — provisioning,
+// seeding, a migration — names no environment, and rather than guess one the create
+// leaves the field to its schema default, so a seeded workspace lands in test and
+// never silently in live.
+func TestCreateOrganizationStampsTheEnvironmentFromTheContext(t *testing.T) {
+	svc, factory, cleanup := setupTestService(t)
+	defer cleanup()
+
+	bypass := privacy.NewBypassContext(context.Background())
+
+	cases := []struct {
+		name string
+		ctx  context.Context
+		slug string
+		want organization.Environment
+	}{
+		{"test scope", privacy.NewContext(context.Background(), "tnt_test", "", "test"), "scoped-test", organization.EnvironmentTest},
+		{"live scope", privacy.NewContext(context.Background(), "tnt_test", "", "live"), "scoped-live", organization.EnvironmentLive},
+		{"bypass", bypass, "unscoped", organization.EnvironmentTest},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			created, err := svc.CreateOrganization(tc.ctx, "tnt_test", "", org.CreateOrgRequest{
+				Name: "Scope " + tc.slug,
+				Slug: tc.slug,
+			}, "127.0.0.1", "TestAgent")
+			if err != nil {
+				t.Fatalf("failed to create org under a %s context: %v", tc.name, err)
+			}
+			if created.Environment != string(tc.want) {
+				t.Errorf("response reports environment %q, want %q", created.Environment, tc.want)
+			}
+
+			stored, err := factory.GetClient(bypass, "tnt_test", "").Organization.Get(bypass, created.ID)
+			if err != nil {
+				t.Fatalf("failed to re-read the stored org: %v", err)
+			}
+			if stored.Environment != tc.want {
+				t.Errorf("stored environment is %q, want %q", stored.Environment, tc.want)
+			}
+		})
+	}
+}
+
+// TestSlugUniquenessIsCheckedInTheTargetEnvironment covers the gap between the
+// service's own check and the unique index behind it.
+//
+// The check is a query, and under a scoped context the interceptor narrows it to
+// one environment for free. Under a bypass it narrows nothing, so a check written
+// as "does this tenant hold the slug" would see the other environment's workspaces
+// and refuse a slug the insert would have accepted. The two have to bound the same
+// set, or seeding a test workspace fails because production already uses the name.
+func TestSlugUniquenessIsCheckedInTheTargetEnvironment(t *testing.T) {
+	svc, _, cleanup := setupTestService(t)
+	defer cleanup()
+
+	live := privacy.NewContext(context.Background(), "tnt_test", "", "live")
+	bypass := privacy.NewBypassContext(context.Background())
+
+	if _, err := svc.CreateOrganization(live, "tnt_test", "", org.CreateOrgRequest{
+		Name: "Acme Production",
+		Slug: "acme",
+	}, "127.0.0.1", "TestAgent"); err != nil {
+		t.Fatalf("failed to create the live workspace: %v", err)
+	}
+
+	// A bypass create lands in test, where the slug is free.
+	created, err := svc.CreateOrganization(bypass, "tnt_test", "", org.CreateOrgRequest{
+		Name: "Acme Rehearsal",
+		Slug: "acme",
+	}, "127.0.0.1", "TestAgent")
+	if err != nil {
+		t.Fatalf("a live workspace named acme blocked a test one: %v", err)
+	}
+	if created.Environment != string(organization.EnvironmentTest) {
+		t.Fatalf("bypass create landed in %q, want %q", created.Environment, organization.EnvironmentTest)
+	}
+
+	// Within that environment it is now taken, and the check still says so.
+	if _, err := svc.CreateOrganization(bypass, "tnt_test", "", org.CreateOrgRequest{
+		Name: "Acme Rehearsal Again",
+		Slug: "acme",
+	}, "127.0.0.1", "TestAgent"); !errors.Is(err, org.ErrOrgSlugExists) {
+		t.Errorf("expected ErrOrgSlugExists on a repeat within one environment, got: %v", err)
+	}
+
+	// A rename is bounded by the environment of the row being renamed, not by the
+	// tenant, so the live workspace's slug is available to the test one.
+	t.Run("a rename is bounded the same way", func(t *testing.T) {
+		other, err := svc.CreateOrganization(bypass, "tnt_test", "", org.CreateOrgRequest{
+			Name: "Acme Staging",
+			Slug: "acme-staging",
+		}, "127.0.0.1", "TestAgent")
+		if err != nil {
+			t.Fatalf("failed to create the workspace to rename: %v", err)
+		}
+
+		taken := "acme"
+		if _, err := svc.UpdateOrganization(bypass, "tnt_test", "", other.ID, org.UpdateOrgRequest{
+			Slug: &taken,
+		}, true, "127.0.0.1", "TestAgent"); !errors.Is(err, org.ErrOrgSlugExists) {
+			t.Errorf("expected ErrOrgSlugExists renaming onto a slug held in the same environment, got: %v", err)
+		}
+
+		free := "acme-production-name"
+		liveHeld, err := svc.CreateOrganization(live, "tnt_test", "", org.CreateOrgRequest{
+			Name: "Acme Holds This",
+			Slug: free,
+		}, "127.0.0.1", "TestAgent")
+		if err != nil {
+			t.Fatalf("failed to create the live holder: %v", err)
+		}
+
+		updated, err := svc.UpdateOrganization(bypass, "tnt_test", "", other.ID, org.UpdateOrgRequest{
+			Slug: &free,
+		}, true, "127.0.0.1", "TestAgent")
+		if err != nil {
+			t.Fatalf("a live workspace's slug blocked a test rename: %v", err)
+		}
+		if updated.Slug != free {
+			t.Errorf("rename stored slug %q, want %q", updated.Slug, free)
+		}
+		if updated.ID == liveHeld.ID {
+			t.Fatalf("the rename addressed the live workspace instead of the test one")
+		}
+	})
 }
 
 // TestMemberManagement covers adding, listing, re-roling and removing a member.

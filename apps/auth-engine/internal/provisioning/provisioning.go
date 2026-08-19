@@ -210,6 +210,12 @@ func (s *Service) Provision(ctx context.Context, req Request, opts Options) (*Re
 		if err != nil {
 			return nil, err
 		}
+		// Settings rows are ensured on the repeat path too, so a tenant provisioned
+		// before the two environments existed acquires them on the next call rather
+		// than waiting for somebody to change a setting.
+		if err := s.repo.EnsureEnvironments(ctx, existing.ID); err != nil {
+			return nil, err
+		}
 		return &Result{
 			TenantID:       existing.ID,
 			TenantSlug:     existing.Slug,

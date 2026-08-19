@@ -149,3 +149,13 @@ func (b *Blocklist) IsUserTokenRefused(ctx context.Context, userID string, iat i
 	cutoff := b.UserTokenCutoff(ctx, userID)
 	return cutoff > 0 && iat <= cutoff
 }
+
+// Enabled reports whether this blocklist has a store behind it.
+//
+// Callers that tell an operator what an action accomplished need this: an
+// administrative restriction takes effect immediately only when the issued-at
+// cutoff can be recorded, and reporting it as immediate on a deployment with no
+// Redis would overstate the restriction by one access-token lifetime.
+func (b *Blocklist) Enabled() bool {
+	return b != nil && b.rdb != nil
+}

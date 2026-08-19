@@ -25,6 +25,7 @@ import (
 	entauditlog "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	entsession "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -107,8 +108,8 @@ func setupCallbackTest(t *testing.T) (*Service, *session.Repository, context.Con
 		t.Fatalf("seed application: %v", err)
 	}
 
-	repo := NewRepository(factory, callbackKey)
-	if err := repo.SetProviderConfig(sysCtx, callbackTenant, "google", true, "client-id", "client-secret"); err != nil {
+	repo := NewRepository(factory, policy.NewRepository(factory), callbackKey)
+	if err := repo.SetProviderConfig(sysCtx, callbackTenant, "test", "google", true, "client-id", "client-secret"); err != nil {
 		t.Fatalf("configure provider: %v", err)
 	}
 

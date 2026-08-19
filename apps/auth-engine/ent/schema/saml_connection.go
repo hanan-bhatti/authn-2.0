@@ -54,6 +54,10 @@ func (SAMLConnection) Fields() []ent.Field {
 		field.Bool("enforce_sso").
 			Default(false).
 			Comment("Flag indicating if password and social logins are strictly disabled for allowed domains"),
+		field.Enum("environment").
+			Values("test", "live").
+			Default("live").
+			Comment("Environment that users authenticated through this connection are provisioned into. Defaults to live, unlike every other environment field in the schema, because a connection only exists once an administrator has pasted a real identity provider's certificate and SSO URL — the people arriving through it are that organization's actual employees. Point a connection at test to trial a new identity provider without minting live accounts."),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

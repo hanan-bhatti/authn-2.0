@@ -70,7 +70,7 @@ func (e *testEnv) platformMember(t *testing.T, address string) string {
 		t.Fatalf("platform signup for %s: status %d body %s", address, resp.status, resp.body)
 	}
 
-	token, ok := e.emails.tokenFor(address)
+	token, ok := e.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no verification email carrying a token was sent to %s", address)
 	}
@@ -277,7 +277,7 @@ func TestPlatformProvisioningRequiresVerifiedEmail(t *testing.T) {
 		t.Errorf("a refused request left %d ownership rows behind", n)
 	}
 
-	verifyToken, ok := env.emails.tokenFor(address)
+	verifyToken, ok := env.tokenFor(t, address)
 	if !ok {
 		t.Fatalf("no verification email was sent to %s", address)
 	}

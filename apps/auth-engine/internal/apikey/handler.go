@@ -124,11 +124,14 @@ func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware fiber.Handler) 
 // so it must name the application — and that value, coming from the request, is
 // checked against the caller's tenant before it is used.
 //
-// Returns the resolved application id, or a ready-to-return error response.
-func (h *Handler) resolveApplicationID(c *fiber.Ctx, requested string) (string, error) {
+// Returns the resolved application id, or answers the request and reports false.
+// A caller that gets false must return nil and do nothing else: the refusal is
+// already written, and continuing would carry out the very action it refused.
+func (h *Handler) resolveApplicationID(c *fiber.Ctx, requested string) (string, bool) {
 	tenantID, okTenant := c.Locals("tenant_id").(string)
 	if !okTenant || tenantID == "" {
-		return "", httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: tenant context missing")
+		_ = httperr.Unauthorized(c, httperr.CodeUnauthorized, "unauthorized: tenant context missing")
+		return "", false
 	}
 
 	localAppID, _ := c.Locals("application_id").(string)
@@ -139,27 +142,31 @@ func (h *Handler) resolveApplicationID(c *fiber.Ctx, requested string) (string, 
 	// an application it cannot act on has made a mistake worth reporting.
 	if localAppID != "" {
 		if requested != "" && requested != localAppID {
-			return "", httperr.BadRequest(c, httperr.CodeValidationFailed,
+			_ = httperr.BadRequest(c, httperr.CodeValidationFailed,
 				"application_id does not match the authenticating key's application")
+			return "", false
 		}
-		return localAppID, nil
+		return localAppID, true
 	}
 
 	if requested == "" {
-		return "", httperr.BadRequest(c, httperr.CodeMissingParameter,
+		_ = httperr.BadRequest(c, httperr.CodeMissingParameter,
 			"application_id is required: a tenant-wide admin credential must name the application to act on")
+		return "", false
 	}
 
 	ok, err := h.service.ApplicationInTenant(c.UserContext(), requested, tenantID)
 	if err != nil {
-		return "", httperr.SendInternal(c, "apikey.resolve_application", err)
+		_ = httperr.SendInternal(c, "apikey.resolve_application", err)
+		return "", false
 	}
 	if !ok {
 		// A foreign application and an absent one answer identically, so the
 		// response cannot be used to discover which applications exist.
-		return "", httperr.NotFound(c, httperr.CodeNotFound, "application not found")
+		_ = httperr.NotFound(c, httperr.CodeNotFound, "application not found")
+		return "", false
 	}
-	return requested, nil
+	return requested, true
 }
 
 // CreateKey issues a key for an application in the caller's tenant and returns
@@ -181,9 +188,9 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 		return httperr.InvalidBody(c)
 	}
 
-	appID, err := h.resolveApplicationID(c, req.ApplicationID)
-	if err != nil {
-		return err
+	appID, okApp := h.resolveApplicationID(c, req.ApplicationID)
+	if !okApp {
+		return nil
 	}
 
 	keyType := KeyType(strings.ToLower(strings.TrimSpace(req.Type)))
@@ -246,9 +253,9 @@ func (h *Handler) CreateKey(c *fiber.Ctx) error {
 // not in the caller's tenant, 500 if the query fails, and 200 with the list —
 // never containing key material — on success.
 func (h *Handler) ListKeys(c *fiber.Ctx) error {
-	appID, err := h.resolveApplicationID(c, c.Query("application_id"))
-	if err != nil {
-		return err
+	appID, okApp := h.resolveApplicationID(c, c.Query("application_id"))
+	if !okApp {
+		return nil
 	}
 
 	keys, err := h.service.ListKeys(c.UserContext(), appID)

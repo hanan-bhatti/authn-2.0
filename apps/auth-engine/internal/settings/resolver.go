@@ -50,7 +50,13 @@ const (
 
 	// appKeyPrefix and tenantKeyPrefix namespace the cache entries. The
 	// application entry is keyed by application ID and the policy entry by
-	// tenant ID, matching what each caller has in hand at the point of use.
+	// tenant ID and environment together, matching what each caller has in hand at
+	// the point of use.
+	//
+	// The environment belongs in the policy key because a tenant has one session
+	// policy per environment. Keyed by tenant alone, whichever environment read
+	// first would answer for both, and a live sign-in would silently run on the
+	// sandbox's token lifetimes.
 	appKeyPrefix    = "settings:app:"
 	tenantKeyPrefix = "settings:session_policy:"
 
@@ -106,18 +112,22 @@ func NewResolver(factory *clientfactory.ClientFactory, policies *policy.Reposito
 	return &Resolver{factory: factory, policies: policies, cache: cache, ttl: ttl}
 }
 
-// SessionPolicy returns the tenant's session policy.
+// SessionPolicy returns the tenant's session policy for one environment.
 //
 // It never fails: a cache miss falls through to the row, and an unreadable or
 // unparseable row yields policy.DefaultSessionPolicy. This is called wherever a
 // cookie is written, which includes the login and refresh paths, so a failure
 // here would be a failure to sign in.
-func (r *Resolver) SessionPolicy(ctx context.Context, tenantID string) policy.SessionPolicy {
-	if tenantID == "" {
+//
+// An environment that names neither test nor live yields the defaults rather than
+// an arbitrary environment's policy, so a caller that failed to resolve one cannot
+// end up enforcing the other environment's token lifetimes.
+func (r *Resolver) SessionPolicy(ctx context.Context, tenantID, environment string) policy.SessionPolicy {
+	if tenantID == "" || !policy.ValidEnvironment(environment) {
 		return policy.DefaultSessionPolicy()
 	}
 
-	key := tenantKeyPrefix + tenantID
+	key := sessionPolicyKey(tenantID, environment)
 	var sp policy.SessionPolicy
 	if r.getCached(ctx, key, &sp) {
 		// Normalize on the way out of the cache too: an entry written by an older
@@ -129,13 +139,19 @@ func (r *Resolver) SessionPolicy(ctx context.Context, tenantID string) policy.Se
 		return policy.DefaultSessionPolicy()
 	}
 
-	sp, err := r.policies.GetSessionPolicy(ctx, tenantID)
+	sp, err := r.policies.GetSessionPolicy(ctx, tenantID, environment)
 	if err != nil {
 		return policy.DefaultSessionPolicy()
 	}
 
 	r.putCached(ctx, key, sp)
 	return sp
+}
+
+// sessionPolicyKey is the cache key for one tenant's session policy in one
+// environment.
+func sessionPolicyKey(tenantID, environment string) string {
+	return tenantKeyPrefix + tenantID + ":" + environment
 }
 
 // Application returns an application's settings by ID, or nil when no such
@@ -192,10 +208,15 @@ func (r *Resolver) InvalidateApplication(ctx context.Context, applicationID stri
 	r.invalidate(ctx, appKeyPrefix+applicationID)
 }
 
-// InvalidateTenantPolicy drops a tenant's cached session policy. Called by every
-// write to that policy, for the same reason as InvalidateApplication.
-func (r *Resolver) InvalidateTenantPolicy(ctx context.Context, tenantID string) {
-	r.invalidate(ctx, tenantKeyPrefix+tenantID)
+// InvalidateTenantPolicy drops a tenant's cached session policy for one
+// environment. Called by every write to that policy, for the same reason as
+// InvalidateApplication.
+//
+// Only the written environment is evicted: publishing test settings to live
+// changes live's policy and not test's, and evicting both would throw away a
+// perfectly current entry.
+func (r *Resolver) InvalidateTenantPolicy(ctx context.Context, tenantID, environment string) {
+	r.invalidate(ctx, sessionPolicyKey(tenantID, environment))
 }
 
 // getCached fills dst from the cache, reporting whether it succeeded.

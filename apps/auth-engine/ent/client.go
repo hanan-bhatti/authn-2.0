@@ -29,11 +29,13 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
@@ -77,6 +79,8 @@ type Client struct {
 	Role *RoleClient
 	// SAMLConnection is the client for interacting with the SAMLConnection builders.
 	SAMLConnection *SAMLConnectionClient
+	// SandboxMessage is the client for interacting with the SandboxMessage builders.
+	SandboxMessage *SandboxMessageClient
 	// SecurityBlacklist is the client for interacting with the SecurityBlacklist builders.
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
@@ -87,6 +91,8 @@ type Client struct {
 	SocialAuthState *SocialAuthStateClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
+	// TenantEnvironment is the client for interacting with the TenantEnvironment builders.
+	TenantEnvironment *TenantEnvironmentClient
 	// TrustedDevice is the client for interacting with the TrustedDevice builders.
 	TrustedDevice *TrustedDeviceClient
 	// TwoFactorMethod is the client for interacting with the TwoFactorMethod builders.
@@ -128,11 +134,13 @@ func (c *Client) init() {
 	c.RecoveryRequest = NewRecoveryRequestClient(c.config)
 	c.Role = NewRoleClient(c.config)
 	c.SAMLConnection = NewSAMLConnectionClient(c.config)
+	c.SandboxMessage = NewSandboxMessageClient(c.config)
 	c.SecurityBlacklist = NewSecurityBlacklistClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.SessionAppActivity = NewSessionAppActivityClient(c.config)
 	c.SocialAuthState = NewSocialAuthStateClient(c.config)
 	c.Tenant = NewTenantClient(c.config)
+	c.TenantEnvironment = NewTenantEnvironmentClient(c.config)
 	c.TrustedDevice = NewTrustedDeviceClient(c.config)
 	c.TwoFactorMethod = NewTwoFactorMethodClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -247,11 +255,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RecoveryRequest:     NewRecoveryRequestClient(cfg),
 		Role:                NewRoleClient(cfg),
 		SAMLConnection:      NewSAMLConnectionClient(cfg),
+		SandboxMessage:      NewSandboxMessageClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
 		SessionAppActivity:  NewSessionAppActivityClient(cfg),
 		SocialAuthState:     NewSocialAuthStateClient(cfg),
 		Tenant:              NewTenantClient(cfg),
+		TenantEnvironment:   NewTenantEnvironmentClient(cfg),
 		TrustedDevice:       NewTrustedDeviceClient(cfg),
 		TwoFactorMethod:     NewTwoFactorMethodClient(cfg),
 		User:                NewUserClient(cfg),
@@ -293,11 +303,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RecoveryRequest:     NewRecoveryRequestClient(cfg),
 		Role:                NewRoleClient(cfg),
 		SAMLConnection:      NewSAMLConnectionClient(cfg),
+		SandboxMessage:      NewSandboxMessageClient(cfg),
 		SecurityBlacklist:   NewSecurityBlacklistClient(cfg),
 		Session:             NewSessionClient(cfg),
 		SessionAppActivity:  NewSessionAppActivityClient(cfg),
 		SocialAuthState:     NewSocialAuthStateClient(cfg),
 		Tenant:              NewTenantClient(cfg),
+		TenantEnvironment:   NewTenantEnvironmentClient(cfg),
 		TrustedDevice:       NewTrustedDeviceClient(cfg),
 		TwoFactorMethod:     NewTwoFactorMethodClient(cfg),
 		User:                NewUserClient(cfg),
@@ -338,9 +350,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.ManagedTenant,
 		c.OrgInvitation, c.OrgMember, c.Organization, c.Permission, c.PushDevice,
 		c.RecoveryContact, c.RecoveryRequest, c.Role, c.SAMLConnection,
-		c.SecurityBlacklist, c.Session, c.SessionAppActivity, c.SocialAuthState,
-		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
-		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.SandboxMessage, c.SecurityBlacklist, c.Session, c.SessionAppActivity,
+		c.SocialAuthState, c.Tenant, c.TenantEnvironment, c.TrustedDevice,
+		c.TwoFactorMethod, c.User, c.UserIpSubnetHistory, c.UserPasswordHistory,
+		c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Use(hooks...)
 	}
@@ -353,9 +366,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ApiKey, c.Application, c.AuditLog, c.Identity, c.ManagedTenant,
 		c.OrgInvitation, c.OrgMember, c.Organization, c.Permission, c.PushDevice,
 		c.RecoveryContact, c.RecoveryRequest, c.Role, c.SAMLConnection,
-		c.SecurityBlacklist, c.Session, c.SessionAppActivity, c.SocialAuthState,
-		c.Tenant, c.TrustedDevice, c.TwoFactorMethod, c.User, c.UserIpSubnetHistory,
-		c.UserPasswordHistory, c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
+		c.SandboxMessage, c.SecurityBlacklist, c.Session, c.SessionAppActivity,
+		c.SocialAuthState, c.Tenant, c.TenantEnvironment, c.TrustedDevice,
+		c.TwoFactorMethod, c.User, c.UserIpSubnetHistory, c.UserPasswordHistory,
+		c.UserRole, c.WebhookEndpoint, c.WebhookEvent,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -392,6 +406,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Role.mutate(ctx, m)
 	case *SAMLConnectionMutation:
 		return c.SAMLConnection.mutate(ctx, m)
+	case *SandboxMessageMutation:
+		return c.SandboxMessage.mutate(ctx, m)
 	case *SecurityBlacklistMutation:
 		return c.SecurityBlacklist.mutate(ctx, m)
 	case *SessionMutation:
@@ -402,6 +418,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SocialAuthState.mutate(ctx, m)
 	case *TenantMutation:
 		return c.Tenant.mutate(ctx, m)
+	case *TenantEnvironmentMutation:
+		return c.TenantEnvironment.mutate(ctx, m)
 	case *TrustedDeviceMutation:
 		return c.TrustedDevice.mutate(ctx, m)
 	case *TwoFactorMethodMutation:
@@ -2669,6 +2687,155 @@ func (c *SAMLConnectionClient) mutate(ctx context.Context, m *SAMLConnectionMuta
 	}
 }
 
+// SandboxMessageClient is a client for the SandboxMessage schema.
+type SandboxMessageClient struct {
+	config
+}
+
+// NewSandboxMessageClient returns a client for the SandboxMessage from the given config.
+func NewSandboxMessageClient(c config) *SandboxMessageClient {
+	return &SandboxMessageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sandboxmessage.Hooks(f(g(h())))`.
+func (c *SandboxMessageClient) Use(hooks ...Hook) {
+	c.hooks.SandboxMessage = append(c.hooks.SandboxMessage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sandboxmessage.Intercept(f(g(h())))`.
+func (c *SandboxMessageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SandboxMessage = append(c.inters.SandboxMessage, interceptors...)
+}
+
+// Create returns a builder for creating a SandboxMessage entity.
+func (c *SandboxMessageClient) Create() *SandboxMessageCreate {
+	mutation := newSandboxMessageMutation(c.config, OpCreate)
+	return &SandboxMessageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SandboxMessage entities.
+func (c *SandboxMessageClient) CreateBulk(builders ...*SandboxMessageCreate) *SandboxMessageCreateBulk {
+	return &SandboxMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SandboxMessageClient) MapCreateBulk(slice any, setFunc func(*SandboxMessageCreate, int)) *SandboxMessageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SandboxMessageCreateBulk{err: fmt.Errorf("calling to SandboxMessageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SandboxMessageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SandboxMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SandboxMessage.
+func (c *SandboxMessageClient) Update() *SandboxMessageUpdate {
+	mutation := newSandboxMessageMutation(c.config, OpUpdate)
+	return &SandboxMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SandboxMessageClient) UpdateOne(sm *SandboxMessage) *SandboxMessageUpdateOne {
+	mutation := newSandboxMessageMutation(c.config, OpUpdateOne, withSandboxMessage(sm))
+	return &SandboxMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SandboxMessageClient) UpdateOneID(id string) *SandboxMessageUpdateOne {
+	mutation := newSandboxMessageMutation(c.config, OpUpdateOne, withSandboxMessageID(id))
+	return &SandboxMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SandboxMessage.
+func (c *SandboxMessageClient) Delete() *SandboxMessageDelete {
+	mutation := newSandboxMessageMutation(c.config, OpDelete)
+	return &SandboxMessageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SandboxMessageClient) DeleteOne(sm *SandboxMessage) *SandboxMessageDeleteOne {
+	return c.DeleteOneID(sm.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SandboxMessageClient) DeleteOneID(id string) *SandboxMessageDeleteOne {
+	builder := c.Delete().Where(sandboxmessage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SandboxMessageDeleteOne{builder}
+}
+
+// Query returns a query builder for SandboxMessage.
+func (c *SandboxMessageClient) Query() *SandboxMessageQuery {
+	return &SandboxMessageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSandboxMessage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SandboxMessage entity by its id.
+func (c *SandboxMessageClient) Get(ctx context.Context, id string) (*SandboxMessage, error) {
+	return c.Query().Where(sandboxmessage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SandboxMessageClient) GetX(ctx context.Context, id string) *SandboxMessage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTenant queries the tenant edge of a SandboxMessage.
+func (c *SandboxMessageClient) QueryTenant(sm *SandboxMessage) *TenantQuery {
+	query := (&TenantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := sm.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(sandboxmessage.Table, sandboxmessage.FieldID, id),
+			sqlgraph.To(tenant.Table, tenant.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, sandboxmessage.TenantTable, sandboxmessage.TenantColumn),
+		)
+		fromV = sqlgraph.Neighbors(sm.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SandboxMessageClient) Hooks() []Hook {
+	return c.hooks.SandboxMessage
+}
+
+// Interceptors returns the client interceptors.
+func (c *SandboxMessageClient) Interceptors() []Interceptor {
+	return c.inters.SandboxMessage
+}
+
+func (c *SandboxMessageClient) mutate(ctx context.Context, m *SandboxMessageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SandboxMessageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SandboxMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SandboxMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SandboxMessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SandboxMessage mutation op: %q", m.Op())
+	}
+}
+
 // SecurityBlacklistClient is a client for the SecurityBlacklist schema.
 type SecurityBlacklistClient struct {
 	config
@@ -3469,6 +3636,38 @@ func (c *TenantClient) QueryAuditLogs(t *Tenant) *AuditLogQuery {
 	return query
 }
 
+// QueryEnvironments queries the environments edge of a Tenant.
+func (c *TenantClient) QueryEnvironments(t *Tenant) *TenantEnvironmentQuery {
+	query := (&TenantEnvironmentClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := t.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenant.Table, tenant.FieldID, id),
+			sqlgraph.To(tenantenvironment.Table, tenantenvironment.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tenant.EnvironmentsTable, tenant.EnvironmentsColumn),
+		)
+		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySandboxMessages queries the sandbox_messages edge of a Tenant.
+func (c *TenantClient) QuerySandboxMessages(t *Tenant) *SandboxMessageQuery {
+	query := (&SandboxMessageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := t.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenant.Table, tenant.FieldID, id),
+			sqlgraph.To(sandboxmessage.Table, sandboxmessage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tenant.SandboxMessagesTable, tenant.SandboxMessagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryManagedTenants queries the managed_tenants edge of a Tenant.
 func (c *TenantClient) QueryManagedTenants(t *Tenant) *ManagedTenantQuery {
 	query := (&ManagedTenantClient{config: c.config}).Query()
@@ -3507,6 +3706,155 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 		return (&TenantDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Tenant mutation op: %q", m.Op())
+	}
+}
+
+// TenantEnvironmentClient is a client for the TenantEnvironment schema.
+type TenantEnvironmentClient struct {
+	config
+}
+
+// NewTenantEnvironmentClient returns a client for the TenantEnvironment from the given config.
+func NewTenantEnvironmentClient(c config) *TenantEnvironmentClient {
+	return &TenantEnvironmentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `tenantenvironment.Hooks(f(g(h())))`.
+func (c *TenantEnvironmentClient) Use(hooks ...Hook) {
+	c.hooks.TenantEnvironment = append(c.hooks.TenantEnvironment, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `tenantenvironment.Intercept(f(g(h())))`.
+func (c *TenantEnvironmentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TenantEnvironment = append(c.inters.TenantEnvironment, interceptors...)
+}
+
+// Create returns a builder for creating a TenantEnvironment entity.
+func (c *TenantEnvironmentClient) Create() *TenantEnvironmentCreate {
+	mutation := newTenantEnvironmentMutation(c.config, OpCreate)
+	return &TenantEnvironmentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TenantEnvironment entities.
+func (c *TenantEnvironmentClient) CreateBulk(builders ...*TenantEnvironmentCreate) *TenantEnvironmentCreateBulk {
+	return &TenantEnvironmentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TenantEnvironmentClient) MapCreateBulk(slice any, setFunc func(*TenantEnvironmentCreate, int)) *TenantEnvironmentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TenantEnvironmentCreateBulk{err: fmt.Errorf("calling to TenantEnvironmentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TenantEnvironmentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TenantEnvironmentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TenantEnvironment.
+func (c *TenantEnvironmentClient) Update() *TenantEnvironmentUpdate {
+	mutation := newTenantEnvironmentMutation(c.config, OpUpdate)
+	return &TenantEnvironmentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TenantEnvironmentClient) UpdateOne(te *TenantEnvironment) *TenantEnvironmentUpdateOne {
+	mutation := newTenantEnvironmentMutation(c.config, OpUpdateOne, withTenantEnvironment(te))
+	return &TenantEnvironmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TenantEnvironmentClient) UpdateOneID(id string) *TenantEnvironmentUpdateOne {
+	mutation := newTenantEnvironmentMutation(c.config, OpUpdateOne, withTenantEnvironmentID(id))
+	return &TenantEnvironmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TenantEnvironment.
+func (c *TenantEnvironmentClient) Delete() *TenantEnvironmentDelete {
+	mutation := newTenantEnvironmentMutation(c.config, OpDelete)
+	return &TenantEnvironmentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TenantEnvironmentClient) DeleteOne(te *TenantEnvironment) *TenantEnvironmentDeleteOne {
+	return c.DeleteOneID(te.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TenantEnvironmentClient) DeleteOneID(id string) *TenantEnvironmentDeleteOne {
+	builder := c.Delete().Where(tenantenvironment.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TenantEnvironmentDeleteOne{builder}
+}
+
+// Query returns a query builder for TenantEnvironment.
+func (c *TenantEnvironmentClient) Query() *TenantEnvironmentQuery {
+	return &TenantEnvironmentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTenantEnvironment},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TenantEnvironment entity by its id.
+func (c *TenantEnvironmentClient) Get(ctx context.Context, id string) (*TenantEnvironment, error) {
+	return c.Query().Where(tenantenvironment.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TenantEnvironmentClient) GetX(ctx context.Context, id string) *TenantEnvironment {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTenant queries the tenant edge of a TenantEnvironment.
+func (c *TenantEnvironmentClient) QueryTenant(te *TenantEnvironment) *TenantQuery {
+	query := (&TenantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := te.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tenantenvironment.Table, tenantenvironment.FieldID, id),
+			sqlgraph.To(tenant.Table, tenant.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, tenantenvironment.TenantTable, tenantenvironment.TenantColumn),
+		)
+		fromV = sqlgraph.Neighbors(te.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TenantEnvironmentClient) Hooks() []Hook {
+	return c.hooks.TenantEnvironment
+}
+
+// Interceptors returns the client interceptors.
+func (c *TenantEnvironmentClient) Interceptors() []Interceptor {
+	return c.inters.TenantEnvironment
+}
+
+func (c *TenantEnvironmentClient) mutate(ctx context.Context, m *TenantEnvironmentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TenantEnvironmentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TenantEnvironmentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TenantEnvironmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TenantEnvironmentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TenantEnvironment mutation op: %q", m.Op())
 	}
 }
 
@@ -4915,17 +5263,17 @@ type (
 	hooks struct {
 		ApiKey, Application, AuditLog, Identity, ManagedTenant, OrgInvitation,
 		OrgMember, Organization, Permission, PushDevice, RecoveryContact,
-		RecoveryRequest, Role, SAMLConnection, SecurityBlacklist, Session,
-		SessionAppActivity, SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod,
-		User, UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
-		WebhookEvent []ent.Hook
+		RecoveryRequest, Role, SAMLConnection, SandboxMessage, SecurityBlacklist,
+		Session, SessionAppActivity, SocialAuthState, Tenant, TenantEnvironment,
+		TrustedDevice, TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory,
+		UserRole, WebhookEndpoint, WebhookEvent []ent.Hook
 	}
 	inters struct {
 		ApiKey, Application, AuditLog, Identity, ManagedTenant, OrgInvitation,
 		OrgMember, Organization, Permission, PushDevice, RecoveryContact,
-		RecoveryRequest, Role, SAMLConnection, SecurityBlacklist, Session,
-		SessionAppActivity, SocialAuthState, Tenant, TrustedDevice, TwoFactorMethod,
-		User, UserIpSubnetHistory, UserPasswordHistory, UserRole, WebhookEndpoint,
-		WebhookEvent []ent.Interceptor
+		RecoveryRequest, Role, SAMLConnection, SandboxMessage, SecurityBlacklist,
+		Session, SessionAppActivity, SocialAuthState, Tenant, TenantEnvironment,
+		TrustedDevice, TwoFactorMethod, User, UserIpSubnetHistory, UserPasswordHistory,
+		UserRole, WebhookEndpoint, WebhookEvent []ent.Interceptor
 	}
 )

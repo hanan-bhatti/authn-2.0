@@ -36,11 +36,14 @@ func (Organization) Fields() []ent.Field {
 		field.String("tenant_id").
 			NotEmpty().
 			Comment("Owning Tenant ID"),
+		field.Enum("environment").
+			Values("test", "live").
+			Default("test").
+			Comment("Workspace environment mode"),
 		field.String("name").
 			NotEmpty().
 			Comment("Organization workspace name"),
 		field.String("slug").
-			Unique().
 			NotEmpty().
 			Comment("URL-friendly organization slug"),
 		field.String("logo_url").
@@ -73,6 +76,13 @@ func (Organization) Edges() []ent.Edge {
 // Indexes of the Organization.
 func (Organization) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("tenant_id", "slug").Unique(),
+		// A slug identifies a workspace within one tenant's environment, not
+		// globally. Scoping the uniqueness this way is what lets a team rehearse
+		// under the slug they will use in production, and stops one tenant's choice
+		// of slug from being unavailable to every other tenant.
+		index.Fields("tenant_id", "environment", "slug").Unique(),
+		// Serves the tenant listing and the test-environment ceiling's count, both
+		// of which read every organization in one environment.
+		index.Fields("tenant_id", "environment"),
 	}
 }

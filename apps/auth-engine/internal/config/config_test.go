@@ -9,6 +9,10 @@
 package config
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -75,8 +79,71 @@ func TestLoadAppliesDocumentedDefaults(t *testing.T) {
 	}
 }
 
-// A malformed value must stop startup rather than silently reverting to a
-// default: a typo in PORT should never mean "listen somewhere else".
+// headerRead matches a Fiber request-header read with a literal name, which is
+// how every handler in the engine names the headers it consumes.
+var headerRead = regexp.MustCompile(`c\.Get\("([A-Za-z0-9-]+)"`)
+
+// TestDefaultCORSHeadersAdmitEveryHeaderHandlersRead walks the engine's own
+// source for the request headers it reads and requires each to be admitted by
+// the default CORS policy.
+//
+// A browser refuses to send a header the preflight response does not list, so a
+// header a handler reads but the allowlist omits is unreachable from a browser
+// however correct the handler is — and the failure surfaces as a blocked request
+// in the console, not as an error the server ever sees. Deriving the list from
+// the source rather than restating it means a handler that starts reading a new
+// header fails here until the allowlist admits it.
+func TestDefaultCORSHeadersAdmitEveryHeaderHandlersRead(t *testing.T) {
+	allowed := make(map[string]struct{})
+	for _, h := range defaultCORSHeaders() {
+		allowed[strings.ToLower(h)] = struct{}{}
+	}
+
+	// Only headers a page's own script sets need admitting. Origin and User-Agent
+	// are set by the browser and cannot be overridden by fetch, and Accept-Language
+	// is on the CORS safelist, so none of the three is subject to the allowlist.
+	browserControlled := map[string]struct{}{
+		"origin":          {},
+		"user-agent":      {},
+		"accept-language": {},
+	}
+
+	found := make(map[string][]string)
+	for _, root := range []string{"..", "../../cmd"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			src, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, m := range headerRead.FindAllStringSubmatch(string(src), -1) {
+				name := strings.ToLower(m[1])
+				if _, skip := browserControlled[name]; skip {
+					continue
+				}
+				found[name] = append(found[name], path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walking %s: %v", root, err)
+		}
+	}
+
+	if len(found) == 0 {
+		t.Fatal("no header reads found in the source; the scan is not looking where the handlers are")
+	}
+
+	for name, paths := range found {
+		if _, ok := allowed[name]; !ok {
+			t.Errorf("header %q is read by %s but is absent from defaultCORSHeaders(), so a browser cannot send it",
+				name, paths[0])
+		}
+	}
+}
+
 func TestLoadRejectsMalformedValues(t *testing.T) {
 	cases := []struct {
 		name string
@@ -336,5 +403,68 @@ func TestDerivedURLs(t *testing.T) {
 	if got, want := cfg.SAMLAssertionConsumerURL(),
 		"https://auth.example.com/v1/saml/acs"; got != want {
 		t.Errorf("SAMLAssertionConsumerURL() = %q, want %q", got, want)
+	}
+}
+
+// The test-environment ceilings only ever lower a lifetime, and only in test. A
+// clamp that raised one would hand a deployment that deliberately chose 5-minute
+// tokens a 15-minute one; a clamp that reached live would shorten a customer's
+// session.
+func TestTestEnvironmentTTLCeilings(t *testing.T) {
+	cfg := &Config{
+		AccessTokenTTL:     time.Hour,
+		RefreshTokenTTL:    720 * time.Hour,
+		TestAccessTokenTTL: 15 * time.Minute,
+		TestSessionTTL:     24 * time.Hour,
+	}
+
+	if got, want := cfg.AccessTokenTTLFor("test"), 15*time.Minute; got != want {
+		t.Errorf("AccessTokenTTLFor(test) = %s, want %s", got, want)
+	}
+	if got, want := cfg.AccessTokenTTLFor("live"), time.Hour; got != want {
+		t.Errorf("AccessTokenTTLFor(live) = %s, want the deployment default %s", got, want)
+	}
+	if got, want := cfg.RefreshTokenTTLFor("test"), 24*time.Hour; got != want {
+		t.Errorf("RefreshTokenTTLFor(test) = %s, want %s", got, want)
+	}
+	if got, want := cfg.RefreshTokenTTLFor("live"), 720*time.Hour; got != want {
+		t.Errorf("RefreshTokenTTLFor(live) = %s, want the deployment default %s", got, want)
+	}
+
+	// A tenant's own policy passes through the same ceiling as the default, which
+	// is the case that matters: the tenant sets one value for both environments.
+	if got, want := cfg.ClampAccessTokenTTL("test", 24*time.Hour), 15*time.Minute; got != want {
+		t.Errorf("a tenant asking for %s in test got %s, want %s", 24*time.Hour, got, want)
+	}
+	if got, want := cfg.ClampSessionTTL("test", 8760*time.Hour), 24*time.Hour; got != want {
+		t.Errorf("a tenant asking for a year in test got %s, want %s", got, want)
+	}
+
+	// Shorter than the ceiling is kept: the ceiling is a bound, not a setting.
+	if got, want := cfg.ClampAccessTokenTTL("test", time.Minute), time.Minute; got != want {
+		t.Errorf("ClampAccessTokenTTL raised %s to %s", want, got)
+	}
+	if got, want := cfg.ClampSessionTTL("test", time.Hour), time.Hour; got != want {
+		t.Errorf("ClampSessionTTL raised %s to %s", want, got)
+	}
+
+	// An empty environment is not the test one. Callers that could not resolve an
+	// environment must not have their lifetimes quietly cut.
+	if got, want := cfg.AccessTokenTTLFor(""), time.Hour; got != want {
+		t.Errorf("AccessTokenTTLFor(\"\") = %s, want %s", got, want)
+	}
+}
+
+// An unset ceiling bounds nothing. The alternative reading — zero means expire
+// immediately — would make every test sign-in on a zero-valued Config produce a
+// dead token, and a zero-valued Config is what a unit test constructs.
+func TestUnsetTTLCeilingBoundsNothing(t *testing.T) {
+	cfg := &Config{AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour}
+
+	if got, want := cfg.AccessTokenTTLFor("test"), time.Hour; got != want {
+		t.Errorf("AccessTokenTTLFor(test) with no ceiling = %s, want %s", got, want)
+	}
+	if got, want := cfg.RefreshTokenTTLFor("test"), 720*time.Hour; got != want {
+		t.Errorf("RefreshTokenTTLFor(test) with no ceiling = %s, want %s", got, want)
 	}
 }

@@ -77,12 +77,12 @@ const (
 
 // PolicyRepository reads and writes a tenant's impersonation policy.
 type PolicyRepository interface {
-	// GetImpersonationPolicy returns the tenant's policy, or an error when it
-	// cannot be read.
-	GetImpersonationPolicy(ctx context.Context, tenantID string) (policy.ImpersonationPolicy, error)
-	// UpdateImpersonationPolicy validates and persists the policy, returning what
-	// was stored.
-	UpdateImpersonationPolicy(ctx context.Context, tenantID string, pol policy.ImpersonationPolicy) (policy.ImpersonationPolicy, error)
+	// GetImpersonationPolicy returns the policy governing one of the tenant's
+	// environments, or an error when it cannot be read.
+	GetImpersonationPolicy(ctx context.Context, tenantID, environment string) (policy.ImpersonationPolicy, error)
+	// UpdateImpersonationPolicy validates and persists the policy for one
+	// environment, returning what was stored.
+	UpdateImpersonationPolicy(ctx context.Context, tenantID, environment string, pol policy.ImpersonationPolicy) (policy.ImpersonationPolicy, error)
 }
 
 // StepUpVerifier re-checks an administrator's own credentials at the moment of
@@ -164,9 +164,9 @@ func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware, clientAuthMidd
 // handleImpersonationError maps the service's error to. A policy that cannot be
 // read falls back to the defaults rather than failing the request.
 func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
-	tenantID, terr := requireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := requireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	env := getEnvironment(c)
 	targetUserID := c.Params("user_id")
@@ -183,7 +183,7 @@ func (h *Handler) InitiateImpersonation(c *fiber.Ctx) error {
 
 	pol := policy.DefaultImpersonationPolicy()
 	if h.policyRepo != nil {
-		p, err := h.policyRepo.GetImpersonationPolicy(c.UserContext(), tenantID)
+		p, err := h.policyRepo.GetImpersonationPolicy(c.UserContext(), tenantID, env)
 		if err == nil {
 			pol = p
 		}
@@ -269,16 +269,16 @@ func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 }
 
 // GetImpersonationPolicy handles GET /v1/tenant/impersonation-policy, answering
-// 200 with the tenant's policy, or with the defaults when none is stored or it
-// cannot be read.
+// 200 with the policy stored for the key's environment, or with the defaults when
+// none is stored or it cannot be read.
 func (h *Handler) GetImpersonationPolicy(c *fiber.Ctx) error {
-	tenantID, terr := requireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := requireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	pol := policy.DefaultImpersonationPolicy()
 	if h.policyRepo != nil {
-		p, err := h.policyRepo.GetImpersonationPolicy(c.UserContext(), tenantID)
+		p, err := h.policyRepo.GetImpersonationPolicy(c.UserContext(), tenantID, getEnvironment(c))
 		if err == nil {
 			pol = p
 		}
@@ -288,13 +288,16 @@ func (h *Handler) GetImpersonationPolicy(c *fiber.Ctx) error {
 
 // UpdateImpersonationPolicy handles PUT /v1/tenant/impersonation-policy.
 //
+// The write lands in the environment the key names, so an impersonation rule can be
+// loosened in test without touching the one that governs live administrators.
+//
 // It answers 200 with the stored policy, 400 for an unparseable body, 422 when
 // the policy is out of bounds, and 500 when the write fails. With no repository
 // configured it echoes the validated policy back without persisting it.
 func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
-	tenantID, terr := requireTenantID(c)
-	if terr != nil {
-		return terr
+	tenantID, okTenant := requireTenantID(c)
+	if !okTenant {
+		return nil
 	}
 	var pol policy.ImpersonationPolicy
 	if err := c.BodyParser(&pol); err != nil {
@@ -310,7 +313,7 @@ func (h *Handler) UpdateImpersonationPolicy(c *fiber.Ctx) error {
 	}
 
 	if h.policyRepo != nil {
-		updated, err := h.policyRepo.UpdateImpersonationPolicy(c.UserContext(), tenantID, pol)
+		updated, err := h.policyRepo.UpdateImpersonationPolicy(c.UserContext(), tenantID, getEnvironment(c), pol)
 		if err != nil {
 			return httperr.SendInternal(c, "impersonation.update_policy", err)
 		}
@@ -351,12 +354,13 @@ func handleImpersonationError(c *fiber.Ctx, err error) error {
 	}
 }
 
-// requireTenantID returns the tenant resolved by the admin guard.
+// requireTenantID returns the tenant resolved by the admin guard, or answers 401
+// and reports false. Callers must return nil when it reports false.
 //
 // Impersonation mints a token that acts as another user, so an unresolved tenant
 // is refused rather than defaulted: substituting one would aim the most powerful
 // operation on the admin surface at whichever tenant the fallback named.
-func requireTenantID(c *fiber.Ctx) (string, error) {
+func requireTenantID(c *fiber.Ctx) (string, bool) {
 	return middleware.RequireTenantID(c)
 }
 

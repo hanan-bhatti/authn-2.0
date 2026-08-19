@@ -65,8 +65,10 @@ var (
 var (
 	// ErrOrgNotFound reports that no organization matches within the tenant.
 	ErrOrgNotFound = errors.New("organization not found")
-	// ErrOrgSlugExists reports a slug collision inside the tenant.
-	ErrOrgSlugExists = errors.New("organization slug already exists in this tenant")
+	// ErrOrgSlugExists reports a slug collision inside the tenant's environment. The
+	// message names the environment because the slug is still claimable in the other
+	// one, and a caller told only "in this tenant" would stop looking.
+	ErrOrgSlugExists = errors.New("organization slug already exists in this environment")
 	// ErrInvalidOrgName reports a name outside the permitted length range.
 	ErrInvalidOrgName = fmt.Errorf("organization name must be between %d and %d characters", MinOrgNameLength, MaxOrgNameLength)
 	// ErrInvalidOrgSlug reports a slug of the wrong length or shape.
@@ -300,9 +302,13 @@ type OrgResponse struct {
 	ID string `json:"id"`
 	// TenantID is the tenant that owns the organization.
 	TenantID string `json:"tenant_id"`
+	// Environment is "test" or "live" — the environment the workspace belongs to.
+	// It is echoed so a caller holding both key pairs can tell which of the two a
+	// workspace came from without inspecting the key it used.
+	Environment string `json:"environment"`
 	// Name is the display name.
 	Name string `json:"name"`
-	// Slug is the URL-safe identifier, unique within the tenant.
+	// Slug is the URL-safe identifier, unique within the tenant and environment.
 	Slug string `json:"slug"`
 	// LogoURL is the logo image URL, if set.
 	LogoURL string `json:"logo_url,omitempty"`

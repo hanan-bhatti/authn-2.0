@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -195,7 +196,7 @@ func setupRedirectTestService(t *testing.T) (*Service, context.Context) {
 		t.Fatalf("failed seeding application: %v", err)
 	}
 
-	repo := NewRepository(factory, "0123456789abcdef0123456789abcdef")
+	repo := NewRepository(factory, policy.NewRepository(factory), "0123456789abcdef0123456789abcdef")
 	svc := NewService(repo, &config.Config{}, session.NewRepository(factory))
 
 	return svc, sysCtx

@@ -204,6 +204,25 @@ func (c *Config) validateLifetimes(add func(string, ...any)) {
 			"it only covers requests already in flight during a token rotation",
 			c.SessionGracePeriod, c.AccessTokenTTL)
 	}
+	// The test-environment ceilings replace the two above for a test credential, so
+	// they have to hold the same ordering between themselves.
+	//
+	// Unlike the two above, each check waits for the ceilings it compares to be set.
+	// A non-positive ceiling bounds nothing rather than being a misconfiguration, so
+	// there is no ordering to violate: a 15-minute token ceiling alongside an
+	// unbounded session is coherent, and both unset is simply a deployment that took
+	// the ceilings off. The loader refuses a non-positive duration, so a running
+	// deployment is compared either way.
+	if c.TestAccessTokenTTL > 0 && c.TestSessionTTL > 0 && c.TestAccessTokenTTL >= c.TestSessionTTL {
+		add("TEST_ACCESS_TOKEN_TTL (%s) must be shorter than TEST_SESSION_TTL (%s): "+
+			"a test session exists to outlive the access tokens it mints",
+			c.TestAccessTokenTTL, c.TestSessionTTL)
+	}
+	if c.TestAccessTokenTTL > 0 && c.SessionGracePeriod >= c.TestAccessTokenTTL {
+		add("SESSION_GRACE_PERIOD (%s) must be much shorter than TEST_ACCESS_TOKEN_TTL (%s): "+
+			"a grace window as long as the token it covers never closes",
+			c.SessionGracePeriod, c.TestAccessTokenTTL)
+	}
 	// RFC 6749 section 4.1.2 recommends a maximum authorization-code lifetime
 	// of ten minutes, since codes are single-use and redeemed immediately.
 	if c.OAuthCodeTTL > maxOAuthCodeTTL {

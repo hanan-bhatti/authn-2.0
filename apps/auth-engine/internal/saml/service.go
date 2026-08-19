@@ -23,6 +23,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
 
@@ -62,30 +63,39 @@ type Service struct {
 	factory *clientfactory.ClientFactory
 	// dispatcher emits lifecycle webhooks; nil disables them.
 	dispatcher WebhookDispatcher
-	// cfg supplies the deployment's public address, from which the published
-	// ACS URL is derived. It may be nil, in which case the fallback constants apply.
+	// cfg supplies the deployment's public address, from which the published ACS
+	// URL is derived, and the key SSO access tokens are signed with.
 	cfg *config.Config
 	// replay remembers consumed assertion IDs so a captured assertion cannot be
 	// presented a second time inside its validity window.
 	replay *assertionReplayGuard
+	// sessions issues the session a validated assertion is carried by. It is the
+	// same store the password, passkey and social paths write to, so an SSO
+	// sign-in appears in the user's session list and is reachable by revocation.
+	sessions *session.Repository
 }
 
 // NewService constructs a Service.
 //
-// cfg is optional in signature only. Without it the service cannot know the
-// deployment's public address and falls back to the local development default,
-// which makes the ACS location published in service-provider metadata unusable
-// by a real identity provider. Production callers must pass it.
-func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatcher, cfg ...*config.Config) *Service {
-	s := &Service{
+// sessions is required rather than optional, for the same reason it is on the
+// social path: an assertion that authenticates a user but issues no session
+// leaves them holding nothing they can present to the application, which is
+// indistinguishable from a failed sign-in from the user's side.
+//
+// cfg is required for two reasons. It carries the deployment's public address,
+// without which the ACS location published in service-provider metadata points at
+// a local development host no real identity provider can reach. It also carries
+// the key SSO access tokens are signed with, and the handler reads it to build the
+// refresh cookie — so a Service without one completes a sign-in that nothing
+// downstream accepts.
+func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatcher, sessions *session.Repository, cfg *config.Config) *Service {
+	return &Service{
 		factory:    factory,
 		dispatcher: dispatcher,
 		replay:     newAssertionReplayGuard(),
+		sessions:   sessions,
+		cfg:        cfg,
 	}
-	if len(cfg) > 0 {
-		s.cfg = cfg[0]
-	}
-	return s
 }
 
 // spEntityID returns the service-provider entity ID for an organization, which
@@ -250,6 +260,7 @@ func (s *Service) toSAMLResponse(conn *ent.SAMLConnection) *SAMLConnectionRespon
 		AllowedDomains:   conn.AllowedDomains,
 		AttributeMapping: conn.AttributeMapping,
 		EnforceSSO:       conn.EnforceSSO,
+		Environment:      string(conn.Environment),
 		CreatedAt:        conn.CreatedAt,
 		UpdatedAt:        conn.UpdatedAt,
 	}

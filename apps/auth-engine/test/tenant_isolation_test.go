@@ -84,7 +84,7 @@ func TestPasswordPolicyRouteIgnoresQueryTenant(t *testing.T) {
 	resp.Body.Close()
 
 	ctx := env.bypassContext()
-	victimPolicy, err := env.policyRepo.GetPasswordPolicy(ctx, victimTenant)
+	victimPolicy, err := env.policyRepo.GetPasswordPolicy(ctx, victimTenant, "test")
 	if err != nil {
 		t.Fatalf("reading victim policy: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestPasswordPolicyRouteIgnoresQueryTenant(t *testing.T) {
 			victimTenant, plantedLength)
 	}
 
-	ownPolicy, err := env.policyRepo.GetPasswordPolicy(ctx, testTenant)
+	ownPolicy, err := env.policyRepo.GetPasswordPolicy(ctx, testTenant, "test")
 	if err != nil {
 		t.Fatalf("reading own policy: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestSessionPolicyDrivesRefreshCookieLifetime(t *testing.T) {
 	// Three days is inside the accepted 1-365 range and unlike the 30-day
 	// deployment default, so the assertion cannot pass on a fallback.
 	const storedDays = 3
-	if _, err := env.policyRepo.UpdateSessionPolicy(env.bypassContext(), testTenant,
+	if _, err := env.policyRepo.UpdateSessionPolicy(env.bypassContext(), testTenant, "test",
 		policy.SessionPolicy{RefreshTokenTTLDays: storedDays}); err != nil {
 		t.Fatalf("storing session policy: %v", err)
 	}

@@ -40,6 +40,8 @@ type Tx struct {
 	Role *RoleClient
 	// SAMLConnection is the client for interacting with the SAMLConnection builders.
 	SAMLConnection *SAMLConnectionClient
+	// SandboxMessage is the client for interacting with the SandboxMessage builders.
+	SandboxMessage *SandboxMessageClient
 	// SecurityBlacklist is the client for interacting with the SecurityBlacklist builders.
 	SecurityBlacklist *SecurityBlacklistClient
 	// Session is the client for interacting with the Session builders.
@@ -50,6 +52,8 @@ type Tx struct {
 	SocialAuthState *SocialAuthStateClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
+	// TenantEnvironment is the client for interacting with the TenantEnvironment builders.
+	TenantEnvironment *TenantEnvironmentClient
 	// TrustedDevice is the client for interacting with the TrustedDevice builders.
 	TrustedDevice *TrustedDeviceClient
 	// TwoFactorMethod is the client for interacting with the TwoFactorMethod builders.
@@ -211,11 +215,13 @@ func (tx *Tx) init() {
 	tx.RecoveryRequest = NewRecoveryRequestClient(tx.config)
 	tx.Role = NewRoleClient(tx.config)
 	tx.SAMLConnection = NewSAMLConnectionClient(tx.config)
+	tx.SandboxMessage = NewSandboxMessageClient(tx.config)
 	tx.SecurityBlacklist = NewSecurityBlacklistClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.SessionAppActivity = NewSessionAppActivityClient(tx.config)
 	tx.SocialAuthState = NewSocialAuthStateClient(tx.config)
 	tx.Tenant = NewTenantClient(tx.config)
+	tx.TenantEnvironment = NewTenantEnvironmentClient(tx.config)
 	tx.TrustedDevice = NewTrustedDeviceClient(tx.config)
 	tx.TwoFactorMethod = NewTwoFactorMethodClient(tx.config)
 	tx.User = NewUserClient(tx.config)

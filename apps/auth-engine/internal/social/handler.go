@@ -20,6 +20,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
 )
 
 // emailExistsSocialCode is returned when a social profile's address already
@@ -169,7 +170,9 @@ func (h *Handler) Callback(c *fiber.Ctx) error {
 	// The cookie lifetime comes from tenant policy while the session row was
 	// created with the deployment default, matching the password path rather than
 	// diverging from it.
-	h.cookies.SetRefreshToken(c, tenantID, result.RefreshToken, h.cookies.RefreshTokenTTL(c.UserContext(), tenantID))
+	environment := middleware.GetEnvironment(c)
+	h.cookies.SetRefreshToken(c, tenantID, environment, result.RefreshToken,
+		h.cookies.RefreshTokenTTL(c.UserContext(), tenantID, environment))
 
 	if result.PostCallbackRedirect != "" {
 		redirectURL, err := buildPostCallbackRedirect(result.PostCallbackRedirect, result.AccessToken)
@@ -223,13 +226,14 @@ func buildPostCallbackRedirect(base, accessToken string) (string, error) {
 }
 
 // ListProviders handles GET /v1/tenant/social-providers and responds 200 with
-// every supported provider and its configuration state.
+// every supported provider and its configuration state for the key's
+// environment.
 //
 // Returns 500 if the tenant's configuration cannot be read.
 func (h *Handler) ListProviders(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 
-	results, err := h.svc.GetSetupGuide(c.UserContext(), tenantID, "")
+	results, err := h.svc.GetSetupGuide(c.UserContext(), tenantID, middleware.GetEnvironment(c), "")
 	if err != nil {
 		return httperr.SendInternal(c, "social.list_providers", err)
 	}
@@ -238,14 +242,15 @@ func (h *Handler) ListProviders(c *fiber.Ctx) error {
 }
 
 // GetProvider handles GET /v1/tenant/social-providers/:provider and responds
-// 200 with that provider's configuration state and setup guidance.
+// 200 with that provider's configuration state and setup guidance for the key's
+// environment.
 //
 // Returns 404 for an unrecognized provider and 500 if the read fails.
 func (h *Handler) GetProvider(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 	provider := c.Params("provider")
 
-	results, err := h.svc.GetSetupGuide(c.UserContext(), tenantID, provider)
+	results, err := h.svc.GetSetupGuide(c.UserContext(), tenantID, middleware.GetEnvironment(c), provider)
 	if err != nil {
 		return httperr.SendInternal(c, "social.get_provider", err)
 	}
@@ -272,6 +277,10 @@ type configureProviderRequest struct {
 // ConfigureProvider handles PUT /v1/tenant/social-providers/:provider and
 // responds 200 once the credentials are stored.
 //
+// The credentials land in the environment the key names, so a tenant configures
+// its test and live OAuth applications separately and can rehearse a provider
+// change without touching the one its real users sign in through.
+//
 // Returns 400 when client_id is missing, 422 when a credential fails the
 // provider's format rules, and 500 otherwise.
 func (h *Handler) ConfigureProvider(c *fiber.Ctx) error {
@@ -287,7 +296,7 @@ func (h *Handler) ConfigureProvider(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMissingParameter, "client_id is required")
 	}
 
-	err := h.svc.ConfigureProvider(c.UserContext(), tenantID, provider, req.Enabled, req.ClientID, req.ClientSecret)
+	err := h.svc.ConfigureProvider(c.UserContext(), tenantID, middleware.GetEnvironment(c), provider, req.Enabled, req.ClientID, req.ClientSecret)
 	if err != nil {
 		var clientErr *ErrInvalidClientCredentials
 		if errors.As(err, &clientErr) {
@@ -305,14 +314,14 @@ func (h *Handler) ConfigureProvider(c *fiber.Ctx) error {
 }
 
 // DeleteProvider handles DELETE /v1/tenant/social-providers/:provider and
-// responds 200 once the configuration is removed.
+// responds 200 once the configuration is removed from the key's environment.
 //
 // Returns 500 if the write fails.
 func (h *Handler) DeleteProvider(c *fiber.Ctx) error {
 	tenantID, _ := c.Locals("tenant_id").(string)
 	provider := c.Params("provider")
 
-	if err := h.svc.RemoveProvider(c.UserContext(), tenantID, provider); err != nil {
+	if err := h.svc.RemoveProvider(c.UserContext(), tenantID, middleware.GetEnvironment(c), provider); err != nil {
 		return httperr.SendInternal(c, "social.delete_provider", err)
 	}
 

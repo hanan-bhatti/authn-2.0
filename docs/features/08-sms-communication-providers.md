@@ -32,3 +32,13 @@ The SMS driver is selected via `SMS_DRIVER` in `.env`:
 ```bash
 SMS_DRIVER=noop # "twilio" | "messagebird" | "aws_sns" | "noop"
 ```
+
+---
+
+## 3. Test-Environment Capture (Sandbox)
+
+In the **test environment the driver is never reached**. `sandbox.WrapSMS` decorates whichever driver section 2.3 selected, and a message sent while acting in `test` is stored for the inbox API instead of dispatched. Live sends are handed to the driver untouched.
+
+Capturing is what makes SMS second-factor enrolment testable at all. The alternative is paying a carrier for every run of the 2FA test, to a handset that has to be in somebody's hand to read the code off — so in practice the flow goes untested.
+
+The one endpoint that deliberately bypasses the wrapper is `POST /v1/tenant/delivery/verify` with `{"channel": "sms"}`, which sends one real message to the signed-in operator's own verified number to prove the credentials above work. See [`18-sandbox-message-inbox.md`](18-sandbox-message-inbox.md).

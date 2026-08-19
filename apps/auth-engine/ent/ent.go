@@ -26,11 +26,13 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/recoveryrequest"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sandboxmessage"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/securityblacklist"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/sessionappactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/socialauthstate"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenant"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/tenantenvironment"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/trusteddevice"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/twofactormethod"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
@@ -113,11 +115,13 @@ func checkColumn(table, column string) error {
 			recoveryrequest.Table:     recoveryrequest.ValidColumn,
 			role.Table:                role.ValidColumn,
 			samlconnection.Table:      samlconnection.ValidColumn,
+			sandboxmessage.Table:      sandboxmessage.ValidColumn,
 			securityblacklist.Table:   securityblacklist.ValidColumn,
 			session.Table:             session.ValidColumn,
 			sessionappactivity.Table:  sessionappactivity.ValidColumn,
 			socialauthstate.Table:     socialauthstate.ValidColumn,
 			tenant.Table:              tenant.ValidColumn,
+			tenantenvironment.Table:   tenantenvironment.ValidColumn,
 			trusteddevice.Table:       trusteddevice.ValidColumn,
 			twofactormethod.Table:     twofactormethod.ValidColumn,
 			user.Table:                user.ValidColumn,

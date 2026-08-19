@@ -111,6 +111,10 @@ func allowsPublishableKeyInQuery(method, path string) bool {
 // enumerate a customer's registered origins.
 func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		if guardCompleted(c, guardPublishableKey) {
+			return c.Next()
+		}
+
 		rawKey := c.Get("X-Authn-Publishable-Key")
 		if rawKey == "" && allowsPublishableKeyInQuery(c.Method(), c.Path()) {
 			rawKey = c.Query("publishable_key")
@@ -146,6 +150,7 @@ func RequirePublishableKey(apiKeyService *apikey.Service) fiber.Handler {
 		c.Locals("application_id", app.ID)
 		c.Locals("environment", envStr)
 
+		markGuardCompleted(c, guardPublishableKey)
 		return c.Next()
 	}
 }

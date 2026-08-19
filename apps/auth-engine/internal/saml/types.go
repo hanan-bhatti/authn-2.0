@@ -20,6 +20,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
 )
 
 // Bounds on caller-supplied SAML configuration. Every field arriving from an
@@ -67,6 +70,15 @@ var (
 	// ErrInvalidDomains reports a domain list that is empty, oversized, or
 	// contains a malformed name.
 	ErrInvalidDomains = fmt.Errorf("allowed_domains must contain between 1 and %d valid domain names", MaxAllowedDomains)
+	// ErrInvalidEnvironment reports an environment that is neither test nor live.
+	// A typo is refused rather than resolved to one of them, because guessing
+	// wrong decides whether an identity provider mints real accounts.
+	ErrInvalidEnvironment = errors.New("environment must be \"test\" or \"live\"")
+	// ErrLiveKeyRequired reports a test credential writing a connection that lives
+	// in live, or moving one into it. A live connection is what an organization's
+	// real employees sign in through, so its certificate, its SSO URL and its
+	// existence are all live configuration.
+	ErrLiveKeyRequired = errors.New("a live SAML connection can only be created, changed or deleted with a live key")
 	// ErrDomainConflict reports a domain already claimed by another connection
 	// in the same tenant.
 	ErrDomainConflict = errors.New("one or more domains are already mapped to another SAML connection in this tenant")
@@ -110,6 +122,11 @@ type CreateSAMLRequest struct {
 	AttributeMapping map[string]string `json:"attribute_mapping,omitempty"`
 	// EnforceSSO makes SSO the only way to sign in from these domains.
 	EnforceSSO bool `json:"enforce_sso"`
+	// Environment is where the people arriving through this provider are
+	// provisioned. Omitting it means live, which is what an administrator
+	// configuring their company's real identity provider intends; naming test
+	// instead trials the provider against sandbox accounts.
+	Environment string `json:"environment,omitempty"`
 }
 
 // Validate checks and normalizes the request in place, lowercasing domains and
@@ -155,6 +172,17 @@ func (r *CreateSAMLRequest) Validate() error {
 	}
 	r.AllowedDomains = cleanedDomains
 
+	// Defaulted rather than required, so an existing client that predates the
+	// environment split keeps creating live connections instead of silently
+	// diverting its identity provider into the sandbox.
+	r.Environment = strings.ToLower(strings.TrimSpace(r.Environment))
+	if r.Environment == "" {
+		r.Environment = string(samlconnection.DefaultEnvironment)
+	}
+	if err := samlconnection.EnvironmentValidator(samlconnection.Environment(r.Environment)); err != nil {
+		return ErrInvalidEnvironment
+	}
+
 	return nil
 }
 
@@ -174,6 +202,15 @@ type UpdateSAMLRequest struct {
 	AttributeMapping map[string]string `json:"attribute_mapping,omitempty"`
 	// EnforceSSO replaces the enforcement flag when non-nil.
 	EnforceSSO *bool `json:"enforce_sso,omitempty"`
+	// Environment moves where future sign-ins through this provider are
+	// provisioned. This is how a trialled connection is promoted: point it at
+	// test, verify the assertions map to the right people, then set it to live.
+	//
+	// It governs sign-ins from here on and does not migrate the accounts already
+	// created. An employee who signed in during the trial has a test account and
+	// will be given a separate live one on their next sign-in, which is the
+	// intended outcome — a sandbox account is not a real one.
+	Environment *string `json:"environment,omitempty"`
 }
 
 // Validate checks and normalizes the supplied fields in place, ignoring those
@@ -218,6 +255,14 @@ func (r *UpdateSAMLRequest) Validate() error {
 			return err
 		}
 		r.AllowedDomains = cleanedDomains
+	}
+
+	if r.Environment != nil {
+		env := strings.ToLower(strings.TrimSpace(*r.Environment))
+		if err := samlconnection.EnvironmentValidator(samlconnection.Environment(env)); err != nil {
+			return ErrInvalidEnvironment
+		}
+		*r.Environment = env
 	}
 
 	return nil
@@ -300,6 +345,31 @@ type ACSRequest struct {
 	RelayState string `json:"RelayState,omitempty" form:"RelayState,omitempty"`
 }
 
+// ACSResult is a completed SAML sign-in: the authenticated identity, the
+// credentials it is carried by, and where to send the browser next.
+type ACSResult struct {
+	// User is the authenticated subject, provisioned on the spot if new.
+	User *ent.User
+	// Organization is the organization the asserting connection belongs to.
+	Organization *ent.Organization
+	// AccessToken is the signed JWT for the new session.
+	AccessToken string
+	// RefreshToken is the raw refresh credential. It is delivered only as an
+	// HttpOnly cookie: the whole reason the pair is split is that the long-lived
+	// half stays out of reach of page scripts.
+	RefreshToken string
+	// SessionID identifies the session row, so the sign-in is listable and
+	// revocable like any other.
+	SessionID string
+	// Environment is the environment the subject's account belongs to, which the
+	// session and its access token are issued against.
+	Environment string
+	// ResumeURL is the validated destination to redirect the browser to, or ""
+	// when the assertion carried no usable one. An empty value is the normal
+	// outcome for an identity-provider-initiated sign-in, not an error.
+	ResumeURL string
+}
+
 // SAMLConnectionResponse is the API representation of a stored connection.
 type SAMLConnectionResponse struct {
 	// ID is the connection's identifier.
@@ -319,6 +389,10 @@ type SAMLConnectionResponse struct {
 	AttributeMapping map[string]string `json:"attribute_mapping,omitempty"`
 	// EnforceSSO reports whether SSO is mandatory for these domains.
 	EnforceSSO bool `json:"enforce_sso"`
+	// Environment is where sign-ins through this provider are provisioned. It is
+	// always returned, because "why did my colleague get a new account" is
+	// answered by it and a connection left on test looks identical otherwise.
+	Environment string `json:"environment"`
 	// CreatedAt is when the connection was configured.
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is when it last changed.

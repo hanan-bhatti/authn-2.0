@@ -99,6 +99,9 @@ The **Authn Engine** exposes four distinct HTTP API surfaces:
 - `PUT /v1/tenant/recovery-policy` — Update tenant recovery policy with 9 validation rules
 - `GET /v1/tenant/session-policy` — Get tenant session policy (access/refresh token lifetimes, cookie SameSite)
 - `PUT /v1/tenant/session-policy` — Update tenant session policy; out-of-range values are clamped to 1–1440 minutes and 1–365 days, and a zero field inherits the deployment default
+- `GET /v1/tenant/settings` — Every policy column of the credential's environment in one read, with provider secrets redacted
+- `GET /v1/tenant/settings/diff` — Both environments' settings plus the names of the columns that differ
+- `POST /v1/tenant/settings/publish` — Promote one environment's settings onto the other; the destination must be the key's own environment
 - `POST /v1/admin/keys/` — Issue new publishable or secret API key
 - `GET /v1/admin/keys/` — List API keys for application
 - `POST /v1/admin/keys/:key_id/revoke` — Revoke API key
@@ -120,18 +123,26 @@ The **Authn Engine** exposes four distinct HTTP API surfaces:
 - `POST /v1/client/auth/2fa/verify` — Unified login 2FA verification endpoint (`totp`, `webauthn`, `sms`, `backup_code`)
 
 ### 2.11 Outgoing Real-Time Event Webhooks (FR-13)
-- `POST /v1/admin/webhooks/endpoints` — Register new webhook endpoint
+> Every route below that changes the endpoint list, or makes it emit an HTTP request, requires a live secret key. The three reads accept either.
+- `POST /v1/admin/webhooks/endpoints` — Register new webhook endpoint *(live key)*
 - `GET /v1/admin/webhooks/endpoints` — List all webhook endpoints for tenant
 - `GET /v1/admin/webhooks/endpoints/:id` — Get webhook endpoint details by ID
-- `PUT /v1/admin/webhooks/endpoints/:id` — Update URL, description, or subscribed events
-- `DELETE /v1/admin/webhooks/endpoints/:id` — Delete webhook endpoint and cascade delete delivery logs
-- `POST /v1/admin/webhooks/endpoints/:id/ping` — Dispatch test ping webhook event
-- `POST /v1/admin/webhooks/endpoints/:id/rotate-secret` — Rotate signing secret key
+- `PUT /v1/admin/webhooks/endpoints/:id` — Update URL, description, or subscribed events *(live key)*
+- `DELETE /v1/admin/webhooks/endpoints/:id` — Delete webhook endpoint and cascade delete delivery logs *(live key)*
+- `POST /v1/admin/webhooks/endpoints/:id/ping` — Dispatch test ping webhook event *(live key)*
+- `POST /v1/admin/webhooks/endpoints/:id/rotate-secret` — Rotate signing secret key *(live key)*
 - `GET /v1/admin/webhooks/deliveries` — List webhook delivery audit logs
+- `POST /v1/admin/webhooks/deliveries/:id/redeliver` — Re-send a recorded delivery to its endpoint *(live key)*
 
 ### 2.12 Hosted Platform Control Plane
 - `POST /v1/platform/tenants` — Provision a tenant, its first application, its system roles and its first API key pair, owned by the calling platform user
 - `GET /v1/platform/tenants` — List the tenants the calling platform user owns
+
+### 2.13 Test-Environment Sandbox & Delivery Verification (FR-18)
+- `GET /v1/tenant/sandbox/messages` — List the messages the test environment captured instead of sending, newest first; filters `recipient`, `channel`, `limit`, `offset`
+- `GET /v1/tenant/sandbox/messages/:id` — Read one capture including its rendered body
+- `DELETE /v1/tenant/sandbox/messages` — Empty the calling tenant's inbox, reporting how many captures were removed
+- `POST /v1/tenant/delivery/verify` — Send one real message through the configured provider to the signed-in operator's own address, bypassing the sandbox
 
 ---
 
@@ -291,6 +302,15 @@ Native/mobile client: refresh token in `refresh_token` JSON field.
 #### `401 Unauthorized` — Missing Publishable Key
 ```json
 { "error": "missing publishable API key in X-Authn-Publishable-Key header" }
+```
+
+#### `403 Forbidden` — Test-Environment User Ceiling
+Only with a `pk_test_` key, and only once the tenant holds `TEST_MAX_USERS` test users. `403` rather than `429`: waiting does not free a slot. See [§3.22](#322-test-environment-volume-ceilings).
+```json
+{
+  "error": "the test environment holds its limit of 500 users for this tenant; remove some, or use a live key",
+  "code": "test_quota_exceeded"
+}
 ```
 
 #### `405 Method Not Allowed` — Wrong HTTP Verb
@@ -672,7 +692,8 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 }
 ```
 - **Edge Cases & Error Codes**:
-  - `400 Bad Request`: Invalid slug format (`organization slug must be 2-50 lowercase alphanumeric characters or hyphens`), duplicate slug in tenant (`organization slug already exists in this tenant`), or replayed invitation token (`invitation has already been accepted`).
+  - `400 Bad Request`: Invalid slug format (`organization slug must be 2-50 lowercase alphanumeric characters or hyphens`), duplicate slug in the credential's environment (`organization slug already exists in this environment`), or replayed invitation token (`invitation has already been accepted`).
+  - `403 Forbidden` (`test_quota_exceeded`): The tenant already holds `TEST_MAX_ORGANIZATIONS` test organizations and the caller presented a test credential. Organizations carry an `environment`, so the count is per environment and a live key is bounded by nothing here. See [§3.22](#322-test-environment-volume-ceilings).
   - `404 Not Found`: Organization or invitation token not found.
 
 ### 3.11 Admin User Impersonation (`/v1/admin/users/:id/impersonate`, `/v1/tenant/impersonation-policy`, `/v1/client/auth/impersonate/exit`)
@@ -742,7 +763,8 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 - **Edge Cases & Error Codes**:
   - `400 Bad Request`: Environment mismatch (`environment mismatch: test-mode admin key cannot manage live-mode keys and vice versa`) or invalid key type (`invalid key type: expected 'publishable' or 'secret'`).
   - `401 Unauthorized`: Invalid, expired, or revoked API key.
-```
+  - `403 Forbidden` (`test_quota_exceeded`): The tenant already holds `TEST_MAX_API_KEYS` test keys. The count includes the publishable/secret pair provisioning installs with the application, so the room for keys issued here is that ceiling minus two. See [§3.22](#322-test-environment-volume-ceilings).
+
 *(Note: Full secret key value is returned ONCE on creation and never stored in plaintext)*
 
 ### 3.8 2FA Method Management & Verification (`/v1/client/auth/2fa/*` & `/v1/client/auth/2fa/verify`)
@@ -820,6 +842,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 - **Edge Cases & Error Codes**:
   - `422 Unprocessable Entity`: Invalid URL format (SSRF blocked, scheme must be HTTP/HTTPS) or unsupported event types (`unsupported event type provided: 'user.exploit_system'`).
   - `404 Not Found`: Webhook Endpoint ID does not exist.
+  - `403 Forbidden` (`live_key_required`): a test credential on any route that changes the endpoint list or makes it emit a request — create, update, delete, ping, rotate-secret, redeliver. An endpoint carries no environment of its own and the dispatcher delivers every event to the whole list, so the list is live configuration whichever key wrote it. The three read routes stay open to either key.
 
 ### 3.10 Admin User Impersonation & Security Guard (`/v1/admin/users/:user_id/impersonate`, `/v1/client/auth/impersonate/exit`)
 - **Description**: Initiating short-lived admin impersonation sessions with mandatory Sudo step-up auth, user notification emails, signed webhooks (`user.impersonated`), and read-only mutation guards.
@@ -901,6 +924,10 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 > See full endpoint doc: [`docs/endpoints/saml-idp-config.md`](endpoints/saml-idp-config.md)
 
 - **Description**: Admin management of SAML SSO settings (`POST/GET/PATCH/DELETE`), XML Service Provider metadata generation, and instant metadata cache invalidation upon deletion.
+- **Edge Cases & Error Codes**:
+  - `400 Bad Request`: `environment` present but neither `test` nor `live`.
+  - `403 Forbidden` (`live_key_required`): a test credential writing a connection that sits in `live`, or moving one into it. Because the schema default for this entity is `live`, a create that omits `environment` is the same request as one naming it. The rule is one-directional — a live key may still edit a connection sitting in `test`, which is what a promotion reads before it writes — and reads are ungated in both directions.
+  - `404 Not Found`: The organization has no SAML connection, or the caller may not know whether it does.
 
 ### 3.17 Domain Lookup & SSO Enforcement (`POST /v1/client/auth/domain-lookup`)
 
@@ -911,10 +938,10 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 
 ### 3.18 Cross-Domain Resume-to-Destination (`GET /v1/oauth/authorize`, `POST /v1/saml/acs`, `GET /v1/client/auth/social/:provider/authorize`)
 
-> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server.
+> **Last Verified**: `2026-08-06` — OIDC and social flows 100% verified via live `curl` pentest suite against running server. The SAML ACS resume was implemented afterwards and is covered by `internal/saml/resume_test.go` rather than by that pentest run.
 > See full endpoint doc: [`docs/endpoints/cross-domain-resume.md`](endpoints/cross-domain-resume.md)
 
-- **Description**: Cross-origin post-authentication redirection to client applications (e.g. `http://localhost:3000/callback`), maintaining authorization code and caller state parameters intact.
+- **Description**: Cross-origin post-authentication redirection to client applications (e.g. `http://localhost:3000/callback`), maintaining authorization code and caller state parameters intact. On the SAML ACS the destination arrives as `RelayState` and the access token is delivered in the URL fragment; every destination is matched against the tenant's registered `exact_redirect_uris` before the browser is sent anywhere, since the redirect carries a live credential.
 
 ### 3.19 FR-5 Phase 6: Consolidated Lockout Engine (`POST /v1/client/auth/login`)
 
@@ -939,3 +966,85 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 - **Slug conflicts return `409 already_exists`, not the existing tenant.** The provisioning service is idempotent by slug, which is correct for the container entrypoint that re-runs it on every boot and a vulnerability on a public endpoint — the caller would be handed the tenant that already owns the slug and the ownership row would give them a claim on somebody else's data. Reserved slugs (`platform`, `admin`, `system`, `default`, `internal`, `authn`, `console`, `api`, `www`, plus the configured `PLATFORM_TENANT_SLUG`) return `400 validation_failed` instead, since they were never available.
 
 - **Metered per platform user** at 5 tenants per the rate limiter's window, keyed on the user rather than the IP: signing up is free, so an IP budget is defeated by one more signup while a per-user budget costs an attacker a fresh verified email address per bucket. Exhaustion returns `429 rate_limited` with `Retry-After`; a limiter outage returns `503` and fails closed.
+
+### 3.21 Test-Environment Sandbox Inbox & Delivery Verification (`/v1/tenant/sandbox/messages`, `POST /v1/tenant/delivery/verify`)
+
+> **Last Verified**: `2026-08-19` — 22 unit test functions in `internal/sandbox` and 9 integration tests in `test/sandbox_test.go`, run against the real admin guard.
+> See full endpoint doc: [`docs/endpoints/tenant-sandbox-inbox.md`](endpoints/tenant-sandbox-inbox.md)
+
+- **Description**: In the test environment the engine does not send email or SMS. Every message it would have dispatched is stored instead and read back through an inbox API with its verification link and one-time code intact, so a signup, magic link, password reset or SMS second factor runs end to end without delivering to a real address, paying a carrier per code, or needing a handset in somebody's hand. In the live environment nothing changes.
+
+- **Interception is at the provider interface**, not at each place the engine decides to send. `sandbox.WrapEmail` and `sandbox.WrapSMS` decorate the configured drivers once at wiring time, before any service takes a reference, so every sender the engine has — and every one it gains — is covered. A send site nobody remembered to route through the sandbox would be a real message leaving a test environment, addressed to whoever a fixture named.
+
+- **Only an explicit test scope captures; an absent or bypassing scope delivers.** This is the opposite default to the one environment-scoped *reads* take, deliberately: there an unknown environment narrows to `test` because the narrow answer is harmless, whereas here the narrow answer would swallow a live password reset and lock a customer out of their own account.
+
+- **The inbox refuses a live credential with `403 forbidden`** on all three routes rather than returning an empty list. Nothing is captured outside test, so an empty list would be a true answer to the wrong question — and *"my message is missing"* is a worse conclusion to leave an operator with than *"you are looking at the wrong environment"*.
+
+- **`code` and `metadata.link` are extracted at capture time**, so completing a flow does not mean parsing rendered HTML: the rendering is styling and changes freely, while those two are the contract. Extraction is deliberately strict, because a loose match is worse than no match — a harness reading a wrong value fails in a way that looks like the engine generated the wrong credential. `body` is omitted from a listing and present only on a single-message read.
+
+- **A cross-tenant read is `404 not_found`, not `403`.** Distinguishing the two would confirm that the ID exists.
+
+- **Delivery verification is the deliberate exception**: `POST /v1/tenant/delivery/verify` bypasses the capture and sends one real message, because a captured message never reaches a provider and so no amount of sandbox traffic establishes that the configured credentials work. A `502` carries the provider's own words verbatim — that string is the answer the caller came for.
+
+- **Its recipient is the signed-in operator's own address and there is no field to supply one**, so the endpoint cannot be aimed at a third party by construction rather than by validation. That is also why a secret key is refused with `403 forbidden`: it identifies an application rather than a person, and there is no address behind it that anybody has proven control of. The operator's own address must be verified (`403 email_verification_required`), and `channel: "sms"` additionally requires a verified number on their account.
+
+- **Metered at 3 verifications per rate-limit window per tenant and channel**, with `Retry-After` on the `429`. The cap is low because it bounds a misconfigured retry loop rather than an abuse — the endpoint sends to the caller's own address through their own provider account, so the second message tells them exactly what the first one did, and anybody able to call it already holds the provider credentials it uses.
+
+- **Captures expire.** `SANDBOX_MESSAGE_RETENTION` (default `24h`) is swept by the background retention job. The bodies hold verification links and one-time codes in plain text — that is the point of the store, since a harness has to read them, and exactly why a long window would be an accumulating archive of working credentials.
+
+### 3.22 Test-Environment Volume Ceilings (`test_quota_exceeded`)
+
+> **Last Verified**: `2026-08-19` — 12 volume-ceiling unit test functions in `internal/quota` and 5 integration tests in `test/test_quota_test.go`, driven over HTTP through the real key and admin guards. The organization environment boundary is covered separately by 3 integration tests in `test/org_environment_test.go`. The lifetime ceilings the same hook applies are covered in [§3.23](#323-test-environment-credential-lifetimes--idle-data-retention).
+> See the feature spec: [`docs/features/17-test-live-environments.md`](features/17-test-live-environments.md)
+
+- **Description**: A test environment is free and unmetered, which makes it the cheapest place to run something that is not a test. Three ceilings keep it a development surface: `TEST_MAX_USERS` (default 500), `TEST_MAX_ORGANIZATIONS` (default 25) and `TEST_MAX_API_KEYS` (default 20). The defaults are far above any test suite and far below a product, so they are invisible to the intended use. No endpoint is added and no response changes shape — the ceilings surface only as a refusal on a create.
+
+- **This is not a new endpoint but a refusal any capped create can return**: `POST /v1/client/auth/signup`, magic-link auto-provisioning, social sign-in, SAML just-in-time provisioning and invitation acceptance for users; `POST /v1/client/organizations` and `POST /v1/tenant/organizations` for organizations; `POST /v1/admin/keys/` for keys. The check is a mutation hook on the ORM rather than a guard in each handler, so a create path added later is bounded without being told to be.
+
+- **`403 test_quota_exceeded`, not `429 rate_limited`.** A rate limit says *come back later* and carries `Retry-After`; this one has no retry that helps. Room is made by deleting rows or by presenting a live key, so the response carries no `Retry-After` and the message says what to do instead:
+```json
+{
+  "error": "the test environment holds its limit of 500 users for this tenant; remove some, or use a live key",
+  "code": "test_quota_exceeded"
+}
+```
+
+- **Only a test credential is bounded.** A `sk_live_`/`pk_live_` caller is never refused for volume, so a deployment cannot accidentally cap its own customers by tightening a test ceiling. Provisioning is exempt for the same reason on the other side: it runs before a tenant has any rows and creates the first ones, and a ceiling that refused those would make the tenant unreachable.
+
+- **Only creates.** A tenant at its ceiling can still read, update and delete — including deleting its way back under. Refusing updates would leave a full test environment frozen rather than merely full.
+
+- **The organization ceiling counts one environment.** `organization` carries an `environment` column, so a tenant's live workspaces neither count against its test ceiling nor are refused by it, and a slug is claimable once per environment. A customer running a full production estate still has its whole test allowance to rehearse in. Responses echo `environment` so a caller holding both key pairs can tell which of the two a workspace came from.
+
+- **The API-key ceiling counts the pair provisioning already installed** with the application, so the room for keys issued through `POST /v1/admin/keys/` is the configured value minus two.
+
+- **The count is taken immediately before the insert and outside any lock**, so two creates arriving together can both find room and leave a tenant one row over its ceiling. That is accepted: this is a spend control, not a security boundary, and enforcing it to the exact row would cost a serialized count on every test-environment sign-up to prevent an overshoot nobody can observe.
+
+- **A ceiling of zero fails the boot** rather than quietly lifting a limit somebody meant to set. Internally an unset ceiling means *uncapped*, so a deployment that never configures one is unbounded — the loader closes the gap between those two readings by refusing `0` outright.
+
+- **A full test environment empties itself.** `TEST_USER_RETENTION` deletes idle test accounts on a schedule, so a tenant that filled its user ceiling through months of accumulated runs recovers without deleting anything by hand. See [§3.23](#323-test-environment-credential-lifetimes--idle-data-retention).
+
+
+---
+
+### 3.23 Test-Environment Credential Lifetimes & Idle-Data Retention
+
+> **Last Verified**: `2026-08-19` — 2 unit test functions in `internal/config`, 4 in `internal/quota`, 4 in `internal/auth/retention_test.go`, and 3 integration tests in `test/test_ttl_ceiling_test.go` driving a real sign-in and refresh.
+> See the feature spec: [`docs/features/17-test-live-environments.md`](features/17-test-live-environments.md)
+
+- **Description**: A test environment is also the cheapest place to mint a long-lived credential and the easiest place to accumulate abandoned accounts. Two ceilings and one sweep close both: `TEST_ACCESS_TOKEN_TTL` (default 15m), `TEST_SESSION_TTL` (default 24h) and `TEST_USER_RETENTION` (default 720h). No endpoint is added and no response changes shape.
+
+- **The lifetime ceilings refuse nothing.** They shorten what a caller asked for, so a harness sees no error and simply receives a credential that expires sooner. Nothing in a response reports that a clamp ran — the only observable is the value itself.
+
+- **`expires_in` always matches the signed `exp`.** The examples in this document show `900` because they are written against the deployment default. Against a test credential the same field reports the clamped figure — `900` becomes the ceiling in seconds — because the advertised lifetime and the `exp` stamped into the token are resolved from one setting. A client that schedules its next refresh from `expires_in` therefore stays correct in both environments without knowing which it is in.
+
+- **Four artifacts are bounded together**, because a lifetime is decided in four places: the signed access token, the session row its refresh token authenticates against, the refresh cookie's `Expires`, and `expires_in`. Bounding fewer would leave a credential outliving the record behind it — a browser holding a cookie for a swept session refreshes into a `401` it cannot tell from theft detection.
+
+- **A tenant's own lifetimes pass through the same ceiling.** `access_token_ttl_minutes` (1–1440) and `refresh_token_ttl_days` (1–365) are single values across both environments, so a tenant asking for a day in live is not thereby handing test a day-long token. This is the one stored setting that is honoured in full in live and shortened in test.
+
+- **Only a test credential is bounded.** A `pk_live_`/`sk_live_` sign-in receives the deployment or tenant lifetime untouched, so tightening a test ceiling cannot shorten a customer's session.
+
+- **Idle test accounts are deleted, live accounts never.** `TEST_USER_RETENTION` measures from the last sign-in, or from registration for an account that never signed in — the state a suite most often leaves behind. The sweep is confined to `environment = test` by predicate rather than by the cutoff it is given, so a misconfigured window cannot reach a paying customer's account. Deleting an account takes its sessions, identities, second factors, devices, org memberships, roles, recovery contacts and requests, password history and subnet history with it, in one transaction: a partly deleted account would be a weakened one rather than an absent one.
+
+- **This is what keeps `TEST_MAX_USERS` from becoming a wall.** Without a retention window a tenant reaches its ceiling through months of accumulated runs and starts seeing `403 test_quota_exceeded` on runs that have nothing wrong with them. See [§3.22](#322-test-environment-volume-ceilings).
+
+- **Every setting must be positive; zero fails the boot.** `TEST_ACCESS_TOKEN_TTL` must additionally be shorter than `TEST_SESSION_TTL`, for the reason `ACCESS_TOKEN_TTL` must be shorter than `REFRESH_TOKEN_TTL`: a session exists to outlive the access tokens it mints.

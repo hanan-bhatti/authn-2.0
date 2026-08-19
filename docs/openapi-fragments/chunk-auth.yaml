@@ -123,6 +123,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '409':
           description: User with the specified email address already exists
           content:
@@ -463,6 +473,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '429':
           description: Request throttled due to rate limiting
           content:
@@ -520,6 +540,16 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid publishable API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
+            users in the test environment and this request would provision a new
+            one. Live credentials are not bounded by this ceiling. Not 429 —
+            waiting does not help, because the ceiling is on stored rows.
           content:
             application/json:
               schema:

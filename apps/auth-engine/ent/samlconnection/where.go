@@ -380,6 +380,26 @@ func EnforceSSONEQ(v bool) predicate.SAMLConnection {
 	return predicate.SAMLConnection(sql.FieldNEQ(FieldEnforceSSO, v))
 }
 
+// EnvironmentEQ applies the EQ predicate on the "environment" field.
+func EnvironmentEQ(v Environment) predicate.SAMLConnection {
+	return predicate.SAMLConnection(sql.FieldEQ(FieldEnvironment, v))
+}
+
+// EnvironmentNEQ applies the NEQ predicate on the "environment" field.
+func EnvironmentNEQ(v Environment) predicate.SAMLConnection {
+	return predicate.SAMLConnection(sql.FieldNEQ(FieldEnvironment, v))
+}
+
+// EnvironmentIn applies the In predicate on the "environment" field.
+func EnvironmentIn(vs ...Environment) predicate.SAMLConnection {
+	return predicate.SAMLConnection(sql.FieldIn(FieldEnvironment, vs...))
+}
+
+// EnvironmentNotIn applies the NotIn predicate on the "environment" field.
+func EnvironmentNotIn(vs ...Environment) predicate.SAMLConnection {
+	return predicate.SAMLConnection(sql.FieldNotIn(FieldEnvironment, vs...))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.SAMLConnection {
 	return predicate.SAMLConnection(sql.FieldEQ(FieldCreatedAt, v))

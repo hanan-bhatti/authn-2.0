@@ -9,7 +9,7 @@
 
 ## Authentication & Access Control
 * **Authentication Required**: `None` (Public / Unauthenticated)
-* **Security Headers Required**: None. Any passed `Authorization`, `X-Publishable-Key`, or `X-Secret-Key` headers are safely ignored.
+* **Security Headers Required**: None. Any passed `Authorization`, `X-Authn-Publishable-Key`, or `X-Authn-Secret-Key` headers are safely ignored.
 
 ---
 

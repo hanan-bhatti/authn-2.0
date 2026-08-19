@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	_ "github.com/mattn/go-sqlite3"
@@ -59,7 +60,7 @@ func setupStatePurgeTest(t *testing.T) (*Repository, context.Context, *ent.Clien
 		t.Fatalf("seed tenant: %v", err)
 	}
 
-	return NewRepository(factory, "0123456789abcdef0123456789abcdef"), sysCtx, client
+	return NewRepository(factory, policy.NewRepository(factory), "0123456789abcdef0123456789abcdef"), sysCtx, client
 }
 
 // arrangeState writes one state row through the production writer, using the ttl

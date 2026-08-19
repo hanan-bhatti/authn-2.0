@@ -162,7 +162,7 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
-		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, input.TenantID)
+		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, input.TenantID, input.Environment)
 	} else {
 		recPolicy = policy.DefaultRecoveryPolicy()
 	}
@@ -183,7 +183,7 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 	}
 
 	// A telemetry failure does not block: only a positive match stops the flow.
-	isBlacklisted, err := s.telemetry.IsBlacklisted(ctx, input.TenantID, u.ID, input.IPAddress, input.UserAgent, input.AcceptLang)
+	isBlacklisted, err := s.telemetry.IsBlacklisted(ctx, input.TenantID, input.Environment, u.ID, input.IPAddress, input.UserAgent, input.AcceptLang)
 	if err == nil && isBlacklisted {
 		return nil, ErrOriginBlacklisted
 	}
@@ -432,7 +432,7 @@ func (s *RecoveryService) SubmitOldPasswordProof(ctx context.Context, requestID,
 	if !matchFound {
 		var recPolicy policy.RecoveryPolicy
 		if s.policyRepo != nil {
-			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID)
+			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
 		} else {
 			recPolicy = policy.DefaultRecoveryPolicy()
 		}
@@ -581,7 +581,7 @@ func (s *RecoveryService) ActivateFreezeWindow(ctx context.Context, requestID st
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
 		if u, err := s.repo.GetUserByID(ctx, req.UserID); err == nil && u != nil {
-			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID)
+			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
 		} else {
 			recPolicy = policy.DefaultRecoveryPolicy()
 		}
@@ -635,7 +635,7 @@ func (s *RecoveryService) ProcessExpiredFreezes(ctx context.Context) (int, error
 		var recPolicy policy.RecoveryPolicy
 		if s.policyRepo != nil {
 			if u, err := s.repo.GetUserByID(ctx, req.UserID); err == nil && u != nil {
-				recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID)
+				recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
 			} else {
 				recPolicy = policy.DefaultRecoveryPolicy()
 			}

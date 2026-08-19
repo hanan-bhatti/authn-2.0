@@ -110,7 +110,7 @@ func (s *GuardianService) InviteGuardians(ctx context.Context, userID string, in
 
 	var recPolicy policy.RecoveryPolicy
 	if s.policyRepo != nil {
-		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID)
+		recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
 	} else {
 		recPolicy = policy.DefaultRecoveryPolicy()
 	}

@@ -69,6 +69,12 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | | `ID_TOKEN_TTL` | `1h` | Optional | OpenID Connect ID token expiration |
 | | `RECOVERY_TOKEN_TTL` | `1h` | Optional | Account recovery token expiration |
 | | `INVITATION_TTL` | `168h` (7 days) | Optional | Org member invitation link expiration |
+| **8b. Retention** | `RETENTION_SWEEP_INTERVAL` | `15m` | Optional | Background sweep frequency and per-pass budget |
+| | `SUPERSEDED_SESSION_RETENTION` | `72h` | Optional | Width of the refresh-token theft-detection window |
+| | `TERMINAL_SESSION_RETENTION` | `720h` (30 days) | Keep `>= REFRESH_TOKEN_TTL` | How long sign-in history is readable |
+| | `SANDBOX_MESSAGE_RETENTION` | `24h` | Optional | Lifetime of a captured test-environment message |
+| | `TEST_USER_RETENTION` | `720h` | Optional | Idle window before a test account is deleted |
+| | `RETENTION_BATCH_SIZE` | `1000` | Optional | Rows deleted per sweep statement |
 | **9. Rate Limit** | `RATELIMIT_ENABLED` | `true` | Optional | Enables/disables IP & user rate limiting |
 | | `RATELIMIT_MAX_ATTEMPTS` | `5` | Optional | Account attempt budget per window |
 | | `RATELIMIT_WINDOW` | `15m` | Optional | Rate limit budget reset window |
@@ -104,6 +110,11 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | **13. SAML** | `SAML_ACS_PATH` | `/v1/saml/acs` | Optional | Endpoint path for IdP POST assertions |
 | | `SAML_SP_ENTITY_ID_PREFIX` | `https://authn.com/saml/sp/` | Optional | URI namespace prefix for SP Entity IDs |
 | **14. Orgs** | `ORG_METADATA_MAX_BYTES` | `10240` (10 KiB) | Optional | Max bytes for organization JSON metadata |
+| **14b. Test Ceilings** | `TEST_MAX_USERS` | `500` | Must be positive | Test users one tenant may hold |
+| | `TEST_MAX_ORGANIZATIONS` | `25` | Must be positive | Workspaces one tenant may hold in test |
+| | `TEST_MAX_API_KEYS` | `20` | Must be positive | Test API keys one tenant may hold |
+| | `TEST_ACCESS_TOKEN_TTL` | `15m` | Must be positive, `< TEST_SESSION_TTL` | Ceiling on a test access token's lifetime |
+| | `TEST_SESSION_TTL` | `24h` | Must be positive | Ceiling on a test session and its refresh cookie |
 | **15. Flags** | `FEATURE_PUSH_2FA_ENABLED` | `true` | Optional | Enables/disables Push 2FA features |
 | | `FEATURE_MAGIC_LINK_ENABLED` | `true` | Optional | Enables/disables Passwordless Magic Links |
 | | `FEATURE_WEBHOOKS_ENABLED` | `true` | Optional | Enables/disables Webhook Dispatcher |
@@ -172,43 +183,71 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
   - `SESSION_GRACE_PERIOD` must be strictly less than `ACCESS_TOKEN_TTL`.
   - `OAUTH_CODE_TTL` must not exceed `10m` (RFC 6749 section 4.1.2 compliance).
 
+### Section 8b: Data Retention Sweeps
+- **Go Loader**: [`load.go:L93-L97`](/apps/auth-engine/internal/config/load.go#L93-L97)
+- **Validation**: Every duration here is read with `r.duration`, which rejects a zero or negative value at boot. A retention window cannot be set to `0` to disable a sweep.
+- **Server Actions**: Registered as sweeper tasks in [`cmd/server/wiring.go`](/apps/auth-engine/cmd/server/wiring.go).
+  - `RETENTION_SWEEP_INTERVAL`: How often the sweeper runs, and the ceiling on how long one pass may take, so a large backlog is cleared over several passes rather than one long transaction.
+  - `SUPERSEDED_SESSION_RETENTION`: How long a session row replaced by a refresh is kept. Until it is deleted a replay of the old refresh token is recognised as token theft, so this is the width of the theft-detection window.
+  - `TERMINAL_SESSION_RETENTION`: How long expired and revoked session rows stay readable as the user's sign-in history. Set it at or above `REFRESH_TOKEN_TTL`, or sessions that could still have been refreshed are deleted.
+  - `SANDBOX_MESSAGE_RETENTION`: How long a message captured by the test-environment sandbox is kept ([`docs/features/18-sandbox-message-inbox.md`](/docs/features/18-sandbox-message-inbox.md)). Captured bodies hold verification links and one-time codes in plain text, so a long window is an accumulating store of working credentials.
+  - `TEST_USER_RETENTION`: How long a test-environment account is kept past its last sign-in — or past registration, when it never signed in — before `auth.Repository.PurgeIdleTestUsers` deletes it and its eleven dependent tables. This is what keeps `TEST_MAX_USERS` from becoming a wall: suites create accounts by the thousand and abandon them. Live accounts are never swept at any setting, by predicate rather than by the cutoff, so a misconfigured window cannot reach a customer's account.
+  - `RETENTION_BATCH_SIZE`: Rows deleted per statement, shared by every sweep. Larger clears a backlog in fewer passes; smaller holds locks for less time on each one.
+
 ### Section 9: Rate Limiting & Escalating Lockout
-- **Go Loader**: [`load.go:L93-L103`](/apps/auth-engine/internal/config/load.go#L93-L103)
+- **Go Loader**: [`load.go:L103-L113`](/apps/auth-engine/internal/config/load.go#L103-L113)
 - **Server Actions**: Configures [`internal/ratelimit/limiter.go`](/apps/auth-engine/internal/ratelimit/limiter.go).
   - `RATELIMIT_IP_BUDGET_MULTIPLIER`: Multiplies per-account budget for IP budget (e.g. $5 \times 10 = 50$ attempts/window per IP).
   - `RATELIMIT_BACKOFF_SCHEDULE`: Escalating lockouts on repeat offences (`15m,1h,6h,24h`).
   - `RATELIMIT_FAIL_CLOSED`: If `true`, rejects requests when Redis is offline instead of failing open. Defaults to `true` in production.
 
 ### Section 10: Email Delivery Drivers
-- **Go Loader**: [`load.go:L105-L120`](/apps/auth-engine/internal/config/load.go#L105-L120)
+- **Go Loader**: [`load.go:L115-L130`](/apps/auth-engine/internal/config/load.go#L115-L130)
 - **Validation ([`validate.go:L119-L141`](/apps/auth-engine/internal/config/validate.go#L119-L141))**:
   - Supported drivers: `noop`, `smtp`, `resend`, `sendgrid`, `postmark`, `aws_ses`.
   - Selected driver credentials are **checked at startup**. If `EMAIL_DRIVER=resend` and `RESEND_API_KEY` is missing, the engine refuses to start.
 
 ### Section 11: SMS Delivery Drivers
-- **Go Loader**: [`load.go:L122-L128`](/apps/auth-engine/internal/config/load.go#L122-L128)
+- **Go Loader**: [`load.go:L132-L138`](/apps/auth-engine/internal/config/load.go#L132-L138)
 - **Validation ([`validate.go:L143-L153`](/apps/auth-engine/internal/config/validate.go#L143-L153))**:
   - Supported drivers: `noop`, `twilio`, `messagebird`, `aws_sns`.
   - Required credentials (e.g. `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) are validated at startup.
 
 ### Section 12: WebAuthn & Passkey Ceremonies
-- **Go Loader**: [`load.go:L130-L132`](/apps/auth-engine/internal/config/load.go#L130-L132)
+- **Go Loader**: [`load.go:L140-L142`](/apps/auth-engine/internal/config/load.go#L140-L142)
 - **Validation ([`validate.go:L92-L114`](/apps/auth-engine/internal/config/validate.go#L92-L114))**:
   - `WEBAUTHN_RP_ID` must be a bare hostname without scheme or port. Cannot be `"localhost"` in production.
   - Every entry in `WEBAUTHN_RP_ORIGINS` **must belong to `WEBAUTHN_RP_ID`** or a subdomain of it. Misconfiguration halts startup.
 
 ### Section 13: SAML Integration
-- **Go Loader**: [`load.go:L134-L135`](/apps/auth-engine/internal/config/load.go#L134-L135)
+- **Go Loader**: [`load.go:L144-L145`](/apps/auth-engine/internal/config/load.go#L144-L145)
 - **Server Actions**:
-  - `SAML_ACS_PATH` (Default: `/v1/saml/acs`): Combined with `APP_BASE_URL` in `cfg.SAMLAssertionConsumerURL()` ([`config.go:L369`](/apps/auth-engine/internal/config/config.go#L369)) to publish Service Provider ACS metadata.
+  - `SAML_ACS_PATH` (Default: `/v1/saml/acs`): Combined with `APP_BASE_URL` in `cfg.SAMLAssertionConsumerURL()` ([`config.go:L463`](/apps/auth-engine/internal/config/config.go#L463)) to publish Service Provider ACS metadata.
   - `SAML_SP_ENTITY_ID_PREFIX` (Default: `https://authn.com/saml/sp/`): URI prefix used to generate unique SAML Service Provider Entity IDs per tenant organization (`cfg.SAMLSPEntityID(orgID)` $\rightarrow$ `https://authn.com/saml/sp/org_12345`). Published in SP Metadata XML and checked against an incoming assertion's `AudienceRestriction` tags during SAML Enterprise SSO.
 
 ### Section 14: B2B Organizations
-- **Go Loader**: [`load.go:L139`](/apps/auth-engine/internal/config/load.go#L139) (Default: `10240` bytes / 10 KiB).
+- **Go Loader**: [`load.go:L150`](/apps/auth-engine/internal/config/load.go#L150) (Default: `10240` bytes / 10 KiB).
 - **Server Action**: Limits max body payload size for organization custom JSON metadata blobs during create/update operations in [`internal/org/service.go`](/apps/auth-engine/internal/org/service.go).
 
+### Section 14b: Test-Environment Ceilings
+- **Go Loader**: [`load.go:L99-L101`](/apps/auth-engine/internal/config/load.go#L99-L101)
+- **Validation**: The three counts are read with `r.positive` and the two durations with `r.duration`, both of which reject zero and negative values at boot. A ceiling cannot be set to `0` to lift it — a deployment that means to be unbounded is one that never sets these at all, and the loader's defaults are what a configured deployment gets. `TEST_ACCESS_TOKEN_TTL` must additionally be shorter than `TEST_SESSION_TTL`, and longer than `SESSION_GRACE_PERIOD`, for the same reasons `ACCESS_TOKEN_TTL` must be.
+- **Enforcement**: An Ent mutation hook, [`internal/quota/quota.go`](/apps/auth-engine/internal/quota/quota.go), installed by [`pkg/clientfactory/client_factory.go`](/apps/auth-engine/pkg/clientfactory/client_factory.go) immediately after the privacy interceptors. The hook counts through the client it was handed, so the count is narrowed to the caller's tenant and environment by the same rules every other read is subject to — there is no tenant predicate written in the quota package at all.
+  - The check sits at the ORM rather than in the services because five paths create a user (sign-up, magic-link auto-provisioning, social sign-in, SAML provisioning and invitation acceptance), and a ceiling enforced by convention holds only until the sixth is written.
+  - It runs on creates only. A tenant sitting at its ceiling still verifies an email, bans an account and rotates a secret.
+  - Bypass contexts — migration, seeding, the retention sweeps — are exempt. None of them is a tenant spending an allowance.
+- **Server Actions**:
+  - `TEST_MAX_USERS` (Default: `500`): Test users one tenant may hold. Counted per tenant and per environment.
+  - `TEST_MAX_ORGANIZATIONS` (Default: `25`): Workspaces one tenant may hold in test. `organization` carries an `environment` column of its own, so the count is per environment and a tenant's live workspaces do not consume the room its test ones have — a customer running a full production estate can still rehearse.
+  - `TEST_MAX_API_KEYS` (Default: `20`): Test API keys one tenant may hold, counting the publishable/secret pair provisioning installs with each application.
+  - `TEST_ACCESS_TOKEN_TTL` (Default: `15m`): Ceiling on a test access token's lifetime, replacing `ACCESS_TOKEN_TTL` and any longer `access_token_ttl_minutes` a tenant stored. Resolved through `cfg.AccessTokenTTLFor(environment)` at every issuance site, and reported by the matching `expires_in` so the advertised lifetime and the signed `exp` cannot disagree.
+  - `TEST_SESSION_TTL` (Default: `24h`): Ceiling on a test session row's `expires_at`, its refresh cookie's `Expires`, and so on how long its refresh token keeps minting. Applied at each sign-in path through `cfg.RefreshTokenTTLFor(environment)`, and again in the quota hook as `Limits.SessionTTL` — the session row is the one artifact with no single choke point, two repositories creating it on different signatures.
+- **Direction of the lifetime clamp**: it lowers and never raises. A deployment or tenant that asked for something shorter than the ceiling keeps it, and a live credential is returned untouched. A non-positive ceiling bounds nothing, so a zero-valued `Config` — one nobody loaded — leaves lifetimes alone rather than reading zero as "expire immediately".
+- **Client Contract**: A refused create answers **403** with code `test_quota_exceeded` ([`internal/httperr/httperr.go`](/apps/auth-engine/internal/httperr/httperr.go)), and the message names what ran out and at what ceiling. It is deliberately not `429`: the ceiling is on stored rows, so waiting does not help and there is no `Retry-After` to give. Room is made by deleting rows, by waiting out `TEST_USER_RETENTION`, or by moving to a live key. The lifetime ceilings refuse nothing — a caller receives a working credential that simply expires sooner, with no field reporting the clamp.
+- **Accepted Race**: The count is read immediately before the insert and outside any lock, so two creates arriving together can both find room and leave the tenant one row over its ceiling. This is a spend control, not a security boundary; enforcing it to the exact row would cost a serialized count on every test-environment sign-up.
+
 ### Section 15: Dynamic Feature Flags
-- **Go Loader**: [`load.go:L141-L145`](/apps/auth-engine/internal/config/load.go#L141-L145) (Defaults: `true`).
+- **Go Loader**: [`load.go:L152-L156`](/apps/auth-engine/internal/config/load.go#L152-L156) (Defaults: `true`).
 - **Server Actions**:
   - `FEATURE_PUSH_2FA_ENABLED`: Toggles Push 2FA challenge endpoints.
   - `FEATURE_MAGIC_LINK_ENABLED`: Toggles passwordless magic link generation.
@@ -217,7 +256,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
   - `FEATURE_IMPERSONATION_ENABLED`: Toggles admin user impersonation sessions.
 
 ### Section 15b: Background Workers & Health Probes
-- **Go Loader**: [`load.go:L136-L137`](/apps/auth-engine/internal/config/load.go#L136-L137)
+- **Go Loader**: [`load.go:L147-L148`](/apps/auth-engine/internal/config/load.go#L147-L148)
 - **Server Actions**:
   - `WEBHOOK_WORKER_COUNT` (Default: `5`): Sets worker pool size for concurrent outbound webhook deliveries ([`internal/webhook/dispatcher.go`](/apps/auth-engine/internal/webhook/dispatcher.go)).
   - `DEGRADED_MODE_CHECK_INTERVAL` (Default: `1s`): Sets polling interval for Redis health probes to update system degraded mode state ([`docs/ARCHITECTURE-DEGRADED-MODE.md`](/docs/ARCHITECTURE-DEGRADED-MODE.md)).
