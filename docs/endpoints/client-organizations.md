@@ -33,6 +33,7 @@
 | Slug uniqueness | Unique per `(tenant, environment)`. The same slug is claimable once in test and once in live, so a team rehearses under the slug it means to ship. |
 | Volume | A test credential is refused with `403 test_quota_exceeded` once the tenant holds `TEST_MAX_ORGANIZATIONS` test workspaces. Live workspaces neither count against that ceiling nor are bounded by it. |
 | Members and invitations | Confined through their parent organization, so a roster never outlives its workspace's environment. |
+| Invitation redemption | The organization decides it. An account provisioned for the invited address is created in the organization's environment, not the schema default, so a live invitation never yields a user the live environment cannot see. A redeemer already signed in against the other environment is refused with `400` rather than given a second account under the same address. |
 | SAML connections | The exception: a connection carries its own `environment` so it can be promoted from a trial into production without being re-registered at the identity provider. See [`saml-idp-config.md`](saml-idp-config.md). |
 
 ---
@@ -113,6 +114,18 @@
   "error": "invitation has already been accepted"
 }
 ```
+
+### 5. Redeeming a Live Invitation From a Test Session
+A `pk_test_` caller presenting a token for a `live` organization.
+
+**Response (400 Bad Request)**:
+```json
+{
+  "error": "this invitation belongs to a different environment than the signed-in account",
+  "code": "conflict"
+}
+```
+The membership would otherwise reference a user the organization's own environment cannot read.
 
 ---
 

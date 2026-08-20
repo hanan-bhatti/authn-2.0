@@ -90,6 +90,9 @@ var (
 	// ErrInvitationAccepted reports an invitation already redeemed. Invitations
 	// are single-use.
 	ErrInvitationAccepted = errors.New("invitation has already been accepted")
+	// ErrInvitationEnvironmentMismatch reports a redeemer signed in against one
+	// environment redeeming an invitation belonging to the other.
+	ErrInvitationEnvironmentMismatch = errors.New("this invitation belongs to a different environment than the signed-in account")
 	// ErrInvalidEmail reports a malformed email address.
 	ErrInvalidEmail = errors.New("invalid email address format")
 	// ErrDomainNotAllowed reports an address barred by tenant organization policy.

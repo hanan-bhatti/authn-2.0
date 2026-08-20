@@ -253,7 +253,8 @@ func (h *Handler) RevokeInvitation(c *fiber.Ctx) error {
 }
 
 // AcceptInvitation redeems an invitation token into a membership. Answers 404 for
-// an unknown token and 400 when the invitation is expired or already accepted.
+// an unknown token and 400 when the invitation is expired, already accepted, or
+// belongs to the environment the caller is not signed in against.
 func (h *Handler) AcceptInvitation(c *fiber.Ctx) error {
 	tenantID, errResp, ok := requireTenantID(c)
 	if !ok {
@@ -276,6 +277,9 @@ func (h *Handler) AcceptInvitation(c *fiber.Ctx) error {
 		}
 		if errors.Is(err, ErrInvitationAccepted) {
 			return httperr.BadRequest(c, httperr.CodeConflict, ErrInvitationAccepted.Error())
+		}
+		if errors.Is(err, ErrInvitationEnvironmentMismatch) {
+			return httperr.BadRequest(c, httperr.CodeConflict, ErrInvitationEnvironmentMismatch.Error())
 		}
 		return httperr.SendInternal(c, "org.accept_invitation", err)
 	}

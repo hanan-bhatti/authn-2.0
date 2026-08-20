@@ -262,21 +262,38 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		return nil, ErrInvitationExpired
 	}
 
-	// The organization the invitation is for decides the environment its events
-	// belong to. The invitation carries none of its own, and the redeemer arrives
-	// with a token rather than a credential, so there is nothing else to read it
-	// from.
+	// The organization the invitation is for decides the environment: both the one
+	// its events belong to and the one an account is provisioned into. The
+	// invitation carries none of its own, and the redeemer arrives with a token
+	// rather than a credential, so there is nothing else to read it from.
 	environment := s.orgEnvironment(ctx, client, tenantID, inv.OrganizationID)
+	if environment == "" {
+		// The organization the invitation names is gone, so there is no environment
+		// to provision into and no membership to grant. Reported as a missing
+		// invitation because that is what it is from the redeemer's side.
+		return nil, ErrInvitationNotFound
+	}
 
 	var targetUser *ent.User
 	if userID != "" {
 		targetUser, _ = client.User.Query().
 			Where(user.TenantID(tenantID), user.ID(userID)).
 			Only(ctx)
+		// A redeemer signed in against the other environment cannot take this
+		// membership: the row would point at a user the organization's own
+		// environment cannot see. Provisioning them a second account under the same
+		// address is not the alternative — it would split one person across two
+		// environments silently — so the redemption is refused instead.
+		if targetUser != nil && string(targetUser.Environment) != environment {
+			return nil, ErrInvitationEnvironmentMismatch
+		}
 	}
 	if targetUser == nil {
+		// Narrowed by environment because an address is unique per environment, not
+		// per tenant: a tenant holding the same address in both would match two rows
+		// here, and Only reporting that ambiguity would read as no user at all.
 		targetUser, _ = client.User.Query().
-			Where(user.TenantID(tenantID), user.Email(inv.Email)).
+			Where(user.TenantID(tenantID), user.EnvironmentEQ(user.Environment(environment)), user.Email(inv.Email)).
 			Only(ctx)
 	}
 	if targetUser == nil {
@@ -289,6 +306,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		createdUser, err := client.User.Create().
 			SetID(newUserID).
 			SetTenantID(tenantID).
+			SetEnvironment(user.Environment(environment)).
 			SetEmail(inv.Email).
 			SetEmailVerified(true).
 			Save(ctx)
