@@ -19,6 +19,8 @@ package integration_test
 
 import (
 	"testing"
+
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 )
 
 // TestWebhookEndpointDeletionTakesItsEventsWithIt removes an endpoint that has
@@ -36,6 +38,7 @@ func TestWebhookEndpointDeletionTakesItsEventsWithIt(t *testing.T) {
 	if _, err := client.WebhookEndpoint.Create().
 		SetID("whe_cascade").
 		SetTenantID(testTenant).
+		SetEnvironment(webhookendpoint.EnvironmentLive).
 		SetURL("https://listener.activity.example/hooks").
 		SetSecretKeyEncrypted("encrypted-placeholder").
 		SetSubscribedEvents([]string{"user.created"}).

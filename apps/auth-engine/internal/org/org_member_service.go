@@ -128,7 +128,7 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.member_joined", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, s.orgEnvironment(ctx, client, tenantID, orgID), "org.member_joined", map[string]interface{}{
 			"org_id":  orgID,
 			"user_id": req.UserID,
 			"role_id": targetRole.ID,
@@ -222,7 +222,7 @@ func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, us
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.member_removed", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, s.orgEnvironment(ctx, client, tenantID, orgID), "org.member_removed", map[string]interface{}{
 			"org_id":  orgID,
 			"user_id": userID,
 		})

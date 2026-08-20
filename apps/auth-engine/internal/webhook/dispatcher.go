@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 )
 
@@ -88,6 +89,12 @@ type EventData struct {
 	EventType string `json:"event"`
 	// TenantID is the tenant the event belongs to.
 	TenantID string `json:"tenant_id"`
+	// Environment is the environment the event originated in, "test" or "live".
+	//
+	// It is carried in the signed body rather than a header because a header is
+	// not covered by the signature: a subscriber deciding whether to act on an
+	// event for real must be able to prove the environment came from the engine.
+	Environment string `json:"environment"`
 	// Timestamp is the emission time in Unix seconds. It is also the value
 	// covered by the signature.
 	Timestamp int64 `json:"timestamp"`
@@ -100,10 +107,26 @@ type EventData struct {
 type DispatchTask struct {
 	// TenantID scopes the endpoint lookup.
 	TenantID string
+	// Environment is the environment the event originated in.
+	//
+	// It is captured here, at enqueue time, because that is the last point at
+	// which it is known: the worker that delivers this task runs long after the
+	// request that produced it has returned, so it has no context to read it from.
+	Environment string
 	// EventType selects the subscribing endpoints.
 	EventType string
 	// Data is the event-specific body.
 	Data map[string]interface{}
+}
+
+// eventEnvironments are the environments an event can originate in.
+//
+// "all" is absent deliberately: it is a subscription choice an endpoint makes,
+// never a property of an emitted event, and treating it as one would let a single
+// event match every endpoint regardless of environment.
+var eventEnvironments = map[string]bool{
+	string(webhookendpoint.EnvironmentTest): true,
+	string(webhookendpoint.EnvironmentLive): true,
 }
 
 // Dispatcher owns the worker pool and the queue feeding it.
@@ -192,10 +215,21 @@ func (d *Dispatcher) Stop() {
 
 // Dispatch queues an event for background delivery and returns immediately.
 //
+// environment is where the event originated, and only endpoints registered for
+// it — or for both environments — will receive it. A value that names neither
+// test nor live drops the event: an event whose origin cannot be established
+// must not be broadcast to live subscribers on the assumption that it is
+// probably fine.
+//
 // It never blocks and never fails: a full queue or a stopped dispatcher drops
 // the event with a warning. Callers are on the request path and must not be
 // delayed by webhook delivery, which is why there is no error to handle.
-func (d *Dispatcher) Dispatch(tenantID, eventType string, data map[string]interface{}) {
+func (d *Dispatcher) Dispatch(tenantID, environment, eventType string, data map[string]interface{}) {
+	if !eventEnvironments[environment] {
+		log.Printf("[Webhook Dispatcher] Warning: dropping event '%s' for tenant '%s': environment %q is not test or live", eventType, tenantID, environment)
+		return
+	}
+
 	d.stopMu.RLock()
 	defer d.stopMu.RUnlock()
 
@@ -205,7 +239,7 @@ func (d *Dispatcher) Dispatch(tenantID, eventType string, data map[string]interf
 	}
 
 	select {
-	case d.taskChan <- DispatchTask{TenantID: tenantID, EventType: eventType, Data: data}:
+	case d.taskChan <- DispatchTask{TenantID: tenantID, Environment: environment, EventType: eventType, Data: data}:
 	default:
 		log.Printf("[Webhook Dispatcher] Warning: task buffer full, dropping event '%s' for tenant '%s'", eventType, tenantID)
 	}
@@ -235,7 +269,7 @@ func (d *Dispatcher) processTask(task DispatchTask) {
 	// finished even as shutdown proceeds, and Stop waits for it.
 	ctx := context.Background()
 
-	endpoints, err := d.repo.GetActiveEndpointsForEvent(ctx, task.TenantID, task.EventType)
+	endpoints, err := d.repo.GetActiveEndpointsForEvent(ctx, task.TenantID, task.Environment, task.EventType)
 	if err != nil || len(endpoints) == 0 {
 		return
 	}
@@ -244,11 +278,12 @@ func (d *Dispatcher) processTask(task DispatchTask) {
 	eventID := idgen.New("evt")
 
 	payloadObj := EventData{
-		ID:        eventID,
-		EventType: task.EventType,
-		TenantID:  task.TenantID,
-		Timestamp: timestamp,
-		Data:      task.Data,
+		ID:          eventID,
+		EventType:   task.EventType,
+		TenantID:    task.TenantID,
+		Environment: task.Environment,
+		Timestamp:   timestamp,
+		Data:        task.Data,
 	}
 
 	jsonBytes, err := json.Marshal(payloadObj)
@@ -339,15 +374,24 @@ func (d *Dispatcher) deliverToEndpoint(ctx context.Context, ep *ent.WebhookEndpo
 		errMsg = lastErr.Error()
 	}
 
-	payloadMap := map[string]interface{}{
-		"id":        payloadObj.ID,
-		"event":     payloadObj.EventType,
-		"tenant_id": payloadObj.TenantID,
-		"timestamp": payloadObj.Timestamp,
-		"data":      payloadObj.Data,
-	}
+	_, _ = d.repo.CreateDelivery(ctx, ep.ID, eventType, deliveryRecord(payloadObj), statusCode, respBodyStr, errMsg, isSuccess)
+}
 
-	_, _ = d.repo.CreateDelivery(ctx, ep.ID, eventType, payloadMap, statusCode, respBodyStr, errMsg, isSuccess)
+// deliveryRecord is the envelope as stored in the delivery log: what was sent,
+// so an operator can read it back and a redelivery can be rebuilt from it.
+//
+// Derived here rather than at each call site so the recorded shape cannot drift
+// from the delivered one — a field added to EventData and forgotten in one of the
+// two delivery paths would be missing from half the log.
+func deliveryRecord(payloadObj EventData) map[string]interface{} {
+	return map[string]interface{}{
+		"id":          payloadObj.ID,
+		"event":       payloadObj.EventType,
+		"tenant_id":   payloadObj.TenantID,
+		"environment": payloadObj.Environment,
+		"timestamp":   payloadObj.Timestamp,
+		"data":        payloadObj.Data,
+	}
 }
 
 // DeliverSync posts a single payload to one endpoint and returns the delivery
@@ -358,20 +402,29 @@ func (d *Dispatcher) deliverToEndpoint(ctx context.Context, ep *ent.WebhookEndpo
 // path it does not retry: the operator can retry themselves, and a caller
 // waiting on an HTTP response should not be held for the retry budget.
 //
+// environment is what the event reports itself as originating in. It is a
+// parameter rather than read from ep because an endpoint registered for both
+// environments has no single answer, and because a redelivery must report the
+// environment the original event came from rather than today's.
+//
+// The endpoint is delivered to whatever its environment, since the operator named
+// it explicitly; this path is not the fan-out and does no subscription matching.
+//
 // Returns an error if the payload cannot be marshalled, the endpoint's secret
 // cannot be decrypted, or the request cannot be built. A transport failure or
 // an error status is not an error here — it is the result being reported, and
 // is recorded in the returned delivery.
-func (d *Dispatcher) DeliverSync(ctx context.Context, ep *ent.WebhookEndpoint, eventType string, data map[string]interface{}) (*ent.WebhookEvent, error) {
+func (d *Dispatcher) DeliverSync(ctx context.Context, ep *ent.WebhookEndpoint, environment, eventType string, data map[string]interface{}) (*ent.WebhookEvent, error) {
 	timestamp := time.Now().Unix()
 	eventID := idgen.New("evt")
 
 	payloadObj := EventData{
-		ID:        eventID,
-		EventType: eventType,
-		TenantID:  ep.TenantID,
-		Timestamp: timestamp,
-		Data:      data,
+		ID:          eventID,
+		EventType:   eventType,
+		TenantID:    ep.TenantID,
+		Environment: environment,
+		Timestamp:   timestamp,
+		Data:        data,
 	}
 
 	jsonBytes, err := json.Marshal(payloadObj)
@@ -420,13 +473,5 @@ func (d *Dispatcher) DeliverSync(ctx context.Context, ep *ent.WebhookEndpoint, e
 		}
 	}
 
-	payloadMap := map[string]interface{}{
-		"id":        payloadObj.ID,
-		"event":     payloadObj.EventType,
-		"tenant_id": payloadObj.TenantID,
-		"timestamp": payloadObj.Timestamp,
-		"data":      payloadObj.Data,
-	}
-
-	return d.repo.CreateDelivery(ctx, ep.ID, eventType, payloadMap, statusCode, respBodyStr, errMsg, isSuccess)
+	return d.repo.CreateDelivery(ctx, ep.ID, eventType, deliveryRecord(payloadObj), statusCode, respBodyStr, errMsg, isSuccess)
 }

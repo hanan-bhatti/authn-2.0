@@ -54,7 +54,10 @@ const (
 // WebhookDispatcher delivers SAML lifecycle events to a tenant's subscribers.
 type WebhookDispatcher interface {
 	// Dispatch queues an event for delivery. Implementations must not block.
-	Dispatch(tenantID, eventType string, data map[string]interface{})
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
 // Service carries out SAML connection management and assertion processing.

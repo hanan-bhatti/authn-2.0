@@ -125,15 +125,15 @@ This document contains the single authoritative list of all registered HTTP rout
 | 115 | `GET` | `/v1/client/user/social-accounts` | `user` | `ListSocialAccounts` | `internal/user/handler.go:129` | `PublishableKey` + `BearerAuth` |
 | 116 | `DELETE` | `/v1/client/user/social-accounts/:provider` | `user` | `UnlinkSocialAccount` | `internal/user/handler.go:130` | `PublishableKey` + `BearerAuth` |
 | 117 | `DELETE` | `/v1/client/user/account` | `user` | `DeleteAccount` | `internal/user/handler.go:131` | `PublishableKey` + `BearerAuth` |
-| 118 | `POST` | `/v1/admin/webhooks/endpoints` | `webhook` | `CreateEndpoint` | `internal/webhook/handler.go:44` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
-| 119 | `GET` | `/v1/admin/webhooks/endpoints` | `webhook` | `ListEndpoints` | `internal/webhook/handler.go:45` | `SecretKey` (sk_) or Admin JWT |
-| 120 | `GET` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `GetEndpoint` | `internal/webhook/handler.go:46` | `SecretKey` (sk_) or Admin JWT |
-| 121 | `PUT` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `UpdateEndpoint` | `internal/webhook/handler.go:47` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
-| 122 | `DELETE` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `DeleteEndpoint` | `internal/webhook/handler.go:48` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
-| 123 | `POST` | `/v1/admin/webhooks/endpoints/:id/ping` | `webhook` | `SendTestPing` | `internal/webhook/handler.go:49` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
-| 124 | `POST` | `/v1/admin/webhooks/endpoints/:id/rotate-secret` | `webhook` | `RotateSecret` | `internal/webhook/handler.go:50` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
-| 125 | `GET` | `/v1/admin/webhooks/deliveries` | `webhook` | `ListDeliveries` | `internal/webhook/handler.go:53` | `SecretKey` (sk_) or Admin JWT |
-| 126 | `POST` | `/v1/admin/webhooks/deliveries/:id/redeliver` | `webhook` | `Redeliver` | `internal/webhook/handler.go:54` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 118 | `POST` | `/v1/admin/webhooks/endpoints` | `webhook` | `CreateEndpoint` | `internal/webhook/handler.go:45` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 119 | `GET` | `/v1/admin/webhooks/endpoints` | `webhook` | `ListEndpoints` | `internal/webhook/handler.go:46` | `SecretKey` (sk_) or Admin JWT |
+| 120 | `GET` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `GetEndpoint` | `internal/webhook/handler.go:47` | `SecretKey` (sk_) or Admin JWT |
+| 121 | `PUT` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `UpdateEndpoint` | `internal/webhook/handler.go:48` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 122 | `DELETE` | `/v1/admin/webhooks/endpoints/:id` | `webhook` | `DeleteEndpoint` | `internal/webhook/handler.go:49` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 123 | `POST` | `/v1/admin/webhooks/endpoints/:id/ping` | `webhook` | `SendTestPing` | `internal/webhook/handler.go:50` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 124 | `POST` | `/v1/admin/webhooks/endpoints/:id/rotate-secret` | `webhook` | `RotateSecret` | `internal/webhook/handler.go:51` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
+| 125 | `GET` | `/v1/admin/webhooks/deliveries` | `webhook` | `ListDeliveries` | `internal/webhook/handler.go:54` | `SecretKey` (sk_) or Admin JWT |
+| 126 | `POST` | `/v1/admin/webhooks/deliveries/:id/redeliver` | `webhook` | `Redeliver` | `internal/webhook/handler.go:55` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
 | 127 | `GET` | `/v1/client/app-config` | `appconfig` | `GetAppConfig` | `internal/appconfig/handler.go:144` | `PublishableKey` (pk_) |
 | 128 | `GET` | `/v1/tenant/branding` | `appconfig` | `GetBranding` | `internal/appconfig/handler.go:146` | `SecretKey` (sk_) or Admin JWT |
 | 129 | `PUT` | `/v1/tenant/branding` | `appconfig` | `UpdateBranding` | `internal/appconfig/handler.go:147` | `SecretKey` (sk_) or Admin JWT |

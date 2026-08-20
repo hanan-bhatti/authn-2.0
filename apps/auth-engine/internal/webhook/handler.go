@@ -31,12 +31,13 @@ func NewHandler(svc *Service) *Handler {
 // RegisterRoutes mounts the webhook management endpoints on app behind
 // adminMiddleware.
 //
-// A webhook endpoint has no environment of its own: there is one list per tenant
-// and the dispatcher delivers every event to all of it. That makes the list live
-// configuration whichever key wrote it, so every route that changes it — or that
-// makes it emit an HTTP request — sits behind middleware.RequireLiveKey as well.
-// Listing and reading stay open to either key, so a console signed in against
-// test can still show a tenant what is configured.
+// An endpoint states which environment's events it receives, but a write can
+// name live — or "all" — whichever key made it, so a test key that could
+// register endpoints would still be able to point live traffic at a destination
+// of its choosing. Every route that changes the list, or that makes it emit an
+// HTTP request, therefore sits behind middleware.RequireLiveKey. Listing and
+// reading stay open to either key, so a console signed in against test can still
+// show a tenant what is configured.
 func (h *Handler) RegisterRoutes(app *fiber.App, adminMiddleware fiber.Handler) {
 	admin := app.Group("/v1/admin/webhooks", adminMiddleware)
 
@@ -64,7 +65,7 @@ func (h *Handler) CreateEndpoint(c *fiber.Ctx) error {
 
 	resp, err := h.svc.CreateEndpoint(c.UserContext(), tenantID, req)
 	if err != nil {
-		if errors.Is(err, ErrInvalidURL) || errors.Is(err, ErrInvalidEvents) || errors.Is(err, ErrUnsupportedEvent) {
+		if isValidationError(err) {
 			return sendValidationError(c, err)
 		}
 		return httperr.SendInternal(c, "webhook.create_endpoint", err)
@@ -115,7 +116,7 @@ func (h *Handler) UpdateEndpoint(c *fiber.Ctx) error {
 		if errors.Is(err, ErrEndpointNotFound) {
 			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
 		}
-		if errors.Is(err, ErrInvalidURL) || errors.Is(err, ErrInvalidEvents) || errors.Is(err, ErrUnsupportedEvent) {
+		if isValidationError(err) {
 			return sendValidationError(c, err)
 		}
 		return httperr.SendInternal(c, "webhook.update_endpoint", err)
@@ -161,7 +162,7 @@ func (h *Handler) SendTestPing(c *fiber.Ctx) error {
 	tenantID := middleware.GetTenantID(c)
 	endpointID := c.Params("id")
 
-	delivery, err := h.svc.SendTestPing(c.UserContext(), tenantID, endpointID)
+	delivery, err := h.svc.SendTestPing(c.UserContext(), tenantID, endpointID, middleware.GetEnvironment(c))
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
 			return httperr.NotFound(c, httperr.CodeNotFound, "webhook endpoint not found")
@@ -210,6 +211,31 @@ func (h *Handler) Redeliver(c *fiber.Ctx) error {
 	})
 }
 
+// validationSentinels are the failures that mean the caller sent something
+// unusable, as opposed to something going wrong while serving a usable request.
+//
+// Listed once rather than per handler so that create and update cannot drift
+// over which failures are the caller's fault — a sentinel missing from one of
+// them would surface a validation failure as a 500.
+var validationSentinels = []error{
+	ErrInvalidURL,
+	ErrEnvironmentRequired,
+	ErrInvalidEnvironment,
+	ErrInvalidEvents,
+	ErrUnsupportedEvent,
+}
+
+// isValidationError reports whether err is one of validationSentinels, however
+// deeply the service wrapped it.
+func isValidationError(err error) bool {
+	for _, sentinel := range validationSentinels {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
+}
+
 // sendValidationError maps the endpoint-validation sentinels onto static,
 // client-safe prose. The sentinel text is deliberately not echoed back
 // verbatim: the service may wrap these sentinels, and a wrapped error would
@@ -219,6 +245,12 @@ func sendValidationError(c *fiber.Ctx, err error) error {
 	case errors.Is(err, ErrInvalidURL):
 		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
 			"invalid webhook URL: must be a valid HTTPS URL or localhost for development")
+	case errors.Is(err, ErrEnvironmentRequired):
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			`environment is required: must be one of "test", "live" or "all"`)
+	case errors.Is(err, ErrInvalidEnvironment):
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			`invalid environment: must be one of "test", "live" or "all"`)
 	case errors.Is(err, ErrInvalidEvents):
 		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
 			"invalid events: at least one valid subscribed event type is required")

@@ -28,6 +28,12 @@ func (wec *WebhookEndpointCreate) SetTenantID(s string) *WebhookEndpointCreate {
 	return wec
 }
 
+// SetEnvironment sets the "environment" field.
+func (wec *WebhookEndpointCreate) SetEnvironment(w webhookendpoint.Environment) *WebhookEndpointCreate {
+	wec.mutation.SetEnvironment(w)
+	return wec
+}
+
 // SetURL sets the "url" field.
 func (wec *WebhookEndpointCreate) SetURL(s string) *WebhookEndpointCreate {
 	wec.mutation.SetURL(s)
@@ -215,6 +221,14 @@ func (wec *WebhookEndpointCreate) check() error {
 			return &ValidationError{Name: "tenant_id", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.tenant_id": %w`, err)}
 		}
 	}
+	if _, ok := wec.mutation.Environment(); !ok {
+		return &ValidationError{Name: "environment", err: errors.New(`ent: missing required field "WebhookEndpoint.environment"`)}
+	}
+	if v, ok := wec.mutation.Environment(); ok {
+		if err := webhookendpoint.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.environment": %w`, err)}
+		}
+	}
 	if _, ok := wec.mutation.URL(); !ok {
 		return &ValidationError{Name: "url", err: errors.New(`ent: missing required field "WebhookEndpoint.url"`)}
 	}
@@ -280,6 +294,10 @@ func (wec *WebhookEndpointCreate) createSpec() (*WebhookEndpoint, *sqlgraph.Crea
 	if id, ok := wec.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
+	}
+	if value, ok := wec.mutation.Environment(); ok {
+		_spec.SetField(webhookendpoint.FieldEnvironment, field.TypeEnum, value)
+		_node.Environment = value
 	}
 	if value, ok := wec.mutation.URL(); ok {
 		_spec.SetField(webhookendpoint.FieldURL, field.TypeString, value)

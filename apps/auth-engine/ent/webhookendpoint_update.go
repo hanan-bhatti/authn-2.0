@@ -45,6 +45,20 @@ func (weu *WebhookEndpointUpdate) SetNillableTenantID(s *string) *WebhookEndpoin
 	return weu
 }
 
+// SetEnvironment sets the "environment" field.
+func (weu *WebhookEndpointUpdate) SetEnvironment(w webhookendpoint.Environment) *WebhookEndpointUpdate {
+	weu.mutation.SetEnvironment(w)
+	return weu
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (weu *WebhookEndpointUpdate) SetNillableEnvironment(w *webhookendpoint.Environment) *WebhookEndpointUpdate {
+	if w != nil {
+		weu.SetEnvironment(*w)
+	}
+	return weu
+}
+
 // SetURL sets the "url" field.
 func (weu *WebhookEndpointUpdate) SetURL(s string) *WebhookEndpointUpdate {
 	weu.mutation.SetURL(s)
@@ -266,6 +280,11 @@ func (weu *WebhookEndpointUpdate) check() error {
 			return &ValidationError{Name: "tenant_id", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.tenant_id": %w`, err)}
 		}
 	}
+	if v, ok := weu.mutation.Environment(); ok {
+		if err := webhookendpoint.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.environment": %w`, err)}
+		}
+	}
 	if v, ok := weu.mutation.URL(); ok {
 		if err := webhookendpoint.URLValidator(v); err != nil {
 			return &ValidationError{Name: "url", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.url": %w`, err)}
@@ -293,6 +312,9 @@ func (weu *WebhookEndpointUpdate) sqlSave(ctx context.Context) (n int, err error
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := weu.mutation.Environment(); ok {
+		_spec.SetField(webhookendpoint.FieldEnvironment, field.TypeEnum, value)
 	}
 	if value, ok := weu.mutation.URL(); ok {
 		_spec.SetField(webhookendpoint.FieldURL, field.TypeString, value)
@@ -439,6 +461,20 @@ func (weuo *WebhookEndpointUpdateOne) SetTenantID(s string) *WebhookEndpointUpda
 func (weuo *WebhookEndpointUpdateOne) SetNillableTenantID(s *string) *WebhookEndpointUpdateOne {
 	if s != nil {
 		weuo.SetTenantID(*s)
+	}
+	return weuo
+}
+
+// SetEnvironment sets the "environment" field.
+func (weuo *WebhookEndpointUpdateOne) SetEnvironment(w webhookendpoint.Environment) *WebhookEndpointUpdateOne {
+	weuo.mutation.SetEnvironment(w)
+	return weuo
+}
+
+// SetNillableEnvironment sets the "environment" field if the given value is not nil.
+func (weuo *WebhookEndpointUpdateOne) SetNillableEnvironment(w *webhookendpoint.Environment) *WebhookEndpointUpdateOne {
+	if w != nil {
+		weuo.SetEnvironment(*w)
 	}
 	return weuo
 }
@@ -677,6 +713,11 @@ func (weuo *WebhookEndpointUpdateOne) check() error {
 			return &ValidationError{Name: "tenant_id", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.tenant_id": %w`, err)}
 		}
 	}
+	if v, ok := weuo.mutation.Environment(); ok {
+		if err := webhookendpoint.EnvironmentValidator(v); err != nil {
+			return &ValidationError{Name: "environment", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.environment": %w`, err)}
+		}
+	}
 	if v, ok := weuo.mutation.URL(); ok {
 		if err := webhookendpoint.URLValidator(v); err != nil {
 			return &ValidationError{Name: "url", err: fmt.Errorf(`ent: validator failed for field "WebhookEndpoint.url": %w`, err)}
@@ -721,6 +762,9 @@ func (weuo *WebhookEndpointUpdateOne) sqlSave(ctx context.Context) (_node *Webho
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := weuo.mutation.Environment(); ok {
+		_spec.SetField(webhookendpoint.FieldEnvironment, field.TypeEnum, value)
 	}
 	if value, ok := weuo.mutation.URL(); ok {
 		_spec.SetField(webhookendpoint.FieldURL, field.TypeString, value)

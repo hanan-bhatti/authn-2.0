@@ -3,6 +3,7 @@
 package webhookendpoint
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -16,6 +17,8 @@ const (
 	FieldID = "id"
 	// FieldTenantID holds the string denoting the tenant_id field in the database.
 	FieldTenantID = "tenant_id"
+	// FieldEnvironment holds the string denoting the environment field in the database.
+	FieldEnvironment = "environment"
 	// FieldURL holds the string denoting the url field in the database.
 	FieldURL = "url"
 	// FieldDescription holds the string denoting the description field in the database.
@@ -60,6 +63,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldTenantID,
+	FieldEnvironment,
 	FieldURL,
 	FieldDescription,
 	FieldSecretKeyEncrypted,
@@ -96,6 +100,30 @@ var (
 	DefaultCreatedAt func() time.Time
 )
 
+// Environment defines the type for the "environment" enum field.
+type Environment string
+
+// Environment values.
+const (
+	EnvironmentTest Environment = "test"
+	EnvironmentLive Environment = "live"
+	EnvironmentAll  Environment = "all"
+)
+
+func (e Environment) String() string {
+	return string(e)
+}
+
+// EnvironmentValidator is a validator for the "environment" field enum values. It is called by the builders before save.
+func EnvironmentValidator(e Environment) error {
+	switch e {
+	case EnvironmentTest, EnvironmentLive, EnvironmentAll:
+		return nil
+	default:
+		return fmt.Errorf("webhookendpoint: invalid enum value for environment field: %q", e)
+	}
+}
+
 // OrderOption defines the ordering options for the WebhookEndpoint queries.
 type OrderOption func(*sql.Selector)
 
@@ -107,6 +135,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByTenantID orders the results by the tenant_id field.
 func ByTenantID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTenantID, opts...).ToFunc()
+}
+
+// ByEnvironment orders the results by the environment field.
+func ByEnvironment(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEnvironment, opts...).ToFunc()
 }
 
 // ByURL orders the results by the url field.

@@ -104,7 +104,10 @@ type UserInfo struct {
 // WebhookDispatcher delivers tenant webhook events.
 type WebhookDispatcher interface {
 	// Dispatch queues an event for delivery. It does not block the caller.
-	Dispatch(tenantID, eventType string, data map[string]interface{})
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
 // EmailProvider sends transactional mail.
@@ -284,7 +287,7 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 	sessionID := fmt.Sprintf("ses_imp_%d", time.Now().UnixNano())
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "user.impersonated", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(targetUser.Environment), "user.impersonated", map[string]interface{}{
 			"target_user_id":    targetUser.ID,
 			"target_user_email": targetUser.Email,
 			"impersonator_id":   impersonatorID,

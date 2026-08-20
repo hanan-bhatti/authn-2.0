@@ -126,9 +126,9 @@ Underneath all four, `quota.Limits.SessionTTL` clamps a test session's `expires_
 
 ### Live-only configuration
 
-Two surfaces have no test counterpart, so the split cannot separate them and a rule has to. Both answer `403 live_key_required`, a code distinct from `forbidden` because the fix is to present the live key rather than to gain a permission — the same operator already holds both.
+Two surfaces let a caller name the environment its write lands in, so the split alone cannot keep a test credential out of live and a rule has to. Both answer `403 live_key_required`, a code distinct from `forbidden` because the fix is to present the live key rather than to gain a permission — the same operator already holds both.
 
-**Webhook endpoints.** There is no `environment` column on an endpoint: one list per tenant, and the dispatcher delivers every event to all of it. So the list is live configuration whichever key wrote it, and `middleware.RequireLiveKey` guards the seven routes that change it or make it emit a request — create, update, delete, ping, rotate-secret and redeliver. The decision needs only the credential, so the guard is a route-level `fiber.Handler`.
+**Webhook endpoints.** An endpoint carries its own `environment`, but the value is chosen by whoever registers it: a write may name `live`, or `all`, whichever key made it. A test key able to register endpoints could therefore point live traffic at a destination of its choosing, repoint an entry to redirect a live event, or delete one to silence a live integration. `middleware.RequireLiveKey` guards the seven routes that change the list or make it emit a request — create, update, delete, ping, rotate-secret and redeliver. The decision needs only the credential, so the guard is a route-level `fiber.Handler`.
 
 **SAML connections in live.** A connection's environment arrives in the request body, and the schema default for this one entity is `live`, so without a rule a test credential picks its own environment and does so by supplying nothing. `saml.callerMayWrite` refuses a test-scoped caller that creates a live connection, edits one, promotes its own trial into live, or deletes one. Here the decision needs the stored row and not just the credential — a test key may edit a connection that stays in test, and only reading the row says which case a `PATCH` is — so the guard sits in the service and signals with a sentinel the handler maps to `403`.
 
@@ -140,7 +140,7 @@ Three properties are shared with the ceilings next door, for the same reasons:
 
 The caller's environment is read from the privacy context the auth middleware already installed, not from a parameter, so the rule applies identically across the `pk_` client tier and the `sk_` tenant and admin tiers with no signature to keep in step.
 
-**What is not gated.** Custom domain verification is named in the schema — `custom_domain`, `domain_verified` and `domain_verification_token` on `ent/schema/tenant.go` — but no endpoint reads or writes those columns, so there is nothing to hold behind a key yet. And `Dispatcher.Dispatch` is environment-blind: a test-environment event reaches the tenant's production receivers indistinguishably from a live one. See [`14-real-time-webhooks.md`](14-real-time-webhooks.md).
+**What is not gated.** Custom domain verification is named in the schema — `custom_domain`, `domain_verified` and `domain_verification_token` on `ent/schema/tenant.go` — but no endpoint reads or writes those columns, so there is nothing to hold behind a key yet.
 
 ---
 
@@ -203,7 +203,7 @@ See [`docs/endpoints/tenant-settings.md`](../endpoints/tenant-settings.md).
 
 ### Live-Key Endpoints
 *Refused a test credential with `403 live_key_required`.*
-- `POST` / `PUT` / `DELETE` `/v1/admin/webhooks/endpoints[/:id]`, plus `/:id/ping`, `/:id/rotate-secret` and `/v1/admin/webhooks/deliveries/:id/redeliver` — the endpoint list governs live delivery whichever key wrote it. Reads are open to either key.
+- `POST` / `PUT` / `DELETE` `/v1/admin/webhooks/endpoints[/:id]`, plus `/:id/ping`, `/:id/rotate-secret` and `/v1/admin/webhooks/deliveries/:id/redeliver` — a write may name the live environment, or `all`, whichever key made it. Reads are open to either key.
 - `POST` / `PATCH` / `DELETE` `/v1/tenant/organizations/:orgId/saml` and `/v1/client/organizations/:orgId/saml` — when the connection sits in `live`, or when the request moves it there. A create omitting `environment` counts, because the schema default is `live`.
 
 ---
@@ -220,7 +220,7 @@ The audit row is best-effort: the promotion is already durable by the time it is
 
 - **Organizations** carry an `environment` and are confined to it, so a rehearsal workspace never appears in a live listing and a slug can be claimed once per environment. A SAML connection attached to one is the exception below.
 - **SAML connections** carry their own `environment`, supplied in the request body rather than derived from the key, because an organization has at most one connection and that record has to be able to move from a trial into production. A `live` target — named, or defaulted by omission — still requires a live credential. See [`16-enterprise-saml-sso.md`](16-enterprise-saml-sso.md).
-- **Webhook endpoints** carry no `environment` at all. The list is live configuration for either key, so writing it requires the live one, while the dispatcher remains environment-blind about what it delivers. See [`14-real-time-webhooks.md`](14-real-time-webhooks.md).
+- **Webhook endpoints** carry an `environment` of `test`, `live` or `all`, supplied at registration rather than derived from the key, because one integration may want both streams on a single receiver. Dispatch routes an event only to the endpoints matching where it originated, plus the `all` ones. The value is caller-chosen, so writing the list still requires a live credential. See [`14-real-time-webhooks.md`](14-real-time-webhooks.md).
 - **`role_policy`** is stored, diffed and published with the other columns, but no endpoint writes it yet.
 - **Outbound email and SMS** are not governed by a settings column. The test environment captures them into an inbox instead of delivering, which is a property of the environment rather than a policy a tenant configures. See [`18-sandbox-message-inbox.md`](18-sandbox-message-inbox.md).
 - **Credential lifetimes** are the one setting a tenant may configure and not have honoured in full: `access_token_ttl_minutes` and `refresh_token_ttl_days` are single values across both environments, so the test ceilings shorten them there and leave live alone. Nothing reports the clamp — the caller receives a working credential that simply expires sooner.

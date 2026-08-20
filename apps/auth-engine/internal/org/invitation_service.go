@@ -111,7 +111,7 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 	// The webhook carries the token because delivering the invitation email is
 	// the subscriber's job.
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.invitation_sent", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(o.Environment), "org.invitation_sent", map[string]interface{}{
 			"invitation_id":    invID,
 			"org_id":           orgID,
 			"org_name":         o.Name,
@@ -213,7 +213,7 @@ func (s *Service) RevokeInvitation(ctx context.Context, tenantID, actorID, orgID
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.invitation_revoked", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, s.orgEnvironment(ctx, client, tenantID, orgID), "org.invitation_revoked", map[string]interface{}{
 			"invitation_id": invitationID,
 			"org_id":        orgID,
 			"email":         inv.Email,
@@ -261,6 +261,12 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		}
 		return nil, ErrInvitationExpired
 	}
+
+	// The organization the invitation is for decides the environment its events
+	// belong to. The invitation carries none of its own, and the redeemer arrives
+	// with a token rather than a credential, so there is nothing else to read it
+	// from.
+	environment := s.orgEnvironment(ctx, client, tenantID, inv.OrganizationID)
 
 	var targetUser *ent.User
 	if userID != "" {
@@ -343,7 +349,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.invitation_accepted", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, environment, "org.invitation_accepted", map[string]interface{}{
 			"invitation_id": inv.ID,
 			"org_id":        inv.OrganizationID,
 			"user_id":       userID,

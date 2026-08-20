@@ -117,7 +117,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdatePr
 	}
 
 	if s.webhookDispatcher != nil {
-		s.webhookDispatcher.Dispatch(u.TenantID, "user.updated", map[string]interface{}{
+		s.webhookDispatcher.Dispatch(u.TenantID, string(updatedUser.Environment), "user.updated", map[string]interface{}{
 			"user_id": updatedUser.ID,
 			"email":   updatedUser.Email,
 			"name":    updatedUser.Name,
@@ -228,7 +228,7 @@ func (s *Service) DeleteAccount(ctx context.Context, tenantID, env, userID strin
 	}
 
 	if s.webhookDispatcher != nil {
-		s.webhookDispatcher.Dispatch(tenantID, "user.deleted", map[string]interface{}{
+		s.webhookDispatcher.Dispatch(tenantID, string(u.Environment), "user.deleted", map[string]interface{}{
 			"user_id": userID,
 			"email":   u.Email,
 		})

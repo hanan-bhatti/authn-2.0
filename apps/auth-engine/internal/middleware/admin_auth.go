@@ -220,10 +220,10 @@ func GetEnvironment(c *fiber.Ctx) string {
 // RequireLiveKey is a middleware that refuses a request whose credential
 // addresses the test environment.
 //
-// It guards configuration that has no test counterpart and governs live traffic
-// regardless of which key wrote it. A webhook endpoint is the case: there is one
-// list per tenant and the dispatcher delivers to all of it, so a test key
-// repointing or deleting an entry would change where a live event lands. Holding
+// It guards configuration that has no test counterpart, or that governs live
+// traffic regardless of which key wrote it. A webhook endpoint is the case: it
+// names the environment whose events it receives, so a test key able to register
+// one could still point live deliveries at a destination of its choosing. Holding
 // that behind the live key keeps the reach of a test key inside test.
 //
 // Reads are deliberately left open, matching the settings publish rule: seeing

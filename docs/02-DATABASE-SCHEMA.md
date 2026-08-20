@@ -289,6 +289,7 @@ erDiagram
     WebhookEndpoint {
         string id PK
         string tenant_id FK
+        enum environment "test | live | all"
         string url
         string description
         string secret_key_enc
@@ -395,6 +396,6 @@ Stores user 2FA method configurations (`totp`, `sms_otp`, `backup_codes`, `webau
 | `TrustedDevice` | `(user_id, device_token_hash, status)` | Fast trusted device verification |
 | `UserIpSubnetHistory` | `(user_id, subnet, last_seen_at)` | IP subnet familiarity evaluation |
 | `RecoveryContact` | `(user_id, status)` | Active guardian retrieval |
-| `WebhookEndpoint` | `(tenant_id, is_active)` | Active webhook endpoint resolution during event dispatch |
+| `WebhookEndpoint` | `(tenant_id, environment, is_active)` | Active webhook endpoint resolution during event dispatch, narrowed to the environment the event came from |
 | `WebhookEndpoint` | `secret_key_hash` | Unique index guaranteeing 0 secret collisions |
 | `WebhookEvent` | `(webhook_endpoint_id, created_at)` | Delivery audit log listing & retry scheduling |

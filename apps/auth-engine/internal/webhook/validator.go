@@ -29,6 +29,13 @@ var (
 	ErrInvalidEvents = errors.New("invalid events: at least one valid subscribed event type is required")
 	// ErrUnsupportedEvent means an event name is not one the engine emits.
 	ErrUnsupportedEvent = errors.New("unsupported event type provided")
+	// ErrEnvironmentRequired means a registration did not state which
+	// environment's events it wants. There is no default: see
+	// ValidateEndpointEnvironment.
+	ErrEnvironmentRequired = errors.New("environment is required")
+	// ErrInvalidEnvironment means the environment named is not one of test, live
+	// or all.
+	ErrInvalidEnvironment = errors.New("invalid environment")
 	// ErrEndpointNotFound means no endpoint with that ID exists in the tenant.
 	ErrEndpointNotFound = errors.New("webhook endpoint not found")
 	// ErrEndpointDisabled means the endpoint exists but is not accepting
@@ -52,6 +59,7 @@ var AllowedEventTypes = map[string]bool{
 	"*":                         true,
 	"user.created":              true,
 	"user.signup":               true,
+	"user.updated":              true,
 	"user.login.success":        true,
 	"user.login.failed":         true,
 	"user.deleted":              true,
@@ -63,8 +71,57 @@ var AllowedEventTypes = map[string]bool{
 	"rbac.role.revoked":         true,
 	"user.impersonated":         true,
 	"user.impersonation_exited": true,
+	"org.created":               true,
+	"org.updated":               true,
+	"org.deleted":               true,
+	"org.member_joined":         true,
+	"org.member_removed":        true,
+	"org.invitation_sent":       true,
+	"org.invitation_revoked":    true,
+	"org.invitation_accepted":   true,
+	"saml.connection_created":   true,
+	"saml.connection_updated":   true,
+	"saml.connection_deleted":   true,
+	"saml.login_success":        true,
 	// Delivered only by an explicit test ping, never by system activity.
 	"ping": true,
+}
+
+// AllowedEnvironments is the set of environments an endpoint may be registered
+// for.
+//
+// "all" is a single endpoint that receives both environments, for a subscriber
+// that would rather branch on the payload than run two receivers. It is opt-in
+// precisely because the safe reading of a webhook URL is that it belongs to one
+// environment.
+var AllowedEnvironments = map[string]bool{
+	"test": true,
+	"live": true,
+	"all":  true,
+}
+
+// ValidateEndpointEnvironment normalises the environment an endpoint is
+// registered for.
+//
+// The value decides which events reach the destination, so it is not defaulted.
+// A default in either direction is a wrong answer an operator cannot see: bias
+// towards test and the production integration they just configured receives
+// nothing, bias towards live and their sandbox testing is delivered to real
+// customers' systems. Refusing costs one round trip and is unambiguous.
+//
+// Returns ErrEnvironmentRequired when the value is absent and
+// ErrInvalidEnvironment, naming the offender, when it is not one of the three.
+func ValidateEndpointEnvironment(environment string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(environment))
+	if normalized == "" {
+		return "", ErrEnvironmentRequired
+	}
+
+	if !AllowedEnvironments[normalized] {
+		return "", fmt.Errorf("%w: '%s'", ErrInvalidEnvironment, normalized)
+	}
+
+	return normalized, nil
 }
 
 // ValidateWebhookURL checks that a destination is a usable absolute URL and

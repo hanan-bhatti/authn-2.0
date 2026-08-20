@@ -40,6 +40,9 @@ func (WebhookEndpoint) Fields() []ent.Field {
 		field.String("tenant_id").
 			NotEmpty().
 			Comment("Owning Tenant ID"),
+		field.Enum("environment").
+			Values("test", "live", "all").
+			Comment("Which environment's events this endpoint receives: test, live, or all for both. Deliberately has no default — an endpoint that silently defaulted would either miss the events its owner expected or deliver sandbox activity to a production subscriber, so registration requires the choice to be stated."),
 		field.String("url").
 			NotEmpty().
 			Comment("Target HTTP webhook listener URL"),
@@ -92,6 +95,9 @@ func (WebhookEndpoint) Edges() []ent.Edge {
 // Indexes of the WebhookEndpoint.
 func (WebhookEndpoint) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("tenant_id", "is_active"),
+		// Ordered to serve the dispatch lookup, which is the only query on the hot
+		// path: it selects a tenant's active endpoints for one environment, and
+		// runs once per event emitted anywhere in the engine.
+		index.Fields("tenant_id", "environment", "is_active"),
 	}
 }

@@ -1092,7 +1092,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"url\": \"https://api.acme.local/webhooks/authn\",\n  \"description\": \"Acme Webhook Handler\",\n  \"events\": [\"user.created\", \"user.login.success\"]\n}"
+							"raw": "{\n  \"url\": \"https://api.acme.local/webhooks/authn\",\n  \"description\": \"Acme Webhook Handler\",\n  \"environment\": \"live\",\n  \"events\": [\"user.created\", \"user.login.success\"]\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",
@@ -2706,7 +2706,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"description\": \"Production Events Webhook\",\n  \"events\": [\"user.created\", \"session.revoked\"]\n}"
+							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"description\": \"Production Events Webhook\",\n  \"environment\": \"live\",\n  \"events\": [\"user.created\", \"session.revoked\"]\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",
@@ -2726,7 +2726,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"events\": [\"user.created\"]\n}"
+							"raw": "{\n  \"url\": \"https://webhook.site/test-handler\",\n  \"environment\": \"test\",\n  \"events\": [\"user.created\"]\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/v1/admin/webhooks/endpoints",

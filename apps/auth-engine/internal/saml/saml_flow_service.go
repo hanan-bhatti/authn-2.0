@@ -190,7 +190,7 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload, relayState, ip
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "saml.login_success", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, environment, "saml.login_success", map[string]interface{}{
 			"user_id": usrObj.ID,
 			"email":   email,
 			"domain":  domain,

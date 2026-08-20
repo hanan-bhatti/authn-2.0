@@ -122,7 +122,7 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.created", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(createdOrg.Environment), "org.created", map[string]interface{}{
 			"org_id":     orgID,
 			"name":       req.Name,
 			"slug":       req.Slug,
@@ -298,7 +298,7 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.updated", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(updatedOrg.Environment), "org.updated", map[string]interface{}{
 			"org_id": orgID,
 			"name":   updatedOrg.Name,
 			"slug":   updatedOrg.Slug,
@@ -345,7 +345,7 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "org.deleted", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(o.Environment), "org.deleted", map[string]interface{}{
 			"org_id": orgID,
 		})
 	}

@@ -38,7 +38,7 @@ func (r *Repository) IsSecretHashExists(ctx context.Context, secretHash string) 
 }
 
 // CreateEndpoint registers a new WebhookEndpoint in Ent ORM.
-func (r *Repository) CreateEndpoint(ctx context.Context, tenantID, rawURL, description, encryptedSecret, secretHash string, events []string) (*ent.WebhookEndpoint, error) {
+func (r *Repository) CreateEndpoint(ctx context.Context, tenantID, environment, rawURL, description, encryptedSecret, secretHash string, events []string) (*ent.WebhookEndpoint, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 
 	id := idgen.New("whe")
@@ -46,6 +46,7 @@ func (r *Repository) CreateEndpoint(ctx context.Context, tenantID, rawURL, descr
 	return client.WebhookEndpoint.Create().
 		SetID(id).
 		SetTenantID(tenantID).
+		SetEnvironment(webhookendpoint.Environment(environment)).
 		SetURL(rawURL).
 		SetDescription(description).
 		SetSecretKeyEncrypted(encryptedSecret).
@@ -80,19 +81,32 @@ func (r *Repository) ListEndpoints(ctx context.Context, tenantID string) ([]*ent
 		All(ctx)
 }
 
-// GetActiveEndpointsForEvent retrieves all active webhook endpoints subscribed to a specific event or wildcard '*'.
-func (r *Repository) GetActiveEndpointsForEvent(ctx context.Context, tenantID, eventType string) ([]*ent.WebhookEndpoint, error) {
+// GetActiveEndpointsForEvent retrieves the active endpoints that should receive
+// one event: those registered for its environment or for both, and subscribed
+// either to its type or to the wildcard '*'.
+//
+// The environment predicate is what keeps sandbox activity out of a production
+// subscriber's system. It is expressed here rather than left to the privacy
+// interceptor because the interceptor narrows a query to one environment, which
+// would exclude the endpoints registered for both.
+func (r *Repository) GetActiveEndpointsForEvent(ctx context.Context, tenantID, environment, eventType string) ([]*ent.WebhookEndpoint, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
 	endpoints, err := client.WebhookEndpoint.Query().
 		Where(
 			webhookendpoint.TenantID(tenantID),
 			webhookendpoint.IsActive(true),
+			webhookendpoint.EnvironmentIn(
+				webhookendpoint.Environment(environment),
+				webhookendpoint.EnvironmentAll,
+			),
 		).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// Subscription matching stays in Go: subscribed_events is a JSON array, and
+	// the predicate that would search it inside the database differs per dialect.
 	matching := make([]*ent.WebhookEndpoint, 0)
 	for _, ep := range endpoints {
 		for _, ev := range ep.SubscribedEvents {
@@ -106,7 +120,7 @@ func (r *Repository) GetActiveEndpointsForEvent(ctx context.Context, tenantID, e
 }
 
 // UpdateEndpoint modifies an existing webhook endpoint.
-func (r *Repository) UpdateEndpoint(ctx context.Context, tenantID, endpointID, rawURL, description string, events []string, isActive *bool) (*ent.WebhookEndpoint, error) {
+func (r *Repository) UpdateEndpoint(ctx context.Context, tenantID, endpointID, environment, rawURL, description string, events []string, isActive *bool) (*ent.WebhookEndpoint, error) {
 	// 1. Verify endpoint exists and belongs to tenant
 	_, err := r.GetEndpointByID(ctx, tenantID, endpointID)
 	if err != nil {
@@ -115,6 +129,9 @@ func (r *Repository) UpdateEndpoint(ctx context.Context, tenantID, endpointID, r
 
 	client := r.factory.GetClient(ctx, tenantID, "")
 	builder := client.WebhookEndpoint.UpdateOneID(endpointID)
+	if environment != "" {
+		builder.SetEnvironment(webhookendpoint.Environment(environment))
+	}
 	if rawURL != "" {
 		builder.SetURL(rawURL)
 	}

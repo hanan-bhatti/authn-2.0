@@ -1084,6 +1084,7 @@ var (
 	// WebhookEndpointsColumns holds the columns for the "webhook_endpoints" table.
 	WebhookEndpointsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live", "all"}},
 		{Name: "url", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true},
 		{Name: "secret_key_encrypted", Type: field.TypeString},
@@ -1103,16 +1104,16 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "webhook_endpoints_tenants_webhook_endpoints",
-				Columns:    []*schema.Column{WebhookEndpointsColumns[10]},
+				Columns:    []*schema.Column{WebhookEndpointsColumns[11]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "webhookendpoint_tenant_id_is_active",
+				Name:    "webhookendpoint_tenant_id_environment_is_active",
 				Unique:  false,
-				Columns: []*schema.Column{WebhookEndpointsColumns[10], WebhookEndpointsColumns[6]},
+				Columns: []*schema.Column{WebhookEndpointsColumns[11], WebhookEndpointsColumns[1], WebhookEndpointsColumns[7]},
 			},
 		},
 	}

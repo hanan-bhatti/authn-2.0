@@ -16,43 +16,59 @@ The **Outgoing Event Webhook Engine** delivers real-time HTTP event notification
 3. **Secret Collision Prevention**: Secrets use `whsec_<48_hex_chars>`. A SHA-256 hash (`secret_key_hash`) is indexed with a `UNIQUE` constraint in the database, preventing secret collisions across endpoints.
 4. **AES-256-GCM Encryption**: Webhook secrets are encrypted at rest using AES-256-GCM (`AUTHN_ENCRYPTION_KEY`). Plaintext secrets are displayed **ONCE** upon endpoint creation or secret rotation.
 5. **Asynchronous Worker Pool**: Dispatches webhooks asynchronously via a 5-goroutine worker pool with a 1,000-buffered task channel and a strict 5-second HTTP timeout.
-6. **Live Key Required to Write**: An endpoint has no `environment` column. There is one list per tenant and the dispatcher delivers every event to all of it, so the list is live configuration whichever key wrote it — a test key repointing an entry would redirect a live event, and deleting one would silence a live integration. `middleware.RequireLiveKey` therefore guards every route that changes the list or makes it emit a request, answering `403 Forbidden` with code `live_key_required`. Reads stay open to either key: seeing the other environment's configuration crosses nothing, changing it does.
+6. **Live Key Required to Write**: A write may name the `live` environment — or `all` — whichever key made it, so a test key able to register endpoints could still point live traffic at a destination of its choosing, repoint an entry to redirect a live event, or delete one to silence a live integration. `middleware.RequireLiveKey` therefore guards every route that changes the list or makes it emit a request, answering `403 Forbidden` with code `live_key_required`. Reads stay open to either key: seeing the other environment's configuration crosses nothing, changing it does.
 
-### Known Limitation: The Dispatcher Is Environment-Blind
+### Environment Separation
 
-`Dispatcher.Dispatch(tenantID, eventType, data)` takes no environment, and a `WebhookEndpoint` has no column to match one against. An event raised in the test environment — carrying a sandbox user's address — is delivered to the tenant's production receivers and is indistinguishable there from a live event.
+Each endpoint carries `environment` — `test`, `live` or `all` — chosen at registration. The field is required and has no default, because an endpoint that silently defaulted would either miss the events its owner expected or deliver sandbox activity to a production subscriber. `POST /endpoints` answers `422 Unprocessable Entity` with code `validation_failed` when it is absent or unrecognised.
 
-A receiver that needs to tell them apart has to do it from the payload: `data` carries the acting user, and a test user's row has `environment = "test"`. The engine does not yet stamp the envelope itself.
+`Dispatcher.Dispatch(tenantID, environment, eventType, data)` carries the environment, and `Repository.GetActiveEndpointsForEvent` selects a tenant's active endpoints whose environment equals the event's, plus every endpoint set to `all`. A sandbox sign-up therefore never reaches a live-only receiver, and a live one never reaches a sandbox receiver.
 
-Closing this properly means either an `environment` column on the endpoint plus a threaded environment through every `Dispatch` call site, or a decision that test events are not delivered at all. Both are feature-sized and change what existing receivers see, so neither is done here.
+Three properties make this hold in practice:
+
+- **The event's environment comes from its subject, not from the caller.** Each dispatch site reads it off the row it just wrote or loaded — the organization, user or SAML connection. A tenant administrator holding a live key who edits a sandbox organization has produced a sandbox event, and reporting it as live would deliver it to production subscribers.
+- **It is captured at enqueue time.** `Dispatch` is called on the request path but processed by a worker later, so `DispatchTask` carries the environment; there is no request context to read at delivery time.
+- **Dispatch fails closed.** An event whose environment names neither `test` nor `live` is dropped with a warning rather than broadcast to both. `all` is an endpoint's subscription choice, never an event's origin.
+
+The privacy interceptor deliberately does *not* narrow `webhook_endpoint` by environment (`internal/privacy/scope.go`). Doing so would hide every `all` endpoint from a test-scoped read and make the match above unreachable. Privacy enforces tenant isolation; the repository's explicit `Where` expresses routing.
 
 ---
 
 ## 2. Event Types & Format
 
-### Supported Event Types
-- `user.created` — Fired on new user signup
-- `session.revoked` — Fired on session revocation
-- `2fa.enabled` — Fired when user enables a 2FA method
-- `password.changed` — Fired on password reset/change
-- `rbac.role.assigned` — Fired when user is assigned a role
-- `ping` — Fired manually via `/ping` test endpoint
-- `*` — Wildcard (matches all event types)
+### Currently Emitted
+- `user.updated` — Profile changed
+- `user.deleted` — Account deleted
+- `password.changed` — Password reset or changed
+- `user.impersonated` — Support session started
+- `org.created`, `org.updated`, `org.deleted` — Organization lifecycle
+- `org.member_joined`, `org.member_removed` — Membership changes
+- `org.invitation_sent`, `org.invitation_revoked`, `org.invitation_accepted` — Invitation lifecycle
+- `saml.connection_created`, `saml.connection_updated`, `saml.connection_deleted` — SSO connection lifecycle
+- `saml.login_success` — SSO sign-in completed
+- `ping` — Fired manually via `/ping`, never by system activity
+- `*` — Wildcard, matches every event including ones added later
+
+### Accepted But Not Yet Emitted
+These names validate on subscription, so an integration can register for them today, but no code path raises them yet: `user.created`, `user.signup`, `user.login.success`, `user.login.failed`, `session.revoked`, `2fa.enabled`, `2fa.disabled`, `rbac.role.assigned`, `rbac.role.revoked`, `user.impersonation_exited`. A subscriber wanting sign-in or session activity should read the audit log until they are wired up.
 
 ### Standard Webhook Payload Format
 ```json
 {
   "id": "evt_76708407-e98",
-  "event": "user.created",
+  "event": "org.created",
   "tenant_id": "tnt_demo123",
+  "environment": "test",
   "timestamp": 1785895387,
   "data": {
-    "user_id": "usr_1a2b3c",
-    "email": "newuser@example.com",
-    "created_at": "2026-08-05T07:00:00Z"
+    "organization_id": "org_1a2b3c",
+    "name": "Acme Inc",
+    "slug": "acme-inc"
   }
 }
 ```
+
+`environment` travels in the signed body rather than in a header, because the signature covers the serialised body only: a subscriber deciding whether to act on an event for real must be able to prove the value came from the engine. An endpoint set to `all` relies on this field to tell the two streams apart, and the delivery log records the same envelope, so a redelivery replays a sandbox event as a sandbox event.
 
 ---
 
@@ -63,7 +79,7 @@ Closing this properly means either an `environment` column on the endpoint plus 
 | `POST` | `/v1/admin/webhooks/endpoints` | Register new webhook endpoint | `webhooks:write` / Admin **Live** Secret Key |
 | `GET` | `/v1/admin/webhooks/endpoints` | List all webhook endpoints for tenant | `webhooks:read` / Admin Secret Key |
 | `GET` | `/v1/admin/webhooks/endpoints/:id` | Fetch specific webhook endpoint details | `webhooks:read` / Admin Secret Key |
-| `PUT` | `/v1/admin/webhooks/endpoints/:id` | Update URL, description, or subscribed events | `webhooks:write` / Admin **Live** Secret Key |
+| `PUT` | `/v1/admin/webhooks/endpoints/:id` | Update URL, description, environment, or subscribed events | `webhooks:write` / Admin **Live** Secret Key |
 | `DELETE` | `/v1/admin/webhooks/endpoints/:id` | Delete endpoint and cascade delete child events | `webhooks:delete` / Admin **Live** Secret Key |
 | `POST` | `/v1/admin/webhooks/endpoints/:id/ping` | Send immediate test ping event | `webhooks:write` / Admin **Live** Secret Key |
 | `POST` | `/v1/admin/webhooks/endpoints/:id/rotate-secret` | Rotate signing secret key | `webhooks:write` / Admin **Live** Secret Key |
@@ -77,5 +93,6 @@ Rows marked **Live** are refused a `sk_test_` credential with `403 live_key_requ
 ## 4. Input Validation & Strict Error Handling
 
 1. **URL Validation**: Requires well-formed HTTPS scheme (allowing `http://localhost` or `http://127.0.0.1` in development mode).
-2. **Subscribed Events Validation**: Rejects empty array or invalid event strings with `422 Unprocessable Entity`.
-3. **Cascade Deletion**: Deleting an endpoint (`DELETE /v1/admin/webhooks/endpoints/:id`) automatically deletes all child delivery logs (`WebhookEvent`) within an Ent transaction under standard request context.
+2. **Environment Validation**: Requires `test`, `live` or `all`. Absent or unrecognised values are rejected with `422 Unprocessable Entity` and code `validation_failed`; nothing is guessed.
+3. **Subscribed Events Validation**: Rejects empty array or invalid event strings with `422 Unprocessable Entity`.
+4. **Cascade Deletion**: Deleting an endpoint (`DELETE /v1/admin/webhooks/endpoints/:id`) automatically deletes all child delivery logs (`WebhookEvent`) within an Ent transaction under standard request context.

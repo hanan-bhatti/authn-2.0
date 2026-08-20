@@ -36,8 +36,9 @@ MIIDXTCCAkWgAwIBAgIJAL0b2+
 // webhookEndpointReply is the subset of a webhook endpoint response these tests
 // assert on.
 type webhookEndpointReply struct {
-	ID  string `json:"id"`
-	URL string `json:"url"`
+	ID          string `json:"id"`
+	URL         string `json:"url"`
+	Environment string `json:"environment"`
 }
 
 // createWebhookEndpoint files an endpoint with the live key and returns it, which
@@ -48,6 +49,7 @@ func (e *testEnv) createWebhookEndpoint(t *testing.T, url string) webhookEndpoin
 	resp := e.do(t, http.MethodPost, "/v1/admin/webhooks/endpoints", map[string]any{
 		"url":         url,
 		"description": "Live receiver",
+		"environment": "live",
 		"events":      []string{"user.created"},
 	}, withLiveSecretKey())
 	assertStatus(t, "creating a webhook endpoint with the live key", resp, http.StatusCreated)
@@ -60,10 +62,10 @@ func (e *testEnv) createWebhookEndpoint(t *testing.T, url string) webhookEndpoin
 // TestWebhookConfigurationRefusesATestKey covers every route that changes the
 // endpoint list or makes it emit a request.
 //
-// A webhook endpoint carries no environment: there is one list per tenant and the
-// dispatcher delivers to all of it. So repointing an entry with a test key would
-// redirect a live event, and deleting one would silence a live integration —
-// neither of which a credential confined to test should be able to do.
+// An endpoint's environment is chosen by whoever registers it, so a write may
+// name live — or "all" — whichever key made it. A test key could otherwise point
+// live traffic at a destination of its choosing, repoint an entry to redirect a
+// live event, or delete one to silence a live integration.
 func TestWebhookConfigurationRefusesATestKey(t *testing.T) {
 	env := newTestEnv(t, nil, nil)
 	endpoint := env.createWebhookEndpoint(t, "https://hooks.example.com/live")
@@ -75,8 +77,9 @@ func TestWebhookConfigurationRefusesATestKey(t *testing.T) {
 		payload any
 	}{
 		{"create", http.MethodPost, "/v1/admin/webhooks/endpoints", map[string]any{
-			"url":    "https://hooks.example.com/injected",
-			"events": []string{"user.created"},
+			"url":         "https://hooks.example.com/injected",
+			"environment": "live",
+			"events":      []string{"user.created"},
 		}},
 		{"update", http.MethodPut, "/v1/admin/webhooks/endpoints/" + endpoint.ID, map[string]any{
 			"url": "https://attacker.example.com/collect",

@@ -70,7 +70,7 @@ func (s *Service) ChangePassword(ctx context.Context, tenantID, env, userID stri
 	}
 
 	if s.webhookDispatcher != nil {
-		s.webhookDispatcher.Dispatch(tenantID, "password.changed", map[string]interface{}{
+		s.webhookDispatcher.Dispatch(tenantID, string(u.Environment), "password.changed", map[string]interface{}{
 			"user_id": userID,
 			"email":   u.Email,
 		})

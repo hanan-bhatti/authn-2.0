@@ -127,7 +127,7 @@ The **Authn Engine** exposes four distinct HTTP API surfaces:
 - `POST /v1/admin/webhooks/endpoints` — Register new webhook endpoint *(live key)*
 - `GET /v1/admin/webhooks/endpoints` — List all webhook endpoints for tenant
 - `GET /v1/admin/webhooks/endpoints/:id` — Get webhook endpoint details by ID
-- `PUT /v1/admin/webhooks/endpoints/:id` — Update URL, description, or subscribed events *(live key)*
+- `PUT /v1/admin/webhooks/endpoints/:id` — Update URL, description, environment, or subscribed events *(live key)*
 - `DELETE /v1/admin/webhooks/endpoints/:id` — Delete webhook endpoint and cascade delete delivery logs *(live key)*
 - `POST /v1/admin/webhooks/endpoints/:id/ping` — Dispatch test ping webhook event *(live key)*
 - `POST /v1/admin/webhooks/endpoints/:id/rotate-secret` — Rotate signing secret key *(live key)*
@@ -817,12 +817,13 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 > **Last Verified**: `2026-08-06` — live `curl` attack suite against running server.
 > See full endpoint doc: [`docs/endpoints/admin-webhooks.md`](endpoints/admin-webhooks.md)
 
-- **Description**: Managing real-time outgoing HTTP webhook endpoints, HMAC SHA-256 signing secret rotation (`X-Authn-Signature`), delivery audit logs, and test ping dispatches. Rejects SSRF (`file://` or non-HTTP schemes) with `422 Unprocessable Entity`.
+- **Description**: Managing real-time outgoing HTTP webhook endpoints, HMAC SHA-256 signing secret rotation (`X-Authn-Signature`), delivery audit logs, and test ping dispatches. Each endpoint names the environment whose events it receives — `test`, `live` or `all` — and dispatch routes an event only to the endpoints matching where it originated. Rejects SSRF (`file://` or non-HTTP schemes) with `422 Unprocessable Entity`.
 - **Request (`POST /v1/admin/webhooks/endpoints`)**:
 ```json
 {
   "url": "https://api.acme.local/webhooks/authn",
   "description": "Acme Webhook Handler",
+  "environment": "live",
   "events": ["user.created", "user.login.success"]
 }
 ```
@@ -831,6 +832,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 {
   "id": "whe_5eb5f1be-ed3",
   "url": "https://api.acme.local/webhooks/authn",
+  "environment": "live",
   "description": "Acme Webhook Handler",
   "secret": "whsec_da306471c3d10fcad2e4e08aca0ead0743ed56629c82929d",
   "subscribed_events": ["user.created", "user.login.success"],
@@ -840,9 +842,9 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 }
 ```
 - **Edge Cases & Error Codes**:
-  - `422 Unprocessable Entity`: Invalid URL format (SSRF blocked, scheme must be HTTP/HTTPS) or unsupported event types (`unsupported event type provided: 'user.exploit_system'`).
+  - `422 Unprocessable Entity`: Invalid URL format (SSRF blocked, scheme must be HTTP/HTTPS), missing or unrecognised `environment` (`must be one of "test", "live" or "all"`), or unsupported event types (`unsupported event type provided: 'user.exploit_system'`).
   - `404 Not Found`: Webhook Endpoint ID does not exist.
-  - `403 Forbidden` (`live_key_required`): a test credential on any route that changes the endpoint list or makes it emit a request — create, update, delete, ping, rotate-secret, redeliver. An endpoint carries no environment of its own and the dispatcher delivers every event to the whole list, so the list is live configuration whichever key wrote it. The three read routes stay open to either key.
+  - `403 Forbidden` (`live_key_required`): a test credential on any route that changes the endpoint list or makes it emit a request — create, update, delete, ping, rotate-secret, redeliver. A write may name the `live` environment, or `all`, whichever key made it, so a test key able to register endpoints could still point live traffic at a destination of its choosing. The three read routes stay open to either key.
 
 ### 3.10 Admin User Impersonation & Security Guard (`/v1/admin/users/:user_id/impersonate`, `/v1/client/auth/impersonate/exit`)
 - **Description**: Initiating short-lived admin impersonation sessions with mandatory Sudo step-up auth, user notification emails, signed webhooks (`user.impersonated`), and read-only mutation guards.

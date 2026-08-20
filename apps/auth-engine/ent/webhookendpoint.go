@@ -22,6 +22,8 @@ type WebhookEndpoint struct {
 	ID string `json:"id,omitempty"`
 	// Owning Tenant ID
 	TenantID string `json:"tenant_id,omitempty"`
+	// Which environment's events this endpoint receives: test, live, or all for both. Deliberately has no default — an endpoint that silently defaulted would either miss the events its owner expected or deliver sandbox activity to a production subscriber, so registration requires the choice to be stated.
+	Environment webhookendpoint.Environment `json:"environment,omitempty"`
 	// Target HTTP webhook listener URL
 	URL string `json:"url,omitempty"`
 	// Optional friendly description for webhook endpoint
@@ -88,7 +90,7 @@ func (*WebhookEndpoint) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case webhookendpoint.FieldFailureCount:
 			values[i] = new(sql.NullInt64)
-		case webhookendpoint.FieldID, webhookendpoint.FieldTenantID, webhookendpoint.FieldURL, webhookendpoint.FieldDescription, webhookendpoint.FieldSecretKeyEncrypted, webhookendpoint.FieldSecretKeyHash:
+		case webhookendpoint.FieldID, webhookendpoint.FieldTenantID, webhookendpoint.FieldEnvironment, webhookendpoint.FieldURL, webhookendpoint.FieldDescription, webhookendpoint.FieldSecretKeyEncrypted, webhookendpoint.FieldSecretKeyHash:
 			values[i] = new(sql.NullString)
 		case webhookendpoint.FieldLastTriggeredAt, webhookendpoint.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -118,6 +120,12 @@ func (we *WebhookEndpoint) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field tenant_id", values[i])
 			} else if value.Valid {
 				we.TenantID = value.String
+			}
+		case webhookendpoint.FieldEnvironment:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field environment", values[i])
+			} else if value.Valid {
+				we.Environment = webhookendpoint.Environment(value.String)
 			}
 		case webhookendpoint.FieldURL:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -224,6 +232,9 @@ func (we *WebhookEndpoint) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", we.ID))
 	builder.WriteString("tenant_id=")
 	builder.WriteString(we.TenantID)
+	builder.WriteString(", ")
+	builder.WriteString("environment=")
+	builder.WriteString(fmt.Sprintf("%v", we.Environment))
 	builder.WriteString(", ")
 	builder.WriteString("url=")
 	builder.WriteString(we.URL)

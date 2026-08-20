@@ -147,7 +147,7 @@ func (s *Service) CreateSAMLConnection(ctx context.Context, tenantID, actorID st
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "saml.connection_created", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(created.Environment), "saml.connection_created", map[string]interface{}{
 			"saml_id":         samlID,
 			"org_id":          req.OrganizationID,
 			"org_name":        o.Name,
@@ -286,7 +286,7 @@ func (s *Service) UpdateSAMLConnection(ctx context.Context, tenantID, actorID, o
 	s.logAudit(ctx, tenantID, actorID, "saml.connection_updated", "saml_connection", conn.ID, metadata, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "saml.connection_updated", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(updated.Environment), "saml.connection_updated", map[string]interface{}{
 			"saml_id": conn.ID,
 			"org_id":  orgID,
 		})
@@ -328,7 +328,7 @@ func (s *Service) DeleteSAMLConnection(ctx context.Context, tenantID, actorID, o
 	}, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, "saml.connection_deleted", map[string]interface{}{
+		s.dispatcher.Dispatch(tenantID, string(conn.Environment), "saml.connection_deleted", map[string]interface{}{
 			"saml_id": conn.ID,
 			"org_id":  orgID,
 		})

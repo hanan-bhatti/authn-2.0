@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 )
@@ -56,6 +57,10 @@ func NewService(repo *Repository, dispatcher *Dispatcher, cfg *config.Config) *S
 type CreateEndpointRequest struct {
 	// URL is the destination. It must satisfy ValidateWebhookURL.
 	URL string `json:"url"`
+	// Environment names which environment's events to receive: "test", "live",
+	// or "all" for both. It is required, since no default is safe; see
+	// ValidateEndpointEnvironment.
+	Environment string `json:"environment"`
 	// Description is an operator-facing label.
 	Description string `json:"description"`
 	// Events lists the event types to subscribe to.
@@ -67,6 +72,10 @@ type CreateEndpointRequest struct {
 type UpdateEndpointRequest struct {
 	// URL replaces the destination when non-empty.
 	URL string `json:"url"`
+	// Environment replaces the environment when non-empty. Unlike on creation an
+	// empty value is accepted, because the endpoint already carries a stated
+	// choice for this to leave alone.
+	Environment string `json:"environment"`
 	// Description replaces the label when non-empty.
 	Description string `json:"description"`
 	// Events replaces the subscription list when non-empty.
@@ -83,6 +92,9 @@ type EndpointResponse struct {
 	ID string `json:"id"`
 	// URL is the delivery destination.
 	URL string `json:"url"`
+	// Environment is which environment's events reach it: "test", "live" or
+	// "all".
+	Environment string `json:"environment"`
 	// Description is the operator-facing label.
 	Description string `json:"description"`
 	// Secret is the signing secret, present only in the response to creation or
@@ -131,11 +143,16 @@ type DeliveryResponse struct {
 // The returned Secret is the only time that value is available; it is stored
 // encrypted and cannot be retrieved afterwards.
 //
-// Returns ErrInvalidURL or an event validation error for a bad request,
-// ErrSecretCollision when secret generation cannot produce an unused value, and
-// an error if encryption or persistence fails.
+// Returns ErrInvalidURL, an environment error, or an event validation error for
+// a bad request, ErrSecretCollision when secret generation cannot produce an
+// unused value, and an error if encryption or persistence fails.
 func (s *Service) CreateEndpoint(ctx context.Context, tenantID string, req CreateEndpointRequest) (*EndpointResponse, error) {
 	if err := ValidateWebhookURL(req.URL); err != nil {
+		return nil, err
+	}
+
+	environment, err := ValidateEndpointEnvironment(req.Environment)
+	if err != nil {
 		return nil, err
 	}
 
@@ -176,7 +193,7 @@ func (s *Service) CreateEndpoint(ctx context.Context, tenantID string, req Creat
 		return nil, fmt.Errorf("failed to encrypt webhook secret: %w", err)
 	}
 
-	ep, err := s.repo.CreateEndpoint(ctx, tenantID, req.URL, req.Description, encryptedSecret, secretHash, events)
+	ep, err := s.repo.CreateEndpoint(ctx, tenantID, environment, req.URL, req.Description, encryptedSecret, secretHash, events)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +230,9 @@ func (s *Service) GetEndpoint(ctx context.Context, tenantID, endpointID string) 
 	return formatEndpointResponse(ep), nil
 }
 
-// UpdateEndpoint modifies an endpoint configuration.
+// UpdateEndpoint modifies an endpoint configuration. Omitted fields are left as
+// they are, so changing the environment does not require restating the URL or
+// the subscription list.
 func (s *Service) UpdateEndpoint(ctx context.Context, tenantID, endpointID string, req UpdateEndpointRequest) (*EndpointResponse, error) {
 	if req.URL != "" {
 		if err := ValidateWebhookURL(req.URL); err != nil {
@@ -221,8 +240,16 @@ func (s *Service) UpdateEndpoint(ctx context.Context, tenantID, endpointID strin
 		}
 	}
 
-	var events []string
+	var environment string
 	var err error
+	if req.Environment != "" {
+		environment, err = ValidateEndpointEnvironment(req.Environment)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var events []string
 	if len(req.Events) > 0 {
 		events, err = ValidateSubscribedEvents(req.Events)
 		if err != nil {
@@ -230,7 +257,7 @@ func (s *Service) UpdateEndpoint(ctx context.Context, tenantID, endpointID strin
 		}
 	}
 
-	ep, err := s.repo.UpdateEndpoint(ctx, tenantID, endpointID, req.URL, req.Description, events, req.IsActive)
+	ep, err := s.repo.UpdateEndpoint(ctx, tenantID, endpointID, environment, req.URL, req.Description, events, req.IsActive)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +316,13 @@ func (s *Service) DeleteEndpoint(ctx context.Context, tenantID, endpointID strin
 }
 
 // SendTestPing dispatches a test 'ping' event synchronously to an endpoint.
-func (s *Service) SendTestPing(ctx context.Context, tenantID, endpointID string) (*DeliveryResponse, error) {
+//
+// callerEnvironment is the environment of the credential asking for the ping. It
+// only decides the reported environment when the endpoint is registered for both
+// and there is therefore no single right answer; otherwise the endpoint's own
+// environment is reported, so that a subscriber branching on the field is
+// exercised the way a real event would exercise it.
+func (s *Service) SendTestPing(ctx context.Context, tenantID, endpointID, callerEnvironment string) (*DeliveryResponse, error) {
 	ep, err := s.repo.GetEndpointByID(ctx, tenantID, endpointID)
 	if err != nil {
 		return nil, err
@@ -301,7 +334,12 @@ func (s *Service) SendTestPing(ctx context.Context, tenantID, endpointID string)
 		"endpoint": ep.URL,
 	}
 
-	ev, err := s.dispatcher.DeliverSync(ctx, ep, "ping", pingData)
+	environment := string(ep.Environment)
+	if ep.Environment == webhookendpoint.EnvironmentAll {
+		environment = callerEnvironment
+	}
+
+	ev, err := s.dispatcher.DeliverSync(ctx, ep, environment, "ping", pingData)
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +362,10 @@ func (s *Service) ListDeliveries(ctx context.Context, endpointID, eventType stri
 }
 
 // Redeliver re-triggers a delivery attempt for a past event.
+//
+// The event is re-enveloped with a fresh id and timestamp but reports the
+// environment the original was emitted in: replaying a sandbox event must not
+// present it to the subscriber as live activity.
 func (s *Service) Redeliver(ctx context.Context, tenantID, deliveryID string) (*DeliveryResponse, error) {
 	ev, err := s.repo.GetDeliveryByID(ctx, deliveryID)
 	if err != nil {
@@ -335,12 +377,38 @@ func (s *Service) Redeliver(ctx context.Context, tenantID, deliveryID string) (*
 		return nil, err
 	}
 
-	newEv, err := s.dispatcher.DeliverSync(ctx, ep, ev.EventType, ev.Payload)
+	environment, body := recordedEvent(ev.Payload)
+
+	newEv, err := s.dispatcher.DeliverSync(ctx, ep, environment, ev.EventType, body)
 	if err != nil {
 		return nil, err
 	}
 
 	return formatDeliveryResponse(newEv), nil
+}
+
+// recordedEvent unpacks a stored delivery payload into the environment the event
+// was emitted in and the event-specific body.
+//
+// The log records the whole envelope, because that is what an operator needs to
+// read back, while a redelivery re-envelopes with a fresh id and timestamp and so
+// must be handed the body alone. Passing the stored envelope straight through
+// would nest one envelope inside another and deliver a shape no subscriber parses.
+//
+// A record carrying no environment falls back to test: presenting activity whose
+// origin cannot be established as live is the one outcome worth ruling out.
+func recordedEvent(payload map[string]interface{}) (string, map[string]interface{}) {
+	environment := string(webhookendpoint.EnvironmentTest)
+	if recorded, ok := payload["environment"].(string); ok && recorded != "" {
+		environment = recorded
+	}
+
+	body, ok := payload["data"].(map[string]interface{})
+	if !ok {
+		body = payload
+	}
+
+	return environment, body
 }
 
 func formatEndpointResponse(ep *ent.WebhookEndpoint) *EndpointResponse {
@@ -353,6 +421,7 @@ func formatEndpointResponse(ep *ent.WebhookEndpoint) *EndpointResponse {
 	return &EndpointResponse{
 		ID:               ep.ID,
 		URL:              ep.URL,
+		Environment:      string(ep.Environment),
 		Description:      ep.Description,
 		SubscribedEvents: ep.SubscribedEvents,
 		IsActive:         ep.IsActive,

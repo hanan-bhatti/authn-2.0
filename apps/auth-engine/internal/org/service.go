@@ -24,6 +24,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
@@ -39,7 +40,10 @@ var (
 // WebhookDispatcher publishes organization lifecycle events to tenant webhooks.
 type WebhookDispatcher interface {
 	// Dispatch queues an event for delivery. It must not block the caller.
-	Dispatch(tenantID, eventType string, data map[string]interface{})
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
 // Service implements organization and membership domain logic.
@@ -207,6 +211,27 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		SetSlug(roleSlug).
 		SetDescription(fmt.Sprintf("Default %s role", roleName)).
 		Save(ctx)
+}
+
+// orgEnvironment is the environment an organization's events belong to.
+//
+// Read from the organization rather than from the caller's credential, because an
+// event belongs where its subject lives: a tenant administrator holding a live key
+// who edits a sandbox organization has produced a sandbox event, and reporting it
+// as live would deliver it to the tenant's production subscribers.
+//
+// An unreadable organization yields "", which the webhook dispatcher drops. That
+// is deliberate — an event whose origin cannot be established is worth losing,
+// and by the time this is called the operation it describes has already
+// succeeded, so the caller is not failed over a notification.
+func (s *Service) orgEnvironment(ctx context.Context, client *ent.Client, tenantID, orgID string) string {
+	o, err := client.Organization.Query().
+		Where(organization.TenantID(tenantID), organization.ID(orgID)).
+		Only(ctx)
+	if err != nil {
+		return ""
+	}
+	return string(o.Environment)
 }
 
 // toOrgResponse converts an organization entity to its API representation,

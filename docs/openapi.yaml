@@ -1475,7 +1475,11 @@ paths:
   /v1/admin/webhooks/endpoints:
     post:
       summary: Create Webhook Endpoint
-      description: Registers a new webhook endpoint. The generated signing secret is returned ONLY ONCE in this response.
+      description: >-
+        Registers a new webhook endpoint for one environment. `environment` is required
+        and has no default, because an endpoint that guessed would either miss the events
+        its owner expected or deliver sandbox activity to a production subscriber. The
+        generated signing secret is returned ONLY ONCE in this response.
       operationId: createWebhookEndpoint
       tags:
       - Webhooks (Admin)
@@ -1509,17 +1513,18 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
           description: >-
-            Code `live_key_required`. A webhook endpoint has no environment of its
-            own: there is one list per tenant and the dispatcher delivers every event
-            to all of it, so the list is live configuration whichever key wrote it.
-            Registering an entry therefore requires a live secret key. The three read
-            routes accept either.
+            Code `live_key_required`. A registration may name the `live` environment — or
+            `all` — whichever key made it, so a test key able to register endpoints could
+            still point live traffic at a destination of its choosing. Registering an entry
+            therefore requires a live secret key. The three read routes accept either.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '422':
-          description: Invalid HTTPS URL, empty/invalid events, or unsupported event type
+          description: >-
+            Code `validation_failed`. Invalid HTTPS URL, missing or unrecognised
+            `environment`, empty/invalid events, or unsupported event type.
           content:
             application/json:
               schema:
@@ -1602,7 +1607,7 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
     put:
       summary: Update Webhook Endpoint
-      description: Modifies an existing webhook endpoint configuration (URL, description, events, active flag).
+      description: Modifies an existing webhook endpoint configuration (URL, description, environment, events, active flag). Every field is optional; an omitted one is left unchanged.
       operationId: updateWebhookEndpoint
       tags:
       - Webhooks (Admin)
@@ -1643,9 +1648,9 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
           description: >-
-            Code `live_key_required`. The endpoint list is shared by both
-            environments, so repointing an entry with a test key would redirect a live
-            event. Requires a live secret key.
+            Code `live_key_required`. An entry may name the live environment, so
+            repointing one with a test key would redirect a live event. Requires a live
+            secret key.
           content:
             application/json:
               schema:
@@ -1657,7 +1662,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '422':
-          description: Invalid HTTPS URL or subscribed event list validation failed
+          description: >-
+            Code `validation_failed`. Invalid HTTPS URL, unrecognised `environment`, or
+            subscribed event list validation failed.
           content:
             application/json:
               schema:
@@ -8413,6 +8420,7 @@ components:
       required:
       - url
       - description
+      - environment
       - events
       properties:
         url:
@@ -8422,6 +8430,17 @@ components:
         description:
           type: string
           example: Primary Webhook Receiver
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          - all
+          description: >-
+            Which environment's events this endpoint receives. `all` receives both and
+            relies on the `environment` field in the signed payload to tell them apart.
+            Required — there is no default.
+          example: live
         events:
           type: array
           items:
@@ -8440,6 +8459,14 @@ components:
         description:
           type: string
           example: Updated Primary Webhook Receiver
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          - all
+          description: Omit to leave the endpoint's environment unchanged.
+          example: all
         events:
           type: array
           items:
@@ -8455,6 +8482,7 @@ components:
       required:
       - id
       - url
+      - environment
       - description
       - subscribed_events
       - is_active
@@ -8468,6 +8496,13 @@ components:
           type: string
           format: uri
           example: https://api.example.com/webhooks/authn
+        environment:
+          type: string
+          enum:
+          - test
+          - live
+          - all
+          example: live
         description:
           type: string
           example: Primary Webhook Receiver
