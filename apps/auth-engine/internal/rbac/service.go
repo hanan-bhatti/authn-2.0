@@ -23,6 +23,15 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 )
 
+// WebhookDispatcher publishes authorization changes to tenant webhooks.
+type WebhookDispatcher interface {
+	// Dispatch queues an event for delivery. It must not block the caller.
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
+}
+
 // Service applies RBAC business rules on top of the repository.
 type Service struct {
 	// repo is the persistence layer for roles, permissions and assignments.
@@ -35,6 +44,8 @@ type Service struct {
 	// policy holds the restricted role-to-permission mappings enforced on every
 	// assignment.
 	policy *RolePermissionPolicy
+	// webhooks publishes role assignments. May be nil, which disables emission.
+	webhooks WebhookDispatcher
 }
 
 // NewService constructs an RBAC service using the default role-permission
@@ -46,6 +57,28 @@ func NewService(repo *Repository, audit *AuditLogger, cfg *config.Config) *Servi
 		cfg:    cfg,
 		policy: DefaultRolePermissionPolicy(),
 	}
+}
+
+// WithWebhooks attaches the dispatcher that publishes authorization changes, and
+// returns the service for chaining.
+//
+// A separate method rather than a constructor parameter, so the tests that build
+// this service need no webhook engine standing behind them.
+func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
+	s.webhooks = d
+	return s
+}
+
+// emit queues a webhook event, doing nothing when no dispatcher is attached.
+//
+// The guard lives here rather than at each call site because emission is a
+// notification: no caller branches on it, and an authorization change is not
+// undone because its announcement had nowhere to go.
+func (s *Service) emit(tenantID, environment, eventType string, data map[string]interface{}) {
+	if s.webhooks == nil {
+		return
+	}
+	s.webhooks.Dispatch(tenantID, environment, eventType, data)
 }
 
 // CreateRole validates perms, checks them against the tenant's restricted
@@ -133,9 +166,20 @@ func (s *Service) UpdateRolePermissions(ctx context.Context, tenantID, roleID st
 
 // AssignUserRole grants the role named by roleSlug, within tenantID, to
 // targetUserID. It returns ErrRoleNotFound when the slug names no role in that
-// tenant and ErrUserRoleExists when the user already holds it.
+// tenant, ErrUserNotFound when the target user does not belong to the tenant,
+// and ErrUserRoleExists when the user already holds it.
 func (s *Service) AssignUserRole(ctx context.Context, tenantID, targetUserID, roleSlug, actorID, ip, ua string) error {
 	roleObj, err := s.repo.GetRoleBySlug(ctx, tenantID, roleSlug)
+	if err != nil {
+		return err
+	}
+
+	// The target's tenant is verified for the same reason the revoke path verifies
+	// it, and the privacy interceptor cannot stand in for the check: the assignment
+	// is an insert, and a mutation's scope predicates only constrain updates and
+	// deletes. Without this, a role belonging to this tenant could be attached to
+	// another tenant's user, who would then carry its permissions.
+	targetUser, err := s.repo.GetTenantUser(ctx, tenantID, targetUserID)
 	if err != nil {
 		return err
 	}
@@ -152,6 +196,14 @@ func (s *Service) AssignUserRole(ctx context.Context, tenantID, targetUserID, ro
 		"role_id":          roleObj.ID,
 		"assigned_by_user": actorID,
 	}, ip, ua)
+
+	s.emit(tenantID, string(targetUser.Environment), "rbac.role.assigned", map[string]interface{}{
+		"user_id":   targetUserID,
+		"role_id":   roleObj.ID,
+		"role_slug": roleObj.Slug,
+		"role_name": roleObj.Name,
+		"actor_id":  actorID,
+	})
 
 	return nil
 }
@@ -172,7 +224,8 @@ func (s *Service) RevokeUserRole(ctx context.Context, tenantID, targetUserID, ro
 	// Without this check a caller could silently revoke a role from a user in
 	// another tenant (the UserRole.Delete predicate filters only by userID and
 	// roleID, not by the user's tenant).
-	if err := s.repo.CheckUserBelongsToTenant(ctx, tenantID, targetUserID); err != nil {
+	targetUser, err := s.repo.GetTenantUser(ctx, tenantID, targetUserID)
+	if err != nil {
 		return err
 	}
 
@@ -187,6 +240,14 @@ func (s *Service) RevokeUserRole(ctx context.Context, tenantID, targetUserID, ro
 		"role_id":         roleObj.ID,
 		"revoked_by_user": actorID,
 	}, ip, ua)
+
+	s.emit(tenantID, string(targetUser.Environment), "rbac.role.revoked", map[string]interface{}{
+		"user_id":   targetUserID,
+		"role_id":   roleObj.ID,
+		"role_slug": roleObj.Slug,
+		"role_name": roleObj.Name,
+		"actor_id":  actorID,
+	})
 
 	return nil
 }

@@ -54,22 +54,27 @@ func NewRepository(factory *clientfactory.ClientFactory) *Repository {
 	return &Repository{factory: factory}
 }
 
-// CheckUserBelongsToTenant reports whether a user exists within tenantID.
+// GetTenantUser loads a user that belongs to tenantID.
+//
 // It returns ErrUserNotFound when the user does not exist or belongs to a
 // different tenant, so callers can refuse cross-tenant mutations without
 // exposing whether the user ID is valid in some other tenant.
-func (r *Repository) CheckUserBelongsToTenant(ctx context.Context, tenantID, userID string) error {
+//
+// The row comes back rather than a bare yes: a role change is published to the
+// environment its subject lives in, and that is read from the same round trip
+// as the membership check rather than a second one.
+func (r *Repository) GetTenantUser(ctx context.Context, tenantID, userID string) (*ent.User, error) {
 	client := r.factory.GetClient(ctx, tenantID, "")
-	exists, err := client.User.Query().
+	u, err := client.User.Query().
 		Where(user.ID(userID), user.TenantID(tenantID)).
-		Exist(ctx)
+		Only(ctx)
 	if err != nil {
-		return err
+		if ent.IsNotFound(err) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
 	}
-	if !exists {
-		return ErrUserNotFound
-	}
-	return nil
+	return u, nil
 }
 
 // CreateRole inserts a role, deriving name from slug or slug from name when
