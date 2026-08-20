@@ -1041,6 +1041,15 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 		return nil, ErrNoPendingTOTP
 	}
 
+	// Loaded before the enable write rather than beside the audit row it is for,
+	// so a failure to resolve the account refuses the enrollment instead of
+	// leaving a factor enabled that nothing recorded. A two-factor method carries
+	// a user but no tenant, and the audit table requires one.
+	u, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
 	secret, err := crypto.DecryptAES256GCM(tfm.SecretEncrypted, s.config.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed decrypting TOTP secret: %w", err)
@@ -1061,7 +1070,7 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 	}
 
 	auditID := idgen.New("aud")
-	_ = s.repo.CreateAuditLog(ctx, auditID, string(tfm.UserID), userID, "user.2fa_enabled", "", "", "")
+	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_enabled", "", "", "")
 
 	// Check if user already has backup recovery codes
 	existingCount, _ := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID)
@@ -1419,6 +1428,15 @@ func (s *Service) ConfirmSMSEnrollment(ctx context.Context, userID string, code 
 		return nil, fmt.Errorf("no pending SMS 2FA enrollment found")
 	}
 
+	// Loaded before the enable write rather than beside the audit row it is for,
+	// so a failure to resolve the account refuses the enrollment instead of
+	// leaving a factor enabled that nothing recorded. A two-factor method carries
+	// a user but no tenant, and the audit table requires one.
+	u, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
 	if err := s.repo.EnableTwoFactorMethod(ctx, tfm.ID); err != nil {
 		return nil, fmt.Errorf("failed enabling SMS 2FA method: %w", err)
 	}
@@ -1442,7 +1460,7 @@ func (s *Service) ConfirmSMSEnrollment(ctx context.Context, userID string, code 
 	}
 
 	auditID := idgen.New("aud")
-	_ = s.repo.CreateAuditLog(ctx, auditID, "", userID, "user.sms_2fa_confirmed", "", "", "")
+	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.sms_2fa_confirmed", "", "", "")
 
 	return &ConfirmTOTPResult{
 		Message:              "SMS 2FA successfully confirmed and activated",
@@ -1670,8 +1688,15 @@ func (s *Service) VerifyRecoveryCode(ctx context.Context, userID string, rawCode
 		return err
 	}
 
+	// A recovery code carries a user but no tenant, and the audit table requires
+	// one. Best-effort here rather than fatal: the code is already spent, so
+	// refusing now would deny a legitimate recovery over a bookkeeping failure.
 	auditID := idgen.New("aud")
-	_ = s.repo.CreateAuditLog(ctx, auditID, "", userID, "user.recovery_code_used", "", "", "")
+	if u, err := s.repo.FindUserByID(ctx, userID); err == nil && u != nil {
+		_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.recovery_code_used", "", "", "")
+	} else {
+		log.Printf("[AuthService] Warning: could not resolve tenant to record recovery code use for user %s: %v", userID, err)
+	}
 
 	return nil
 }
@@ -2119,13 +2144,16 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 		return err
 	}
 
+	// Hoisted above both branches: the last-factor path needs the password hash to
+	// step up, and either path needs the tenant for its audit row — a two-factor
+	// method carries a user but no tenant, and the audit table requires one.
+	u, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return fmt.Errorf("user not found")
+	}
+
 	// If this passkey is the LAST remaining 2FA method, require Argon2id password step-up
 	if primaryCount <= 1 {
-		u, err := s.repo.FindUserByID(ctx, userID)
-		if err != nil || u == nil {
-			return fmt.Errorf("user not found")
-		}
-
 		if password == "" || u.PasswordHash == "" || !crypto.VerifyPasswordArgon2id(password, u.PasswordHash) {
 			return ErrInvalidCredentials
 		}
@@ -2148,7 +2176,7 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 	}
 
 	auditID := idgen.New("aud")
-	_ = s.repo.CreateAuditLog(ctx, auditID, "", userID, "user.passkey_deleted", "", "", "")
+	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.passkey_deleted", "", "", "")
 
 	return nil
 }
