@@ -125,4 +125,4 @@ The ping reports the endpoint's own environment, so a subscriber's environment-b
 | **Test Key Repointing a Live Receiver** | `PUT /endpoints/:id` with `sk_test_` and `"url":"https://attacker.example.com/collect"` | `403 Forbidden` | `middleware.RequireLiveKey` refuses with `live_key_required`; the stored URL is unchanged |
 | **Test Key Silencing a Live Integration** | `DELETE /endpoints/:id` with `sk_test_` | `403 Forbidden` | Same guard; the endpoint survives |
 
-*Last Verified*: `2026-08-06` — live `curl` attack suite against running server. The live-key rows were added afterwards and are covered by `test/live_key_test.go` rather than by that run.
+*Last Verified*: `2026-08-20` — live `curl` suite against a running engine with three receivers registered for `test`, `live` and `all`. A `test` organization delivered to the test and `all` receivers only; a `live` one to the live and `all` receivers only; every `X-Authn-Signature` recomputed and matched; the delivery log recorded the originating environment on all four rows.

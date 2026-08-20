@@ -38,6 +38,7 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/webhookendpoint"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 )
 
@@ -267,10 +268,25 @@ func (d *Dispatcher) workerLoop(workerID int) {
 func (d *Dispatcher) processTask(task DispatchTask) {
 	// A fresh context rather than the dispatcher's: work already accepted is
 	// finished even as shutdown proceeds, and Stop waits for it.
-	ctx := context.Background()
+	//
+	// It carries the task's tenant as its privacy scope. Nothing has put one
+	// there — the worker runs off the request path, long after the middleware
+	// that would have — and the interceptor refuses an unscoped endpoint query
+	// rather than reading across tenants, so a detached context delivers nothing
+	// at all. The environment is deliberately left empty: routing is the
+	// repository's own Where, and narrowing it here would hide every endpoint
+	// registered for "all".
+	ctx := privacy.NewContext(context.Background(), task.TenantID, "", "")
 
 	endpoints, err := d.repo.GetActiveEndpointsForEvent(ctx, task.TenantID, task.Environment, task.EventType)
-	if err != nil || len(endpoints) == 0 {
+	if err != nil {
+		// Logged rather than swallowed: a failed lookup and a tenant with no
+		// subscribers are the same silence otherwise, which is how a dispatcher
+		// delivering nothing at all reads as a dispatcher with nothing to do.
+		log.Printf("[Webhook Dispatcher] Failed resolving endpoints for '%s' in tenant '%s': %v", task.EventType, task.TenantID, err)
+		return
+	}
+	if len(endpoints) == 0 {
 		return
 	}
 
