@@ -99,6 +99,29 @@ type Actor struct {
 	Origin    string
 }
 
+// actorRef names the operator behind an administrative action for a webhook
+// payload, preferring the console administrator over the key they may have used.
+//
+// A secret key is reported as its key ID because that is the only identity it
+// has; a subscriber correlating the event with its own records needs something
+// stable either way, and "" would leave an administrative change looking
+// unattributed.
+func (a Actor) actorRef() string {
+	if a.ConsoleUserID != "" {
+		return a.ConsoleUserID
+	}
+	return a.APIKeyID
+}
+
+// WebhookDispatcher publishes administrative account changes to tenant webhooks.
+type WebhookDispatcher interface {
+	// Dispatch queues an event for delivery. It must not block the caller.
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
+}
+
 // Service applies the administrative account lifecycle rules.
 type Service struct {
 	// repo reads and writes the user directory and the audit trail.
@@ -115,6 +138,8 @@ type Service struct {
 	// cutoff has to outlive the longest-lived token it could be asked about, and the
 	// per-environment ceilings only ever shorten that.
 	accessTokenTTL time.Duration
+	// webhooks publishes lifecycle changes. May be nil, which disables emission.
+	webhooks WebhookDispatcher
 }
 
 // NewService returns a service bound to its collaborators.
@@ -129,6 +154,47 @@ func NewService(repo *Repository, sessions *session.Repository, blocklist *token
 		ttl = cfg.AccessTokenTTL
 	}
 	return &Service{repo: repo, sessions: sessions, blocklist: blocklist, accessTokenTTL: ttl}
+}
+
+// WithWebhooks attaches the dispatcher that publishes lifecycle changes, and
+// returns the service for chaining.
+//
+// An option rather than a constructor parameter, unlike sessions and blocklist:
+// a restriction with no announcement is still a restriction, so the tests that
+// build this service need no webhook engine standing behind them.
+func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
+	s.webhooks = d
+	return s
+}
+
+// emit queues a webhook event, doing nothing when no dispatcher is attached.
+//
+// The guard lives here rather than at each call site because emission is a
+// notification: the account change it reports has already committed, and no
+// caller branches on whether it was announced.
+func (s *Service) emit(tenantID, environment, eventType string, data map[string]interface{}) {
+	if s.webhooks == nil {
+		return
+	}
+	s.webhooks.Dispatch(tenantID, environment, eventType, data)
+}
+
+// emitSessionsCutOff publishes session.revoked for the wholesale revocation that
+// accompanies a restriction, a retirement or a forced sign-out.
+//
+// access_tokens_cut is carried because it is what tells a subscriber whether the
+// account's live access ended now or ends within one access-token lifetime; with
+// no blocklist configured the sessions are gone but the tokens already issued run
+// to their expiry.
+func (s *Service) emitSessionsCutOff(tenantID string, u *ent.User, reason string, revoked int, actor Actor) {
+	s.emit(tenantID, string(u.Environment), "session.revoked", map[string]interface{}{
+		"user_id":           u.ID,
+		"scope":             "all",
+		"reason":            reason,
+		"count":             revoked,
+		"access_tokens_cut": s.blocklist.Enabled(),
+		"actor_id":          actor.actorRef(),
+	})
 }
 
 // List returns one page of the tenant's user directory and the total matching
@@ -279,6 +345,21 @@ func (s *Service) restrict(ctx context.Context, tenantID, userID string, status 
 		"access_tokens_cut": s.blocklist.Enabled(),
 	})
 
+	// Two events, because a subscriber acts on them separately: the status change
+	// is what their own directory has to mirror, and the revocation is what tells
+	// them any session of this user's they were tracking is now dead. The reason is
+	// derived from the target status so a new restricting transition needs no second
+	// place to name itself.
+	s.emit(tenantID, string(u.Environment), "user.updated", map[string]interface{}{
+		"user_id":         userID,
+		"email":           u.Email,
+		"status":          string(status),
+		"previous_status": string(u.Status),
+		"reason":          reason,
+		"actor_id":        actor.actorRef(),
+	})
+	s.emitSessionsCutOff(tenantID, u, "account_"+string(status), revoked, actor)
+
 	return s.reload(ctx, userID)
 }
 
@@ -307,6 +388,17 @@ func (s *Service) lift(ctx context.Context, tenantID, userID string, required us
 	s.audit(ctx, tenantID, userID, event, reason, actor, map[string]interface{}{
 		"previous_status": string(u.Status),
 		"new_status":      string(user.StatusActive),
+	})
+
+	// No session.revoked accompanies a lift: nothing was revoked here, and the
+	// sessions cut off while the restriction stood stay cut off.
+	s.emit(tenantID, string(u.Environment), "user.updated", map[string]interface{}{
+		"user_id":         userID,
+		"email":           u.Email,
+		"status":          string(user.StatusActive),
+		"previous_status": string(u.Status),
+		"reason":          reason,
+		"actor_id":        actor.actorRef(),
 	})
 
 	return s.reload(ctx, userID)
@@ -343,6 +435,19 @@ func (s *Service) SoftDelete(ctx context.Context, tenantID, userID, reason strin
 		"access_tokens_cut":  s.blocklist.Enabled(),
 	})
 
+	// The same event name the account holder's own deletion raises, because it
+	// means the same thing to a subscriber: this account no longer signs in. soft
+	// distinguishes it — the row survives here and a restore can bring it back, so a
+	// subscriber that purges its own copy on this event should know it may return.
+	s.emit(tenantID, string(u.Environment), "user.deleted", map[string]interface{}{
+		"user_id":  userID,
+		"email":    u.Email,
+		"soft":     true,
+		"reason":   reason,
+		"actor_id": actor.actorRef(),
+	})
+	s.emitSessionsCutOff(tenantID, u, "account_deleted", revoked, actor)
+
 	return nil
 }
 
@@ -375,6 +480,18 @@ func (s *Service) Restore(ctx context.Context, tenantID, userID, reason string, 
 		"deleted_at":         u.DeletedAt.UTC().Format(time.RFC3339),
 	})
 
+	// user.updated rather than a creation event: the account never stopped
+	// existing. status reports what it came back as, which is not necessarily
+	// active — a ban applied before the retirement is still in force.
+	s.emit(tenantID, string(u.Environment), "user.updated", map[string]interface{}{
+		"user_id":  userID,
+		"email":    u.Email,
+		"status":   string(u.Status),
+		"restored": true,
+		"reason":   reason,
+		"actor_id": actor.actorRef(),
+	})
+
 	return s.reload(ctx, userID)
 }
 
@@ -394,6 +511,8 @@ func (s *Service) ForceLogout(ctx context.Context, tenantID, userID, reason stri
 		"sessions_revoked":  revoked,
 		"access_tokens_cut": s.blocklist.Enabled(),
 	})
+
+	s.emitSessionsCutOff(tenantID, u, "admin_force_logout", revoked, actor)
 
 	return revoked, nil
 }
@@ -415,6 +534,13 @@ func (s *Service) VerifyEmail(ctx context.Context, tenantID, userID string, acto
 
 	s.audit(ctx, tenantID, userID, "admin.user.email_verified", "", actor, map[string]interface{}{
 		"email": u.Email,
+	})
+
+	s.emit(tenantID, string(u.Environment), "user.updated", map[string]interface{}{
+		"user_id":        userID,
+		"email":          u.Email,
+		"email_verified": true,
+		"actor_id":       actor.actorRef(),
 	})
 
 	return s.reload(ctx, userID)
@@ -454,6 +580,17 @@ func (s *Service) UpdateProfile(ctx context.Context, tenantID, userID string, pa
 
 	s.audit(ctx, tenantID, userID, "admin.user.updated", "", actor, map[string]interface{}{
 		"fields_changed": changedFields(patch),
+	})
+
+	// The payload names which fields moved but not what they now hold, for the same
+	// reason the audit row does: a profile is personal data, and a subscriber that
+	// needs the new values can read the account back over the API it is already
+	// authenticated for.
+	s.emit(tenantID, string(updated.Environment), "user.updated", map[string]interface{}{
+		"user_id":        userID,
+		"email":          updated.Email,
+		"fields_changed": changedFields(patch),
+		"actor_id":       actor.actorRef(),
 	})
 
 	return updated, nil

@@ -147,9 +147,24 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload, relayState, ip
 	// carries them.
 	environment := string(conn.Environment)
 
-	usrObj, err := s.resolveOrProvisionSubject(ctx, client, tenantID, environment, email)
+	usrObj, provisioned, err := s.resolveOrProvisionSubject(ctx, client, tenantID, environment, email)
 	if err != nil {
 		return nil, err
+	}
+
+	// Reported where the account is known to be new rather than from the
+	// provisioning helper, which has no dispatcher and would emit for the
+	// connection tests that call it. via names the identity provider as the route,
+	// and no user.signup accompanies it: nobody registered here, an assertion
+	// arrived for an address the tenant had not seen.
+	if provisioned && s.dispatcher != nil {
+		s.dispatcher.Dispatch(tenantID, environment, "user.created", map[string]interface{}{
+			"user_id":        usrObj.ID,
+			"email":          usrObj.Email,
+			"via":            "saml",
+			"org_id":         conn.OrganizationID,
+			"email_verified": usrObj.EmailVerified,
+		})
 	}
 
 	orgObj, err := client.Organization.Query().
@@ -174,12 +189,24 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload, relayState, ip
 		// A failed membership write leaves the user signed in without org
 		// access, which is recoverable by an administrator; it is not worth
 		// failing an otherwise valid authentication over.
-		_, _ = client.OrgMember.Create().
+		_, memberErr := client.OrgMember.Create().
 			SetID(idgen.New("mem")).
 			SetOrganizationID(conn.OrganizationID).
 			SetUserID(usrObj.ID).
 			SetRoleID(roleID).
 			Save(ctx)
+
+		// Announced only when the row exists, and named the same way the invitation
+		// and direct-add paths name it, so a subscriber keeping its own roster in step
+		// sees the people an identity provider brings in too.
+		if memberErr == nil && s.dispatcher != nil {
+			s.dispatcher.Dispatch(tenantID, environment, "org.member_joined", map[string]interface{}{
+				"org_id":  conn.OrganizationID,
+				"user_id": usrObj.ID,
+				"role_id": roleID,
+				"via":     "saml",
+			})
+		}
 	}
 
 	s.logAudit(ctx, tenantID, usrObj.ID, "saml.login_success", "user", usrObj.ID, map[string]interface{}{
@@ -213,7 +240,8 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload, relayState, ip
 }
 
 // resolveOrProvisionSubject returns the user an assertion's subject maps to
-// within one environment, creating one if the address is new to it.
+// within one environment, creating one if the address is new to it, and reports
+// whether it created one.
 //
 // environment comes from the SAML connection, which is what decides where the
 // people arriving through an identity provider belong. The assertion itself
@@ -227,7 +255,7 @@ func (s *Service) ProcessACS(ctx context.Context, rawSAMLPayload, relayState, ip
 // (tenant, environment, email), so an unnarrowed query that matched two rows would
 // fall through to a create the index rejects, locking that subject out of SSO for
 // good rather than for one attempt.
-func (s *Service) resolveOrProvisionSubject(ctx context.Context, client *ent.Client, tenantID, environment, email string) (*ent.User, error) {
+func (s *Service) resolveOrProvisionSubject(ctx context.Context, client *ent.Client, tenantID, environment, email string) (*ent.User, bool, error) {
 	existing, err := client.User.Query().
 		Where(
 			user.TenantID(tenantID),
@@ -236,7 +264,7 @@ func (s *Service) resolveOrProvisionSubject(ctx context.Context, client *ent.Cli
 		).
 		Only(ctx)
 	if err == nil && existing != nil {
-		return existing, nil
+		return existing, false, nil
 	}
 
 	created, err := client.User.Create().
@@ -247,9 +275,9 @@ func (s *Service) resolveOrProvisionSubject(ctx context.Context, client *ent.Cli
 		SetEmailVerified(true).
 		Save(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to JIT provision user: %w", err)
+		return nil, false, fmt.Errorf("failed to JIT provision user: %w", err)
 	}
-	return created, nil
+	return created, true, nil
 }
 
 // issueSession creates the session an authenticated SSO subject is carried by

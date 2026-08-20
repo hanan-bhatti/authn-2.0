@@ -261,6 +261,12 @@ func (h *Handler) ExitImpersonation(c *fiber.Ctx) error {
 	remainingTTL := time.Until(time.Unix(claims.Exp, 0).UTC())
 	h.blocklist.Block(c.UserContext(), claims.Jti, remainingTTL)
 
+	// Announced after the token is refused rather than before, so a subscriber
+	// acting on the event — closing a ticket, ending a screen recording — cannot
+	// see the session reported as over while it would still authenticate.
+	h.svc.RecordImpersonationExit(claims.TenantID, claims.Environment, claims.SessionID,
+		claims.Sub, claims.Email, claims.ImpersonatorID)
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message":         "impersonation session exited successfully",
 		"impersonated_id": claims.Sub,

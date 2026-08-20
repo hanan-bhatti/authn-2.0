@@ -36,21 +36,45 @@ The privacy interceptor deliberately does *not* narrow `webhook_endpoint` by env
 
 ## 2. Event Types & Format
 
-### Currently Emitted
-- `user.updated` — Profile changed
-- `user.deleted` — Account deleted
-- `password.changed` — Password reset or changed
-- `user.impersonated` — Support session started
-- `org.created`, `org.updated`, `org.deleted` — Organization lifecycle
-- `org.member_joined`, `org.member_removed` — Membership changes
-- `org.invitation_sent`, `org.invitation_revoked`, `org.invitation_accepted` — Invitation lifecycle
-- `saml.connection_created`, `saml.connection_updated`, `saml.connection_deleted` — SSO connection lifecycle
-- `saml.login_success` — SSO sign-in completed
-- `ping` — Fired manually via `/ping`, never by system activity
-- `*` — Wildcard, matches every event including ones added later
+### Emitted Events
 
-### Accepted But Not Yet Emitted
-These names validate on subscription, so an integration can register for them today, but no code path raises them yet: `user.created`, `user.signup`, `user.login.success`, `user.login.failed`, `session.revoked`, `2fa.enabled`, `2fa.disabled`, `rbac.role.assigned`, `rbac.role.revoked`, `user.impersonation_exited`. A subscriber wanting sign-in or session activity should read the audit log until they are wired up.
+Every name on the subscription allowlist (`internal/webhook/validator.go`) is raised by a real code path. Nothing validates on subscription that cannot fire.
+
+**Account lifecycle**
+- `user.created` — An account row came into existence. `via` names the route: `password`, `magic_link`, `social`, `saml`, `invitation`.
+- `user.signup` — Someone registered themselves. Raised only where the person supplied their own address and nobody else initiated it: `password`, `magic_link`, `social`. A SAML subject provisioned just-in-time and an invitee redeeming a token get `user.created` alone, since neither of them signed up.
+- `user.updated` — Profile changed, by the account holder or by an administrator. The administrative form carries `actor_id` and names the fields that moved (`fields_changed`) without their values; a status change carries `status` and `previous_status`, and a restore carries `restored`.
+- `user.deleted` — The account no longer signs in. `soft: true` marks the administrative retirement, whose row survives and can be restored; the account holder's own deletion removes the row.
+- `password.changed` — Password reset or changed.
+
+**Authentication**
+- `user.login.success` — A session was issued. `method` is `password`, `magic_link`, `passkey`, or the second factor that completed a challenge (`totp`, `sms`, `recovery_code`); `session_id` names the session. **SSO is the exception**: a SAML sign-in raises `saml.login_success` and no `user.login.success`, so a subscriber wanting every sign-in must take both names.
+- `user.login.failed` — An attempt was refused. `reason` is `invalid_credentials` (unknown address or wrong password — `user_id` is present only when an account matched), `account_status` (correct credentials, restricted account, with `status`), or `invalid_2fa_code` (correct password, rejected second factor).
+- `2fa.enabled` / `2fa.disabled` — `method` is `totp`, `sms` or `passkey`. `2fa.disabled` names the factor that was removed rather than asserting the account has none left; `remaining_factors` tells apart deleting one passkey of several from losing the last one.
+- `session.revoked` — `scope` is `session`, `others` or `all`, and `reason` says who ended it and why: `user_request`, `refresh_token_reuse`, `2fa_disabled`, `account_banned`, `account_suspended`, `account_deleted`, `admin_force_logout`. The wholesale forms carry `count`; the administrative ones carry `actor_id` and `access_tokens_cut`, which reports whether outstanding access tokens were refused immediately or run to their own expiry.
+- `rbac.role.assigned` / `rbac.role.revoked` — Carries `role_id`, `role_slug`, `role_name` and the `actor_id` who made the change.
+
+**Support sessions**
+- `user.impersonated` / `user.impersonation_exited` — Both carry the same `session_id`, which travels in the impersonation token's `sid` claim. Nothing about a support session is stored server-side, so the token is what lets the end be matched to the start.
+
+**Organizations and SSO**
+- `org.created`, `org.updated`, `org.deleted` — Organization lifecycle.
+- `org.member_joined`, `org.member_removed` — Membership changes. `org.member_joined` fires on all three routes into an organization, with `via` distinguishing a direct add (absent), `invitation` and `saml`.
+- `org.invitation_sent`, `org.invitation_revoked`, `org.invitation_accepted` — Invitation lifecycle. Redeeming an invitation raises `org.member_joined` as well, because the token being spent and the membership existing are separate facts.
+- `saml.connection_created`, `saml.connection_updated`, `saml.connection_deleted` — SSO connection lifecycle.
+- `saml.login_success` — SSO sign-in completed.
+
+**Meta**
+- `ping` — Fired manually via `/ping`, never by system activity.
+- `*` — Wildcard, matches every event including ones added later.
+
+### Payload conventions
+
+- **Every event names its subject by ID**, and account events carry `email` alongside it, so a subscriber need not hold a prior mapping to act on one.
+- **An event's environment comes from the row it concerns**, never from the caller's key — see *Environment Separation* above.
+- **Failed authentication is reported in full to the tenant's own subscriber.** The HTTP response deliberately cannot distinguish an unknown address from a wrong password, but the webhook does: telling a spray across many addresses from repeated attempts on one account is what makes the stream usable against credential stuffing, and it reveals nothing to anyone outside the tenant.
+- **Personal data is not accumulated.** Profile events name which fields changed, not what they now contain; a subscriber needing the values reads the account back over the API it is already authenticated for.
+- **Emission never fails an operation.** Dispatch is a bounded non-blocking send, and every call site treats it as a notification: an account change that committed is not undone because its announcement had nowhere to go.
 
 ### Standard Webhook Payload Format
 ```json

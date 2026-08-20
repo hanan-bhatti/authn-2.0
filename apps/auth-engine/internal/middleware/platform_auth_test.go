@@ -328,7 +328,7 @@ func TestPlatformAuthRejectsImpersonatedToken(t *testing.T) {
 	app := platformApp(t, platformTenant, verifiedLookup())
 
 	impToken, err := jwtpkg.IssueImpersonationToken(platformUserID, platformTenant, "live",
-		platformUserMail, "Operator", "user", "usr_admin99", 15*time.Minute, platformSecret)
+		platformUserMail, "Operator", "user", "usr_admin99", "", 15*time.Minute, platformSecret)
 	require.NoError(t, err)
 
 	resp := post(t, app, bearer(impToken))

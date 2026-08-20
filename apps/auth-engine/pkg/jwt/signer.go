@@ -197,8 +197,13 @@ func IssueAccessTokenWithSession(userID string, tenantID string, environment str
 // specify one cannot mint an unusually long-lived support session. The `jti`
 // prefix distinguishes these tokens in logs.
 //
+// sessionID names the support session in the `sid` claim, which is what lets the
+// event announcing the session's end name the same session its start did. An
+// empty value omits the claim; no support session is stored server-side, so the
+// token is the only place the identifier survives.
+//
 // Returns an error only if the claims cannot be marshalled.
-func IssueImpersonationToken(userID string, tenantID string, environment string, email string, name string, role string, impersonatorID string, durationMinutes time.Duration, signingSecret string) (string, error) {
+func IssueImpersonationToken(userID string, tenantID string, environment string, email string, name string, role string, impersonatorID string, sessionID string, durationMinutes time.Duration, signingSecret string) (string, error) {
 	now := time.Now().UTC()
 	if durationMinutes <= 0 {
 		durationMinutes = impersonationFallbackTTL
@@ -212,6 +217,7 @@ func IssueImpersonationToken(userID string, tenantID string, environment string,
 		Email:          email,
 		Name:           name,
 		Role:           role,
+		SessionID:      sessionID,
 		ImpersonatorID: impersonatorID,
 		IsImpersonated: true,
 		Iss:            tokenIssuer,

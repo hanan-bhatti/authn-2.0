@@ -44,6 +44,7 @@ Tokens issued via `jwt.IssueImpersonationToken` contain explicit security claims
   "tenant_id": "tnt_00000000000000000000000000000001",
   "environment": "live",
   "email": "customer@example.com",
+  "sid": "ses_imp_1785938400123456789",
   "impersonator_id": "usr_admin99",
   "is_impersonated": true,
   "iss": "authn-engine",
@@ -51,6 +52,12 @@ Tokens issued via `jwt.IssueImpersonationToken` contain explicit security claims
   "exp": 1785939300
 }
 ```
+
+`sid` names the support session and is the same identifier carried by the
+`user.impersonated` and `user.impersonation_exited` webhooks, which is what lets a
+SIEM pair the end of a session with its start. It is not a revocable session
+record — nothing is stored server-side when impersonation begins — so it matches
+no row in the session store and marks nothing as current in a session listing.
 
 ---
 
@@ -81,10 +88,12 @@ teardown or re-enrollment, guardian changes, recovery initiate/claim, and both
 sign-out routes (`POST /v1/client/auth/logout`, `POST /v1/client/auth/logout-all`).
 
 Sign-out is on the list because an impersonation token names the target user in
-`sub` and carries no session claim, so `/logout-all` would resolve the victim's
-user ID and revoke every session they own on every device. `POST
-/v1/client/auth/impersonate/exit` is deliberately **not** on the list — it is how
-an impersonator ends their own session, and blocking it would strand them.
+`sub`, so `/logout-all` would resolve the victim's user ID and revoke every
+session they own on every device. The `sid` claim is no protection here: it names
+the support session, which has no session row behind it, so it gives a revocation
+nothing narrower to aim at. `POST /v1/client/auth/impersonate/exit` is
+deliberately **not** on the list — it is how an impersonator ends their own
+session, and blocking it would strand them.
 
 A new destructive route under `/v1/client` must be added to that list when it is
 registered; the guard's default is allow, so an omission fails open.
@@ -139,6 +148,12 @@ registered; the guard's default is allow, so an omission fails open.
   "impersonator_id": "usr_admin99"
 }
 ```
+
+The token's `jti` is blocklisted for its remaining lifetime, so a replay after the
+exit is refused rather than accepted until natural expiry. The
+`user.impersonation_exited` webhook is dispatched after that, carrying the `sid`
+the `user.impersonated` event carried, so a subscriber never sees a session
+reported as over while it would still authenticate.
 
 ---
 

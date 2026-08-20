@@ -66,6 +66,15 @@ var (
 // NewProvider's signature.
 type providerFactory func(name, clientID, clientSecret string, extraParam ...string) (IdentityProvider, error)
 
+// WebhookDispatcher publishes account and sign-in events to tenant webhooks.
+type WebhookDispatcher interface {
+	// Dispatch queues an event for delivery. It must not block the caller.
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
+}
+
 // Service orchestrates social sign-in on top of the repository and provider
 // drivers.
 type Service struct {
@@ -82,6 +91,8 @@ type Service struct {
 	// through the returned driver, and that is the one dependency a test cannot
 	// supply for real.
 	newProvider providerFactory
+	// webhooks publishes lifecycle events. May be nil, which disables emission.
+	webhooks WebhookDispatcher
 }
 
 // NewService constructs a Service.
@@ -92,6 +103,24 @@ type Service struct {
 // token expires.
 func NewService(repo *Repository, cfg *config.Config, sessions *session.Repository) *Service {
 	return &Service{repo: repo, cfg: cfg, sessions: sessions, newProvider: NewProvider}
+}
+
+// WithWebhooks attaches the dispatcher that publishes lifecycle events, and
+// returns the service for chaining.
+//
+// A separate method rather than a constructor parameter, so the tests that build
+// this service need no webhook engine standing behind them.
+func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
+	s.webhooks = d
+	return s
+}
+
+// emit queues a webhook event, doing nothing when no dispatcher is attached.
+func (s *Service) emit(tenantID, environment, eventType string, data map[string]interface{}) {
+	if s.webhooks == nil {
+		return
+	}
+	s.webhooks.Dispatch(tenantID, environment, eventType, data)
 }
 
 // refreshTokenTTL is how long a session created here in environment may be
@@ -357,6 +386,26 @@ func (s *Service) HandleCallback(
 			userID = newUser.ID
 			email = newUser.Email
 			name = newUser.Name
+
+			// A first sign-in through a provider is how the person registered, so
+			// this reports both the account coming into existence and the
+			// registration itself — the same pair the password form produces.
+			s.emit(state.TenantID, state.Environment, "user.created", map[string]interface{}{
+				"user_id":        newUser.ID,
+				"email":          newUser.Email,
+				"name":           newUser.Name,
+				"via":            "social",
+				"provider":       provider,
+				"email_verified": newUser.EmailVerified,
+			})
+			s.emit(state.TenantID, state.Environment, "user.signup", map[string]interface{}{
+				"user_id":  newUser.ID,
+				"email":    newUser.Email,
+				"name":     newUser.Name,
+				"method":   "social",
+				"provider": provider,
+				"ip":       ipAddress,
+			})
 		}
 	}
 
@@ -410,6 +459,16 @@ func (s *Service) HandleCallback(
 	if err := s.repo.CreateSignInAuditLog(ctx, state.TenantID, state.ApplicationID, userID, provider, ipAddress, userAgent, origin); err != nil {
 		log.Printf("[SOCIAL] sign-in audit log failed for user %s: %v", userID, err)
 	}
+
+	s.emit(state.TenantID, state.Environment, "user.login.success", map[string]interface{}{
+		"user_id":    userID,
+		"email":      email,
+		"method":     "social",
+		"provider":   provider,
+		"session_id": sess.ID,
+		"ip":         ipAddress,
+		"user_agent": userAgent,
+	})
 
 	postCallback := state.PostCallbackRedirect
 	if err := s.validatePostCallbackRedirect(ctx, state.TenantID, state.Environment, state.ApplicationID, postCallback); err != nil {

@@ -141,8 +141,17 @@ func wireFeatures(
 	sandboxHandler := sandbox.NewHandler(sandboxStore, factory, cfg, directEmail, directSMS).
 		WithLimiter(resendLimiter)
 
+	// The dispatcher is built before the services that publish through it. Its
+	// workers are started here rather than at the end of wiring because there is
+	// nothing to deliver until the first request arrives, and every service below
+	// needs the handle.
+	webhookRepo := webhook.NewRepository(factory)
+	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.EncryptionKey, cfg.WebhookWorkerCount)
+	webhookDispatcher.Start()
+
 	authRepo := auth.NewRepository(factory)
-	authService := auth.NewService(authRepo, cfg, emailProvider, smsProvider)
+	authService := auth.NewService(authRepo, cfg, emailProvider, smsProvider).
+		WithWebhooks(webhookDispatcher)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithBlocklist(bl).
 		WithSessionPolicyResolver(settingsResolver)
@@ -157,24 +166,24 @@ func wireFeatures(
 	oauthHandler := oauth.NewHandler(oauthService).WithSettings(settingsResolver)
 
 	sessionRepo := session.NewRepository(factory)
-	sessionService := session.NewService(sessionRepo, cfg)
+	sessionService := session.NewService(sessionRepo, cfg).
+		WithWebhooks(webhookDispatcher)
 	sessionHandler := session.NewHandler(sessionService).WithSessionPolicyResolver(settingsResolver)
 
 	// Social sign-in issues its session through the same store the session
 	// endpoints read, so a Google login is listed and revoked like any other.
 	socialRepo := social.NewRepository(factory, policyRepo, cfg.EncryptionKey)
-	socialService := social.NewService(socialRepo, cfg, sessionRepo)
+	socialService := social.NewService(socialRepo, cfg, sessionRepo).
+		WithWebhooks(webhookDispatcher)
 	socialHandler := social.NewHandler(socialService).
 		WithSessionPolicyResolver(settingsResolver)
 
 	rbacRepo := rbac.NewRepository(factory)
 	rbacAudit := rbac.NewAuditLogger(factory)
-	rbacService := rbac.NewService(rbacRepo, rbacAudit, cfg)
+	rbacService := rbac.NewService(rbacRepo, rbacAudit, cfg).
+		WithWebhooks(webhookDispatcher)
 	rbacHandler := rbac.NewHandler(rbacService)
 
-	webhookRepo := webhook.NewRepository(factory)
-	webhookDispatcher := webhook.NewDispatcher(webhookRepo, cfg.EncryptionKey, cfg.WebhookWorkerCount)
-	webhookDispatcher.Start()
 	webhookService := webhook.NewService(webhookRepo, webhookDispatcher, cfg)
 	webhookHandler := webhook.NewHandler(webhookService)
 
@@ -199,7 +208,8 @@ func wireFeatures(
 	// User administration shares the session repository and the token blocklist
 	// with the authentication path, because restricting an account has to reach
 	// the sessions and the access tokens that path issued.
-	userAdminService := useradmin.NewService(useradmin.NewRepository(factory), sessionRepo, bl, cfg)
+	userAdminService := useradmin.NewService(useradmin.NewRepository(factory), sessionRepo, bl, cfg).
+		WithWebhooks(webhookDispatcher)
 	userAdminHandler := useradmin.NewHandler(userAdminService)
 
 	// The hosted control plane exists only where a platform tenant is configured.

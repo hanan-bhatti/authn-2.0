@@ -314,6 +314,21 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 			return nil, fmt.Errorf("failed to provision user for invitation: %w", err)
 		}
 		targetUser = createdUser
+
+		// Emitted before the membership and acceptance events below, because that is
+		// the order the facts occur in: the account exists, then it joins. No
+		// user.signup accompanies it — the person was invited rather than
+		// registering, and a subscriber counting registrations should not see one.
+		if s.dispatcher != nil {
+			s.dispatcher.Dispatch(tenantID, environment, "user.created", map[string]interface{}{
+				"user_id":        createdUser.ID,
+				"email":          createdUser.Email,
+				"via":            "invitation",
+				"org_id":         inv.OrganizationID,
+				"invitation_id":  inv.ID,
+				"email_verified": createdUser.EmailVerified,
+			})
+		}
 	}
 	userID = targetUser.ID
 
@@ -351,6 +366,21 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		member, err = builder.Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create member: %w", err)
+		}
+
+		// Raised here as well as by the direct-add path, because this is the other way
+		// a membership comes into existence: a subscriber keeping its own roster in
+		// step would otherwise miss everyone who joined by invitation. The
+		// org.invitation_accepted event below is not a substitute — it reports the
+		// token being spent, and an integration tracking membership should not have to
+		// know that redeeming one implies joining.
+		if s.dispatcher != nil {
+			s.dispatcher.Dispatch(tenantID, environment, "org.member_joined", map[string]interface{}{
+				"org_id":  inv.OrganizationID,
+				"user_id": userID,
+				"role_id": inv.RoleID,
+				"via":     "invitation",
+			})
 		}
 	}
 

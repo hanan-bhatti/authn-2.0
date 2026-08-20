@@ -256,6 +256,16 @@ func (u *WebAuthnUserAdapter) WebAuthnCredentials() []webauthn.Credential {
 	return u.Credentials
 }
 
+// WebhookDispatcher publishes account and session lifecycle events to tenant
+// webhooks.
+type WebhookDispatcher interface {
+	// Dispatch queues an event for delivery. It must not block the caller.
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
+}
+
 // Service handles domain business logic for authentication.
 type Service struct {
 	// repo is the persistence boundary for users, sessions, two-factor methods and audit rows.
@@ -268,6 +278,8 @@ type Service struct {
 	emailProvider emailPkg.EmailProvider
 	// smsProvider delivers OTP messages. May be nil, in which case sends fall back to email.
 	smsProvider smsPkg.SMSProvider
+	// webhooks publishes lifecycle events. May be nil, which disables emission; see emit.
+	webhooks WebhookDispatcher
 	// webauthn is the configured relying party. Nil when no RP ID is set, which disables the
 	// passkey endpoints rather than failing at startup.
 	webauthn *webauthn.WebAuthn
@@ -324,6 +336,72 @@ func NewService(repo *Repository, cfg *config.Config, emailProvider emailPkg.Ema
 		smsProvider:   smsProv,
 		webauthn:      web,
 	}
+}
+
+// WithWebhooks attaches the dispatcher that publishes lifecycle events, and
+// returns the service for chaining.
+//
+// A separate method rather than a constructor parameter: the constructor's SMS
+// tail is variadic, so nothing can follow it positionally, and the dependency is
+// genuinely optional — the roughly ten tests that build this service need no
+// webhook engine behind them.
+func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
+	s.webhooks = d
+	return s
+}
+
+// emit queues a webhook event, doing nothing when no dispatcher is attached.
+//
+// The guard lives here rather than at each call site because emission is a
+// notification: no caller branches on it, and none should grow a nil check for
+// a dependency that is absent in every test.
+func (s *Service) emit(tenantID, environment, eventType string, data map[string]interface{}) {
+	if s.webhooks == nil {
+		return
+	}
+	s.webhooks.Dispatch(tenantID, environment, eventType, data)
+}
+
+// emitSessionsRevoked publishes session.revoked for a revocation that covered
+// every session on an account, resolving the tenant and environment itself.
+//
+// The account is loaded here rather than passed in because the paths that revoke
+// wholesale hold a session row and nothing else: a refresh token presented twice
+// names its session, not its owner. An account that cannot be resolved is
+// skipped, since the event has no tenant to route by and the revocation it
+// reports has already happened.
+func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason string) {
+	if s.webhooks == nil {
+		return
+	}
+
+	u, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return
+	}
+
+	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
+		"user_id": userID,
+		"scope":   "all",
+		"reason":  reason,
+	})
+}
+
+// challengeMethod names the factor a completed second-factor challenge was
+// satisfied with, for the login event.
+//
+// It repeats the verifier's own resolution of an omitted method rather than
+// reading it back: a challenge token always lists the methods the account is
+// permitted to use, and an omitted target only verifies when exactly one is
+// listed, so the answer is already determined here.
+func challengeMethod(targetMethod string, allowed []string) string {
+	if m := strings.ToLower(strings.TrimSpace(targetMethod)); m != "" {
+		return m
+	}
+	if len(allowed) == 1 {
+		return allowed[0]
+	}
+	return ""
 }
 
 // refreshTokenTTL returns how long a newly created session in environment may be refreshed before
@@ -528,6 +606,26 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, tenantID, u.ID, "user.signed_up", ipAddress, userAgent, "")
 
+	// Two events, not one. user.created fires wherever an account comes into
+	// existence and carries how, so a subscriber provisioning downstream records
+	// handles every route in one place. user.signup is the narrower claim that a
+	// person registered themselves, which is the one a growth or onboarding
+	// integration wants and which a social, SAML or invitation account is not.
+	s.emit(tenantID, env, "user.created", map[string]interface{}{
+		"user_id":        u.ID,
+		"email":          u.Email,
+		"name":           u.Name,
+		"via":            "password",
+		"email_verified": u.EmailVerified,
+	})
+	s.emit(tenantID, env, "user.signup", map[string]interface{}{
+		"user_id": u.ID,
+		"email":   u.Email,
+		"name":    u.Name,
+		"method":  "password",
+		"ip":      ipAddress,
+	})
+
 	// Send Email Verification (Non-blocking log on delivery error)
 	if err := s.SendVerificationEmail(ctx, u); err != nil {
 		log.Printf("[AuthService] Warning: Failed sending verification email to %s: %v", u.Email, err)
@@ -645,6 +743,24 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 			return fmt.Errorf("failed auto-provisioning user for magic link: %w", err)
 		}
 		u = createdUser
+
+		// Requesting a link for an address nobody has registered is how an account
+		// begins on this path, so it is a registration as much as the password form
+		// is: the person supplied their own address and nobody invited them.
+		s.emit(tenantID, env, "user.created", map[string]interface{}{
+			"user_id":        u.ID,
+			"email":          u.Email,
+			"name":           u.Name,
+			"via":            "magic_link",
+			"email_verified": u.EmailVerified,
+		})
+		s.emit(tenantID, env, "user.signup", map[string]interface{}{
+			"user_id": u.ID,
+			"email":   u.Email,
+			"name":    u.Name,
+			"method":  "magic_link",
+			"ip":      ipAddress,
+		})
 	}
 
 	// Generate 32-byte cryptographically random token
@@ -764,6 +880,15 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, u.TenantID, u.ID, "user.magic_link_login", ipAddress, userAgent, "")
 
+	s.emit(u.TenantID, string(u.Environment), "user.login.success", map[string]interface{}{
+		"user_id":    u.ID,
+		"email":      u.Email,
+		"method":     "magic_link",
+		"session_id": sessionID,
+		"ip":         ipAddress,
+		"user_agent": userAgent,
+	})
+
 	return u, accessToken, rawRefreshToken, nil
 }
 
@@ -792,6 +917,26 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	validPassword := crypto.VerifyPasswordArgon2id(password, passwordHash)
 
 	if err != nil || u == nil || !validPassword {
+		// The attempted address is always reported and the user ID only when one
+		// matched, because this branch covers an unknown address as well as a wrong
+		// password: a subscriber watching for credential stuffing has to be able to
+		// tell a spray across many addresses from repeated attempts on one account.
+		//
+		// The response stays deliberately indistinguishable between those two — see
+		// the constant-time verification above. Reporting the difference to the
+		// tenant's own subscriber gives away nothing the tenant may not know.
+		failure := map[string]interface{}{
+			"email":      email,
+			"method":     "password",
+			"reason":     "invalid_credentials",
+			"ip":         ipAddress,
+			"user_agent": userAgent,
+		}
+		if u != nil {
+			failure["user_id"] = u.ID
+		}
+		s.emit(tenantID, env, "user.login.failed", failure)
+
 		return nil, "", "", ErrInvalidCredentials
 	}
 
@@ -799,6 +944,19 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	// Its row survives only to keep the address reserved, so naming it would turn
 	// the sign-in form into a way to ask which addresses were once registered.
 	if err := accountstatus.Allowed(u); err != nil {
+		// A separate reason from a wrong password, and it carries the status: the
+		// password was correct here, and a subscriber acting on a run of these is
+		// looking at a restriction being hit rather than at anyone guessing.
+		s.emit(tenantID, env, "user.login.failed", map[string]interface{}{
+			"user_id":    u.ID,
+			"email":      u.Email,
+			"method":     "password",
+			"reason":     "account_status",
+			"status":     string(u.Status),
+			"ip":         ipAddress,
+			"user_agent": userAgent,
+		})
+
 		if errors.Is(err, accountstatus.ErrDeleted) {
 			return nil, "", "", ErrInvalidCredentials
 		}
@@ -861,6 +1019,15 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	_ = s.repo.UpdateUserLastSignIn(ctx, u.ID)
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, tenantID, u.ID, "user.signed_in", ipAddress, userAgent, "")
+
+	s.emit(tenantID, env, "user.login.success", map[string]interface{}{
+		"user_id":    u.ID,
+		"email":      u.Email,
+		"method":     "password",
+		"session_id": sessionID,
+		"ip":         ipAddress,
+		"user_agent": userAgent,
+	})
 
 	return u, accessToken, rawRefreshToken, nil
 }
@@ -980,12 +1147,14 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Grace window EXPIRED! Token reuse detected past 10s grace window -> TOKEN THEFT ALERT!
 		fmt.Printf("[SECURITY ALERT] POSSIBLE REFRESH TOKEN THEFT DETECTED: Reuse of rotated token (session ID %s, user ID %s) past 10s grace window. Revoking all user sessions.\n", sess.ID, sess.UserID)
 		_ = s.repo.RevokeAllSessionsForUser(ctx, sess.UserID)
+		s.emitSessionsRevoked(ctx, sess.UserID, "refresh_token_reuse")
 		return nil, "", "", fmt.Errorf("invalid_grant: refresh token reuse detected - all sessions revoked for security")
 	}
 
 	// 3. Token is revoked -> Revoke all sessions for security
 	fmt.Printf("[SECURITY ALERT] POSSIBLE REFRESH TOKEN THEFT DETECTED: Attempted use of revoked session (session ID %s, user ID %s). Revoking all user sessions.\n", sess.ID, sess.UserID)
 	_ = s.repo.RevokeAllSessionsForUser(ctx, sess.UserID)
+	s.emitSessionsRevoked(ctx, sess.UserID, "revoked_session_reuse")
 	return nil, "", "", fmt.Errorf("invalid_grant: session has been revoked")
 }
 
@@ -1071,6 +1240,11 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID string, code string) (
 
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_enabled", "", "", "")
+
+	s.emit(u.TenantID, string(u.Environment), "2fa.enabled", map[string]interface{}{
+		"user_id": userID,
+		"method":  "totp",
+	})
 
 	// Check if user already has backup recovery codes
 	existingCount, _ := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID)
@@ -1167,6 +1341,15 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", ErrInvalidToken
 	}
 	if err := accountstatus.Allowed(u); err != nil {
+		// The password was already proven when the challenge was issued, so a
+		// restriction seen here was applied during the challenge window — an
+		// administrator acting while someone was mid-login.
+		s.emit(u.TenantID, string(u.Environment), "user.login.failed", map[string]interface{}{
+			"user_id": u.ID, "email": u.Email, "method": challengeMethod(targetMethod, claims.Methods),
+			"reason": "account_status", "status": string(u.Status),
+			"ip": ipAddress, "user_agent": userAgent,
+		})
+
 		if errors.Is(err, accountstatus.ErrDeleted) {
 			return nil, "", "", ErrInvalidToken
 		}
@@ -1174,6 +1357,20 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	}
 
 	if err := s.Verify2FACodeWithMethod(ctx, claims.Sub, claims.Methods, code, targetMethod); err != nil {
+		// An ambiguous request named no factor and so failed none of them; it is a
+		// malformed call rather than a rejected attempt, and reporting it as a failed
+		// login would put a client's own bug into a security feed.
+		if !errors.Is(err, ErrAmbiguous2FAMethod) {
+			// The password behind this challenge was correct, which is what makes a run
+			// of these worth acting on: someone holding working credentials is being
+			// stopped by the second factor.
+			s.emit(u.TenantID, string(u.Environment), "user.login.failed", map[string]interface{}{
+				"user_id": u.ID, "email": u.Email, "method": challengeMethod(targetMethod, claims.Methods),
+				"reason": "invalid_2fa_code",
+				"ip":     ipAddress, "user_agent": userAgent,
+			})
+		}
+
 		return nil, "", "", err
 	}
 
@@ -1201,6 +1398,15 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	_ = s.repo.UpdateUserLastSignIn(ctx, u.ID)
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), u.ID, "user.signed_in_2fa", ipAddress, userAgent, "")
+
+	s.emit(u.TenantID, string(u.Environment), "user.login.success", map[string]interface{}{
+		"user_id":    u.ID,
+		"email":      u.Email,
+		"method":     challengeMethod(targetMethod, claims.Methods),
+		"session_id": sessionID,
+		"ip":         ipAddress,
+		"user_agent": userAgent,
+	})
 
 	return u, accessToken, rawRefreshToken, nil
 }
@@ -1282,6 +1488,19 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_disabled", ipAddress, userAgent, "")
+
+	// Two events because two things happened, and a subscriber acts on them
+	// differently: one is a weakening of the account's defences to alert on, the
+	// other is every device being signed out to reflect in a session list.
+	s.emit(u.TenantID, string(u.Environment), "2fa.disabled", map[string]interface{}{
+		"user_id": userID,
+		"method":  "totp",
+	})
+	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
+		"user_id": userID,
+		"scope":   "all",
+		"reason":  "2fa_disabled",
+	})
 
 	return nil
 }
@@ -1462,6 +1681,11 @@ func (s *Service) ConfirmSMSEnrollment(ctx context.Context, userID string, code 
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.sms_2fa_confirmed", "", "", "")
 
+	s.emit(u.TenantID, string(u.Environment), "2fa.enabled", map[string]interface{}{
+		"user_id": userID,
+		"method":  "sms",
+	})
+
 	return &ConfirmTOTPResult{
 		Message:              "SMS 2FA successfully confirmed and activated",
 		RecoveryCodes:        recoveryCodes,
@@ -1504,6 +1728,16 @@ func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password str
 
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.sms_2fa_disabled", ipAddress, userAgent, "")
+
+	s.emit(u.TenantID, string(u.Environment), "2fa.disabled", map[string]interface{}{
+		"user_id": userID,
+		"method":  "sms",
+	})
+	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
+		"user_id": userID,
+		"scope":   "all",
+		"reason":  "2fa_disabled",
+	})
 
 	return nil
 }
@@ -1926,6 +2160,12 @@ func (s *Service) FinishWebAuthnRegistration(ctx context.Context, userID string,
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.passkey_registered", "", "", "")
 
+	s.emit(u.TenantID, string(u.Environment), "2fa.enabled", map[string]interface{}{
+		"user_id":      userID,
+		"method":       "passkey",
+		"passkey_name": passkeyName,
+	})
+
 	return &ConfirmTOTPResult{
 		Message:              "WebAuthn passkey registered successfully",
 		RecoveryCodes:        createdCodes,
@@ -2081,6 +2321,15 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), u.ID, "user.login_webauthn", ipAddress, userAgent, "")
 
+	s.emit(u.TenantID, string(u.Environment), "user.login.success", map[string]interface{}{
+		"user_id":    u.ID,
+		"email":      u.Email,
+		"method":     "passkey",
+		"session_id": sessionIDStr,
+		"ip":         ipAddress,
+		"user_agent": userAgent,
+	})
+
 	return u, accessToken, rawRefreshToken, nil
 }
 
@@ -2167,6 +2416,22 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 
 		auditID := idgen.New("aud")
 		_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_disabled", "", "", "")
+
+		// 2fa.disabled names the factor that was removed rather than asserting the
+		// account has none left, which is what lets the branch below reuse it for a
+		// passkey deleted while others remain. remaining_factors tells the two
+		// apart, and only this branch revoked anything.
+		s.emit(u.TenantID, string(u.Environment), "2fa.disabled", map[string]interface{}{
+			"user_id":           userID,
+			"method":            "passkey",
+			"passkey_id":        passkeyID,
+			"remaining_factors": 0,
+		})
+		s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
+			"user_id": userID,
+			"scope":   "all",
+			"reason":  "2fa_disabled",
+		})
 		return nil
 	}
 
@@ -2177,6 +2442,13 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.passkey_deleted", "", "", "")
+
+	s.emit(u.TenantID, string(u.Environment), "2fa.disabled", map[string]interface{}{
+		"user_id":           userID,
+		"method":            "passkey",
+		"passkey_id":        passkeyID,
+		"remaining_factors": primaryCount - 1,
+	})
 
 	return nil
 }

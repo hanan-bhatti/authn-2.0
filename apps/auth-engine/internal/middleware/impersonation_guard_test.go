@@ -54,7 +54,7 @@ func TestPreventImpersonatedMutationsMiddleware(t *testing.T) {
 	require.NoError(t, err)
 
 	// Impersonated Token (IsImpersonated: true)
-	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "user", "usr_admin99", 15*time.Minute, signingSecret)
+	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "user", "usr_admin99", "", 15*time.Minute, signingSecret)
 	require.NoError(t, err)
 
 	// 1. Standard Token: GET Profile -> 200 OK
@@ -153,7 +153,7 @@ func TestImpersonatedSignOutIsBlocked(t *testing.T) {
 
 	stdToken, err := jwtpkg.IssueAccessToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "user", signingSecret, 15*time.Minute)
 	require.NoError(t, err)
-	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "usr_admin99", "usr_admin99", 15*time.Minute, signingSecret)
+	impToken, err := jwtpkg.IssueImpersonationToken("usr_std123", "tnt_00000000000000000000000000000001", "test", "user@example.com", "User", "usr_admin99", "usr_admin99", "", 15*time.Minute, signingSecret)
 	require.NoError(t, err)
 
 	for _, path := range []string{"/v1/client/auth/logout", "/v1/client/auth/logout-all"} {

@@ -264,6 +264,11 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 	}
 	dur := time.Duration(durationMinutes) * time.Minute
 
+	// Minted before the token so it can be carried inside it. The support session
+	// has no row of its own — the token is the session — so a caller that later
+	// wants to say which session ended has nothing else to read the name from.
+	sessionID := fmt.Sprintf("ses_imp_%d", time.Now().UnixNano())
+
 	accessToken, err := jwt.IssueImpersonationToken(
 		targetUser.ID,
 		tenantID,
@@ -272,6 +277,7 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 		targetUser.Name,
 		"", // Role claim: an impersonated session carries no role of its own.
 		impersonatorID,
+		sessionID,
 		dur,
 		s.cfg.EncryptionKey,
 	)
@@ -283,8 +289,6 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 	if targetUser.Name != "" {
 		namePtr = &targetUser.Name
 	}
-
-	sessionID := fmt.Sprintf("ses_imp_%d", time.Now().UnixNano())
 
 	if s.dispatcher != nil {
 		s.dispatcher.Dispatch(tenantID, string(targetUser.Environment), "user.impersonated", map[string]interface{}{
@@ -336,4 +340,27 @@ func (s *Service) ExecuteImpersonation(ctx context.Context, tenantID string, env
 		ImpersonatorID: impersonatorID,
 		SessionID:      sessionID,
 	}, nil
+}
+
+// RecordImpersonationExit publishes user.impersonation_exited for a support
+// session that has just ended.
+//
+// Every field comes from the token the exit was authorised by, because that token
+// is the whole record of the session: nothing was written when it began, so there
+// is no row to read the target, the operator or the session name back from.
+//
+// Nothing is returned. The session is already over by the time this runs — the
+// token has been blocklisted — and an announcement with nowhere to go does not
+// make it un-ended.
+func (s *Service) RecordImpersonationExit(tenantID, environment, sessionID, targetUserID, targetEmail, impersonatorID string) {
+	if s.dispatcher == nil {
+		return
+	}
+
+	s.dispatcher.Dispatch(tenantID, environment, "user.impersonation_exited", map[string]interface{}{
+		"target_user_id":    targetUserID,
+		"target_user_email": targetEmail,
+		"impersonator_id":   impersonatorID,
+		"session_id":        sessionID,
+	})
 }

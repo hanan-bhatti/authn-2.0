@@ -29,17 +29,73 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
+// WebhookDispatcher publishes session lifecycle events to tenant webhooks.
+type WebhookDispatcher interface {
+	// Dispatch queues an event for delivery. It must not block the caller.
+	//
+	// environment is the environment the event originated in, and decides which
+	// of the tenant's endpoints receive it.
+	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
+}
+
 // Service implements session-management domain logic on top of Repository.
 type Service struct {
 	// repo provides session persistence and the ent client factory.
 	repo *Repository
 	// cfg supplies token lifetimes, the grace window and the signing key.
 	cfg *config.Config
+	// webhooks publishes revocations. May be nil, which disables emission; see emit.
+	webhooks WebhookDispatcher
 }
 
 // NewService constructs a session Service bound to repo and cfg.
 func NewService(repo *Repository, cfg *config.Config) *Service {
 	return &Service{repo: repo, cfg: cfg}
+}
+
+// WithWebhooks attaches the dispatcher that publishes revocation events, and
+// returns the service for chaining.
+//
+// A separate method rather than a constructor parameter, so the tests that build
+// this service need no webhook engine standing behind them.
+func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
+	s.webhooks = d
+	return s
+}
+
+// emit queues a webhook event, doing nothing when no dispatcher is attached.
+//
+// A blank tenant is also dropped: an event has no endpoints to route to without
+// one, and unlike the account-lifecycle paths the tenant here comes from the
+// request rather than from a loaded row.
+func (s *Service) emit(tenantID, environment, eventType string, data map[string]interface{}) {
+	if s.webhooks == nil || tenantID == "" {
+		return
+	}
+	s.webhooks.Dispatch(tenantID, environment, eventType, data)
+}
+
+// emitSessionRevoked publishes session.revoked, resolving the tenant and
+// environment from the account the sessions belonged to.
+//
+// The revocation endpoints authorise on the bearer token's subject and so are
+// reached with a user ID and nothing else, which is why the account is loaded
+// here. data carries the fields that vary by call site; user_id is filled in.
+//
+// An account that cannot be resolved is skipped: the event has no tenant to
+// route by, and the revocation it would report has already happened.
+func (s *Service) emitSessionRevoked(ctx context.Context, userID string, data map[string]interface{}) {
+	if s.webhooks == nil {
+		return
+	}
+
+	u, err := s.getUserByID(ctx, userID)
+	if err != nil || u == nil {
+		return
+	}
+
+	data["user_id"] = userID
+	s.emit(u.TenantID, string(u.Environment), "session.revoked", data)
 }
 
 // SessionResponse is a session as presented to clients.
@@ -120,10 +176,22 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 			secPol, err := policyRepo.GetSecurityPolicy(ctx, tID, environment)
 			if err == nil && secPol.TokenReusePolicy == "session_revoke" {
 				_ = s.repo.RevokeSession(ctx, sID)
+				s.emit(tID, environment, "session.revoked", map[string]interface{}{
+					"user_id":    uID,
+					"session_id": sID,
+					"scope":      "session",
+					"reason":     "refresh_token_reuse",
+				})
 				return
 			}
 		}
-		_, _ = s.repo.RevokeAllUserSessions(ctx, uID, "")
+		revoked, _ := s.repo.RevokeAllUserSessions(ctx, uID, "")
+		s.emit(tID, environment, "session.revoked", map[string]interface{}{
+			"user_id": uID,
+			"scope":   "all",
+			"reason":  "refresh_token_reuse",
+			"count":   revoked,
+		})
 	}
 
 	// A revoked session carrying a successor is reuse: the secret presented here
@@ -264,7 +332,17 @@ func (s *Service) RevokeSession(ctx context.Context, userID, targetSessionID str
 		return ErrSessionNotOwned
 	}
 
-	return s.repo.RevokeSession(ctx, targetSessionID)
+	if err := s.repo.RevokeSession(ctx, targetSessionID); err != nil {
+		return err
+	}
+
+	s.emitSessionRevoked(ctx, userID, map[string]interface{}{
+		"session_id": targetSessionID,
+		"scope":      "session",
+		"reason":     "user_request",
+	})
+
+	return nil
 }
 
 // RevokeOtherSessions revokes every session belonging to userID except
@@ -273,7 +351,19 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, userID, currentSessio
 	if userID == "" {
 		return 0, errors.New("user_id is required")
 	}
-	return s.repo.RevokeAllUserSessions(ctx, userID, currentSessionID)
+
+	revoked, err := s.repo.RevokeAllUserSessions(ctx, userID, currentSessionID)
+	if err != nil {
+		return revoked, err
+	}
+
+	s.emitSessionRevoked(ctx, userID, map[string]interface{}{
+		"scope":  "others",
+		"reason": "user_request",
+		"count":  revoked,
+	})
+
+	return revoked, nil
 }
 
 // RevokeAllSessions revokes every session belonging to userID, including the
@@ -282,7 +372,19 @@ func (s *Service) RevokeAllSessions(ctx context.Context, userID string) (int, er
 	if userID == "" {
 		return 0, errors.New("user_id is required")
 	}
-	return s.repo.RevokeAllUserSessions(ctx, userID, "")
+
+	revoked, err := s.repo.RevokeAllUserSessions(ctx, userID, "")
+	if err != nil {
+		return revoked, err
+	}
+
+	s.emitSessionRevoked(ctx, userID, map[string]interface{}{
+		"scope":  "all",
+		"reason": "user_request",
+		"count":  revoked,
+	})
+
+	return revoked, nil
 }
 
 // ResolveSessionByRefreshToken returns the session ID and owning user ID for a

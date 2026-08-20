@@ -175,7 +175,7 @@ func TestImpersonationHTTPHandlers(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, respHierarchy.StatusCode)
 
 	// 8. Exit Impersonation -> 200 OK
-	impToken, err := jwtpkg.IssueImpersonationToken(targetUser.ID, tnt.ID, "test", targetUser.Email, targetUser.Name, "", adminUser.ID, 15*time.Minute, cfg.EncryptionKey)
+	impToken, err := jwtpkg.IssueImpersonationToken(targetUser.ID, tnt.ID, "test", targetUser.Email, targetUser.Name, "", adminUser.ID, "ses_imp_test", 15*time.Minute, cfg.EncryptionKey)
 	require.NoError(t, err)
 
 	reqExit := httptest.NewRequest("POST", "/v1/client/auth/impersonate/exit", nil)
