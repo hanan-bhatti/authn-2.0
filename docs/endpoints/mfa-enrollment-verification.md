@@ -1,6 +1,6 @@
 # MFA Enrollment & Verification Suite (`/v1/client/auth/2fa/*`)
 
-> **Last Verified**: `2026-08-06` — 100% verified via live `curl` pentest suite against running server using `pyotp` for RFC 6238 TOTP validation.
+> **Last Verified**: `2026-08-21` — 100% verified via live `curl` pentest suite against running server using `pyotp` for RFC 6238 TOTP validation. The TOTP teardown was re-checked end to end: disabling the last primary factor discards the account's recovery codes, `2fa.disabled` reports `remaining_factors: 0`, and the status endpoint then answers `has_recovery_codes: false`.
 
 ## Overview
 The MFA Enrollment & Verification suite manages multi-factor authentication enrollment, TOTP setup, SMS OTP dispatch, WebAuthn passkey registration/revocation, single-use recovery code status tracking, and password step-up confirmation guards.

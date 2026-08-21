@@ -88,8 +88,9 @@ $ curl -i -X GET -H "Authorization: Bearer <jwt>" \
 | **Privilege Escalation** | Assign `"users:write"` to `"viewer"` role | `422 Unprocessable Entity` | Blocked by `ValidatePermissionsAgainstPolicy` |
 | **Duplicate Slug Attack** | Creating existing `"content_manager"` slug | `409 Conflict` | Unique constraint enforcement |
 | **Non-existent Role IDOR** | Assign `"non_existent_role"` to user | `404 Not Found` | Entity existence verification |
+| **Cross-tenant User IDOR** | Assign a role to a `user_id` belonging to another tenant | `404 Not Found` | Tenant membership checked before the junction insert, which no privacy interceptor covers |
 | **Role Assignment** | Assign `"content_manager"` to `usr_vanilla_007` | `200 OK` | User-role junction record created + audit log |
 | **Client Evaluation** | `GET /v1/client/user/permissions` | `200 OK` | Evaluates assigned roles & resolves permissions |
 | **Role Revocation** | `DELETE /v1/admin/users/:id/roles/:slug` | `200 OK` | User-role junction record purged + audit log |
 
-*Last Verified*: `2026-08-06` — live `curl` injection attack suite against running server.
+*Last Verified*: `2026-08-21` — live `curl` injection attack suite against running server, plus the assign path re-checked for a non-existent user, a cross-tenant user and an unknown role slug (all `404`).

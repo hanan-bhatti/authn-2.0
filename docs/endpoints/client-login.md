@@ -175,6 +175,7 @@ Returned during Redis outages when rate limiting cannot be enforced. Prevents un
 ---
 
 ## Verification & Pentest History
-* **Last Verified Date**: `2026-08-06`
+* **Last Verified Date**: `2026-08-21`
 * **Test Subjects**: `user.vanilla@authn.local`, `user.unverified@authn.local`, `user.totp@authn.local` (from `cmd/seed/main.go`).
 * **Verification Method**: Manual live `curl` pentest against running server (verified happy path, 2FA gate, constant-time Argon2id timing defense, missing key 401, 429 rate limit, 503 fail-closed, and injection immunity).
+* **Second-factor menu**: re-verified against an account holding recovery codes and no primary factor — the login completes with tokens and no challenge — and against the same account once TOTP is enrolled, where `methods` is `["totp", "backup_code"]`.

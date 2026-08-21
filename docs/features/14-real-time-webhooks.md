@@ -120,3 +120,34 @@ Rows marked **Live** are refused a `sk_test_` credential with `403 live_key_requ
 2. **Environment Validation**: Requires `test`, `live` or `all`. Absent or unrecognised values are rejected with `422 Unprocessable Entity` and code `validation_failed`; nothing is guessed.
 3. **Subscribed Events Validation**: Rejects empty array or invalid event strings with `422 Unprocessable Entity`.
 4. **Cascade Deletion**: Deleting an endpoint (`DELETE /v1/admin/webhooks/endpoints/:id`) automatically deletes all child delivery logs (`WebhookEvent`) within an Ent transaction under standard request context.
+
+---
+
+## 5. Verification Record
+
+**Last Verified**: `2026-08-21`
+
+**Method**: live `curl` against a running engine, with three endpoints registered on one tenant — one `test`, one `live`, one `all`, each subscribed to `["*"]` — and a local receiver recording every request it was handed. Routing is asserted from what arrived where, not from the dispatcher's own account of it.
+
+**Result**: 70 deliveries carrying 13 distinct event names. Every event reached both the `test` receiver and the `all` receiver; the `live` receiver was handed nothing, and all 70 envelopes read `"environment": "test"`.
+
+| Event | Action that raised it |
+| :--- | :--- |
+| `user.created`, `user.signup` | Password registration (both names, one request) |
+| `user.login.success` | Password login, and a login completed by a TOTP challenge (`method: totp`) |
+| `user.login.failed` | Wrong password against a real account (`reason: invalid_credentials`) |
+| `2fa.enabled` / `2fa.disabled` | TOTP confirm, then TOTP disable — the disable reporting `remaining_factors: 0` |
+| `session.revoked` | `account_banned` (`count: 0`), `2fa_disabled` (2), `account_suspended` (4), `admin_force_logout` (2), `account_deleted` (3) |
+| `rbac.role.assigned` / `rbac.role.revoked` | Admin assign and revoke of the same role |
+| `user.updated` | Seven distinguishable forms: an `email_verified` flip, a profile edit naming `fields_changed`, ban, unban, suspend, unsuspend, restore |
+| `user.deleted` | Administrative soft-delete (`soft: true`) |
+| `user.impersonated` / `user.impersonation_exited` | Support session started, then exited |
+
+Four of those figures were checked against a source outside the payload, because an emitter agreeing with itself proves nothing:
+
+- Force-logout's `count: 2` equals the `sessions_revoked: 2` in that endpoint's own HTTP response.
+- The `session_id` on `user.impersonated` and on `user.impersonation_exited` are equal, and both equal the `sid` claim decoded from the impersonation token — which is the only record of the session, since none is stored server-side.
+- The `account_banned` sweep reported `count: 0` on an account holding no live session, confirming that a zero is the honest answer rather than a swallowed failure.
+- After a role change made with a secret key, the audit row names the key (`key_…`) where every row written before that fix names `admin_system`.
+
+**Not exercised in this pass**: `password.changed`, the eight `org.*` events, the four `saml.*` events, and `ping`. Each is covered by its own feature's verification, and none of them was touched by the emission work above.
