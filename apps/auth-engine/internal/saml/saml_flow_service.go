@@ -335,7 +335,7 @@ func (s *Service) issueSession(
 
 	accessToken, err := jwtpkg.IssueAccessTokenWithSession(
 		usrObj.ID, tenantID, environment, usrObj.Email, usrObj.Name, role,
-		sess.ID, signingSecret, s.accessTokenTTL(environment),
+		sess.ID, signingSecret, s.accessTokenTTL(ctx, tenantID, environment),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
@@ -432,10 +432,14 @@ func (s *Service) refreshTokenTTL(environment string) time.Duration {
 	return s.cfg.ClampSessionTTL(environment, defaultRefreshTokenTTL)
 }
 
-// accessTokenTTL is the access-token lifetime for an SSO session in environment.
-// A zero value is passed through, since the signer applies its own documented
-// default.
-func (s *Service) accessTokenTTL(environment string) time.Duration {
+// accessTokenTTL is the access-token lifetime for an SSO session belonging to
+// tenantID in environment, preferring the tenant's own setting over the
+// deployment default. A zero value is passed through, since the signer applies its
+// own documented default.
+func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.accessTTL != nil {
+		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	}
 	if s.cfg != nil {
 		return s.cfg.AccessTokenTTLFor(environment)
 	}

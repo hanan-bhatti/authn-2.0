@@ -19,6 +19,7 @@ import (
 	"encoding/xml"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"strings"
+	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/auditlog"
@@ -60,6 +61,18 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
+// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+//
+// It is an interface so this package does not depend on the settings cache, and so
+// tests can fix a lifetime without a database. authcookie.Writer satisfies it.
+type AccessTokenTTLResolver interface {
+	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
+	// already bounded by the deployment's ceiling. It does not fail: this is called
+	// on the sign-in path, where an error would be a failure to sign in, so
+	// implementations fall back to the deployment default.
+	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+}
+
 // Service carries out SAML connection management and assertion processing.
 type Service struct {
 	// factory yields tenant- and environment-scoped database clients.
@@ -76,6 +89,9 @@ type Service struct {
 	// same store the password, passkey and social paths write to, so an SSO
 	// sign-in appears in the user's session list and is reachable by revocation.
 	sessions *session.Repository
+	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
+	// which case every tenant gets the deployment default; see accessTokenTTL.
+	accessTTL AccessTokenTTLResolver
 }
 
 // NewService constructs a Service.
@@ -99,6 +115,16 @@ func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatch
 		sessions:   sessions,
 		cfg:        cfg,
 	}
+}
+
+// WithAccessTokenTTLResolver points token issuance at the tenant's configured
+// access-token lifetime and returns the service for chaining.
+//
+// A separate method rather than a constructor parameter, so the tests that build
+// this service need no settings cache standing behind them.
+func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
+	s.accessTTL = r
+	return s
 }
 
 // spEntityID returns the service-provider entity ID for an organization, which

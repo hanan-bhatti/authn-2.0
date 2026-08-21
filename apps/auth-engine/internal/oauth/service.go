@@ -15,6 +15,9 @@
 package oauth
 
 import (
+	"context"
+	"time"
+
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
@@ -40,6 +43,18 @@ const (
 	grantedScope = "openid profile email"
 )
 
+// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+//
+// It is an interface so this package does not depend on the settings cache, and so
+// tests can fix a lifetime without a database. authcookie.Writer satisfies it.
+type AccessTokenTTLResolver interface {
+	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
+	// already bounded by the deployment's ceiling. It does not fail: this is called
+	// on the token-exchange path, where an error would refuse a valid grant, so
+	// implementations fall back to the deployment default.
+	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+}
+
 // Service carries out OAuth2 and OIDC operations against the repositories and
 // signing keys it is constructed with.
 type Service struct {
@@ -55,6 +70,9 @@ type Service struct {
 	// keyManager owns the active RSA signing key and any keys still inside their
 	// rotation grace period.
 	keyManager *jwtpkg.KeyManager
+	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
+	// which case every tenant gets the deployment default; see accessTokenTTL.
+	accessTTL AccessTokenTTLResolver
 }
 
 // NewService constructs a Service. The key manager is initialized with
@@ -77,14 +95,41 @@ func NewService(repo *Repository, authRepo *auth.Repository, authService *auth.S
 	}
 }
 
-// accessTokenExpiresIn returns the access token lifetime for environment in whole
-// seconds, for the `expires_in` field of a token response.
+// WithAccessTokenTTLResolver points token issuance at the tenant's configured
+// access-token lifetime and returns the service for chaining.
 //
-// It resolves the lifetime the same way the signer does, so the number advertised
-// here and the `exp` stamped into the token are derived from one setting and cannot
-// drift apart — including where the test-environment ceiling shortens it.
-func (s *Service) accessTokenExpiresIn(environment string) int {
-	ttl := s.cfg.AccessTokenTTLFor(environment)
+// A separate method rather than a constructor parameter, so the tests that build
+// this service need no settings cache standing behind them.
+func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
+	s.accessTTL = r
+	return s
+}
+
+// accessTokenTTL returns the access token lifetime for tenantID in environment,
+// preferring the tenant's own setting over the deployment default.
+//
+// A nil resolver falls back to the deployment default, which is the right
+// behaviour for a deployment that has not wired one rather than a reason to refuse
+// a valid grant.
+func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.accessTTL != nil {
+		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	}
+	if s.cfg == nil {
+		return 0
+	}
+	return s.cfg.AccessTokenTTLFor(environment)
+}
+
+// accessTokenExpiresIn returns the access token lifetime for tenantID in
+// environment in whole seconds, for the `expires_in` field of a token response.
+//
+// It resolves the lifetime through accessTokenTTL, the same helper the signer is
+// handed, so the number advertised here and the `exp` stamped into the token are
+// derived from one setting and cannot drift apart — including where the tenant has
+// chosen one and where the test-environment ceiling shortens it.
+func (s *Service) accessTokenExpiresIn(ctx context.Context, tenantID, environment string) int {
+	ttl := s.accessTokenTTL(ctx, tenantID, environment)
 	if ttl <= 0 {
 		ttl = s.cfg.ClampAccessTokenTTL(environment, jwtpkg.AccessTokenTTL())
 	}

@@ -123,7 +123,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	// The role claim is resolved from the user's recorded roles rather than
 	// fixed: an authorization-code exchange may be a tenant admin signing into
 	// the console, and a blank role would strip that privilege.
-	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(env))
+	accessToken, err := jwtpkg.IssueAccessToken(authCode.UserID, authCode.TenantID, env, email, name, s.authService.ResolveRoleClaim(ctx, authCode.UserID), s.cfg.EncryptionKey, s.accessTokenTTL(ctx, authCode.TenantID, env))
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -155,7 +155,7 @@ func (s *Service) ExchangeCodeForTokens(ctx context.Context, codeStr string, cli
 	return &OAuth2TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   s.accessTokenExpiresIn(env),
+		ExpiresIn:   s.accessTokenExpiresIn(ctx, authCode.TenantID, env),
 		IDToken:     idTokenStr,
 		Scope:       grantedScope,
 	}, nil

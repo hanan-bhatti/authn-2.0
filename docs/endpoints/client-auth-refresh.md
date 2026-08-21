@@ -3,7 +3,7 @@
 ## Overview
 * **Route**: `POST /v1/client/auth/refresh`
 * **HTTP Method**: `POST`
-* **Purpose**: Refresh Token Rotation Endpoint. Exchanges a valid refresh token for a new 15-minute Access Token JWT and a newly rotated Refresh Token. Enforces a 10-second grace window for concurrent network retries and automatic compromise mitigation (revoking all user sessions) if token reuse is detected outside the grace period.
+* **Purpose**: Refresh Token Rotation Endpoint. Exchanges a valid refresh token for a new Access Token JWT and a newly rotated Refresh Token. Enforces a 10-second grace window for concurrent network retries and automatic compromise mitigation (revoking all user sessions) if token reuse is detected outside the grace period.
 
 ---
 
@@ -85,7 +85,10 @@ Returned when a recently rotated token is replayed within the 10-second grace pe
 }
 ```
 
+`expires_in` is the lifetime of the token in the same response, in seconds, and both come from one resolution: the tenant's `access_token_ttl_minutes` where the session policy sets one, otherwise the deployment's `ACCESS_TOKEN_TTL`, bounded in `test` by `TEST_ACCESS_TOKEN_TTL`. The `900` above is the deployment default; a tenant that chose 60 minutes sees `3600` here and a `test` credential sees the ceiling. A client scheduling its next refresh from this field therefore stays correct without knowing what any of those are set to.
+
 ### `400 Bad Request` — Missing Refresh Token
+
 Returned when neither request body `refresh_token` nor `authn_refresh_token` cookie is present.
 
 ```json

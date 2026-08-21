@@ -38,6 +38,18 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
+// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+//
+// It is an interface so this package does not depend on the settings cache, and so
+// tests can fix a lifetime without a database. authcookie.Writer satisfies it.
+type AccessTokenTTLResolver interface {
+	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
+	// already bounded by the deployment's ceiling. It does not fail: this is called
+	// on the refresh path, where an error would end a live session, so
+	// implementations fall back to the deployment default.
+	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+}
+
 // Service implements session-management domain logic on top of Repository.
 type Service struct {
 	// repo provides session persistence and the ent client factory.
@@ -46,6 +58,9 @@ type Service struct {
 	cfg *config.Config
 	// webhooks publishes revocations. May be nil, which disables emission; see emit.
 	webhooks WebhookDispatcher
+	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
+	// which case every tenant gets the deployment default; see accessTokenTTL.
+	accessTTL AccessTokenTTLResolver
 }
 
 // NewService constructs a session Service bound to repo and cfg.
@@ -61,6 +76,32 @@ func NewService(repo *Repository, cfg *config.Config) *Service {
 func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 	s.webhooks = d
 	return s
+}
+
+// WithAccessTokenTTLResolver points token issuance at the tenant's configured
+// access-token lifetime and returns the service for chaining.
+//
+// Optional for the same reason as the webhook dispatcher: a test refreshing a
+// session wants the deployment default, not a settings cache.
+func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
+	s.accessTTL = r
+	return s
+}
+
+// accessTokenTTL returns how long an access token issued for tenantID in
+// environment stays valid, capped for the test environment.
+//
+// A refreshed token gets the tenant's current lifetime rather than the one in
+// force when the session opened, so shortening the setting takes effect on the
+// next refresh instead of waiting out every session already running.
+func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.accessTTL != nil {
+		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	}
+	if s.cfg == nil {
+		return 0
+	}
+	return s.cfg.AccessTokenTTLFor(environment)
 }
 
 // emit queues a webhook event, doing nothing when no dispatcher is attached.
@@ -234,7 +275,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					return nil, err
 				}
 
-				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), supersededSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(environment))
+				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), supersededSess.ID, s.cfg.EncryptionKey, s.accessTokenTTL(ctx, tenantID, environment))
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
@@ -243,7 +284,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					AccessToken:  accessToken,
 					RefreshToken: "",
 					TokenType:    "Bearer",
-					ExpiresIn:    s.accessTokenExpiresIn(environment),
+					ExpiresIn:    s.accessTokenExpiresIn(ctx, tenantID, environment),
 					SessionID:    supersededSess.ID,
 				}, nil
 			}
@@ -271,7 +312,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		return nil, fmt.Errorf("failed to rotate session: %w", err)
 	}
 
-	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(environment))
+	accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey, s.accessTokenTTL(ctx, tenantID, environment))
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue access token: %w", err)
 	}
@@ -280,7 +321,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		AccessToken:  accessToken,
 		RefreshToken: newRawToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    s.accessTokenExpiresIn(environment),
+		ExpiresIn:    s.accessTokenExpiresIn(ctx, tenantID, environment),
 		SessionID:    newSess.ID,
 	}, nil
 }
@@ -417,14 +458,15 @@ func (s *Service) ResolveSessionByRefreshToken(ctx context.Context, rawRefreshTo
 	return sess.ID, sess.UserID, nil
 }
 
-// accessTokenExpiresIn returns the access token lifetime for environment in whole
-// seconds, the unit the OAuth token response uses.
+// accessTokenExpiresIn returns the access token lifetime for tenantID in
+// environment in whole seconds, the unit the OAuth token response uses.
 //
-// It resolves the lifetime the same way the signer does, so the number advertised
-// here and the `exp` actually signed cannot disagree — including where the test
-// ceiling shortens it.
-func (s *Service) accessTokenExpiresIn(environment string) int {
-	return int(s.cfg.AccessTokenTTLFor(environment).Seconds())
+// It resolves the lifetime through accessTokenTTL, the same helper the signer is
+// handed, so the number advertised here and the `exp` actually signed cannot
+// disagree — including where the tenant has chosen one and where the test ceiling
+// shortens it.
+func (s *Service) accessTokenExpiresIn(ctx context.Context, tenantID, environment string) int {
+	return int(s.accessTokenTTL(ctx, tenantID, environment).Seconds())
 }
 
 // getUserByID loads the user record backing a session, for the claims placed in

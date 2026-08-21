@@ -273,6 +273,18 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
+// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+//
+// It is an interface so this package does not depend on the settings cache, and so
+// tests can fix a lifetime without a database. authcookie.Writer satisfies it.
+type AccessTokenTTLResolver interface {
+	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
+	// already bounded by the deployment's ceiling. It does not fail: this is called
+	// on the login path, where an error would be a failure to sign in, so
+	// implementations fall back to the deployment default.
+	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+}
+
 // Service handles domain business logic for authentication.
 type Service struct {
 	// repo is the persistence boundary for users, sessions, two-factor methods and audit rows.
@@ -287,6 +299,9 @@ type Service struct {
 	smsProvider smsPkg.SMSProvider
 	// webhooks publishes lifecycle events. May be nil, which disables emission; see emit.
 	webhooks WebhookDispatcher
+	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in which case
+	// every tenant gets the deployment default; see accessTokenTTL.
+	accessTTL AccessTokenTTLResolver
 	// webauthn is the configured relying party. Nil when no RP ID is set, which disables the
 	// passkey endpoints rather than failing at startup.
 	webauthn *webauthn.WebAuthn
@@ -354,6 +369,16 @@ func NewService(repo *Repository, cfg *config.Config, emailProvider emailPkg.Ema
 // webhook engine behind them.
 func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 	s.webhooks = d
+	return s
+}
+
+// WithAccessTokenTTLResolver points token issuance at the tenant's configured
+// access-token lifetime and returns the service for chaining.
+//
+// Optional for the same reason as the webhook dispatcher: a test building this
+// service wants the deployment default, not a settings cache.
+func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
+	s.accessTTL = r
 	return s
 }
 
@@ -500,12 +525,20 @@ func (s *Service) clampSessionTTL(environment string, ttl time.Duration) time.Du
 	return s.config.ClampSessionTTL(environment, ttl)
 }
 
-// accessTokenTTL returns how long an access token issued for environment stays valid, capped for the
-// test environment.
+// accessTokenTTL returns how long an access token issued for tenantID in environment stays valid,
+// capped for the test environment.
 //
-// A nil Config yields zero, which leaves the lifetime to the signer's own default rather than naming
-// a second one here.
-func (s *Service) accessTokenTTL(environment string) time.Duration {
+// The tenant's own lifetime wins when one is configured, which is what makes the session policy's
+// access_token_ttl_minutes take effect: without this, the setting would be stored and validated and
+// then quietly overridden by the deployment default at every issuance site.
+//
+// A nil resolver falls back to the deployment default, which is the right behaviour for a
+// deployment that has not wired one rather than a reason to refuse a sign-in. A nil Config yields
+// zero, which leaves the lifetime to the signer's own default rather than naming a second one here.
+func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.accessTTL != nil {
+		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	}
 	if s.config == nil {
 		return 0
 	}
@@ -672,7 +705,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 
 	// The role claim rides along so the console can authorize without a second lookup.
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, role, sessionID, s.config.EncryptionKey, s.accessTokenTTL(env))
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, role, sessionID, s.config.EncryptionKey, s.accessTokenTTL(ctx, tenantID, env))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -944,7 +977,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	}
 
 	// Generate Access Token (JWT)
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(string(u.Environment)))
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, u.TenantID, string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(ctx, u.TenantID, string(u.Environment)))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -1065,7 +1098,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(env))
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(ctx, tenantID, env))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -1161,7 +1194,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		// Transition old session to 'rotated_grace' with 10-second grace window
 		_ = s.repo.MarkSessionRotatedWithGrace(ctx, sess.ID, newSessionID, s.sessionGracePeriod())
 
-		accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey, s.accessTokenTTL(env))
+		accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey, s.accessTokenTTL(ctx, tenantID, env))
 		if err != nil {
 			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 		}
@@ -1190,7 +1223,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 					if err == nil && accountstatus.Allowed(u) == nil {
 						tenantID := string(u.TenantID)
 						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), supersededSess.ID, s.config.EncryptionKey, s.accessTokenTTL(env))
+						accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), supersededSess.ID, s.config.EncryptionKey, s.accessTokenTTL(ctx, tenantID, env))
 						if err == nil {
 							return u, accessToken, "", nil
 						}
@@ -1449,7 +1482,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 		return nil, "", "", err
 	}
 
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(string(u.Environment)))
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionID, s.config.EncryptionKey, s.accessTokenTTL(ctx, string(u.TenantID), string(u.Environment)))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}
@@ -2364,7 +2397,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 		return nil, "", "", fmt.Errorf("failed creating user session: %w", err)
 	}
 
-	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionIDStr, s.config.EncryptionKey, s.accessTokenTTL(string(u.Environment)))
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, string(u.TenantID), string(u.Environment), u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), sessionIDStr, s.config.EncryptionKey, s.accessTokenTTL(ctx, string(u.TenantID), string(u.Environment)))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
 	}

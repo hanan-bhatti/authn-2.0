@@ -20,6 +20,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/appconfig"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/audit"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/impersonation"
@@ -97,6 +98,17 @@ func wireFeatures(
 	settingsResolver := settings.NewResolver(factory, policyRepo, redisClient, 0)
 	policyHandler = policyHandler.WithSettingsInvalidator(settingsResolver)
 
+	// accessTTL answers "how long should this tenant's access token last" for every
+	// service that signs one, resolving the tenant's own choice and bounding it by
+	// the deployment ceiling.
+	//
+	// It is a cookie writer because that type already computes the answer for the
+	// cookie it writes. Handing the same object to the signers is what keeps a token
+	// and the cookie carrying it from disagreeing: one implementation, one ceiling,
+	// one policy read. The handlers below build their own writers over the same
+	// resolver for the cookies themselves.
+	accessTTL := authcookie.NewWriter(cfg, settingsResolver)
+
 	// The bootstrap document a sign-in page fetches before it renders. It reuses
 	// the settings resolver's cache for the application lookup, because this is the
 	// one request every page load makes ahead of everything else.
@@ -151,7 +163,8 @@ func wireFeatures(
 
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider, smsProvider).
-		WithWebhooks(webhookDispatcher)
+		WithWebhooks(webhookDispatcher).
+		WithAccessTokenTTLResolver(accessTTL)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithBlocklist(bl).
 		WithSessionPolicyResolver(settingsResolver)
@@ -162,19 +175,22 @@ func wireFeatures(
 	adminMiddleware := middleware.RequireAdminAuth(apiKeyService, cfg.EncryptionKey, bl, authRepo)
 
 	oauthRepo := oauth.NewRepository()
-	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg)
+	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg).
+		WithAccessTokenTTLResolver(accessTTL)
 	oauthHandler := oauth.NewHandler(oauthService).WithSettings(settingsResolver)
 
 	sessionRepo := session.NewRepository(factory)
 	sessionService := session.NewService(sessionRepo, cfg).
-		WithWebhooks(webhookDispatcher)
+		WithWebhooks(webhookDispatcher).
+		WithAccessTokenTTLResolver(accessTTL)
 	sessionHandler := session.NewHandler(sessionService).WithSessionPolicyResolver(settingsResolver)
 
 	// Social sign-in issues its session through the same store the session
 	// endpoints read, so a Google login is listed and revoked like any other.
 	socialRepo := social.NewRepository(factory, policyRepo, cfg.EncryptionKey)
 	socialService := social.NewService(socialRepo, cfg, sessionRepo).
-		WithWebhooks(webhookDispatcher)
+		WithWebhooks(webhookDispatcher).
+		WithAccessTokenTTLResolver(accessTTL)
 	socialHandler := social.NewHandler(socialService).
 		WithSessionPolicyResolver(settingsResolver)
 
@@ -195,7 +211,8 @@ func wireFeatures(
 
 	// Enterprise SSO issues its session through the same store the session
 	// endpoints read, so an Okta login is listed and revoked like any other.
-	samlService := saml.NewService(factory, webhookDispatcher, sessionRepo, cfg)
+	samlService := saml.NewService(factory, webhookDispatcher, sessionRepo, cfg).
+		WithAccessTokenTTLResolver(accessTTL)
 	samlHandler := saml.NewHandler(samlService).
 		WithSessionPolicyResolver(settingsResolver)
 

@@ -75,6 +75,18 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
+// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+//
+// It is an interface so this package does not depend on the settings cache, and so
+// tests can fix a lifetime without a database. authcookie.Writer satisfies it.
+type AccessTokenTTLResolver interface {
+	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
+	// already bounded by the deployment's ceiling. It does not fail: this is called
+	// on the sign-in path, where an error would be a failure to sign in, so
+	// implementations fall back to the deployment default.
+	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+}
+
 // Service orchestrates social sign-in on top of the repository and provider
 // drivers.
 type Service struct {
@@ -93,6 +105,9 @@ type Service struct {
 	newProvider providerFactory
 	// webhooks publishes lifecycle events. May be nil, which disables emission.
 	webhooks WebhookDispatcher
+	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
+	// which case every tenant gets the deployment default; see accessTokenTTL.
+	accessTTL AccessTokenTTLResolver
 }
 
 // NewService constructs a Service.
@@ -113,6 +128,32 @@ func NewService(repo *Repository, cfg *config.Config, sessions *session.Reposito
 func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 	s.webhooks = d
 	return s
+}
+
+// WithAccessTokenTTLResolver points token issuance at the tenant's configured
+// access-token lifetime and returns the service for chaining.
+//
+// Optional for the same reason as the webhook dispatcher: a test completing a
+// sign-in wants the deployment default, not a settings cache.
+func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
+	s.accessTTL = r
+	return s
+}
+
+// accessTokenTTL returns how long an access token issued for tenantID in
+// environment stays valid, capped for the test environment.
+//
+// A nil resolver falls back to the deployment default, which is the right
+// behaviour for a deployment that has not wired one rather than a reason to refuse
+// a sign-in.
+func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.accessTTL != nil {
+		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	}
+	if s.cfg == nil {
+		return 0
+	}
+	return s.cfg.AccessTokenTTLFor(environment)
 }
 
 // emit queues a webhook event, doing nothing when no dispatcher is attached.
@@ -439,7 +480,7 @@ func (s *Service) HandleCallback(
 		return nil, fmt.Errorf("failed creating session for social sign-in: %w", err)
 	}
 
-	jwtToken, err := jwtpkg.IssueAccessTokenWithSession(userID, state.TenantID, state.Environment, email, name, role, sess.ID, s.cfg.EncryptionKey, s.cfg.AccessTokenTTLFor(state.Environment))
+	jwtToken, err := jwtpkg.IssueAccessTokenWithSession(userID, state.TenantID, state.Environment, email, name, role, sess.ID, s.cfg.EncryptionKey, s.accessTokenTTL(ctx, state.TenantID, state.Environment))
 	if err != nil {
 		return nil, fmt.Errorf("failed issuing access token: %w", err)
 	}

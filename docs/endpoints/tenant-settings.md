@@ -1,6 +1,6 @@
 # Tenant Settings & The Test/Live Split (`/v1/tenant/...`)
 
-> **Last Verified**: `2026-08-19` — verified against `internal/policy` unit and integration tests.
+> **Last Verified**: `2026-08-21` — `internal/policy` unit and integration tests, plus live `curl` verification of the access-token lifetime across two tenants (see [The access token lifetime is a menu, not a range](#the-access-token-lifetime-is-a-menu-not-a-range)).
 
 ## Overview
 
@@ -59,6 +59,10 @@ A social provider configured in test is **not** configured in live. Each environ
 It is a menu because the number trades off two things it does not state: how long a stolen token keeps working, and how often every client pays a refresh round-trip. Three points make that a choice between postures — 15 for a console moving money, 60 for an app whose users resent re-authenticating — where a free-form minute count invites `1440` and calls it convenience.
 
 Rejecting rather than clamping follows from the same reasoning. There is no nearest legal value worth guessing, and a caller who asked for 45 and was handed 30 has no way to notice: the write returns `200` with the stored policy, which they would reasonably read as agreement. The other two fields keep their older clamping contract — `refresh_token_ttl_days` is a genuine range, and an unrecognised `cookie_same_site` becomes `lax`.
+
+The chosen lifetime reaches every route that signs an access token: password login, second-factor completion, magic link, passkey, refresh and its grace-window handshake, social sign-in, SAML SSO, and the OAuth token exchange. Where a response advertises `expires_in`, that figure is resolved by the same call, so the advertised lifetime and the signed `exp` cannot drift apart. In `test` the result then passes through `TEST_ACCESS_TOKEN_TTL` (default `15m`), which lowers it and never raises it — so a tenant asking for 60 sees 60 in live and 15 in test.
+
+**Verified**: `2026-08-21` — live `curl` against a running engine, two tenants in one deployment. Storing 15, 30 and 60 on one of them produced access tokens whose decoded `exp - iat` read 900, 1800 and 3600 seconds, while the second tenant, left at `0`, kept the deployment's 900 throughout — so the value is honoured per tenant rather than per deployment. `1`, `14`, `16`, `45`, `59`, `120`, `1440` and `-1` were each refused `422 validation_failed`, and `0`, `15`, `30`, `60` each stored as sent. On `POST /v1/client/auth/refresh` the response's `expires_in` equalled the decoded `exp - iat` of the token beside it (3600 against a tenant set to 60). Restarting with the default `TEST_ACCESS_TOKEN_TTL` lowered that same tenant's tokens to 900 with its stored `60` unchanged, confirming the ceiling still bounds a tenant's choice in `test`.
 
 ---
 
