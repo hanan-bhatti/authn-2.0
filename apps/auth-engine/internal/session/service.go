@@ -175,23 +175,29 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 			policyRepo := policy.NewRepository(s.repo.Factory())
 			secPol, err := policyRepo.GetSecurityPolicy(ctx, tID, environment)
 			if err == nil && secPol.TokenReusePolicy == "session_revoke" {
-				_ = s.repo.RevokeSession(ctx, sID)
-				s.emit(tID, environment, "session.revoked", map[string]interface{}{
-					"user_id":    uID,
-					"session_id": sID,
-					"scope":      "session",
-					"reason":     "refresh_token_reuse",
-				})
+				// Announced only once the session is actually gone. The event asserts
+				// that the credential no longer answers, and a subscriber acting on a
+				// compromise it was told was contained would stop looking.
+				if revokeErr := s.repo.RevokeSession(ctx, sID); revokeErr == nil {
+					s.emit(tID, environment, "session.revoked", map[string]interface{}{
+						"user_id":    uID,
+						"session_id": sID,
+						"scope":      "session",
+						"reason":     "refresh_token_reuse",
+					})
+				}
 				return
 			}
 		}
-		revoked, _ := s.repo.RevokeAllUserSessions(ctx, uID, "")
-		s.emit(tID, environment, "session.revoked", map[string]interface{}{
-			"user_id": uID,
-			"scope":   "all",
-			"reason":  "refresh_token_reuse",
-			"count":   revoked,
-		})
+		revoked, revokeErr := s.repo.RevokeAllUserSessions(ctx, uID, "")
+		if revokeErr == nil {
+			s.emit(tID, environment, "session.revoked", map[string]interface{}{
+				"user_id": uID,
+				"scope":   "all",
+				"reason":  "refresh_token_reuse",
+				"count":   revoked,
+			})
+		}
 	}
 
 	// A revoked session carrying a successor is reuse: the secret presented here

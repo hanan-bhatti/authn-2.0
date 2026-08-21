@@ -370,7 +370,11 @@ func (s *Service) emit(tenantID, environment, eventType string, data map[string]
 // names its session, not its owner. An account that cannot be resolved is
 // skipped, since the event has no tenant to route by and the revocation it
 // reports has already happened.
-func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason string) {
+//
+// count is how many sessions actually ended. Callers must not invoke this when
+// the revocation returned an error: the event asserts that the sessions are gone,
+// and a failed write leaves them answering.
+func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason string, count int) {
 	if s.webhooks == nil {
 		return
 	}
@@ -384,6 +388,7 @@ func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason
 		"user_id": userID,
 		"scope":   "all",
 		"reason":  reason,
+		"count":   count,
 	})
 }
 
@@ -1189,15 +1194,19 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 
 		// Grace window EXPIRED! Token reuse detected past 10s grace window -> TOKEN THEFT ALERT!
 		fmt.Printf("[SECURITY ALERT] POSSIBLE REFRESH TOKEN THEFT DETECTED: Reuse of rotated token (session ID %s, user ID %s) past 10s grace window. Revoking all user sessions.\n", sess.ID, sess.UserID)
-		_ = s.repo.RevokeAllSessionsForUser(ctx, sess.UserID)
-		s.emitSessionsRevoked(ctx, sess.UserID, "refresh_token_reuse")
+		revoked, revokeErr := s.repo.RevokeAllSessionsForUser(ctx, sess.UserID)
+		if revokeErr == nil {
+			s.emitSessionsRevoked(ctx, sess.UserID, "refresh_token_reuse", revoked)
+		}
 		return nil, "", "", fmt.Errorf("invalid_grant: refresh token reuse detected - all sessions revoked for security")
 	}
 
 	// 3. Token is revoked -> Revoke all sessions for security
 	fmt.Printf("[SECURITY ALERT] POSSIBLE REFRESH TOKEN THEFT DETECTED: Attempted use of revoked session (session ID %s, user ID %s). Revoking all user sessions.\n", sess.ID, sess.UserID)
-	_ = s.repo.RevokeAllSessionsForUser(ctx, sess.UserID)
-	s.emitSessionsRevoked(ctx, sess.UserID, "revoked_session_reuse")
+	revoked, revokeErr := s.repo.RevokeAllSessionsForUser(ctx, sess.UserID)
+	if revokeErr == nil {
+		s.emitSessionsRevoked(ctx, sess.UserID, "revoked_session_reuse", revoked)
+	}
 	return nil, "", "", fmt.Errorf("invalid_grant: session has been revoked")
 }
 
@@ -1525,8 +1534,9 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 	}
 
 	// Security requirement: Revoke all active user sessions on 2FA removal
-	if err := s.repo.RevokeAllSessionsForUser(ctx, userID); err != nil {
-		log.Printf("[AuthService] Warning: Failed revoking sessions on 2FA disable for user %s: %v", userID, err)
+	revoked, revokeErr := s.repo.RevokeAllSessionsForUser(ctx, userID)
+	if revokeErr != nil {
+		log.Printf("[AuthService] Warning: Failed revoking sessions on 2FA disable for user %s: %v", userID, revokeErr)
 	}
 
 	remainingFactors := s.discardOrphanedRecoveryCodes(ctx, userID)
@@ -1542,11 +1552,13 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 		"method":            "totp",
 		"remaining_factors": remainingFactors,
 	})
-	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
-		"user_id": userID,
-		"scope":   "all",
-		"reason":  "2fa_disabled",
-	})
+	// The factor is gone either way, so its event stands; the revocation's does not.
+	// A failed sweep leaves the sessions answering, and a session list rebuilt from
+	// an event that never happened would show the account signed out everywhere
+	// while it is still reachable from every device.
+	if revokeErr == nil {
+		s.emitSessionsRevoked(ctx, userID, "2fa_disabled", revoked)
+	}
 
 	return nil
 }
@@ -1768,8 +1780,9 @@ func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password str
 
 	_ = s.repo.UpdateUserPhone(ctx, userID, u.PhoneNumber, false)
 
-	if err := s.repo.RevokeAllSessionsForUser(ctx, userID); err != nil {
-		log.Printf("[AuthService] Warning: Failed revoking sessions on SMS 2FA disable for user %s: %v", userID, err)
+	revoked, revokeErr := s.repo.RevokeAllSessionsForUser(ctx, userID)
+	if revokeErr != nil {
+		log.Printf("[AuthService] Warning: Failed revoking sessions on SMS 2FA disable for user %s: %v", userID, revokeErr)
 	}
 
 	remainingFactors := s.discardOrphanedRecoveryCodes(ctx, userID)
@@ -1782,11 +1795,9 @@ func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password str
 		"method":            "sms",
 		"remaining_factors": remainingFactors,
 	})
-	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
-		"user_id": userID,
-		"scope":   "all",
-		"reason":  "2fa_disabled",
-	})
+	if revokeErr == nil {
+		s.emitSessionsRevoked(ctx, userID, "2fa_disabled", revoked)
+	}
 
 	return nil
 }
@@ -2445,7 +2456,7 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 		}
 
 		// Revoke all active sessions on 2FA disable for security
-		_ = s.repo.RevokeAllSessionsForUser(ctx, userID)
+		revoked, revokeErr := s.repo.RevokeAllSessionsForUser(ctx, userID)
 
 		s.discardOrphanedRecoveryCodes(ctx, userID)
 
@@ -2462,11 +2473,9 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 			"passkey_id":        passkeyID,
 			"remaining_factors": 0,
 		})
-		s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
-			"user_id": userID,
-			"scope":   "all",
-			"reason":  "2fa_disabled",
-		})
+		if revokeErr == nil {
+			s.emitSessionsRevoked(ctx, userID, "2fa_disabled", revoked)
+		}
 		return nil
 	}
 

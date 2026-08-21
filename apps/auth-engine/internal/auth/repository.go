@@ -297,12 +297,14 @@ func (r *Repository) CreateSession(ctx context.Context, id string, userID string
 // revoked — active sessions and sessions still inside their rotation grace window
 // alike, so a token mid-rotation cannot survive the revocation.
 //
-// Used for password change, credential compromise, and account lockout. An error
+// Used for password change, credential compromise, and account lockout. It returns
+// how many sessions it ended, which is what an announcement of the revocation
+// reports; zero is a legitimate answer for an account with nothing live. An error
 // means revocation may not have taken effect and the caller must not report the
 // account as secured.
-func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID string) error {
+func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID string) (int, error) {
 	client := r.factory.GetClient(ctx, "", "")
-	_, err := client.Session.Update().
+	revoked, err := client.Session.Update().
 		Where(
 			session.UserID(userID),
 			session.StatusNEQ(session.StatusRevoked),
@@ -311,9 +313,9 @@ func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID string
 		Save(ctx)
 
 	if err != nil {
-		return fmt.Errorf("failed revoking user sessions: %w", err)
+		return 0, fmt.Errorf("failed revoking user sessions: %w", err)
 	}
-	return nil
+	return revoked, nil
 }
 
 // FindSessionByTokenHash resolves a presented refresh token, already SHA-256
