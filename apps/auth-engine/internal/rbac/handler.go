@@ -73,9 +73,14 @@ func (h *Handler) RegisterRoutes(app *fiber.App, tenantAdminMiddleware, clientAu
 }
 
 // getActorID resolves who is making the request, from the request locals when an
-// auth middleware set them, otherwise by verifying the bearer token directly. It
-// returns "admin_system" when no identity can be established, which endpoints
-// acting on behalf of a specific user must treat as unauthenticated.
+// auth middleware set them, otherwise by verifying the bearer token directly. A
+// human identity wins over the API key that authenticated the call, so a console
+// session acting through a key is recorded as the person, not the credential.
+//
+// It returns "admin_system" when no identity can be established, which endpoints
+// acting on behalf of a specific user must treat as unauthenticated. Only the
+// admin middleware sets api_key_id, so the client routes still reach that
+// fallback and still refuse.
 func (h *Handler) getActorID(c *fiber.Ctx) string {
 	if val, ok := c.Locals("userID").(string); ok && val != "" {
 		return val
@@ -95,6 +100,9 @@ func (h *Handler) getActorID(c *fiber.Ctx) string {
 				return claims.Sub
 			}
 		}
+	}
+	if val, ok := c.Locals("api_key_id").(string); ok && val != "" {
+		return val
 	}
 	return "admin_system"
 }
