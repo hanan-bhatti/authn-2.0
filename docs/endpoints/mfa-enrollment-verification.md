@@ -49,6 +49,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
   "has_recovery_codes": true
 }
 ```
+* **Lifetime Note**: Recovery codes back a primary factor (TOTP, SMS, passkey) rather than standing as one. Removing the account's last primary factor discards them, and this endpoint then reports `has_recovery_codes: false`.
 
 ### 4. Regenerate Recovery Codes (`POST /v1/client/auth/2fa/recovery-codes/regenerate`)
 * **Request**:
@@ -79,7 +80,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
   "message": "2FA TOTP disabled. All active sessions have been revoked for security."
 }
 ```
-* **Security Guard**: Requires password step-up confirmation (`400 Bad Request` if password omitted). Disabling 2FA revokes all active user sessions to prevent session hijacking.
+* **Security Guard**: Requires password step-up confirmation (`400 Bad Request` if password omitted). Disabling 2FA revokes all active user sessions to prevent session hijacking. When TOTP was the last primary factor, the account's recovery codes are discarded with it — codes left behind would still satisfy an authentication while securing nothing, and being finite and single-use they cannot gate an account on their own.
 
 ### 6. SMS 2FA Enrollment (`POST /v1/client/auth/2fa/sms/enroll`)
 * **Request**:

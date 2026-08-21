@@ -387,6 +387,69 @@ func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason
 	})
 }
 
+// activeFactors lists the second factors userID may satisfy a challenge with,
+// primary factors first and backup_code last, or nil when the account has none.
+//
+// Recovery codes appear only alongside a primary factor, because they are a way
+// past a factor the account holds rather than a factor in their own right. They
+// are finite and single-use, so an account gated behind nothing else would spend
+// its last code and have no way left to sign in; and with no primary factor
+// enrolled there is nothing for them to recover access to.
+//
+// A factor whose lookup fails is omitted. Both callers resolve the same question
+// and must resolve it identically — the login gate deciding whether to challenge,
+// and the verifier deciding what a presented code may be tested against — so
+// neither enumerates the factors itself.
+func (s *Service) activeFactors(ctx context.Context, userID string) []string {
+	var methods []string
+
+	if activeTOTP, err := s.repo.GetActiveTOTPMethodForUser(ctx, userID); err == nil && activeTOTP != nil {
+		methods = append(methods, "totp")
+	}
+	if passkeys, err := s.repo.GetPasskeysForUser(ctx, userID); err == nil && len(passkeys) > 0 {
+		methods = append(methods, "passkey")
+	}
+	if activeSMS, err := s.repo.GetActiveSMSMethodForUser(ctx, userID); err == nil && activeSMS != nil {
+		methods = append(methods, "sms")
+	}
+
+	if len(methods) == 0 {
+		return nil
+	}
+
+	if recCount, err := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID); err == nil && recCount > 0 {
+		methods = append(methods, "backup_code")
+	}
+
+	return methods
+}
+
+// discardOrphanedRecoveryCodes removes a user's recovery codes when the factor
+// just torn down was their last primary one, and reports how many primary factors
+// remain either way.
+//
+// Codes left behind would secure nothing and still satisfy an authentication, so
+// they are a stray credential; activeFactors declines to offer them, which makes
+// them unreachable rather than harmless.
+//
+// Failures are logged, not returned. The factor this follows is already gone, and
+// the caller has nothing to undo.
+func (s *Service) discardOrphanedRecoveryCodes(ctx context.Context, userID string) int {
+	remaining, err := s.repo.CountActivePrimary2FAMethods(ctx, userID)
+	if err != nil {
+		log.Printf("[AuthService] Warning: Failed counting remaining 2FA factors for user %s: %v", userID, err)
+		return 0
+	}
+	if remaining > 0 {
+		return remaining
+	}
+
+	if err := s.repo.DeleteAllRecoveryCodesForUser(ctx, userID); err != nil {
+		log.Printf("[AuthService] Warning: Failed discarding orphaned recovery codes for user %s: %v", userID, err)
+	}
+	return 0
+}
+
 // challengeMethod names the factor a completed second-factor challenge was
 // satisfied with, for the login event.
 //
@@ -964,27 +1027,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	}
 
 	// Check if user has active 2FA methods (TOTP, Passkeys, or Recovery Codes)
-	var allowedMethods []string
-
-	activeTOTP, err := s.repo.GetActiveTOTPMethodForUser(ctx, u.ID)
-	if err == nil && activeTOTP != nil {
-		allowedMethods = append(allowedMethods, "totp")
-	}
-
-	passkeys, err := s.repo.GetPasskeysForUser(ctx, u.ID)
-	if err == nil && len(passkeys) > 0 {
-		allowedMethods = append(allowedMethods, "passkey")
-	}
-
-	activeSMS, err := s.repo.GetActiveSMSMethodForUser(ctx, u.ID)
-	if err == nil && activeSMS != nil {
-		allowedMethods = append(allowedMethods, "sms")
-	}
-
-	recCount, err := s.repo.GetActiveRecoveryCodeCountForUser(ctx, u.ID)
-	if err == nil && recCount > 0 {
-		allowedMethods = append(allowedMethods, "backup_code")
-	}
+	allowedMethods := s.activeFactors(ctx, u.ID)
 
 	if len(allowedMethods) > 0 {
 		mfaToken, err := jwt.IssueMFAChallengeToken(u.ID, tenantID, env, allowedMethods, s.config.EncryptionKey)
@@ -1486,6 +1529,8 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 		log.Printf("[AuthService] Warning: Failed revoking sessions on 2FA disable for user %s: %v", userID, err)
 	}
 
+	remainingFactors := s.discardOrphanedRecoveryCodes(ctx, userID)
+
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_disabled", ipAddress, userAgent, "")
 
@@ -1493,8 +1538,9 @@ func (s *Service) DisableTOTP(ctx context.Context, userID string, password strin
 	// differently: one is a weakening of the account's defences to alert on, the
 	// other is every device being signed out to reflect in a session list.
 	s.emit(u.TenantID, string(u.Environment), "2fa.disabled", map[string]interface{}{
-		"user_id": userID,
-		"method":  "totp",
+		"user_id":           userID,
+		"method":            "totp",
+		"remaining_factors": remainingFactors,
 	})
 	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
 		"user_id": userID,
@@ -1726,12 +1772,15 @@ func (s *Service) DisableSMS2FA(ctx context.Context, userID string, password str
 		log.Printf("[AuthService] Warning: Failed revoking sessions on SMS 2FA disable for user %s: %v", userID, err)
 	}
 
+	remainingFactors := s.discardOrphanedRecoveryCodes(ctx, userID)
+
 	auditID := idgen.New("aud")
 	_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.sms_2fa_disabled", ipAddress, userAgent, "")
 
 	s.emit(u.TenantID, string(u.Environment), "2fa.disabled", map[string]interface{}{
-		"user_id": userID,
-		"method":  "sms",
+		"user_id":           userID,
+		"method":            "sms",
+		"remaining_factors": remainingFactors,
 	})
 	s.emit(u.TenantID, string(u.Environment), "session.revoked", map[string]interface{}{
 		"user_id": userID,
@@ -1771,23 +1820,7 @@ func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, al
 	targetMethod = strings.ToLower(strings.TrimSpace(targetMethod))
 
 	if len(allowedMethods) == 0 {
-		activeTOTP, _ := s.repo.GetActiveTOTPMethodForUser(ctx, userID)
-		passkeys, _ := s.repo.GetPasskeysForUser(ctx, userID)
-		activeSMS, _ := s.repo.GetActiveSMSMethodForUser(ctx, userID)
-		recCount, _ := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID)
-
-		if activeTOTP != nil {
-			allowedMethods = append(allowedMethods, "totp")
-		}
-		if len(passkeys) > 0 {
-			allowedMethods = append(allowedMethods, "passkey")
-		}
-		if activeSMS != nil {
-			allowedMethods = append(allowedMethods, "sms")
-		}
-		if recCount > 0 {
-			allowedMethods = append(allowedMethods, "backup_code")
-		}
+		allowedMethods = s.activeFactors(ctx, userID)
 	}
 
 	// 1. If method is omitted:
@@ -2413,6 +2446,8 @@ func (s *Service) DeleteWebAuthnPasskey(ctx context.Context, userID string, pass
 
 		// Revoke all active sessions on 2FA disable for security
 		_ = s.repo.RevokeAllSessionsForUser(ctx, userID)
+
+		s.discardOrphanedRecoveryCodes(ctx, userID)
 
 		auditID := idgen.New("aud")
 		_ = s.repo.CreateAuditLog(ctx, auditID, string(u.TenantID), userID, "user.2fa_disabled", "", "", "")

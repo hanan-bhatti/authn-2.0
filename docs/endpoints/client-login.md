@@ -75,7 +75,9 @@ X-Authn-Degraded-Mode: false
 ```
 
 ### `200 OK` — 2FA / MFA Challenge Required
-Returned when the user has an active 2FA method (TOTP, Passkey, SMS, Backup Codes). **No access token or refresh token is issued** until second-factor verification is completed via `POST /v1/client/auth/2fa/totp/verify` or `POST /v1/client/auth/2fa/verify`.
+Returned when the user has an active primary 2FA method (TOTP, Passkey, SMS). **No access token or refresh token is issued** until second-factor verification is completed via `POST /v1/client/auth/2fa/totp/verify` or `POST /v1/client/auth/2fa/verify`.
+
+`methods` lists what the challenge accepts. `backup_code` appears there only when the account also holds a primary factor: recovery codes are a way past a factor the account has, not a factor of their own, and they are finite and single-use — an account gated behind nothing else would spend its last code and have no way left to sign in. Removing the last primary factor therefore discards the recovery codes with it and leaves the account signing in on its password alone.
 
 ```bash
 $ curl -i -X POST -H "Content-Type: application/json" \
