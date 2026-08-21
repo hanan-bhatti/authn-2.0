@@ -133,8 +133,21 @@ func (w *Writer) SessionPolicy(ctx context.Context, tenantID, environment string
 // ceiling is what keeps asking for a year in live from also handing test a
 // year-long credential.
 func (w *Writer) RefreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	return w.RefreshTokenTTLOr(ctx, tenantID, environment, w.cfg.RefreshTokenTTL)
+}
+
+// RefreshTokenTTLOr is RefreshTokenTTL with the caller naming the lifetime to use
+// where the tenant has configured none.
+//
+// It exists for a sign-in path whose own default differs from the deployment's — a
+// passkey session is a week rather than a month — and it takes the fallback here
+// rather than letting the caller substitute one afterwards because only the policy
+// can tell "the tenant chose 30 days" from "the tenant chose nothing". Substituting
+// after the fact would either discard the path's default or override the tenant's
+// choice; passing it in lets the tenant's choice win and the path's default stand.
+func (w *Writer) RefreshTokenTTLOr(ctx context.Context, tenantID, environment string, fallback time.Duration) time.Duration {
 	return w.cfg.ClampSessionTTL(environment,
-		w.SessionPolicy(ctx, tenantID, environment).RefreshTokenTTL(w.cfg.RefreshTokenTTL))
+		w.SessionPolicy(ctx, tenantID, environment).RefreshTokenTTL(fallback))
 }
 
 // AccessTokenTTL returns the access lifetime for tenantID, falling back to the

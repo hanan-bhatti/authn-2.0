@@ -61,16 +61,20 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
-// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+// TokenTTLResolver supplies the token lifetimes a tenant has chosen.
 //
 // It is an interface so this package does not depend on the settings cache, and so
 // tests can fix a lifetime without a database. authcookie.Writer satisfies it.
-type AccessTokenTTLResolver interface {
-	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
-	// already bounded by the deployment's ceiling. It does not fail: this is called
-	// on the sign-in path, where an error would be a failure to sign in, so
-	// implementations fall back to the deployment default.
+//
+// Neither method fails: both are called on the sign-in path, where an error would be
+// a failure to sign in, so implementations fall back to the deployment default.
+type TokenTTLResolver interface {
+	// AccessTokenTTL returns the access-token lifetime for one of the tenant's
+	// environments, already bounded by the deployment's ceiling.
 	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+	// RefreshTokenTTL returns how long a session in that environment may be
+	// refreshed, likewise bounded.
+	RefreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
 }
 
 // Service carries out SAML connection management and assertion processing.
@@ -89,9 +93,10 @@ type Service struct {
 	// same store the password, passkey and social paths write to, so an SSO
 	// sign-in appears in the user's session list and is reachable by revocation.
 	sessions *session.Repository
-	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
-	// which case every tenant gets the deployment default; see accessTokenTTL.
-	accessTTL AccessTokenTTLResolver
+	// tokenTTL supplies the tenant's chosen token lifetimes. May be nil, in which
+	// case every tenant gets the deployment default; see accessTokenTTL and
+	// refreshTokenTTL.
+	tokenTTL TokenTTLResolver
 }
 
 // NewService constructs a Service.
@@ -117,13 +122,13 @@ func NewService(factory *clientfactory.ClientFactory, dispatcher WebhookDispatch
 	}
 }
 
-// WithAccessTokenTTLResolver points token issuance at the tenant's configured
-// access-token lifetime and returns the service for chaining.
+// WithTokenTTLResolver points session creation and token issuance at the tenant's
+// configured lifetimes and returns the service for chaining.
 //
 // A separate method rather than a constructor parameter, so the tests that build
 // this service need no settings cache standing behind them.
-func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
-	s.accessTTL = r
+func (s *Service) WithTokenTTLResolver(r TokenTTLResolver) *Service {
+	s.tokenTTL = r
 	return s
 }
 

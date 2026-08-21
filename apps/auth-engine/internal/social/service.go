@@ -75,16 +75,20 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
-// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+// TokenTTLResolver supplies the token lifetimes a tenant has chosen.
 //
 // It is an interface so this package does not depend on the settings cache, and so
 // tests can fix a lifetime without a database. authcookie.Writer satisfies it.
-type AccessTokenTTLResolver interface {
-	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
-	// already bounded by the deployment's ceiling. It does not fail: this is called
-	// on the sign-in path, where an error would be a failure to sign in, so
-	// implementations fall back to the deployment default.
+//
+// Neither method fails: both are called on the sign-in path, where an error would be
+// a failure to sign in, so implementations fall back to the deployment default.
+type TokenTTLResolver interface {
+	// AccessTokenTTL returns the access-token lifetime for one of the tenant's
+	// environments, already bounded by the deployment's ceiling.
 	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+	// RefreshTokenTTL returns how long a session in that environment may be
+	// refreshed, likewise bounded.
+	RefreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
 }
 
 // Service orchestrates social sign-in on top of the repository and provider
@@ -105,9 +109,10 @@ type Service struct {
 	newProvider providerFactory
 	// webhooks publishes lifecycle events. May be nil, which disables emission.
 	webhooks WebhookDispatcher
-	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
-	// which case every tenant gets the deployment default; see accessTokenTTL.
-	accessTTL AccessTokenTTLResolver
+	// tokenTTL supplies the tenant's chosen token lifetimes. May be nil, in which
+	// case every tenant gets the deployment default; see accessTokenTTL and
+	// refreshTokenTTL.
+	tokenTTL TokenTTLResolver
 }
 
 // NewService constructs a Service.
@@ -130,13 +135,13 @@ func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 	return s
 }
 
-// WithAccessTokenTTLResolver points token issuance at the tenant's configured
-// access-token lifetime and returns the service for chaining.
+// WithTokenTTLResolver points session creation and token issuance at the tenant's
+// configured lifetimes and returns the service for chaining.
 //
 // Optional for the same reason as the webhook dispatcher: a test completing a
 // sign-in wants the deployment default, not a settings cache.
-func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
-	s.accessTTL = r
+func (s *Service) WithTokenTTLResolver(r TokenTTLResolver) *Service {
+	s.tokenTTL = r
 	return s
 }
 
@@ -147,8 +152,8 @@ func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service 
 // behaviour for a deployment that has not wired one rather than a reason to refuse
 // a sign-in.
 func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
-	if s.accessTTL != nil {
-		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	if s.tokenTTL != nil {
+		return s.tokenTTL.AccessTokenTTL(ctx, tenantID, environment)
 	}
 	if s.cfg == nil {
 		return 0
@@ -164,10 +169,18 @@ func (s *Service) emit(tenantID, environment, eventType string, data map[string]
 	s.webhooks.Dispatch(tenantID, environment, eventType, data)
 }
 
-// refreshTokenTTL is how long a session created here in environment may be
-// refreshed before the user signs in again, matching the lifetime the password
-// path uses and bounded by the same test-environment ceiling.
-func (s *Service) refreshTokenTTL(environment string) time.Duration {
+// refreshTokenTTL is how long a session created here for tenantID in environment
+// may be refreshed before the user signs in again, resolved from the tenant's own
+// session policy and bounded by the same test-environment ceiling as every other
+// sign-in path.
+//
+// A nil resolver falls back to the deployment default, and a Service built without
+// a Config to defaultRefreshTokenTTL, so a social sign-in ages out alongside a
+// password one whatever is wired.
+func (s *Service) refreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.tokenTTL != nil {
+		return s.tokenTTL.RefreshTokenTTL(ctx, tenantID, environment)
+	}
 	if s.cfg == nil {
 		return defaultRefreshTokenTTL
 	}
@@ -474,7 +487,7 @@ func (s *Service) HandleCallback(
 		userAgent,
 		"",
 		"",
-		s.refreshTokenTTL(state.Environment),
+		s.refreshTokenTTL(ctx, state.TenantID, state.Environment),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating session for social sign-in: %w", err)

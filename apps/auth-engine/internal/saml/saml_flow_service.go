@@ -327,7 +327,7 @@ func (s *Service) issueSession(
 		userAgent,
 		"",
 		"",
-		s.refreshTokenTTL(environment),
+		s.refreshTokenTTL(ctx, tenantID, environment),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating session for SAML sign-in: %w", err)
@@ -419,10 +419,18 @@ func (s *Service) resolveRelayState(ctx context.Context, tenantID, relayState st
 	return ""
 }
 
-// refreshTokenTTL is how long an SSO session in environment may be refreshed
-// before the user authenticates again, matching the lifetime the password path
-// uses and bounded by the same test-environment ceiling.
-func (s *Service) refreshTokenTTL(environment string) time.Duration {
+// refreshTokenTTL is how long an SSO session for tenantID in environment may be
+// refreshed before the user authenticates again, resolved from the tenant's own
+// session policy and bounded by the same test-environment ceiling as every other
+// sign-in path.
+//
+// A nil resolver falls back to the deployment default, and a Service built without
+// a Config to defaultRefreshTokenTTL, so an SSO session ages out alongside a
+// password one whatever is wired.
+func (s *Service) refreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.tokenTTL != nil {
+		return s.tokenTTL.RefreshTokenTTL(ctx, tenantID, environment)
+	}
 	if s.cfg == nil {
 		return defaultRefreshTokenTTL
 	}
@@ -437,8 +445,8 @@ func (s *Service) refreshTokenTTL(environment string) time.Duration {
 // deployment default. A zero value is passed through, since the signer applies its
 // own documented default.
 func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
-	if s.accessTTL != nil {
-		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	if s.tokenTTL != nil {
+		return s.tokenTTL.AccessTokenTTL(ctx, tenantID, environment)
 	}
 	if s.cfg != nil {
 		return s.cfg.AccessTokenTTLFor(environment)

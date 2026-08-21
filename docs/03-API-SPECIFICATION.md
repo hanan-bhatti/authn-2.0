@@ -1043,6 +1043,8 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 
 - **A tenant's own lifetimes pass through the same ceiling.** `access_token_ttl_minutes` (15, 30 or 60) and `refresh_token_ttl_days` (1–365) are single values across both environments, so a tenant asking for an hour in live is not thereby handing test an hour-long token. This is the one stored setting that is honoured in full in live and shortened in test.
 
+- **A tenant's own lifetimes also reach all four artifacts.** `refresh_token_ttl_days` decides the stored session row as well as the refresh cookie, which is what makes shortening it enforceable: the cookie's `Expires` binds only a browser that honours it, while the row is what a presented refresh token is checked against. A tenant cutting its window to a day gets a day for anyone holding the raw token, not only for a cooperating browser.
+
 - **Only a test credential is bounded.** A `pk_live_`/`sk_live_` sign-in receives the deployment or tenant lifetime untouched, so tightening a test ceiling cannot shorten a customer's session.
 
 - **Idle test accounts are deleted, live accounts never.** `TEST_USER_RETENTION` measures from the last sign-in, or from registration for an account that never signed in — the state a suite most often leaves behind. The sweep is confined to `environment = test` by predicate rather than by the cutoff it is given, so a misconfigured window cannot reach a paying customer's account. Deleting an account takes its sessions, identities, second factors, devices, org memberships, roles, recovery contacts and requests, password history and subnet history with it, in one transaction: a partly deleted account would be a weakened one rather than an absent one.

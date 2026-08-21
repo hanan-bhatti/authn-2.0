@@ -98,16 +98,19 @@ func wireFeatures(
 	settingsResolver := settings.NewResolver(factory, policyRepo, redisClient, 0)
 	policyHandler = policyHandler.WithSettingsInvalidator(settingsResolver)
 
-	// accessTTL answers "how long should this tenant's access token last" for every
-	// service that signs one, resolving the tenant's own choice and bounding it by
-	// the deployment ceiling.
+	// tokenTTL answers "how long should this tenant's tokens last" for every service
+	// that signs an access token or opens a session, resolving the tenant's own
+	// choice and bounding it by the deployment ceiling.
 	//
-	// It is a cookie writer because that type already computes the answer for the
-	// cookie it writes. Handing the same object to the signers is what keeps a token
-	// and the cookie carrying it from disagreeing: one implementation, one ceiling,
-	// one policy read. The handlers below build their own writers over the same
-	// resolver for the cookies themselves.
-	accessTTL := authcookie.NewWriter(cfg, settingsResolver)
+	// It is a cookie writer because that type already computes both answers for the
+	// cookies it writes. Handing the same object to the services is what keeps a
+	// token and the cookie carrying it from disagreeing: one implementation, one
+	// ceiling, one policy read. It matters most for the refresh lifetime, where the
+	// cookie is only advice to a browser and the session row is the enforcement — a
+	// tenant shortening its window needs the row to agree, or the shortening applies
+	// to nobody holding the raw token. The handlers below build their own writers
+	// over the same resolver for the cookies themselves.
+	tokenTTL := authcookie.NewWriter(cfg, settingsResolver)
 
 	// The bootstrap document a sign-in page fetches before it renders. It reuses
 	// the settings resolver's cache for the application lookup, because this is the
@@ -164,7 +167,7 @@ func wireFeatures(
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider, smsProvider).
 		WithWebhooks(webhookDispatcher).
-		WithAccessTokenTTLResolver(accessTTL)
+		WithTokenTTLResolver(tokenTTL)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithBlocklist(bl).
 		WithSessionPolicyResolver(settingsResolver)
@@ -176,13 +179,13 @@ func wireFeatures(
 
 	oauthRepo := oauth.NewRepository()
 	oauthService := oauth.NewService(oauthRepo, authRepo, authService, cfg).
-		WithAccessTokenTTLResolver(accessTTL)
+		WithAccessTokenTTLResolver(tokenTTL)
 	oauthHandler := oauth.NewHandler(oauthService).WithSettings(settingsResolver)
 
 	sessionRepo := session.NewRepository(factory)
 	sessionService := session.NewService(sessionRepo, cfg).
 		WithWebhooks(webhookDispatcher).
-		WithAccessTokenTTLResolver(accessTTL)
+		WithTokenTTLResolver(tokenTTL)
 	sessionHandler := session.NewHandler(sessionService).WithSessionPolicyResolver(settingsResolver)
 
 	// Social sign-in issues its session through the same store the session
@@ -190,7 +193,7 @@ func wireFeatures(
 	socialRepo := social.NewRepository(factory, policyRepo, cfg.EncryptionKey)
 	socialService := social.NewService(socialRepo, cfg, sessionRepo).
 		WithWebhooks(webhookDispatcher).
-		WithAccessTokenTTLResolver(accessTTL)
+		WithTokenTTLResolver(tokenTTL)
 	socialHandler := social.NewHandler(socialService).
 		WithSessionPolicyResolver(settingsResolver)
 
@@ -212,7 +215,7 @@ func wireFeatures(
 	// Enterprise SSO issues its session through the same store the session
 	// endpoints read, so an Okta login is listed and revoked like any other.
 	samlService := saml.NewService(factory, webhookDispatcher, sessionRepo, cfg).
-		WithAccessTokenTTLResolver(accessTTL)
+		WithTokenTTLResolver(tokenTTL)
 	samlHandler := saml.NewHandler(samlService).
 		WithSessionPolicyResolver(settingsResolver)
 

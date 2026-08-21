@@ -7521,7 +7521,11 @@ components:
           maximum: 365
           description: >-
             How long a session may be refreshed before the person signs in again. Zero
-            inherits the deployment default, and out-of-range values are clamped.
+            inherits the deployment default, and out-of-range values are clamped. It
+            governs the stored session and the refresh cookie together, so shortening it
+            is enforced against a holder of the raw token and not only against a browser
+            that respects cookie expiry. In test the ceiling TEST_SESSION_TTL shortens it
+            further.
           example: 30
     TenantSettings:
       type: object

@@ -98,7 +98,7 @@ Returned when neither request body `refresh_token` nor `authn_refresh_token` coo
 ```
 
 ### `401 Unauthorized` — Invalid or Expired Refresh Token
-Returned when token is unknown, garbage, or has passed its 30-day absolute expiration.
+Returned when token is unknown, garbage, or has passed the absolute expiration of the session it belongs to — the tenant's `refresh_token_ttl_days` where the session policy sets one, otherwise the deployment's `REFRESH_TOKEN_TTL` (30 days by default), bounded in `test` by `TEST_SESSION_TTL`. The check is against the stored session rather than the cookie, so a token presented past that point is refused however it was kept.
 
 ```json
 {

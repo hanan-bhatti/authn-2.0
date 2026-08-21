@@ -59,7 +59,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | | `JWT_KEY_ID` | `key_v1` | Optional | JWKS key identifier (`kid` header) |
 | | `JWT_SIGNING_KEY_PATH` | `.keys/rsa_private.pem` | **MANDATORY File** | RSA private key file path for OIDC tokens |
 | **8. Lifetimes** | `ACCESS_TOKEN_TTL` | `15m` | `< REFRESH_TOKEN_TTL` | Short-lived access JWT lifetime |
-| | `REFRESH_TOKEN_TTL` | `720h` (30 days) | `> ACCESS_TOKEN_TTL` | Long-lived refresh token session lifetime |
+| | `REFRESH_TOKEN_TTL` | `720h` (30 days) | `> ACCESS_TOKEN_TTL` | Session lifetime where a tenant set no `refresh_token_ttl_days` |
 | | `SESSION_GRACE_PERIOD` | `10s` | `< ACCESS_TOKEN_TTL` | Rotation concurrency grace window |
 | | `EMAIL_VERIFICATION_TTL` | `24h` | Optional | Email verification token expiration |
 | | `MAGIC_LINK_TTL` | `15m` | Optional | Passwordless magic link token expiration |
@@ -182,6 +182,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
   - `ACCESS_TOKEN_TTL` must be strictly less than `REFRESH_TOKEN_TTL`.
   - `SESSION_GRACE_PERIOD` must be strictly less than `ACCESS_TOKEN_TTL`.
   - `OAUTH_CODE_TTL` must not exceed `10m` (RFC 6749 section 4.1.2 compliance).
+- **Both are fallbacks, not overrides.** `ACCESS_TOKEN_TTL` and `REFRESH_TOKEN_TTL` apply where a tenant's session policy sets no `access_token_ttl_minutes` or `refresh_token_ttl_days`; a tenant that set one wins, subject only to the test ceilings in Section 14b. A deployment lengthening `REFRESH_TOKEN_TTL` therefore does not extend the sessions of tenants who chose their own window.
 
 ### Section 8b: Data Retention Sweeps
 - **Go Loader**: [`load.go:L93-L97`](/apps/auth-engine/internal/config/load.go#L93-L97)
@@ -241,7 +242,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
   - `TEST_MAX_ORGANIZATIONS` (Default: `25`): Workspaces one tenant may hold in test. `organization` carries an `environment` column of its own, so the count is per environment and a tenant's live workspaces do not consume the room its test ones have — a customer running a full production estate can still rehearse.
   - `TEST_MAX_API_KEYS` (Default: `20`): Test API keys one tenant may hold, counting the publishable/secret pair provisioning installs with each application.
   - `TEST_ACCESS_TOKEN_TTL` (Default: `15m`): Ceiling on a test access token's lifetime, replacing `ACCESS_TOKEN_TTL` and any longer `access_token_ttl_minutes` a tenant stored. Every issuance site resolves the lifetime the same way — the tenant's `access_token_ttl_minutes` where one is set, otherwise `ACCESS_TOKEN_TTL`, then this ceiling — and reports it in the matching `expires_in`, so the advertised lifetime and the signed `exp` cannot disagree.
-  - `TEST_SESSION_TTL` (Default: `24h`): Ceiling on a test session row's `expires_at`, its refresh cookie's `Expires`, and so on how long its refresh token keeps minting. Applied at each sign-in path through `cfg.RefreshTokenTTLFor(environment)`, and again in the quota hook as `Limits.SessionTTL` — the session row is the one artifact with no single choke point, two repositories creating it on different signatures.
+  - `TEST_SESSION_TTL` (Default: `24h`): Ceiling on a test session row's `expires_at`, its refresh cookie's `Expires`, and so on how long its refresh token keeps minting. Every path that opens or rotates a session resolves the lifetime the same way — the tenant's `refresh_token_ttl_days` where one is set, otherwise `REFRESH_TOKEN_TTL` (or the passkey path's week), then this ceiling — so the row and the cookie carrying its token cannot disagree. The quota hook applies it once more as `Limits.SessionTTL`, for the second repository that creates a session on its own signature.
 - **Direction of the lifetime clamp**: it lowers and never raises. A deployment or tenant that asked for something shorter than the ceiling keeps it, and a live credential is returned untouched. A non-positive ceiling bounds nothing, so a zero-valued `Config` — one nobody loaded — leaves lifetimes alone rather than reading zero as "expire immediately".
 - **Client Contract**: A refused create answers **403** with code `test_quota_exceeded` ([`internal/httperr/httperr.go`](/apps/auth-engine/internal/httperr/httperr.go)), and the message names what ran out and at what ceiling. It is deliberately not `429`: the ceiling is on stored rows, so waiting does not help and there is no `Retry-After` to give. Room is made by deleting rows, by waiting out `TEST_USER_RETENTION`, or by moving to a live key. The lifetime ceilings refuse nothing — a caller receives a working credential that simply expires sooner, with no field reporting the clamp.
 - **Accepted Race**: The count is read immediately before the insert and outside any lock, so two creates arriving together can both find room and leave the tenant one row over its ceiling. This is a spend control, not a security boundary; enforcing it to the exact row would cost a serialized count on every test-environment sign-up.

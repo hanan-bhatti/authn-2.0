@@ -1,6 +1,6 @@
 # Tenant Settings & The Test/Live Split (`/v1/tenant/...`)
 
-> **Last Verified**: `2026-08-21` — `internal/policy` unit and integration tests, plus live `curl` verification of the access-token lifetime across two tenants (see [The access token lifetime is a menu, not a range](#the-access-token-lifetime-is-a-menu-not-a-range)).
+> **Last Verified**: `2026-08-22` — `internal/policy` and `internal/authcookie` unit tests plus integration tests, and live `curl` verification of both token lifetimes across two tenants (see [The access token lifetime is a menu, not a range](#the-access-token-lifetime-is-a-menu-not-a-range) and [The refresh window governs the session, not just the cookie](#the-refresh-window-governs-the-session-not-just-the-cookie)).
 
 ## Overview
 
@@ -58,11 +58,23 @@ A social provider configured in test is **not** configured in live. Each environ
 
 It is a menu because the number trades off two things it does not state: how long a stolen token keeps working, and how often every client pays a refresh round-trip. Three points make that a choice between postures — 15 for a console moving money, 60 for an app whose users resent re-authenticating — where a free-form minute count invites `1440` and calls it convenience.
 
-Rejecting rather than clamping follows from the same reasoning. There is no nearest legal value worth guessing, and a caller who asked for 45 and was handed 30 has no way to notice: the write returns `200` with the stored policy, which they would reasonably read as agreement. The other two fields keep their older clamping contract — `refresh_token_ttl_days` is a genuine range, and an unrecognised `cookie_same_site` becomes `lax`.
+Rejecting rather than clamping follows from the same reasoning. There is no nearest legal value worth guessing, and a caller who asked for 45 and was handed 30 has no way to notice: the write returns `200` with the stored policy, which they would reasonably read as agreement. The other two fields keep their older clamping contract — [`refresh_token_ttl_days`](#the-refresh-window-governs-the-session-not-just-the-cookie) is a genuine range, and an unrecognised `cookie_same_site` becomes `lax`.
 
 The chosen lifetime reaches every route that signs an access token: password login, second-factor completion, magic link, passkey, refresh and its grace-window handshake, social sign-in, SAML SSO, and the OAuth token exchange. Where a response advertises `expires_in`, that figure is resolved by the same call, so the advertised lifetime and the signed `exp` cannot drift apart. In `test` the result then passes through `TEST_ACCESS_TOKEN_TTL` (default `15m`), which lowers it and never raises it — so a tenant asking for 60 sees 60 in live and 15 in test.
 
 **Verified**: `2026-08-21` — live `curl` against a running engine, two tenants in one deployment. Storing 15, 30 and 60 on one of them produced access tokens whose decoded `exp - iat` read 900, 1800 and 3600 seconds, while the second tenant, left at `0`, kept the deployment's 900 throughout — so the value is honoured per tenant rather than per deployment. `1`, `14`, `16`, `45`, `59`, `120`, `1440` and `-1` were each refused `422 validation_failed`, and `0`, `15`, `30`, `60` each stored as sent. On `POST /v1/client/auth/refresh` the response's `expires_in` equalled the decoded `exp - iat` of the token beside it (3600 against a tenant set to 60). Restarting with the default `TEST_ACCESS_TOKEN_TTL` lowered that same tenant's tokens to 900 with its stored `60` unchanged, confirming the ceiling still bounds a tenant's choice in `test`.
+
+### The refresh window governs the session, not just the cookie
+
+`refresh_token_ttl_days` accepts **1–365**, or `0` to inherit the deployment's `REFRESH_TOKEN_TTL`. Out-of-range values are clamped rather than refused — unlike the access-token menu, this is a genuine range, so the nearest legal value is a meaningful answer.
+
+The number decides two things that must agree: the `Expires` on the refresh cookie, and `expires_at` on the session row the refresh token is checked against. **The row is the one that enforces.** A cookie's expiry is advice a browser chooses to follow; a script, a mobile client or an attacker holding the raw token sends it regardless, and what refuses them is the row. Setting them from one resolution is what makes shortening the window mean something — a tenant cutting 30 days to 1 is otherwise protected only against clients that were never the threat.
+
+Every path that opens a session reads it: password sign-up and sign-in, magic link, second-factor completion, passkey, social sign-in, SAML SSO, and the rotation performed on each refresh. Rotation matters most, since a session that re-extended itself to the deployment default on every refresh would never age out at the tenant's setting no matter what was stored.
+
+Two lifetimes are layered underneath. A tenant that has configured nothing inherits `REFRESH_TOKEN_TTL`, except on the passkey path, which grants a week — and a tenant that *has* configured a window outranks that week in both directions. In `test` the result then passes through `TEST_SESSION_TTL` (default `24h`), which lowers and never raises, exactly as `TEST_ACCESS_TOKEN_TTL` does for access tokens.
+
+**Verified**: `2026-08-22` — live `curl` against a running engine, two tenants, reading the `Set-Cookie` header and the Postgres row for each session. With `TEST_SESSION_TTL` raised past the values under test, a tenant storing `refresh_token_ttl_days: 1` produced session rows of `23:59:59.99` on sign-up, on two sign-ins and on the row written by `POST /v1/client/auth/refresh`, each matching its own cookie to the minute; the second tenant, left at `0`, kept `29 days 23:59:59` from the deployment's `REFRESH_TOKEN_TTL=720h`, so the window is honoured per tenant. Raising that tenant to `90` and restarting on the default `TEST_SESSION_TTL` produced a 24-hour row with its stored `90` unchanged, confirming the ceiling still bounds a tenant's choice in `test`.
 
 ---
 

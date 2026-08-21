@@ -29,6 +29,16 @@ import (
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
 )
 
+// defaultRefreshTokenTTL is the rotated session's lifetime when neither a resolver
+// nor a Config supplies one. It matches the auth service's own fallback so a
+// rotated session ages out like the one that opened it.
+//
+// A zero is not usable here the way it is for an access token, where the signer
+// applies a documented default of its own: the repository adds this to the current
+// time unconditionally, so returning zero would write a session that expired at the
+// instant it was created and log the user out on their next request.
+const defaultRefreshTokenTTL = 720 * time.Hour
+
 // WebhookDispatcher publishes session lifecycle events to tenant webhooks.
 type WebhookDispatcher interface {
 	// Dispatch queues an event for delivery. It must not block the caller.
@@ -38,16 +48,20 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
-// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+// TokenTTLResolver supplies the token lifetimes a tenant has chosen.
 //
 // It is an interface so this package does not depend on the settings cache, and so
 // tests can fix a lifetime without a database. authcookie.Writer satisfies it.
-type AccessTokenTTLResolver interface {
-	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
-	// already bounded by the deployment's ceiling. It does not fail: this is called
-	// on the refresh path, where an error would end a live session, so
-	// implementations fall back to the deployment default.
+//
+// Neither method fails: both are called on the refresh path, where an error would
+// end a live session, so implementations fall back to the deployment default.
+type TokenTTLResolver interface {
+	// AccessTokenTTL returns the access-token lifetime for one of the tenant's
+	// environments, already bounded by the deployment's ceiling.
 	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+	// RefreshTokenTTL returns how long the rotated session may go on being
+	// refreshed, likewise bounded.
+	RefreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
 }
 
 // Service implements session-management domain logic on top of Repository.
@@ -58,9 +72,10 @@ type Service struct {
 	cfg *config.Config
 	// webhooks publishes revocations. May be nil, which disables emission; see emit.
 	webhooks WebhookDispatcher
-	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in
-	// which case every tenant gets the deployment default; see accessTokenTTL.
-	accessTTL AccessTokenTTLResolver
+	// tokenTTL supplies the tenant's chosen token lifetimes. May be nil, in which
+	// case every tenant gets the deployment default; see accessTokenTTL and
+	// refreshTokenTTL.
+	tokenTTL TokenTTLResolver
 }
 
 // NewService constructs a session Service bound to repo and cfg.
@@ -78,13 +93,13 @@ func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 	return s
 }
 
-// WithAccessTokenTTLResolver points token issuance at the tenant's configured
-// access-token lifetime and returns the service for chaining.
+// WithTokenTTLResolver points session rotation and token issuance at the tenant's
+// configured lifetimes and returns the service for chaining.
 //
 // Optional for the same reason as the webhook dispatcher: a test refreshing a
 // session wants the deployment default, not a settings cache.
-func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
-	s.accessTTL = r
+func (s *Service) WithTokenTTLResolver(r TokenTTLResolver) *Service {
+	s.tokenTTL = r
 	return s
 }
 
@@ -95,13 +110,33 @@ func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service 
 // force when the session opened, so shortening the setting takes effect on the
 // next refresh instead of waiting out every session already running.
 func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
-	if s.accessTTL != nil {
-		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	if s.tokenTTL != nil {
+		return s.tokenTTL.AccessTokenTTL(ctx, tenantID, environment)
 	}
 	if s.cfg == nil {
 		return 0
 	}
 	return s.cfg.AccessTokenTTLFor(environment)
+}
+
+// refreshTokenTTL returns how long the session rotated for tenantID in environment
+// may go on being refreshed, capped for the test environment.
+//
+// The rotated row gets the tenant's current window for the same reason the access
+// token does: a refresh is where a shortened setting takes hold, and a row written
+// with the deployment's month would keep a session alive for a month whatever the
+// tenant since chose.
+func (s *Service) refreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.tokenTTL != nil {
+		return s.tokenTTL.RefreshTokenTTL(ctx, tenantID, environment)
+	}
+	if s.cfg == nil {
+		return defaultRefreshTokenTTL
+	}
+	if s.cfg.RefreshTokenTTL > 0 {
+		return s.cfg.RefreshTokenTTLFor(environment)
+	}
+	return s.cfg.ClampSessionTTL(environment, defaultRefreshTokenTTL)
 }
 
 // emit queues a webhook event, doing nothing when no dispatcher is attached.
@@ -307,7 +342,7 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 		return nil, err
 	}
 
-	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", s.cfg.SessionGracePeriod, s.cfg.RefreshTokenTTLFor(environment))
+	newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, sess.ID, "", s.cfg.SessionGracePeriod, s.refreshTokenTTL(ctx, tenantID, environment))
 	if err != nil {
 		return nil, fmt.Errorf("failed to rotate session: %w", err)
 	}

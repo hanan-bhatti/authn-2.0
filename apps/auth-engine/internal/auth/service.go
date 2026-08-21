@@ -137,14 +137,18 @@ const (
 	smsOTPRateLimitWindow = 10 * time.Minute
 )
 
-// webAuthnLoginSessionTTL is the session lifetime granted by a passkey login.
+// webAuthnLoginSessionTTL is the session lifetime a passkey login grants a tenant that has
+// configured none of its own.
 //
-// It is shorter than Config.RefreshTokenTTL, which governs every other sign-in path, and is held
-// here rather than read from configuration so that changing the general session lifetime does not
-// silently move it. Treat the divergence as deliberate only for as long as this comment stands: a
-// passkey is a stronger credential than a password, so there is no security argument for its
-// sessions being shorter, and unifying the two on RefreshTokenTTL would be a lengthening of live
-// session lifetimes that needs its own decision.
+// It is shorter than Config.RefreshTokenTTL, which is the fallback for every other sign-in path,
+// and is held here rather than read from configuration so that changing the general session
+// lifetime does not silently move it. Treat the divergence as deliberate only for as long as this
+// comment stands: a passkey is a stronger credential than a password, so there is no security
+// argument for its sessions being shorter, and unifying the two on RefreshTokenTTL would be a
+// lengthening of live session lifetimes that needs its own decision.
+//
+// A tenant's own refresh_token_ttl_days outranks it either way. This is the lifetime for the
+// deployment nobody has configured, not a ceiling on what a tenant may ask for.
 const webAuthnLoginSessionTTL = 7 * 24 * time.Hour
 
 // recoveryCodeSetSize is how many backup codes a full set holds.
@@ -273,16 +277,25 @@ type WebhookDispatcher interface {
 	Dispatch(tenantID, environment, eventType string, data map[string]interface{})
 }
 
-// AccessTokenTTLResolver supplies the access-token lifetime a tenant has chosen.
+// TokenTTLResolver supplies the token lifetimes a tenant has chosen.
 //
 // It is an interface so this package does not depend on the settings cache, and so
 // tests can fix a lifetime without a database. authcookie.Writer satisfies it.
-type AccessTokenTTLResolver interface {
-	// AccessTokenTTL returns the lifetime for one of the tenant's environments,
-	// already bounded by the deployment's ceiling. It does not fail: this is called
-	// on the login path, where an error would be a failure to sign in, so
-	// implementations fall back to the deployment default.
+//
+// None of these fail. They are called on the login path, where an error would be a
+// failure to sign in, so implementations fall back to the deployment default.
+type TokenTTLResolver interface {
+	// AccessTokenTTL returns the access-token lifetime for one of the tenant's
+	// environments, already bounded by the deployment's ceiling.
 	AccessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+	// RefreshTokenTTL returns how long a session in that environment may be
+	// refreshed, likewise bounded.
+	RefreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration
+	// RefreshTokenTTLOr is RefreshTokenTTL for a path with a default of its own —
+	// the passkey week — to use where the tenant has configured nothing. Only the
+	// resolver can distinguish a configured window from an absent one, which is why
+	// the default is handed down rather than substituted afterwards.
+	RefreshTokenTTLOr(ctx context.Context, tenantID, environment string, fallback time.Duration) time.Duration
 }
 
 // Service handles domain business logic for authentication.
@@ -299,9 +312,9 @@ type Service struct {
 	smsProvider smsPkg.SMSProvider
 	// webhooks publishes lifecycle events. May be nil, which disables emission; see emit.
 	webhooks WebhookDispatcher
-	// accessTTL supplies the tenant's chosen access-token lifetime. May be nil, in which case
-	// every tenant gets the deployment default; see accessTokenTTL.
-	accessTTL AccessTokenTTLResolver
+	// tokenTTL supplies the tenant's chosen token lifetimes. May be nil, in which case every
+	// tenant gets the deployment default; see accessTokenTTL and refreshTokenTTL.
+	tokenTTL TokenTTLResolver
 	// webauthn is the configured relying party. Nil when no RP ID is set, which disables the
 	// passkey endpoints rather than failing at startup.
 	webauthn *webauthn.WebAuthn
@@ -372,13 +385,13 @@ func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 	return s
 }
 
-// WithAccessTokenTTLResolver points token issuance at the tenant's configured
-// access-token lifetime and returns the service for chaining.
+// WithTokenTTLResolver points session creation and token issuance at the tenant's
+// configured lifetimes and returns the service for chaining.
 //
 // Optional for the same reason as the webhook dispatcher: a test building this
 // service wants the deployment default, not a settings cache.
-func (s *Service) WithAccessTokenTTLResolver(r AccessTokenTTLResolver) *Service {
-	s.accessTTL = r
+func (s *Service) WithTokenTTLResolver(r TokenTTLResolver) *Service {
+	s.tokenTTL = r
 	return s
 }
 
@@ -504,20 +517,42 @@ func challengeMethod(targetMethod string, allowed []string) string {
 	return ""
 }
 
-// refreshTokenTTL returns how long a newly created session in environment may be refreshed before
-// the user must sign in again, falling back to defaultRefreshTokenTTL when Config leaves it unset.
-func (s *Service) refreshTokenTTL(environment string) time.Duration {
+// refreshTokenTTL returns how long a newly created session for tenantID in environment may be
+// refreshed before the user must sign in again, capped for the test environment.
+//
+// The tenant's own window wins when its session policy configures one, which is what makes
+// refresh_token_ttl_days take effect on the stored session rather than on the cookie alone. A
+// deployment that has wired no resolver falls back to Config, and a Service built without one to
+// defaultRefreshTokenTTL.
+func (s *Service) refreshTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
+	if s.tokenTTL != nil {
+		return s.tokenTTL.RefreshTokenTTL(ctx, tenantID, environment)
+	}
 	if s.config != nil && s.config.RefreshTokenTTL > 0 {
 		return s.clampSessionTTL(environment, s.config.RefreshTokenTTL)
 	}
 	return s.clampSessionTTL(environment, defaultRefreshTokenTTL)
 }
 
+// refreshTokenTTLOr is refreshTokenTTL for a path that names a lifetime of its own — the passkey
+// login's week — to be used where the tenant has configured none.
+//
+// The tenant's explicit choice still wins over fallback. A tenant that shortened its refresh window
+// meant every session, and one that lengthened it is answering the question this path's default only
+// guesses at.
+func (s *Service) refreshTokenTTLOr(ctx context.Context, tenantID, environment string, fallback time.Duration) time.Duration {
+	if s.tokenTTL != nil {
+		return s.tokenTTL.RefreshTokenTTLOr(ctx, tenantID, environment, fallback)
+	}
+	return s.clampSessionTTL(environment, fallback)
+}
+
 // clampSessionTTL bounds a session lifetime by the test-environment ceiling, leaving it alone when no
 // Config was supplied.
 //
-// Paths that name a lifetime of their own — the passkey login's week — go through here too, so the
-// ceiling does not depend on which path opened the session.
+// It is the fallback the refresh helpers above apply when no resolver is wired; a wired resolver
+// bounds by the same ceiling itself. Either way the ceiling does not depend on which path opened the
+// session, including one naming a lifetime of its own like the passkey login's week.
 func (s *Service) clampSessionTTL(environment string, ttl time.Duration) time.Duration {
 	if s.config == nil {
 		return ttl
@@ -536,8 +571,8 @@ func (s *Service) clampSessionTTL(environment string, ttl time.Duration) time.Du
 // deployment that has not wired one rather than a reason to refuse a sign-in. A nil Config yields
 // zero, which leaves the lifetime to the signer's own default rather than naming a second one here.
 func (s *Service) accessTokenTTL(ctx context.Context, tenantID, environment string) time.Duration {
-	if s.accessTTL != nil {
-		return s.accessTTL.AccessTokenTTL(ctx, tenantID, environment)
+	if s.tokenTTL != nil {
+		return s.tokenTTL.AccessTokenTTL(ctx, tenantID, environment)
 	}
 	if s.config == nil {
 		return 0
@@ -698,7 +733,7 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := idgen.New("ses")
-	expiresAt := time.Now().Add(s.refreshTokenTTL(env))
+	expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, tenantID, env))
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
 		return nil, "", "", err
@@ -971,7 +1006,7 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	hRef := sha256.Sum256([]byte(rawRefreshToken))
 	refHash := hex.EncodeToString(hRef[:])
 
-	expiresAt := time.Now().Add(s.refreshTokenTTL(string(u.Environment)))
+	expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, string(u.TenantID), string(u.Environment)))
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, refHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", fmt.Errorf("failed creating magic link session: %w", err)
 	}
@@ -1092,7 +1127,7 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := idgen.New("ses")
-	expiresAt := time.Now().Add(s.refreshTokenTTL(env))
+	expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, tenantID, env))
 	_, err = s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt)
 	if err != nil {
 		return nil, "", "", err
@@ -1183,7 +1218,7 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		newTokenHash := hex.EncodeToString(newHash[:])
 
 		newSessionID := idgen.New("ses")
-		expiresAt := time.Now().Add(s.refreshTokenTTL(env))
+		expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, tenantID, env))
 
 		// Create new active session
 		_, err = s.repo.CreateSession(ctx, newSessionID, u.ID, newTokenHash, userAgent, ipAddress, expiresAt)
@@ -1477,7 +1512,7 @@ func (s *Service) VerifyTOTPChallenge(ctx context.Context, mfaToken string, code
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionID := idgen.New("ses")
-	expiresAt := time.Now().Add(s.refreshTokenTTL(string(u.Environment)))
+	expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, string(u.TenantID), string(u.Environment)))
 	if _, err := s.repo.CreateSession(ctx, sessionID, u.ID, tokenHash, userAgent, ipAddress, expiresAt); err != nil {
 		return nil, "", "", err
 	}
@@ -2389,7 +2424,7 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, mfaToken string, sess
 	tokenHash := hex.EncodeToString(h[:])
 
 	sessionIDStr := idgen.New("sess")
-	sessionTTL := s.clampSessionTTL(string(u.Environment), webAuthnLoginSessionTTL)
+	sessionTTL := s.refreshTokenTTLOr(ctx, string(u.TenantID), string(u.Environment), webAuthnLoginSessionTTL)
 	now := time.Now()
 	expiresAt := now.Add(sessionTTL)
 
