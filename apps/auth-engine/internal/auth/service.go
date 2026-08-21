@@ -147,6 +147,13 @@ const (
 // session lifetimes that needs its own decision.
 const webAuthnLoginSessionTTL = 7 * 24 * time.Hour
 
+// recoveryCodeSetSize is how many backup codes a full set holds.
+//
+// It is the denominator the status endpoint reports, so the generator and the reporter must agree:
+// a set size changed in one place alone leaves the endpoint answering "3 of 16 left" about a set
+// that was never 16, and a client sizing a print-out from it hands the user a short list.
+const recoveryCodeSetSize = 16
+
 // SMSOTPState is a pending SMS one-time code held in process between BeginSMSEnrollment and its
 // confirmation. Codes are never persisted, so an instance restart cancels enrollments in flight.
 type SMSOTPState struct {
@@ -1874,7 +1881,7 @@ func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, al
 	}
 }
 
-// GenerateRecoveryCodes replaces a user's backup codes with 16 fresh ones and returns them in
+// GenerateRecoveryCodes replaces a user's backup codes with a fresh set and returns them in
 // plaintext. This is the only time they are readable; only Argon2id hashes are stored.
 //
 // Codes are drawn from an alphabet with no visually ambiguous characters (no 0/O, 1/I) and
@@ -1889,10 +1896,10 @@ func (s *Service) GenerateRecoveryCodes(ctx context.Context, userID string) ([]s
 	_ = s.repo.DeleteAllRecoveryCodesForUser(ctx, userID)
 
 	charset := "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-	rawCodes := make([]string, 16)
-	hashes := make([]string, 16)
+	rawCodes := make([]string, recoveryCodeSetSize)
+	hashes := make([]string, recoveryCodeSetSize)
 
-	for i := 0; i < 16; i++ {
+	for i := 0; i < recoveryCodeSetSize; i++ {
 		codeBuf := make([]byte, 8)
 		if _, err := rand.Read(codeBuf); err != nil {
 			return nil, fmt.Errorf("failed generating random code bytes: %w", err)
@@ -2017,7 +2024,7 @@ func (s *Service) GetRecoveryCodesStatus(ctx context.Context, userID string) (*R
 	}
 	return &RecoveryCodesStatusResult{
 		RemainingCount:   remaining,
-		TotalCount:       16,
+		TotalCount:       recoveryCodeSetSize,
 		HasRecoveryCodes: remaining > 0,
 	}, nil
 }
