@@ -230,7 +230,7 @@ func (h *Handler) AssignUserRole(c *fiber.Ctx) error {
 		if errors.Is(err, ErrUserRoleExists) {
 			return httperr.Conflict(c, httperr.CodeAlreadyExists, "user already possesses this role")
 		}
-		if errors.Is(err, ErrRoleNotFound) || ent.IsNotFound(err) || ent.IsConstraintError(err) {
+		if errors.Is(err, ErrRoleNotFound) || errors.Is(err, ErrUserNotFound) || ent.IsNotFound(err) || ent.IsConstraintError(err) {
 			return httperr.NotFound(c, httperr.CodeNotFound, "user or role not found")
 		}
 		return httperr.SendInternal(c, "rbac.assign_user_role", err)
