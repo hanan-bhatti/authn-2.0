@@ -167,7 +167,7 @@ The caller's environment is read from the privacy context the auth middleware al
 | **Environment** | `test` or `live`. Never read from a request body or query on the settings endpoints; taken from the credential. |
 | **`from` / `to`** | Each `test` or `live`, and must differ. `to` must equal the credential's environment. Omitted body means `test` → `live`. |
 | **`cookie_same_site`** | `lax` or `none`; anything unrecognised is stored as `lax`. `none` is honoured only when the cookie will also carry `Secure` — over plaintext HTTP the cookie is written `Lax` instead. |
-| **`access_token_ttl_minutes`** | 1–1440. Zero inherits the deployment default. Out-of-range values are clamped, not rejected. |
+| **`access_token_ttl_minutes`** | `15`, `30` or `60`. Zero inherits the deployment default. Anything else is refused with `422` — a fixed menu has no nearest legal value worth guessing, and a caller handed one would not know it had been. |
 | **`refresh_token_ttl_days`** | 1–365. Zero inherits the deployment default. Out-of-range values are clamped. |
 | **Settings rows per tenant** | Exactly one per environment, enforced by a unique index. |
 | **Secrets in responses** | Each social provider's client secret is replaced by a `client_secret_set` boolean on every read, diff and publish response. |

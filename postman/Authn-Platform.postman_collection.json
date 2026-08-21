@@ -2130,7 +2130,7 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "tenant", "session-policy"]
 						},
-						"description": "Nothing here is rejected for being out of range: lifetimes are clamped into their window and an unrecognised cookie_same_site becomes lax. Read the response rather than assuming the request applied verbatim. Try access_token_ttl_minutes 9999 to see the clamp."
+						"description": "access_token_ttl_minutes is a fixed menu — 15, 30 or 60, or 0 to inherit the deployment default — and an unlisted value is refused with 422 validation_failed. Try 45 to see it. The refresh lifetime is still clamped into its window and an unrecognised cookie_same_site still becomes lax, so read the response rather than assuming the request applied verbatim."
 					}
 				},
 				{

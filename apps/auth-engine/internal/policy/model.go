@@ -143,8 +143,9 @@ type SessionPolicy struct {
 	// point the cookie is built, not only at startup, because this value is
 	// runtime-changeable and a validated-once check would be stale.
 	CookieSameSite string `json:"cookie_same_site"`
-	// AccessTokenTTLMinutes is how long an access token stays valid, 1-1440.
-	// Zero means "inherit the deployment default".
+	// AccessTokenTTLMinutes is how long an access token stays valid. It must be
+	// one of allowedAccessTokenTTLMinutes, or zero for "inherit the deployment
+	// default".
 	AccessTokenTTLMinutes int `json:"access_token_ttl_minutes"`
 	// RefreshTokenTTLDays is how long a session can be refreshed before the user
 	// must sign in again, 1-365. Zero means "inherit the deployment default".
@@ -161,15 +162,65 @@ const (
 	SameSiteNone = "none"
 )
 
-// Bounds on the session policy's lifetimes. A tenant may tune these but not
-// escape them: an access token valid for a year would defeat the point of having
-// refresh at all, and one valid for zero minutes would lock the tenant out.
+// Bounds on how long a session may be refreshed. A tenant may tune this but not
+// escape it: a session refreshable for a decade would never require signing in
+// again, and one refreshable for zero days would lock the tenant out.
 const (
-	minAccessTokenTTLMinutes = 1
-	maxAccessTokenTTLMinutes = 1440
-	minRefreshTokenTTLDays   = 1
-	maxRefreshTokenTTLDays   = 365
+	minRefreshTokenTTLDays = 1
+	maxRefreshTokenTTLDays = 365
 )
+
+// allowedAccessTokenTTLMinutes is the menu an access-token lifetime may be set
+// to, ordered shortest first.
+//
+// A fixed menu rather than a range, because the number trades off two things a
+// tenant cannot read from it: how long a stolen token keeps working, and how
+// often every client pays a refresh round-trip. Three points make that a choice
+// between postures with documented consequences — 15 for a console moving money,
+// 60 for an app whose users resent re-authenticating — where a free-form minute
+// count invites 1440 and calls it convenience.
+//
+// An array rather than a slice so that reading it cannot alter it: this is a
+// security bound, and an exported slice would let any importer append to it.
+// Zero is deliberately absent and means "inherit the deployment default".
+var allowedAccessTokenTTLMinutes = [3]int{15, 30, 60}
+
+// ValidAccessTokenTTLMinutes reports whether m is a settable access-token
+// lifetime: a menu member, or zero for "inherit the deployment default".
+//
+// This is for callers with somewhere to report a rejection. The read path uses
+// NormalizeSessionPolicy instead, which has to yield a usable lifetime rather
+// than an error.
+func ValidAccessTokenTTLMinutes(m int) bool {
+	if m == 0 {
+		return true
+	}
+	for _, allowed := range allowedAccessTokenTTLMinutes {
+		if m == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeAccessTokenTTLMinutes returns m unchanged when it is on the menu or
+// zero, and otherwise the longest menu value that does not exceed it.
+//
+// Snapping down rather than to the nearest member means normalization never
+// lengthens a lifetime somebody deliberately set short: a stored 5 becoming 15 is
+// forced — there is nothing shorter to offer — but a stored 50 becoming 60 would
+// hand out a longer-lived token than anyone asked for.
+func normalizeAccessTokenTTLMinutes(m int) int {
+	if m == 0 {
+		return 0
+	}
+	for i := len(allowedAccessTokenTTLMinutes) - 1; i >= 0; i-- {
+		if allowedAccessTokenTTLMinutes[i] <= m {
+			return allowedAccessTokenTTLMinutes[i]
+		}
+	}
+	return allowedAccessTokenTTLMinutes[0]
+}
 
 // DefaultSessionPolicy returns the session policy applied to a tenant that has
 // configured none: Lax cookies and the deployment's own token lifetimes, which
@@ -186,13 +237,16 @@ func DefaultSessionPolicy() SessionPolicy {
 	}
 }
 
-// NormalizeSessionPolicy corrects a session policy into the accepted range,
-// returning what will actually be applied.
+// NormalizeSessionPolicy corrects a session policy into what will actually be
+// applied.
 //
-// Out-of-range lifetimes are clamped rather than rejected, matching the password
-// policy's behaviour: a stored policy must always resolve to something usable,
-// because it is read on the login path where there is no caller to report a
-// validation error to. An unrecognised SameSite becomes "lax".
+// Nothing is rejected here, matching the password policy's behaviour: a stored
+// policy must always resolve to something usable, because it is read on the login
+// path where there is no caller to report a validation error to. An access
+// lifetime off the menu is snapped down to a member, an out-of-range refresh
+// lifetime is clamped to the nearest bound, and an unrecognised SameSite becomes
+// "lax". Callers that do have somewhere to report a rejection should check
+// ValidAccessTokenTTLMinutes first.
 func NormalizeSessionPolicy(sp SessionPolicy) SessionPolicy {
 	switch strings.ToLower(strings.TrimSpace(sp.CookieSameSite)) {
 	case SameSiteNone:
@@ -202,15 +256,11 @@ func NormalizeSessionPolicy(sp SessionPolicy) SessionPolicy {
 	}
 
 	// Zero is meaningful — "inherit the deployment default" — so it survives
-	// clamping; any other out-of-range value is pulled to the nearest bound.
-	if sp.AccessTokenTTLMinutes != 0 {
-		if sp.AccessTokenTTLMinutes < minAccessTokenTTLMinutes {
-			sp.AccessTokenTTLMinutes = minAccessTokenTTLMinutes
-		}
-		if sp.AccessTokenTTLMinutes > maxAccessTokenTTLMinutes {
-			sp.AccessTokenTTLMinutes = maxAccessTokenTTLMinutes
-		}
-	}
+	// normalization; any other value off the menu is snapped down to a member.
+	// A row edited straight in the database, or written by a build that accepted a
+	// wider range, still has to resolve to a usable lifetime here: this runs on the
+	// login path, where there is nobody to reject it to.
+	sp.AccessTokenTTLMinutes = normalizeAccessTokenTTLMinutes(sp.AccessTokenTTLMinutes)
 	if sp.RefreshTokenTTLDays != 0 {
 		if sp.RefreshTokenTTLDays < minRefreshTokenTTLDays {
 			sp.RefreshTokenTTLDays = minRefreshTokenTTLDays

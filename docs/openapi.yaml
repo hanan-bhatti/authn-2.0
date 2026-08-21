@@ -608,13 +608,15 @@ paths:
     put:
       summary: Update Session Policy
       description: >-
-        Configures one environment's session and cookie settings. Nothing here is rejected
-        for being out of range: token lifetimes are clamped into their window and an
-        unrecognised cookie_same_site becomes lax. The stored policy may therefore differ
-        from what was sent, so read the response rather than assuming the request applied
-        verbatim. A stored policy has to resolve to something usable because it is read on
-        the login path, where there is no caller left to report a validation error to. The
-        write lands in the environment of the key that made it.
+        Configures one environment's session and cookie settings. An access token lifetime
+        off the menu is refused with 422: it is a fixed choice of 15, 30 or 60 minutes, so an
+        unlisted number is a mistake to report rather than an approximation to fill in — a
+        caller asking for 45 and being handed 30 has no way to notice. The refresh lifetime
+        is still clamped into its window and an unrecognised cookie_same_site still becomes
+        lax, so read the response rather than assuming the request applied verbatim. Whatever
+        ends up stored still has to resolve to something usable, because it is read on the
+        login path where there is no caller left to report a validation error to. The write
+        lands in the environment of the key that made it.
       operationId: updateSessionPolicy
       tags:
       - Policy (Tenant)
@@ -629,7 +631,7 @@ paths:
               $ref: '#/components/schemas/SessionPolicy'
       responses:
         '200':
-          description: Session policy as stored, after clamping
+          description: Session policy as stored
           content:
             application/json:
               schema:
@@ -644,6 +646,13 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: Missing or invalid secret key or admin console token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: >-
+            access_token_ttl_minutes is not 15, 30 or 60. Code validation_failed.
           content:
             application/json:
               schema:
@@ -7492,12 +7501,19 @@ components:
           example: lax
         access_token_ttl_minutes:
           type: integer
-          minimum: 1
-          maximum: 1440
+          enum:
+          - 0
+          - 15
+          - 30
+          - 60
           description: >-
-            Access token lifetime in minutes. Zero inherits the deployment default. Values
-            outside the range are clamped into it rather than rejected, so a policy write
-            never fails on a number an administrator can simply be shown the effect of.
+            Access token lifetime in minutes, chosen from a fixed menu. Zero inherits the
+            deployment default. The menu exists because the number trades off two things it
+            does not state: how long a stolen token keeps working, and how often every client
+            pays a refresh round-trip. Three points make that a choice between postures with
+            documented consequences — 15 for a console moving money, 60 for an app whose users
+            resent re-authenticating — where a free-form minute count invites 1440 and calls
+            it convenience. An unlisted value is refused with 422 rather than approximated.
           example: 15
         refresh_token_ttl_days:
           type: integer

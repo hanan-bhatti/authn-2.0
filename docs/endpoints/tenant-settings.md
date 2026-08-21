@@ -52,6 +52,14 @@ These already existed; each now reads and writes one environment.
 
 A social provider configured in test is **not** configured in live. Each environment holds its own OAuth client, which is usually what you want — a Google client registered against `localhost` redirect URIs has no business serving production sign-ins.
 
+### The access token lifetime is a menu, not a range
+
+`session-policy` accepts `access_token_ttl_minutes` of **15, 30 or 60**, or `0` to inherit the deployment default. Anything else is refused with `422 validation_failed`.
+
+It is a menu because the number trades off two things it does not state: how long a stolen token keeps working, and how often every client pays a refresh round-trip. Three points make that a choice between postures — 15 for a console moving money, 60 for an app whose users resent re-authenticating — where a free-form minute count invites `1440` and calls it convenience.
+
+Rejecting rather than clamping follows from the same reasoning. There is no nearest legal value worth guessing, and a caller who asked for 45 and was handed 30 has no way to notice: the write returns `200` with the stored policy, which they would reasonably read as agreement. The other two fields keep their older clamping contract — `refresh_token_ttl_days` is a genuine range, and an unrecognised `cookie_same_site` becomes `lax`.
+
 ---
 
 ## Reading A Whole Environment (`GET /v1/tenant/settings`)

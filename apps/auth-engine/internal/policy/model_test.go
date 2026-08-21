@@ -2,6 +2,7 @@ package policy
 
 import (
 	"testing"
+	"time"
 )
 
 func TestValidatePassword_DefaultPolicy(t *testing.T) {
@@ -53,5 +54,61 @@ func TestValidatePassword_StrictPolicy(t *testing.T) {
 		if !expected[m] {
 			t.Errorf("unexpected missing criterion: %s", m)
 		}
+	}
+}
+
+func TestValidAccessTokenTTLMinutes(t *testing.T) {
+	// Zero is the "inherit the deployment default" signal and stays settable.
+	for _, m := range []int{0, 15, 30, 60} {
+		if !ValidAccessTokenTTLMinutes(m) {
+			t.Errorf("expected %d minutes to be settable", m)
+		}
+	}
+
+	// 1440 was the old ceiling and 45 reads like a reasonable middle, so both are
+	// the values a caller is most likely to try. Neither is on the menu.
+	for _, m := range []int{-1, 1, 14, 16, 45, 120, 1440} {
+		if ValidAccessTokenTTLMinutes(m) {
+			t.Errorf("expected %d minutes to be rejected", m)
+		}
+	}
+}
+
+func TestNormalizeSessionPolicyAccessTokenTTL(t *testing.T) {
+	// A stored value off the menu snaps down to a member, never up: normalization
+	// runs on the login path, where lengthening a lifetime nobody asked for is the
+	// one outcome that cannot be reported to anybody.
+	cases := map[int]int{
+		0:    0,
+		15:   15,
+		30:   30,
+		60:   60,
+		45:   30,
+		59:   30,
+		61:   60,
+		120:  60,
+		1440: 60,
+		// Below the shortest member there is nothing to snap down to.
+		5:  15,
+		1:  15,
+		-1: 15,
+	}
+
+	for stored, want := range cases {
+		got := NormalizeSessionPolicy(SessionPolicy{AccessTokenTTLMinutes: stored}).AccessTokenTTLMinutes
+		if got != want {
+			t.Errorf("stored %d minutes: expected %d, got %d", stored, want, got)
+		}
+	}
+}
+
+func TestSessionPolicyAccessTokenTTLResolution(t *testing.T) {
+	fallback := 15 * time.Minute
+
+	if got := (SessionPolicy{AccessTokenTTLMinutes: 0}).AccessTokenTTL(fallback); got != fallback {
+		t.Errorf("zero minutes should inherit the fallback, got %v", got)
+	}
+	if got := (SessionPolicy{AccessTokenTTLMinutes: 60}).AccessTokenTTL(fallback); got != time.Hour {
+		t.Errorf("60 minutes should resolve to an hour, got %v", got)
 	}
 }

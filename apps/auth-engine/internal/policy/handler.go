@@ -237,12 +237,17 @@ func (h *Handler) GetSessionPolicy(c *fiber.Ctx) error {
 }
 
 // UpdateSessionPolicy handles PUT /v1/tenant/session-policy, answering 200 with
-// the stored policy, 400 for an unparseable body, and 500 when the write fails.
+// the stored policy, 400 for an unparseable body, 422 for an access-token
+// lifetime off the menu, and 500 when the write fails.
 //
-// The repository normalizes token lifetimes and the SameSite value, so an
-// out-of-range lifetime is clamped to the supported window rather than rejected.
-// The response carries what was stored, which is what the caller should read
-// back rather than assuming the request was applied verbatim.
+// The access lifetime is rejected rather than corrected because a caller asking
+// for 45 minutes and being given 30 has no way to notice: it is a fixed menu, not
+// a range, so an unlisted value is a mistake to report rather than an
+// approximation to fill in. The refresh lifetime and the SameSite value are still
+// normalized by the repository, which is the older contract on those fields.
+//
+// The response carries what was stored, which is what the caller should read back
+// rather than assuming the request was applied verbatim.
 func (h *Handler) UpdateSessionPolicy(c *fiber.Ctx) error {
 	tenantID, environment, ok := scopeOf(c)
 	if !ok {
@@ -252,6 +257,11 @@ func (h *Handler) UpdateSessionPolicy(c *fiber.Ctx) error {
 	var req SessionPolicy
 	if err := c.BodyParser(&req); err != nil {
 		return httperr.InvalidBody(c)
+	}
+
+	if !ValidAccessTokenTTLMinutes(req.AccessTokenTTLMinutes) {
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			"access_token_ttl_minutes must be 15, 30 or 60, or omitted to inherit the deployment default")
 	}
 
 	updated, err := h.repo.UpdateSessionPolicy(c.UserContext(), tenantID, environment, req)

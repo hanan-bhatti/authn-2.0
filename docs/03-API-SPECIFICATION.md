@@ -1041,7 +1041,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
 
 - **Four artifacts are bounded together**, because a lifetime is decided in four places: the signed access token, the session row its refresh token authenticates against, the refresh cookie's `Expires`, and `expires_in`. Bounding fewer would leave a credential outliving the record behind it — a browser holding a cookie for a swept session refreshes into a `401` it cannot tell from theft detection.
 
-- **A tenant's own lifetimes pass through the same ceiling.** `access_token_ttl_minutes` (1–1440) and `refresh_token_ttl_days` (1–365) are single values across both environments, so a tenant asking for a day in live is not thereby handing test a day-long token. This is the one stored setting that is honoured in full in live and shortened in test.
+- **A tenant's own lifetimes pass through the same ceiling.** `access_token_ttl_minutes` (15, 30 or 60) and `refresh_token_ttl_days` (1–365) are single values across both environments, so a tenant asking for an hour in live is not thereby handing test an hour-long token. This is the one stored setting that is honoured in full in live and shortened in test.
 
 - **Only a test credential is bounded.** A `pk_live_`/`sk_live_` sign-in receives the deployment or tenant lifetime untouched, so tightening a test ceiling cannot shorten a customer's session.
 
