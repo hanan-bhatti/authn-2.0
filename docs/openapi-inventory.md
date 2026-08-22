@@ -8,58 +8,58 @@ This document contains the single authoritative list of all registered HTTP rout
 
 | # | HTTP Method | Path | Internal Package | Handler Function | Code Location | Auth Requirements |
 |---|-------------|------|------------------|------------------|---------------|-------------------|
-| 1 | `GET` | `/v1/health` | `cmd/server` | `HealthCheckHandler` | `cmd/server/routes.go:30` | None (Public) |
-| 2 | `GET` | `/v1/ready` | `cmd/server` | `ReadinessCheckHandler` | `cmd/server/routes.go:31` | None (Public) |
-| 3 | `GET` | `/healthz` | `cmd/server` | `HealthCheckHandler` | `cmd/server/routes.go:32` | None (Public) |
-| 4 | `GET` | `/readyz` | `cmd/server` | `ReadinessCheckHandler` | `cmd/server/routes.go:33` | None (Public) |
-| 5 | `POST` | `/v1/client/auth/signup` | `auth` | `SignUp` | `internal/auth/handler.go:142` | `PublishableKey` (pk_) |
-| 6 | `POST` | `/v1/client/auth/login` | `auth` | `Login` | `internal/auth/handler.go:143` | `PublishableKey` (pk_) |
-| 7 | `GET` | `/v1/client/auth/verify-email` | `auth` | `VerifyEmail` | `internal/auth/handler.go:144` | `PublishableKey` (pk_) |
-| 8 | `POST` | `/v1/client/auth/resend-verification` | `auth` | `ResendVerification` | `internal/auth/handler.go:145` | `PublishableKey` (pk_) |
-| 9 | `POST` | `/v1/client/auth/magic-link` | `auth` | `SendMagicLink` | `internal/auth/handler.go:148` | `PublishableKey` (pk_) |
-| 10 | `GET` | `/v1/client/auth/magic-link/verify` | `auth` | `VerifyMagicLink` | `internal/auth/handler.go:149` | `PublishableKey` (pk_) |
-| 11 | `POST` | `/v1/client/auth/magic-link/verify` | `auth` | `VerifyMagicLink` | `internal/auth/handler.go:150` | `PublishableKey` (pk_) |
-| 12 | `POST` | `/v1/client/auth/2fa/totp/enroll` | `auth` | `EnrollTOTP` | `internal/auth/handler.go:154` | `PublishableKey` + `BearerAuth` (Session) |
-| 13 | `POST` | `/v1/client/auth/2fa/totp/confirm` | `auth` | `ConfirmTOTP` | `internal/auth/handler.go:155` | `PublishableKey` + `BearerAuth` (Session) |
-| 14 | `POST` | `/v1/client/auth/2fa/totp/disable` | `auth` | `DisableTOTP` | `internal/auth/handler.go:156` | `PublishableKey` + `BearerAuth` (Session) |
-| 15 | `POST` | `/v1/client/auth/2fa/totp/verify` | `auth` | `VerifyTOTP` | `internal/auth/handler.go:157` | `PublishableKey` (pk_) |
-| 16 | `POST` | `/v1/client/auth/2fa/verify` | `auth` | `VerifyTOTP` | `internal/auth/handler.go:158` | `PublishableKey` (pk_) |
-| 17 | `POST` | `/v1/client/auth/2fa/sms/enroll` | `auth` | `EnrollSMS` | `internal/auth/handler.go:161` | `PublishableKey` + `BearerAuth` (Session) |
-| 18 | `POST` | `/v1/client/auth/2fa/sms/confirm` | `auth` | `ConfirmSMS` | `internal/auth/handler.go:162` | `PublishableKey` + `BearerAuth` (Session) |
-| 19 | `DELETE` | `/v1/client/auth/2fa/sms/disable` | `auth` | `DisableSMS` | `internal/auth/handler.go:163` | `PublishableKey` + `BearerAuth` (Session) |
-| 20 | `POST` | `/v1/client/auth/2fa/recovery-codes/regenerate` | `auth` | `RegenerateRecoveryCodes` | `internal/auth/handler.go:166` | `PublishableKey` + `BearerAuth` (Session) |
-| 21 | `GET` | `/v1/client/auth/2fa/recovery-codes/status` | `auth` | `GetRecoveryCodesStatus` | `internal/auth/handler.go:167` | `PublishableKey` + `BearerAuth` (Session) |
-| 22 | `POST` | `/v1/client/auth/2fa/webauthn/register/begin` | `auth` | `BeginWebAuthnRegistration` | `internal/auth/handler.go:170` | `PublishableKey` + `BearerAuth` (Session) |
-| 23 | `POST` | `/v1/client/auth/2fa/webauthn/register/finish` | `auth` | `FinishWebAuthnRegistration` | `internal/auth/handler.go:171` | `PublishableKey` + `BearerAuth` (Session) |
-| 24 | `POST` | `/v1/client/auth/2fa/webauthn/login/begin` | `auth` | `BeginWebAuthnLogin` | `internal/auth/handler.go:172` | `PublishableKey` (pk_) |
-| 25 | `POST` | `/v1/client/auth/2fa/webauthn/login/finish` | `auth` | `FinishWebAuthnLogin` | `internal/auth/handler.go:173` | `PublishableKey` (pk_) |
-| 26 | `GET` | `/v1/client/auth/2fa/webauthn/credentials` | `auth` | `ListWebAuthnPasskeys` | `internal/auth/handler.go:174` | `PublishableKey` + `BearerAuth` (Session) |
-| 27 | `DELETE` | `/v1/client/auth/2fa/webauthn/credentials/:id` | `auth` | `DeleteWebAuthnPasskey` | `internal/auth/handler.go:175` | `PublishableKey` + `BearerAuth` (Session) |
-| 28 | `POST` | `/v1/client/account/guardians/invite` | `auth` | `InviteGuardians` | `internal/auth/handler.go:179` | `PublishableKey` + `BearerAuth` (Session) |
-| 29 | `POST` | `/v1/client/account/guardians/accept` | `auth` | `AcceptGuardianInvite` | `internal/auth/handler.go:180` | `PublishableKey` (pk_) |
-| 30 | `GET` | `/v1/client/account/guardians` | `auth` | `ListGuardians` | `internal/auth/handler.go:181` | `PublishableKey` + `BearerAuth` (Session) |
-| 31 | `DELETE` | `/v1/client/account/guardians/:id` | `auth` | `RevokeGuardian` | `internal/auth/handler.go:182` | `PublishableKey` + `BearerAuth` (Session) |
-| 32 | `POST` | `/v1/client/auth/recovery/initiate` | `auth` | `InitiateRecovery` | `internal/auth/handler.go:186` | `PublishableKey` (pk_) |
-| 33 | `POST` | `/v1/client/auth/recovery/proof/guardian` | `auth` | `SubmitGuardianProof` | `internal/auth/handler.go:187` | `PublishableKey` (pk_) |
-| 34 | `POST` | `/v1/client/auth/recovery/proof/old-password` | `auth` | `SubmitOldPasswordProof` | `internal/auth/handler.go:188` | `PublishableKey` (pk_) |
-| 35 | `POST` | `/v1/client/auth/recovery/proof/security-questions` | `auth` | `SubmitSecurityQuestionsProof` | `internal/auth/handler.go:189` | `PublishableKey` (pk_) |
-| 36 | `POST` | `/v1/client/auth/recovery/claim` | `auth` | `ClaimAccount` | `internal/auth/handler.go:190` | `PublishableKey` (pk_) |
-| 37 | `POST` | `/v1/client/auth/recovery/cancel` | `auth` | `CancelRecoveryAuth` | `internal/auth/handler.go:191` | `PublishableKey` (pk_) |
-| 38 | `POST` | `/v1/client/auth/recovery/cancel/token` | `auth` | `CancelRecoveryToken` | `internal/auth/handler.go:192` | `PublishableKey` (pk_) |
+| 1 | `GET` | `/v1/health` | `cmd/server` | `HealthCheckHandler` | `cmd/server/routes.go:32` | None (Public) |
+| 2 | `GET` | `/v1/ready` | `cmd/server` | `ReadinessCheckHandler` | `cmd/server/routes.go:33` | None (Public) |
+| 3 | `GET` | `/healthz` | `cmd/server` | `HealthCheckHandler` | `cmd/server/routes.go:34` | None (Public) |
+| 4 | `GET` | `/readyz` | `cmd/server` | `ReadinessCheckHandler` | `cmd/server/routes.go:35` | None (Public) |
+| 5 | `POST` | `/v1/client/auth/signup` | `auth` | `SignUp` | `internal/auth/handler.go:180` | `PublishableKey` (pk_) |
+| 6 | `POST` | `/v1/client/auth/login` | `auth` | `Login` | `internal/auth/handler.go:181` | `PublishableKey` (pk_) |
+| 7 | `GET` | `/v1/client/auth/verify-email` | `auth` | `VerifyEmail` | `internal/auth/handler.go:182` | `PublishableKey` (pk_) |
+| 8 | `POST` | `/v1/client/auth/resend-verification` | `auth` | `ResendVerification` | `internal/auth/handler.go:183` | `PublishableKey` (pk_) |
+| 9 | `POST` | `/v1/client/auth/magic-link` | `auth` | `SendMagicLink` | `internal/auth/handler.go:186` | `PublishableKey` (pk_) |
+| 10 | `GET` | `/v1/client/auth/magic-link/verify` | `auth` | `VerifyMagicLink` | `internal/auth/handler.go:187` | `PublishableKey` (pk_) |
+| 11 | `POST` | `/v1/client/auth/magic-link/verify` | `auth` | `VerifyMagicLink` | `internal/auth/handler.go:188` | `PublishableKey` (pk_) |
+| 12 | `POST` | `/v1/client/auth/2fa/totp/enroll` | `auth` | `EnrollTOTP` | `internal/auth/handler.go:192` | `PublishableKey` + `BearerAuth` (Session) |
+| 13 | `POST` | `/v1/client/auth/2fa/totp/confirm` | `auth` | `ConfirmTOTP` | `internal/auth/handler.go:193` | `PublishableKey` + `BearerAuth` (Session) |
+| 14 | `POST` | `/v1/client/auth/2fa/totp/disable` | `auth` | `DisableTOTP` | `internal/auth/handler.go:194` | `PublishableKey` + `BearerAuth` (Session) |
+| 15 | `POST` | `/v1/client/auth/2fa/totp/verify` | `auth` | `VerifyTOTP` | `internal/auth/handler.go:195` | `PublishableKey` (pk_) |
+| 16 | `POST` | `/v1/client/auth/2fa/verify` | `auth` | `VerifyTOTP` | `internal/auth/handler.go:198` | `PublishableKey` (pk_) |
+| 17 | `POST` | `/v1/client/auth/2fa/sms/enroll` | `auth` | `EnrollSMS` | `internal/auth/handler.go:201` | `PublishableKey` + `BearerAuth` (Session) |
+| 18 | `POST` | `/v1/client/auth/2fa/sms/confirm` | `auth` | `ConfirmSMS` | `internal/auth/handler.go:202` | `PublishableKey` + `BearerAuth` (Session) |
+| 19 | `DELETE` | `/v1/client/auth/2fa/sms/disable` | `auth` | `DisableSMS` | `internal/auth/handler.go:203` | `PublishableKey` + `BearerAuth` (Session) |
+| 20 | `POST` | `/v1/client/auth/2fa/recovery-codes/regenerate` | `auth` | `RegenerateRecoveryCodes` | `internal/auth/handler.go:206` | `PublishableKey` + `BearerAuth` (Session) |
+| 21 | `GET` | `/v1/client/auth/2fa/recovery-codes/status` | `auth` | `GetRecoveryCodesStatus` | `internal/auth/handler.go:207` | `PublishableKey` + `BearerAuth` (Session) |
+| 22 | `POST` | `/v1/client/auth/2fa/webauthn/register/begin` | `auth` | `BeginWebAuthnRegistration` | `internal/auth/handler.go:210` | `PublishableKey` + `BearerAuth` (Session) |
+| 23 | `POST` | `/v1/client/auth/2fa/webauthn/register/finish` | `auth` | `FinishWebAuthnRegistration` | `internal/auth/handler.go:211` | `PublishableKey` + `BearerAuth` (Session) |
+| 24 | `POST` | `/v1/client/auth/2fa/webauthn/login/begin` | `auth` | `BeginWebAuthnLogin` | `internal/auth/handler.go:212` | `PublishableKey` (pk_) |
+| 25 | `POST` | `/v1/client/auth/2fa/webauthn/login/finish` | `auth` | `FinishWebAuthnLogin` | `internal/auth/handler.go:213` | `PublishableKey` (pk_) |
+| 26 | `GET` | `/v1/client/auth/2fa/webauthn/credentials` | `auth` | `ListWebAuthnPasskeys` | `internal/auth/handler.go:214` | `PublishableKey` + `BearerAuth` (Session) |
+| 27 | `DELETE` | `/v1/client/auth/2fa/webauthn/credentials/:id` | `auth` | `DeleteWebAuthnPasskey` | `internal/auth/handler.go:215` | `PublishableKey` + `BearerAuth` (Session) |
+| 28 | `POST` | `/v1/client/account/guardians/invite` | `auth` | `InviteGuardians` | `internal/auth/handler.go:219` | `PublishableKey` + `BearerAuth` (Session) |
+| 29 | `POST` | `/v1/client/account/guardians/accept` | `auth` | `AcceptGuardianInvite` | `internal/auth/handler.go:220` | `PublishableKey` (pk_) |
+| 30 | `GET` | `/v1/client/account/guardians` | `auth` | `ListGuardians` | `internal/auth/handler.go:221` | `PublishableKey` + `BearerAuth` (Session) |
+| 31 | `DELETE` | `/v1/client/account/guardians/:id` | `auth` | `RevokeGuardian` | `internal/auth/handler.go:222` | `PublishableKey` + `BearerAuth` (Session) |
+| 32 | `POST` | `/v1/client/auth/recovery/initiate` | `auth` | `InitiateRecovery` | `internal/auth/handler.go:226` | `PublishableKey` (pk_) |
+| 33 | `POST` | `/v1/client/auth/recovery/proof/guardian` | `auth` | `SubmitGuardianProof` | `internal/auth/handler.go:227` | `PublishableKey` (pk_) |
+| 34 | `POST` | `/v1/client/auth/recovery/proof/old-password` | `auth` | `SubmitOldPasswordProof` | `internal/auth/handler.go:228` | `PublishableKey` (pk_) |
+| 35 | `POST` | `/v1/client/auth/recovery/proof/security-questions` | `auth` | `SubmitSecurityQuestionsProof` | `internal/auth/handler.go:229` | `PublishableKey` (pk_) |
+| 36 | `POST` | `/v1/client/auth/recovery/claim` | `auth` | `ClaimAccount` | `internal/auth/handler.go:230` | `PublishableKey` (pk_) |
+| 37 | `POST` | `/v1/client/auth/recovery/cancel` | `auth` | `CancelRecoveryAuth` | `internal/auth/handler.go:231` | `PublishableKey` (pk_) |
+| 38 | `POST` | `/v1/client/auth/recovery/cancel/token` | `auth` | `CancelRecoveryToken` | `internal/auth/handler.go:232` | `PublishableKey` (pk_) |
 | 39 | `POST` | `/v1/admin/keys` | `apikey` | `CreateKey` | `internal/apikey/handler.go:113` | `SecretKey` (sk_) or Admin JWT |
 | 40 | `GET` | `/v1/admin/keys` | `apikey` | `ListKeys` | `internal/apikey/handler.go:114` | `SecretKey` (sk_) or Admin JWT |
 | 41 | `POST` | `/v1/admin/keys/:id/revoke` | `apikey` | `RevokeKey` | `internal/apikey/handler.go:115` | `SecretKey` (sk_) or Admin JWT |
-| 42 | `POST` | `/v1/admin/users/:user_id/impersonate` | `impersonation` | `InitiateImpersonation` | `internal/impersonation/handler.go:127` | `SecretKey` (sk_) or Admin JWT |
-| 43 | `GET` | `/v1/tenant/impersonation-policy` | `impersonation` | `GetImpersonationPolicy` | `internal/impersonation/handler.go:133` | `SecretKey` (sk_) or Admin JWT |
-| 44 | `PUT` | `/v1/tenant/impersonation-policy` | `impersonation` | `UpdateImpersonationPolicy` | `internal/impersonation/handler.go:134` | `SecretKey` (sk_) or Admin JWT |
-| 45 | `POST` | `/v1/client/auth/impersonate/exit` | `impersonation` | `ExitImpersonation` | `internal/impersonation/handler.go:143` | `PublishableKey` + `BearerAuth` |
-| 46 | `GET` | `/.well-known/openid-configuration` | `oauth` | `GetOIDCDiscovery` | `internal/oauth/handler.go:52` | None (Public) |
-| 47 | `GET` | `/v1/oauth/jwks` | `oauth` | `GetJWKS` | `internal/oauth/handler.go:55` | None (Public) |
-| 48 | `GET` | `/v1/oauth/userinfo` | `oauth` | `GetUserInfo` | `internal/oauth/handler.go:56` | `BearerAuth` |
-| 49 | `GET` | `/v1/oauth/authorize` | `oauth` | `Authorize` | `internal/oauth/handler.go:58` | `PublishableKey` (pk_) |
-| 50 | `POST` | `/v1/oauth/token` | `oauth` | `TokenExchange` | `internal/oauth/handler.go:59` | `PublishableKey` (pk_) |
-| 51 | `POST` | `/v1/admin/jwks/rotate` | `oauth` | `RotateJWKS` | `internal/oauth/handler.go:67` | `SecretKey` (sk_) or Admin JWT |
-| 52 | `POST` | `/v1/tenant/applications` | `oauth` | `CreateApplication` | `internal/oauth/handler.go:70` | `SecretKey` (sk_) or Admin JWT |
+| 42 | `POST` | `/v1/admin/users/:user_id/impersonate` | `impersonation` | `InitiateImpersonation` | `internal/impersonation/handler.go:135` | `SecretKey` (sk_) or Admin JWT |
+| 43 | `GET` | `/v1/tenant/impersonation-policy` | `impersonation` | `GetImpersonationPolicy` | `internal/impersonation/handler.go:141` | `SecretKey` (sk_) or Admin JWT |
+| 44 | `PUT` | `/v1/tenant/impersonation-policy` | `impersonation` | `UpdateImpersonationPolicy` | `internal/impersonation/handler.go:142` | `SecretKey` (sk_) or Admin JWT |
+| 45 | `POST` | `/v1/client/auth/impersonate/exit` | `impersonation` | `ExitImpersonation` | `internal/impersonation/handler.go:151` | `PublishableKey` + `BearerAuth` |
+| 46 | `GET` | `/.well-known/openid-configuration` | `oauth` | `GetOIDCDiscovery` | `internal/oauth/handler.go:76` | None (Public) |
+| 47 | `GET` | `/v1/oauth/jwks` | `oauth` | `GetJWKS` | `internal/oauth/handler.go:79` | None (Public) |
+| 48 | `GET` | `/v1/oauth/userinfo` | `oauth` | `GetUserInfo` | `internal/oauth/handler.go:80` | `BearerAuth` |
+| 49 | `GET` | `/v1/oauth/authorize` | `oauth` | `Authorize` | `internal/oauth/handler.go:82` | `PublishableKey` (pk_) |
+| 50 | `POST` | `/v1/oauth/token` | `oauth` | `TokenExchange` | `internal/oauth/handler.go:83` | `PublishableKey` (pk_) |
+| 51 | `POST` | `/v1/admin/jwks/rotate` | `oauth` | `RotateJWKS` | `internal/oauth/handler.go:99` | `SecretKey` (sk_) or Admin JWT |
+| 52 | `POST` | `/v1/tenant/applications` | `oauth` | `CreateApplication` | `internal/oauth/handler.go:104` | `SecretKey` (sk_) or Admin JWT |
 | 53 | `POST` | `/v1/client/organizations` | `org` | `CreateOrganization` | `internal/org/handler.go:51` | `PublishableKey` + `BearerAuth` |
 | 54 | `GET` | `/v1/client/organizations` | `org` | `ListUserOrganizations` | `internal/org/handler.go:52` | `PublishableKey` + `BearerAuth` |
 | 55 | `GET` | `/v1/client/organizations/:orgId` | `org` | `GetOrganization` | `internal/org/handler.go:53` | `PublishableKey` + `BearerAuth` |
@@ -77,18 +77,18 @@ This document contains the single authoritative list of all registered HTTP rout
 | 67 | `GET` | `/v1/tenant/organizations/:orgId` | `org` | `TenantGetOrganization` | `internal/org/handler.go:69` | `SecretKey` (sk_) or Admin JWT |
 | 68 | `POST` | `/v1/tenant/organizations` | `org` | `TenantCreateOrganization` | `internal/org/handler.go:70` | `SecretKey` (sk_) or Admin JWT |
 | 69 | `DELETE` | `/v1/tenant/organizations/:orgId` | `org` | `TenantDeleteOrganization` | `internal/org/handler.go:71` | `SecretKey` (sk_) or Admin JWT |
-| 70 | `GET` | `/v1/tenant/password-policy` | `policy` | `GetPolicy` | `internal/policy/handler.go:434` | `SecretKey` (sk_) or Admin JWT |
-| 71 | `PUT` | `/v1/tenant/password-policy` | `policy` | `UpdatePolicy` | `internal/policy/handler.go:435` | `SecretKey` (sk_) or Admin JWT |
-| 72 | `GET` | `/v1/tenant/security-policy` | `policy` | `GetSecurityPolicy` | `internal/policy/handler.go:438` | `SecretKey` (sk_) or Admin JWT |
-| 73 | `PUT` | `/v1/tenant/security-policy` | `policy` | `UpdateSecurityPolicy` | `internal/policy/handler.go:439` | `SecretKey` (sk_) or Admin JWT |
-| 74 | `GET` | `/v1/tenant/recovery-policy` | `policy` | `GetRecoveryPolicy` | `internal/policy/handler.go:442` | `SecretKey` (sk_) or Admin JWT |
-| 75 | `PUT` | `/v1/tenant/recovery-policy` | `policy` | `UpdateRecoveryPolicy` | `internal/policy/handler.go:443` | `SecretKey` (sk_) or Admin JWT |
-| 76 | `POST` | `/v1/tenant/roles` | `rbac` | `CreateRole` | `internal/rbac/handler.go:53` | `SecretKey` (sk_) or Admin JWT |
-| 77 | `GET` | `/v1/tenant/roles` | `rbac` | `ListRoles` | `internal/rbac/handler.go:54` | `SecretKey` (sk_) or Admin JWT |
-| 78 | `PUT` | `/v1/tenant/roles/:role_id/permissions` | `rbac` | `UpdateRolePermissions` | `internal/rbac/handler.go:55` | `SecretKey` (sk_) or Admin JWT |
-| 79 | `POST` | `/v1/admin/users/:user_id/roles` | `rbac` | `AssignUserRole` | `internal/rbac/handler.go:61` | `SecretKey` (sk_) or Admin JWT |
-| 80 | `DELETE` | `/v1/admin/users/:user_id/roles/:role_slug` | `rbac` | `RevokeUserRole` | `internal/rbac/handler.go:62` | `SecretKey` (sk_) or Admin JWT |
-| 81 | `GET` | `/v1/client/user/permissions` | `rbac` | `GetUserPermissions` | `internal/rbac/handler.go:71` | `PublishableKey` + `BearerAuth` |
+| 70 | `GET` | `/v1/tenant/password-policy` | `policy` | `GetPolicy` | `internal/policy/handler.go:444` | `SecretKey` (sk_) or Admin JWT |
+| 71 | `PUT` | `/v1/tenant/password-policy` | `policy` | `UpdatePolicy` | `internal/policy/handler.go:445` | `SecretKey` (sk_) or Admin JWT |
+| 72 | `GET` | `/v1/tenant/security-policy` | `policy` | `GetSecurityPolicy` | `internal/policy/handler.go:448` | `SecretKey` (sk_) or Admin JWT |
+| 73 | `PUT` | `/v1/tenant/security-policy` | `policy` | `UpdateSecurityPolicy` | `internal/policy/handler.go:449` | `SecretKey` (sk_) or Admin JWT |
+| 74 | `GET` | `/v1/tenant/recovery-policy` | `policy` | `GetRecoveryPolicy` | `internal/policy/handler.go:452` | `SecretKey` (sk_) or Admin JWT |
+| 75 | `PUT` | `/v1/tenant/recovery-policy` | `policy` | `UpdateRecoveryPolicy` | `internal/policy/handler.go:453` | `SecretKey` (sk_) or Admin JWT |
+| 76 | `POST` | `/v1/tenant/roles` | `rbac` | `CreateRole` | `internal/rbac/handler.go:54` | `SecretKey` (sk_) or Admin JWT |
+| 77 | `GET` | `/v1/tenant/roles` | `rbac` | `ListRoles` | `internal/rbac/handler.go:55` | `SecretKey` (sk_) or Admin JWT |
+| 78 | `PUT` | `/v1/tenant/roles/:role_id/permissions` | `rbac` | `UpdateRolePermissions` | `internal/rbac/handler.go:56` | `SecretKey` (sk_) or Admin JWT |
+| 79 | `POST` | `/v1/admin/users/:user_id/roles` | `rbac` | `AssignUserRole` | `internal/rbac/handler.go:62` | `SecretKey` (sk_) or Admin JWT |
+| 80 | `DELETE` | `/v1/admin/users/:user_id/roles/:role_slug` | `rbac` | `RevokeUserRole` | `internal/rbac/handler.go:63` | `SecretKey` (sk_) or Admin JWT |
+| 81 | `GET` | `/v1/client/user/permissions` | `rbac` | `GetUserPermissions` | `internal/rbac/handler.go:72` | `PublishableKey` + `BearerAuth` |
 | 82 | `POST` | `/v1/saml/acs` | `saml` | `ProcessACS` | `internal/saml/handler.go:76` | None (Protocol Assertion; 302 to a registered RelayState, else 200) |
 | 83 | `GET` | `/v1/saml/metadata/:orgId` | `saml` | `GetSPMetadata` | `internal/saml/handler.go:77` | None (Public XML) |
 | 84 | `POST` | `/v1/client/auth/domain-lookup` | `saml` | `LookupDomainSSO` | `internal/saml/handler.go:80` | `PublishableKey` (pk_) |
@@ -100,19 +100,19 @@ This document contains the single authoritative list of all registered HTTP rout
 | 90 | `GET` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `GetSAMLConnection` | `internal/saml/handler.go:90` | `SecretKey` (sk_) or Admin JWT |
 | 91 | `PATCH` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `UpdateSAMLConnection` | `internal/saml/handler.go:91` | `SecretKey` (sk_) or Admin JWT — **live key** when the connection is in `live` or the request moves it there |
 | 92 | `DELETE` | `/v1/tenant/organizations/:orgId/saml` | `saml` | `DeleteSAMLConnection` | `internal/saml/handler.go:92` | `SecretKey` (sk_) or Admin JWT — **live key** when the connection is in `live` or the request moves it there |
-| 93 | `GET` | `/v1/client/sessions` | `session` | `ListSessions` | `internal/session/handler.go:57` | `PublishableKey` (pk_) |
-| 94 | `POST` | `/v1/client/sessions/revoke` | `session` | `RevokeSession` | `internal/session/handler.go:58` | `PublishableKey` (pk_) |
-| 95 | `POST` | `/v1/client/sessions/revoke-others` | `session` | `RevokeOtherSessions` | `internal/session/handler.go:59` | `PublishableKey` (pk_) |
-| 96 | `POST` | `/v1/client/sessions/revoke-all` | `session` | `RevokeAllSessions` | `internal/session/handler.go:60` | `PublishableKey` (pk_) |
-| 97 | `POST` | `/v1/client/auth/refresh` | `session` | `RefreshTokens` | `internal/session/handler.go:62` | `PublishableKey` (pk_) |
-| 98 | `GET` | `/v1/admin/users/:user_id/sessions` | `session` | `AdminListUserSessions` | `internal/session/handler.go:65` | `SecretKey` (sk_) or Admin JWT |
-| 99 | `POST` | `/v1/admin/users/:user_id/sessions/revoke-all` | `session` | `AdminRevokeAllUserSessions` | `internal/session/handler.go:66` | `SecretKey` (sk_) or Admin JWT |
-| 100 | `GET` | `/v1/client/auth/social/:provider/authorize` | `social` | `Authorize` | `internal/social/handler.go:49` | `PublishableKey` (pk_) |
-| 101 | `GET` | `/v1/client/auth/social/:provider/callback` | `social` | `Callback` | `internal/social/handler.go:50` | `PublishableKey` (pk_) |
-| 102 | `GET` | `/v1/tenant/social-providers` | `social` | `ListProviders` | `internal/social/handler.go:56` | `SecretKey` (sk_) or Admin JWT |
-| 103 | `GET` | `/v1/tenant/social-providers/:provider` | `social` | `GetProvider` | `internal/social/handler.go:57` | `SecretKey` (sk_) or Admin JWT |
-| 104 | `PUT` | `/v1/tenant/social-providers/:provider` | `social` | `ConfigureProvider` | `internal/social/handler.go:58` | `SecretKey` (sk_) or Admin JWT |
-| 105 | `DELETE` | `/v1/tenant/social-providers/:provider` | `social` | `DeleteProvider` | `internal/social/handler.go:59` | `SecretKey` (sk_) or Admin JWT |
+| 93 | `GET` | `/v1/client/sessions` | `session` | `ListSessions` | `internal/session/handler.go:76` | `PublishableKey` (pk_) |
+| 94 | `POST` | `/v1/client/sessions/revoke` | `session` | `RevokeSession` | `internal/session/handler.go:77` | `PublishableKey` (pk_) |
+| 95 | `POST` | `/v1/client/sessions/revoke-others` | `session` | `RevokeOtherSessions` | `internal/session/handler.go:78` | `PublishableKey` (pk_) |
+| 96 | `POST` | `/v1/client/sessions/revoke-all` | `session` | `RevokeAllSessions` | `internal/session/handler.go:79` | `PublishableKey` (pk_) |
+| 97 | `POST` | `/v1/client/auth/refresh` | `session` | `RefreshTokens` | `internal/session/handler.go:81` | `PublishableKey` (pk_) |
+| 98 | `GET` | `/v1/admin/users/:user_id/sessions` | `session` | `AdminListUserSessions` | `internal/session/handler.go:93` | `SecretKey` (sk_) or Admin JWT |
+| 99 | `POST` | `/v1/admin/users/:user_id/sessions/revoke-all` | `session` | `AdminRevokeAllUserSessions` | `internal/session/handler.go:94` | `SecretKey` (sk_) or Admin JWT |
+| 100 | `GET` | `/v1/client/auth/social/:provider/authorize` | `social` | `Authorize` | `internal/social/handler.go:71` | `PublishableKey` (pk_) |
+| 101 | `GET` | `/v1/client/auth/social/:provider/callback` | `social` | `Callback` | `internal/social/handler.go:72` | `PublishableKey` (pk_) |
+| 102 | `GET` | `/v1/tenant/social-providers` | `social` | `ListProviders` | `internal/social/handler.go:78` | `SecretKey` (sk_) or Admin JWT |
+| 103 | `GET` | `/v1/tenant/social-providers/:provider` | `social` | `GetProvider` | `internal/social/handler.go:79` | `SecretKey` (sk_) or Admin JWT |
+| 104 | `PUT` | `/v1/tenant/social-providers/:provider` | `social` | `ConfigureProvider` | `internal/social/handler.go:80` | `SecretKey` (sk_) or Admin JWT |
+| 105 | `DELETE` | `/v1/tenant/social-providers/:provider` | `social` | `DeleteProvider` | `internal/social/handler.go:81` | `SecretKey` (sk_) or Admin JWT |
 | 106 | `GET` | `/v1/client/user/email/verify` | `user` | `VerifyEmailChange` | `internal/user/handler.go:110` | `PublishableKey` (pk_) |
 | 107 | `GET` | `/v1/client/user/recovery-email/verify` | `user` | `VerifyRecoveryEmail` | `internal/user/handler.go:111` | `PublishableKey` (pk_) |
 | 108 | `GET` | `/v1/client/user/profile` | `user` | `GetProfile` | `internal/user/handler.go:122` | `PublishableKey` + `BearerAuth` |
@@ -134,14 +134,14 @@ This document contains the single authoritative list of all registered HTTP rout
 | 124 | `POST` | `/v1/admin/webhooks/endpoints/:id/rotate-secret` | `webhook` | `RotateSecret` | `internal/webhook/handler.go:51` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
 | 125 | `GET` | `/v1/admin/webhooks/deliveries` | `webhook` | `ListDeliveries` | `internal/webhook/handler.go:54` | `SecretKey` (sk_) or Admin JWT |
 | 126 | `POST` | `/v1/admin/webhooks/deliveries/:id/redeliver` | `webhook` | `Redeliver` | `internal/webhook/handler.go:55` | `SecretKey` (sk_) or Admin JWT — **live key** (`sk_live_`) required |
-| 127 | `GET` | `/v1/client/app-config` | `appconfig` | `GetAppConfig` | `internal/appconfig/handler.go:144` | `PublishableKey` (pk_) |
-| 128 | `GET` | `/v1/tenant/branding` | `appconfig` | `GetBranding` | `internal/appconfig/handler.go:146` | `SecretKey` (sk_) or Admin JWT |
-| 129 | `PUT` | `/v1/tenant/branding` | `appconfig` | `UpdateBranding` | `internal/appconfig/handler.go:147` | `SecretKey` (sk_) or Admin JWT |
-| 130 | `GET` | `/v1/tenant/session-policy` | `policy` | `GetSessionPolicy` | `internal/policy/handler.go:446` | `SecretKey` (sk_) or Admin JWT |
-| 131 | `PUT` | `/v1/tenant/session-policy` | `policy` | `UpdateSessionPolicy` | `internal/policy/handler.go:447` | `SecretKey` (sk_) or Admin JWT |
-| 132 | `GET` | `/v1/tenant/settings` | `policy` | `GetSettings` | `internal/policy/handler.go:450` | `SecretKey` (sk_) or Admin JWT |
-| 133 | `GET` | `/v1/tenant/settings/diff` | `policy` | `GetSettingsDiff` | `internal/policy/handler.go:451` | `SecretKey` (sk_) or Admin JWT |
-| 134 | `POST` | `/v1/tenant/settings/publish` | `policy` | `PublishSettings` | `internal/policy/handler.go:452` | `SecretKey` (sk_) or Admin JWT (destination environment must match the key) |
+| 127 | `GET` | `/v1/client/app-config` | `appconfig` | `GetAppConfig` | `internal/appconfig/handler.go:148` | `PublishableKey` (pk_) |
+| 128 | `GET` | `/v1/tenant/branding` | `appconfig` | `GetBranding` | `internal/appconfig/handler.go:150` | `SecretKey` (sk_) or Admin JWT |
+| 129 | `PUT` | `/v1/tenant/branding` | `appconfig` | `UpdateBranding` | `internal/appconfig/handler.go:151` | `SecretKey` (sk_) or Admin JWT |
+| 130 | `GET` | `/v1/tenant/session-policy` | `policy` | `GetSessionPolicy` | `internal/policy/handler.go:456` | `SecretKey` (sk_) or Admin JWT |
+| 131 | `PUT` | `/v1/tenant/session-policy` | `policy` | `UpdateSessionPolicy` | `internal/policy/handler.go:457` | `SecretKey` (sk_) or Admin JWT |
+| 132 | `GET` | `/v1/tenant/settings` | `policy` | `GetSettings` | `internal/policy/handler.go:460` | `SecretKey` (sk_) or Admin JWT |
+| 133 | `GET` | `/v1/tenant/settings/diff` | `policy` | `GetSettingsDiff` | `internal/policy/handler.go:461` | `SecretKey` (sk_) or Admin JWT |
+| 134 | `POST` | `/v1/tenant/settings/publish` | `policy` | `PublishSettings` | `internal/policy/handler.go:462` | `SecretKey` (sk_) or Admin JWT (destination environment must match the key) |
 | 135 | `GET` | `/v1/tenant/sandbox/messages` | `sandbox` | `ListMessages` | `internal/sandbox/handler.go:102` | `SecretKey` (sk_test_) or Admin JWT (a live credential is `403`) |
 | 136 | `DELETE` | `/v1/tenant/sandbox/messages` | `sandbox` | `PurgeMessages` | `internal/sandbox/handler.go:103` | `SecretKey` (sk_test_) or Admin JWT (a live credential is `403`) |
 | 137 | `GET` | `/v1/tenant/sandbox/messages/:id` | `sandbox` | `GetMessage` | `internal/sandbox/handler.go:104` | `SecretKey` (sk_test_) or Admin JWT (a live credential is `403`) |
