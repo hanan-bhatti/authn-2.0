@@ -99,6 +99,7 @@ import type {
   SubmitOldPasswordProofResult,
   SubmitSecurityQuestionsProofParams,
   SubmitSecurityQuestionsProofResult,
+  TwoFactorMethod,
   UpdateOrgMemberRoleParams,
   UpdateOrgMemberRoleResult,
   UpdateOrgParams,
@@ -152,6 +153,14 @@ interface ServerAuthResponse {
     requires_email_verification?: boolean;
     missing_criteria?: string[];
   };
+  /**
+   * Set when the password was accepted but a second factor is outstanding. The
+   * response then carries mfa_token in place of access_token, so a caller that
+   * reads it as a session builds one with no credential in it.
+   */
+  mfa_required?: boolean;
+  mfa_token?: string;
+  methods?: string[];
 }
 
 interface ServerMessageResponse {
@@ -460,7 +469,7 @@ export class AuthnClient {
 
     this.http = new HttpClient({
       baseUrl: endpoint,
-      publishableKey: publishableKey!,
+      apiKey: publishableKey!,
       timeout,
       logger,
       customFetch: config.fetch,
@@ -516,13 +525,7 @@ export class AuthnClient {
         },
       );
 
-      const session = this.mapSession(res.data);
-      const policyWarning = this.mapPolicyWarning(res.data.policy_warning);
-
-      this.setSession(session);
-      this.logger.info("Sign-up successful", { userId: session.user.id });
-
-      return { ok: true, session, policyWarning };
+      return this.resolveAuthResponse(res.data, "Sign-up");
     } catch (err) {
       return this.handleError(err, "signUp");
     }
@@ -568,13 +571,7 @@ export class AuthnClient {
         },
       );
 
-      const session = this.mapSession(res.data);
-      const policyWarning = this.mapPolicyWarning(res.data.policy_warning);
-
-      this.setSession(session);
-      this.logger.info("Login successful", { userId: session.user.id });
-
-      return { ok: true, session, policyWarning };
+      return this.resolveAuthResponse(res.data, "Login");
     } catch (err) {
       return this.handleError(err, "login");
     }
@@ -641,11 +638,7 @@ export class AuthnClient {
         },
       );
 
-      const session = this.mapSession(res.data);
-      this.setSession(session);
-      this.logger.info("Magic link verified", { userId: session.user.id });
-
-      return { ok: true, session };
+      return this.resolveAuthResponse(res.data, "Magic link");
     } catch (err) {
       return this.handleError(err, "verifyMagicLink");
     }
@@ -1333,20 +1326,65 @@ export class AuthnClient {
     return override ?? this.config.environment ?? "test";
   }
 
+  /**
+   * resolveAuthResponse turns one credential-presenting response into an
+   * AuthResult, and is the only place that decides whether a 200 means
+   * "authenticated".
+   *
+   * A 2FA-gated login is answered 200 with mfa_token and no access_token, so
+   * mapping every 200 to a session stores one holding no credential — the client
+   * then reports an authenticated user, schedules a refresh against a token that
+   * never existed, and drops the challenge the caller needed in order to
+   * continue. Every caller of this shape shares that hazard, so they share the
+   * decision.
+   */
+  private resolveAuthResponse(
+    data: ServerAuthResponse,
+    operation: string,
+  ): AuthResult {
+    if (data.mfa_required === true) {
+      const methods = normaliseTwoFactorMethods(data.methods);
+      this.logger.info(`${operation} requires a second factor`, {
+        userId: data.user.id,
+        methods,
+      });
+
+      return {
+        ok: true,
+        mfaRequired: true,
+        mfaToken: data.mfa_token ?? "",
+        methods,
+        user: this.mapUser(data.user),
+      };
+    }
+
+    const session = this.mapSession(data);
+    const policyWarning = this.mapPolicyWarning(data.policy_warning);
+
+    this.setSession(session);
+    this.logger.info(`${operation} successful`, { userId: session.user.id });
+
+    return { ok: true, session, policyWarning };
+  }
+
+  private mapUser(data: ServerAuthResponse["user"]): AuthnUser {
+    return {
+      id: data.id,
+      email: data.email,
+      emailVerified: data.email_verified,
+      name: data.name,
+      status: (data.status as AuthnUser["status"]) ?? "active",
+      createdAt: data.created_at,
+    };
+  }
+
   private mapSession(data: ServerAuthResponse): AuthnSession {
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       expiresAt:
         data.expires_at ?? Math.floor(Date.now() / 1000) + 15 * 60,
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        emailVerified: data.user.email_verified,
-        name: data.user.name,
-        status: (data.user.status as AuthnUser["status"]) ?? "active",
-        createdAt: data.user.created_at,
-      },
+      user: this.mapUser(data.user),
     };
   }
 
@@ -2400,4 +2438,32 @@ export class AuthnClient {
     this.config.onError?.(error);
     return { ok: false, error };
   }
+}
+
+const TWO_FACTOR_METHODS: readonly TwoFactorMethod[] = [
+  "totp",
+  "passkey",
+  "sms",
+  "backup_code",
+];
+
+/**
+ * normaliseTwoFactorMethods keeps the engine's ordering while dropping any name
+ * this version of the SDK has no screen for.
+ *
+ * Order is meaningful — the engine sorts by last use so a challenge opens on the
+ * factor its owner reached for last time — which rules out normalising through a
+ * set. An unrecognised name is dropped rather than passed through, because a UI
+ * that renders the list verbatim would otherwise offer a factor it cannot
+ * collect. The list falls back to TOTP rather than to empty: the engine only
+ * challenges an account that has a factor, so an empty result here means the
+ * names drifted, and offering the one factor every tenant has is recoverable
+ * where offering nothing is a dead end.
+ */
+function normaliseTwoFactorMethods(methods?: string[]): TwoFactorMethod[] {
+  const known = (methods ?? []).filter((m): m is TwoFactorMethod =>
+    TWO_FACTOR_METHODS.includes(m as TwoFactorMethod),
+  );
+
+  return known.length > 0 ? known : ["totp"];
 }

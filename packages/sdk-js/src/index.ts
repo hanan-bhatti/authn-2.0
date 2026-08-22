@@ -18,6 +18,7 @@ export type {
   AuthnSession,
   PolicyWarning,
   AuthResult,
+  TwoFactorMethod,
   SessionResult,
   VoidResult,
   SignUpParams,
