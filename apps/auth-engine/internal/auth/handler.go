@@ -333,6 +333,12 @@ func clientSafeError(err error) (httperr.Code, string, bool) {
 		return httperr.CodeInvalidMFACode, ErrSMSOTPExpired.Error(), true
 	case errors.Is(err, ErrAmbiguous2FAMethod):
 		return httperr.CodeMissingParameter, ErrAmbiguous2FAMethod.Error(), true
+	case errors.Is(err, ErrFactorUnavailable):
+		return httperr.CodeValidationFailed, ErrFactorUnavailable.Error(), true
+	case errors.Is(err, ErrPasskeyVerificationRoute):
+		return httperr.CodeValidationFailed, ErrPasskeyVerificationRoute.Error(), true
+	case errors.Is(err, ErrFactorsUnavailable):
+		return httperr.CodeServiceUnavailable, ErrFactorsUnavailable.Error(), true
 	case errors.Is(err, ErrTooManySMSRequests):
 		return httperr.CodeRateLimited, ErrTooManySMSRequests.Error(), true
 	case errors.Is(err, ErrAdmin2FAMandatory):

@@ -47,13 +47,22 @@ it returns `200 OK` with **no session**:
   "user": { "id": "usr_...", "email": "user@example.com" },
   "mfa_required": true,
   "mfa_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "methods": ["totp", "sms", "webauthn", "recovery_code"]
+  "methods": ["totp", "passkey", "sms", "backup_code"]
 }
 ```
 
 A `200` here does **not** mean the user is signed in. Integrators must branch on
 `mfa_required` before assuming `access_token` is present. `methods` lists the factors
 this user actually has enrolled — use it to decide which verification route to call.
+
+The order is the presentation order: primary factors come **most recently used first**,
+so `methods[0]` is what to show and the rest belong behind "try another way". Never-used
+factors fall back to the fixed order `totp`, `passkey`, `sms`. `backup_code` is always
+last, so a client walking the list never opens on a finite single-use code. The full rule
+is in [`client-login.md`](./client-login.md).
+
+`methods` is sealed into the signed `mfa_token`, so it is also the *limit* of what the
+verify routes accept for this challenge — see the `method` field below.
 
 ---
 
@@ -73,9 +82,27 @@ Both names exist for backwards compatibility; prefer the `/2fa/totp/verify` form
 
 | Field | Required | Notes |
 |---|---|---|
-| `code` | yes | 6-digit TOTP code, or a recovery code |
+| `code` | yes | 6-digit TOTP code, SMS OTP, or a recovery code |
 | `mfa_token` | no | Present in the login flow. Omit when verifying with a bearer token. |
-| `method` | no | `totp` (default), `sms`, or `recovery_code` |
+| `method` | conditional | One of `totp`, `sms`, `backup_code`. Required whenever the challenge offers more than one factor; may be omitted only when exactly one is offered. |
+
+### `method` — how the factor is selected
+
+The server never tries the code against each factor in turn: that would test one submitted
+value against every enrolled method. So `method` names the single factor to check.
+
+* **Omitted with several factors offered** → `400 missing_parameter`, "multiple 2FA methods
+  are active; specify which one this code belongs to". Send the factor the user picked.
+* **Omitted with exactly one factor offered** → that factor is used.
+* **Outside the challenge's `methods`** → `400 validation_failed`, "that 2FA method is not
+  available for this account". Refused *before* the code is checked, so a code is never
+  tested against a factor the challenge did not offer. During a login challenge the set is
+  the one sealed into the `mfa_token` at password time; on the bearer path it is resolved
+  from the account's live enrollment.
+* **`method: "passkey"`** → `400 validation_failed` naming
+  `POST /v1/client/auth/2fa/webauthn/login/begin`. Passkeys appear in `methods` because the
+  account can satisfy the challenge with one, but there is no code to submit — a passkey is
+  proven by signing an assertion. See §4 and §5 below.
 
 **Response (200 OK)** — issues the real session:
 ```json
@@ -90,10 +117,16 @@ Both names exist for backwards compatibility; prefer the `/2fa/totp/verify` form
 
 | Status | `code` | Cause |
 |---|---|---|
-| `400` | `missing_parameter` | `code` absent or blank |
-| `400` | `validation_failed` | Invalid `client_type` |
-| `401` | `invalid_mfa_code` | Wrong or expired code |
-| `401` | `session_expired` | `mfa_token` expired — restart at `/login` |
+| `400` | `missing_parameter` | `code` absent or blank, or `method` omitted with several factors offered |
+| `400` | `validation_failed` | Invalid `client_type`; `method` outside the challenge's set; `method: "passkey"` |
+| `400` | `invalid_mfa_code` | Wrong or expired code, expired `mfa_token`, or a recovery code already spent |
+| `401` | `session_expired` | Bearer-token path only: the `Authorization` access token is invalid or expired |
+| `403` | `account_disabled` | The account was suspended or deleted between the password and the code |
+| `503` | `service_unavailable` | The account's second factors could not be read, so the challenge cannot be resolved. Retryable; not a code failure. |
+
+The `503` reaches this route the same way it reaches `/login`: rather than guessing at an
+unreadable factor set, verification is refused. Present it as a retryable fault, not as a
+wrong code — the user's code may well have been correct.
 
 ---
 
@@ -199,3 +232,13 @@ Every error on these routes returns the standard engine envelope:
 ```
 
 Branch on `code`, never on `error` — the prose is subject to change.
+
+---
+
+## Verification History
+
+* **`2026-08-22`** — `method` selection verified live against a TOTP + recovery-code account:
+  `method:"sms"` (outside the challenge set) answered `400 validation_failed` without testing
+  the code, `method:"backup_code"` with a wrong code answered `400 invalid_mfa_code`,
+  `method:"passkey"` answered `400 validation_failed` naming the WebAuthn login route, and a
+  real TOTP code answered `200` with a session.

@@ -113,6 +113,11 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	if mfaToken != "" {
 		u, accessToken, refreshToken, err := h.service.VerifyTOTPChallenge(c.UserContext(), mfaToken, strings.TrimSpace(req.Code), req.Method, userAgent, ipAddress)
 		if err != nil {
+			// Refused, not rejected: the password behind this challenge was already
+			// proven, so a 400 would blame a correct code for our own unavailability.
+			if errors.Is(err, ErrFactorsUnavailable) {
+				return httperr.Send(c, fiber.StatusServiceUnavailable, httperr.CodeServiceUnavailable, ErrFactorsUnavailable.Error())
+			}
 			if accountstatus.Refused(err) {
 				return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
 			}
@@ -164,6 +169,9 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.Verify2FACode(c.UserContext(), claims.Sub, strings.TrimSpace(req.Code), req.Method); err != nil {
+		if errors.Is(err, ErrFactorsUnavailable) {
+			return httperr.Send(c, fiber.StatusServiceUnavailable, httperr.CodeServiceUnavailable, ErrFactorsUnavailable.Error())
+		}
 		return sendServiceError(c, "auth.2fa.verify", fiber.StatusBadRequest, err,
 			httperr.CodeInvalidMFACode, "two-factor verification failed")
 	}

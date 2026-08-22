@@ -33,6 +33,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -97,6 +98,17 @@ var (
 	// ErrAmbiguous2FAMethod reports that several second factors are active and the caller did not
 	// say which one the submitted code belongs to.
 	ErrAmbiguous2FAMethod = errors.New("multiple 2FA methods enabled; 'method' field is required to specify which 2FA method to verify")
+	// ErrFactorUnavailable reports a named second factor the account is not permitted to satisfy
+	// this challenge with. Refused before the code is checked, so a factor outside the challenge's
+	// set is never tested.
+	ErrFactorUnavailable = errors.New("that 2FA method is not available for this account")
+	// ErrPasskeyVerificationRoute reports a passkey named where a code is expected. A passkey is
+	// proven by signing a WebAuthn challenge, so it belongs to the webauthn/login routes.
+	ErrPasskeyVerificationRoute = errors.New("passkeys are verified at /v1/client/auth/2fa/webauthn/login/begin, not with a code")
+	// ErrFactorsUnavailable reports that the account's second factors could not be read, so whether
+	// one is outstanding is unknown. Sign-in is refused rather than resolved by guessing, since the
+	// password is already proven by the time it is asked.
+	ErrFactorsUnavailable = errors.New("unable to determine the account's second factors")
 	// ErrSMSOTPExpired reports an SMS code that is unknown, wrong, or past its window. The cases
 	// are merged so a caller cannot tell a wrong code from an expired one.
 	ErrSMSOTPExpired = errors.New("SMS OTP verification code has expired or is invalid")
@@ -438,7 +450,7 @@ func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason
 }
 
 // activeFactors lists the second factors userID may satisfy a challenge with,
-// primary factors first and backup_code last, or nil when the account has none.
+// most recently used first and backup_code last, or nil when the account has none.
 //
 // Recovery codes appear only alongside a primary factor, because they are a way
 // past a factor the account holds rather than a factor in their own right. They
@@ -446,32 +458,93 @@ func (s *Service) emitSessionsRevoked(ctx context.Context, userID string, reason
 // its last code and have no way left to sign in; and with no primary factor
 // enrolled there is nothing for them to recover access to.
 //
-// A factor whose lookup fails is omitted. Both callers resolve the same question
-// and must resolve it identically — the login gate deciding whether to challenge,
-// and the verifier deciding what a presented code may be tested against — so
-// neither enumerates the factors itself.
-func (s *Service) activeFactors(ctx context.Context, userID string) []string {
-	var methods []string
+// A lookup that fails is reported rather than omitted. Both callers resolve the
+// same question and must resolve it identically — the login gate deciding whether
+// to challenge, and the verifier deciding what a presented code may be tested
+// against — and an omitted factor answers each of them wrongly in a different
+// direction: the gate reads an empty set as "no second factor enrolled" and admits
+// a password on its own, while the verifier refuses a code the account can in fact
+// satisfy. The repository already separates an absent factor from an unreadable
+// one, returning nil for the first and an error for the second; this preserves
+// that distinction instead of collapsing both into an empty list.
+func (s *Service) activeFactors(ctx context.Context, userID string) ([]string, error) {
+	// Ordered by recency below, so the pairing with last_used_at is what is
+	// collected here rather than the method name alone.
+	type factor struct {
+		method   string
+		lastUsed time.Time
+	}
+	var found []factor
 
-	if activeTOTP, err := s.repo.GetActiveTOTPMethodForUser(ctx, userID); err == nil && activeTOTP != nil {
-		methods = append(methods, "totp")
+	activeTOTP, err := s.repo.GetActiveTOTPMethodForUser(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
-	if passkeys, err := s.repo.GetPasskeysForUser(ctx, userID); err == nil && len(passkeys) > 0 {
-		methods = append(methods, "passkey")
-	}
-	if activeSMS, err := s.repo.GetActiveSMSMethodForUser(ctx, userID); err == nil && activeSMS != nil {
-		methods = append(methods, "sms")
+	if activeTOTP != nil {
+		found = append(found, factor{"totp", latestUse(activeTOTP)})
 	}
 
-	if len(methods) == 0 {
-		return nil
+	passkeys, err := s.repo.GetPasskeysForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(passkeys) > 0 {
+		found = append(found, factor{"passkey", latestUse(passkeys...)})
 	}
 
-	if recCount, err := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID); err == nil && recCount > 0 {
+	activeSMS, err := s.repo.GetActiveSMSMethodForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if activeSMS != nil {
+		found = append(found, factor{"sms", latestUse(activeSMS)})
+	}
+
+	if len(found) == 0 {
+		return nil, nil
+	}
+
+	// Most recently used first, so a challenge opens on the factor the account
+	// holder reached for last time and the rest sit behind one more tap. A stable
+	// sort leaves never-used factors, which share a zero time, in the fixed order
+	// they were collected above: a first challenge is therefore identical for every
+	// account with the same factors, and only actual use reorders it.
+	slices.SortStableFunc(found, func(a, b factor) int {
+		return b.lastUsed.Compare(a.lastUsed)
+	})
+
+	methods := make([]string, 0, len(found)+1)
+	for _, f := range found {
+		methods = append(methods, f.method)
+	}
+
+	recoveryCodes, err := s.repo.GetActiveRecoveryCodeCountForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if recoveryCodes > 0 {
 		methods = append(methods, "backup_code")
 	}
 
-	return methods
+	return methods, nil
+}
+
+// latestUse reports the most recent time any of methods satisfied a verification,
+// or the zero time when none of them ever has.
+//
+// Several rows are passed for passkeys, where one account holds a credential per
+// device and the set is ranked by whichever was used last.
+func latestUse(methods ...*ent.TwoFactorMethod) time.Time {
+	var latest time.Time
+	for _, m := range methods {
+		if m == nil || m.LastUsedAt == nil {
+			continue
+		}
+		if m.LastUsedAt.After(latest) {
+			latest = *m.LastUsedAt
+		}
+	}
+	return latest
 }
 
 // discardOrphanedRecoveryCodes removes a user's recovery codes when the factor
@@ -1106,8 +1179,22 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 		return nil, "", "", err
 	}
 
-	// Check if user has active 2FA methods (TOTP, Passkeys, or Recovery Codes)
-	allowedMethods := s.activeFactors(ctx, u.ID)
+	// Whether a second factor is outstanding is resolved before any session exists,
+	// and a failure to resolve it refuses the sign-in.
+	//
+	// The password is already proven here, which is what makes an unreadable factor
+	// set the one case worth refusing outright: continuing would hand out precisely
+	// what enrolling a second factor was meant to withhold from someone holding only
+	// a password. A database failover costs a correct user one retry; guessing "no
+	// second factor" during that failover costs an account.
+	allowedMethods, err := s.activeFactors(ctx, u.ID)
+	if err != nil {
+		// Logged rather than emitted as user.login.failed: nothing about this
+		// attempt was rejected, so a subscriber watching for credential attacks
+		// would be reading an outage of ours as an attempt on their user.
+		log.Printf("[AuthService] Refusing login for user %s: unable to resolve second factors: %v", u.ID, err)
+		return nil, "", "", ErrFactorsUnavailable
+	}
 
 	if len(allowedMethods) > 0 {
 		mfaToken, err := jwt.IssueMFAChallengeToken(u.ID, tenantID, env, allowedMethods, s.config.EncryptionKey)
@@ -1906,7 +1993,11 @@ func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, al
 	targetMethod = strings.ToLower(strings.TrimSpace(targetMethod))
 
 	if len(allowedMethods) == 0 {
-		allowedMethods = s.activeFactors(ctx, userID)
+		resolved, err := s.activeFactors(ctx, userID)
+		if err != nil {
+			return ErrFactorsUnavailable
+		}
+		allowedMethods = resolved
 	}
 
 	// 1. If method is omitted:
@@ -1919,6 +2010,15 @@ func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, al
 		} else {
 			return fmt.Errorf("no active 2FA methods found for user")
 		}
+	}
+
+	// The challenge token fixed this set when the password was proven, so a factor
+	// named outside it is refused here rather than left to each verifier to catch on
+	// the way past. All four happen to reject an unenrolled factor today, but that is
+	// a property of four separate implementations rather than of the contract, and it
+	// is the contract this function's callers rely on.
+	if !slices.Contains(allowedMethods, targetMethod) {
+		return ErrFactorUnavailable
 	}
 
 	// 2. Verify strictly against targetMethod
@@ -1943,6 +2043,13 @@ func (s *Service) Verify2FACodeWithMethod(ctx context.Context, userID string, al
 
 	case "backup_code":
 		return s.VerifyRecoveryCode(ctx, userID, code)
+
+	case "passkey":
+		// Offered in the challenge's method list because the account can satisfy the
+		// challenge with it, but there is no code to compare: a passkey is proven by
+		// signing a WebAuthn assertion. Named explicitly so a client that walks the
+		// list is told where the factor lives rather than that it is unsupported.
+		return ErrPasskeyVerificationRoute
 
 	default:
 		return fmt.Errorf("unsupported 2FA verification method '%s'", targetMethod)

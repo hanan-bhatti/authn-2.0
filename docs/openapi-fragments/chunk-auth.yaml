@@ -213,6 +213,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: 'Fail-closed refusal, retryable. Either the rate limiter is unavailable (`rate limit service unavailable`, with `X-Authn-Degraded-Mode: true`), or the password verified but the account''s enrolled second factors could not be read (`unable to determine the account''s second factors`). In the latter case no session is created: an unreadable factor set is refused rather than resolved as "no second factor", which would issue a full session on a password alone. Distinct from 401 — the credentials were accepted, so do not send the user to a password reset.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /v1/client/auth/verify-email:
     get:
@@ -746,10 +752,14 @@ components:
           type: string
         methods:
           type: array
+          description: 'Second factors this challenge accepts, in presentation order: primary factors most recently used first, then never-used ones in the fixed order totp, passkey, sms. backup_code is always last so a client walking the list never opens on a finite single-use code. The list is sealed into mfa_token, so it is also the limit of what the verify routes accept for this challenge.'
           items:
             type: string
+            enum: [totp, passkey, sms, backup_code]
           example:
             - totp
+            - passkey
+            - backup_code
       required:
         - user
 

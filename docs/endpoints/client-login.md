@@ -79,6 +79,10 @@ Returned when the user has an active primary 2FA method (TOTP, Passkey, SMS). **
 
 `methods` lists what the challenge accepts. `backup_code` appears there only when the account also holds a primary factor: recovery codes are a way past a factor the account has, not a factor of their own, and they are finite and single-use — an account gated behind nothing else would spend its last code and have no way left to sign in. Removing the last primary factor therefore discards the recovery codes with it and leaves the account signing in on its password alone.
 
+**Order is meaningful.** Primary factors come **most recently used first**, so `methods[0]` is the one to present and the rest belong behind a "try another way" affordance. Factors the account has never used fall back to the fixed order `totp`, `passkey`, `sms`, which keeps a first challenge identical for every account holding the same set. `backup_code` is always last however recently a code was redeemed, so a client walking the list in order never opens on a finite single-use code.
+
+The list is sealed into the signed `mfa_token`, so the verify call accepts only what the challenge offered — a client cannot widen the set by naming a different `method`. `passkey` is verified by signing an assertion rather than by submitting a code; see [`mfa-enrollment-verification.md`](mfa-enrollment-verification.md) for the route it uses.
+
 ```bash
 $ curl -i -X POST -H "Content-Type: application/json" \
   -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
@@ -142,14 +146,38 @@ Triggered on 6th request within 15-minute sliding window per IP + endpoint.
 }
 ```
 
-### `503 Service Unavailable` — Fail-CLOSED Outage Protection
-Returned during Redis outages when rate limiting cannot be enforced. Prevents unthrottled password brute-force attacks.
+### `503 Service Unavailable` — Fail-CLOSED Outage Protection (Rate Limiter)
+Returned during Redis outages when rate limiting cannot be enforced. Prevents unthrottled password brute-force attacks. Carries `X-Authn-Degraded-Mode: true`.
 
 ```json
 {
   "error": "rate limit service unavailable"
 }
 ```
+
+### `503 Service Unavailable` — Second Factors Unreadable
+Returned when the password is correct but the account's enrolled second factors cannot be read, so whether a challenge is outstanding is unknown. Sign-in is refused rather than resolved by guessing: reading an unreadable factor set as "no second factor" would hand out a full session on a password alone, which is exactly what the second factor exists to prevent. No `Set-Cookie` is emitted and no session row is created.
+
+This is distinct from the rate-limiter 503 above — the limiter allowed the attempt through, and `X-Authn-Degraded-Mode` stays `false`. It is also distinct from `401`: the credentials were accepted, so a client must present this as a retryable fault on our side and must **not** route the account holder into a password reset, which would succeed and still leave them unable to sign in.
+
+```bash
+$ curl -i -X POST -H "Content-Type: application/json" \
+  -H "X-Authn-Publishable-Key: pk_test_demo12345678901234567890123456789012" \
+  -d '{"email":"user.totp@authn.local","password":"UserPass123!"}' \
+  http://localhost:8080/v1/client/auth/login
+
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+X-Authn-Degraded-Mode: false
+```
+```json
+{
+  "error": "unable to determine the account's second factors",
+  "code": "service_unavailable"
+}
+```
+
+A wrong password during the same outage still answers `401 invalid_credentials`, so the two cases stay distinguishable and the enumeration guarantee above is unaffected: the `503` is reached only after the password verifies.
 
 ---
 
@@ -161,6 +189,8 @@ Returned during Redis outages when rate limiting cannot be enforced. Prevents un
 | Timing Side-Channel Defense | Constant-time Argon2id CPU computation (`DummyArgon2idHash`) when user not found | Verified (~190ms vs ~210ms execution) |
 | Refresh Token XSS Defense | Web clients receive refresh token strictly via `HttpOnly` cookie | Verified (absent from JSON) |
 | 2FA Gate | Access tokens withheld until 2FA challenge is verified | Verified (`mfa_required: true` response) |
+| 2FA Gate Fail-Closed | An unreadable factor set refuses the sign-in (`503`) instead of resolving to "no second factor" | Verified (factor table dropped mid-flight: `503`, no `Set-Cookie`, session count unchanged) |
+| Challenge Set Integrity | Offered methods are sealed into the signed `mfa_token`; a `method` outside the set is refused before any code is tested | Verified (`400 validation_failed`) |
 | SQLi / NoSQLi Protection | Ent ORM parameterized queries + Fiber JSON type unmarshaling | Verified (injection payloads rejected) |
 | Brute-Force Rate Limiting | Multi-dimensional IP sliding window + violation escalation backoff (15m -> 1h -> 6h -> 24h) | Verified |
 | Outage Fail-Closed | Sensitive mutation handler rejects requests if Redis fails | Verified (`503` + `X-Authn-Degraded-Mode: true`) |
@@ -175,7 +205,10 @@ Returned during Redis outages when rate limiting cannot be enforced. Prevents un
 ---
 
 ## Verification & Pentest History
-* **Last Verified Date**: `2026-08-21`
+* **Last Verified Date**: `2026-08-22`
 * **Test Subjects**: `user.vanilla@authn.local`, `user.unverified@authn.local`, `user.totp@authn.local` (from `cmd/seed/main.go`).
 * **Verification Method**: Manual live `curl` pentest against running server (verified happy path, 2FA gate, constant-time Argon2id timing defense, missing key 401, 429 rate limit, 503 fail-closed, and injection immunity).
 * **Second-factor menu**: re-verified against an account holding recovery codes and no primary factor — the login completes with tokens and no challenge — and against the same account once TOTP is enrolled, where `methods` is `["totp", "backup_code"]`.
+* **Fail-closed factor resolution** (`2026-08-22`): against a live account holding TOTP plus 16 recovery codes, `two_factor_methods` was renamed out from under the running server. A correct password answered `503 service_unavailable` with no `Set-Cookie` and no change in the account's session count; a wrong password during the same outage still answered `401 invalid_credentials`; restoring the table returned the login to `200` with the challenge.
+* **Method ordering** (`2026-08-22`): a never-used TOTP + passkey account offered `["totp","passkey","backup_code"]`; after a passkey verification, `["passkey","totp","backup_code"]`; after a TOTP verification, `["totp","passkey","backup_code"]`. `backup_code` stayed last throughout.
+* **Challenge set** (`2026-08-22`): `method:"sms"` against a TOTP-only challenge answered `400 validation_failed` ("that 2FA method is not available for this account") without testing the code; `method:"backup_code"` on an account holding codes answered `400 invalid_mfa_code`; `method:"passkey"` answered `400 validation_failed` naming `/v1/client/auth/2fa/webauthn/login/begin`; a real TOTP code answered `200`.

@@ -2147,6 +2147,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: 'Fail-closed refusal, retryable. Either the rate limiter is unavailable (`rate limit service unavailable`,
+            with `X-Authn-Degraded-Mode: true`), or the password verified but the account''s enrolled second factors could not
+            be read (`unable to determine the account''s second factors`). In the latter case no session is created: an unreadable
+            factor set is refused rather than resolved as "no second factor", which would issue a full session on a password
+            alone. Distinct from 401 — the credentials were accepted, so do not send the user to a password reset.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /v1/client/auth/verify-email:
     get:
       summary: Verify User Email Address
@@ -3322,7 +3332,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/VerifyTOTPResponse'
         '400':
-          description: Missing code or invalid MFA code
+          description: 'Missing code; `method` omitted while several factors are offered; `method` outside the set the challenge
+            offered (refused before the code is tested); `method: passkey`, which is verified at /v1/client/auth/2fa/webauthn/login/begin
+            instead; or an invalid/expired code or mfa_token.'
           content:
             application/json:
               schema:
@@ -3333,8 +3345,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account suspended or deleted between the password and the code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The account's enrolled second factors could not be read, so the challenge cannot be resolved. Retryable,
+            and not a code failure - the submitted code may have been correct.
           content:
             application/json:
               schema:
@@ -3374,7 +3399,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/VerifyTOTPResponse'
         '400':
-          description: Missing code or invalid MFA code
+          description: 'Missing code; `method` omitted while several factors are offered; `method` outside the set the challenge
+            offered (refused before the code is tested); `method: passkey`, which is verified at /v1/client/auth/2fa/webauthn/login/begin
+            instead; or an invalid/expired code or mfa_token.'
           content:
             application/json:
               schema:
@@ -3385,8 +3412,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account suspended or deleted between the password and the code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The account's enrolled second factors could not be read, so the challenge cannot be resolved. Retryable,
+            and not a code failure - the submitted code may have been correct.
           content:
             application/json:
               schema:
@@ -8827,8 +8867,21 @@ components:
           type: string
         methods:
           type: array
+          description: 'Second factors this challenge accepts, in presentation order: primary factors most recently used first,
+            then never-used ones in the fixed order totp, passkey, sms. backup_code is always last so a client walking the list
+            never opens on a finite single-use code. The list is sealed into mfa_token, so it is also the limit of what the verify
+            routes accept for this challenge.'
           items:
             type: string
+            enum:
+            - totp
+            - passkey
+            - sms
+            - backup_code
+          example:
+          - totp
+          - passkey
+          - backup_code
     InviteGuardianInput:
       type: object
       required:
@@ -9066,7 +9119,15 @@ components:
           description: MFA challenge token issued during password login
         method:
           type: string
-          description: MFA verification method (totp, sms, recovery_code)
+          description: 'Which second factor the code belongs to. Must be one of the methods this challenge offered. Required
+            whenever more than one is offered - the code is never tried against each factor in turn - and may be omitted only
+            when exactly one is offered. passkey is offered by the challenge but not accepted here: it is proven by signing an
+            assertion at /v1/client/auth/2fa/webauthn/login/begin.'
+          enum:
+          - totp
+          - sms
+          - backup_code
+          example: totp
     VerifyTOTPResponse:
       oneOf:
       - $ref: '#/components/schemas/AuthResponse'

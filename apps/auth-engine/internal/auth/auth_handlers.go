@@ -277,6 +277,15 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 				Methods:     methods,
 			})
 		}
+		// Answered apart from a credential failure, and with the one status that
+		// invites a retry. The password was correct; only our ability to see whether
+		// a second factor is outstanding failed. Reporting that as invalid_credentials
+		// would send the account holder into a password reset that cannot help them —
+		// and the reset would succeed, leaving them a working password they still
+		// cannot sign in with.
+		if errors.Is(err, ErrFactorsUnavailable) {
+			return httperr.Send(c, fiber.StatusServiceUnavailable, httperr.CodeServiceUnavailable, ErrFactorsUnavailable.Error())
+		}
 		// A restriction an administrator placed is answered distinctly from a bad
 		// password. Collapsing it into invalid_credentials sends the account holder
 		// into a password reset that cannot help them, and the reset would succeed,

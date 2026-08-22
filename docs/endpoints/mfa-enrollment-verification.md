@@ -113,6 +113,7 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
   "session_id": "wasess_f28c12cb-52b"
 }
 ```
+* **Verification Note**: Once registered, the passkey counts as a primary factor and appears in the `methods` list `POST /v1/client/auth/login` returns. It is **not** verified with a code — sending `{"method":"passkey"}` to `/2fa/totp/verify` answers `400 validation_failed` naming `POST /v1/client/auth/2fa/webauthn/login/begin`, which is where a passkey challenge is signed. See [`client-2fa-verification.md`](./client-2fa-verification.md).
 
 ### 8. List WebAuthn Passkeys (`GET /v1/client/auth/2fa/webauthn/credentials`)
 * **Response (`200 OK`)**: `{"credentials":[]}`
