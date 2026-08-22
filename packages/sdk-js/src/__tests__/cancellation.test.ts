@@ -59,7 +59,7 @@ function httpClient(
 ): HttpClient {
   return new HttpClient({
     baseUrl: "http://localhost:8080",
-    publishableKey,
+    apiKey: publishableKey,
     timeout: overrides.timeout ?? 10_000,
     logger: silentLogger,
     customFetch: fetchFn as typeof globalThis.fetch,

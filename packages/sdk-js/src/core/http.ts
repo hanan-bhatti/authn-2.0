@@ -14,7 +14,13 @@ const INITIAL_RETRY_DELAY_MS = 1000;
 
 export interface HttpClientConfig {
   baseUrl: string;
-  publishableKey: string;
+  /**
+   * A publishable (`pk_`) or secret (`sk_`) key. Optional because a client can be
+   * constructed before one is configured; requests then go out unauthenticated
+   * and the server refuses them, which is a far more legible failure than
+   * throwing here.
+   */
+  apiKey?: string;
   timeout: number;
   logger: AuthnLogger;
   customFetch?: typeof globalThis.fetch;
@@ -40,9 +46,8 @@ export interface HttpResponse<T> {
 
 export class HttpClient {
   private readonly baseUrl: string;
-  private readonly publishableKey: string;
-  private readonly timeout: number;
-  private readonly logger: AuthnLogger;
+  private readonly apiKey: string;
+  private readonly timeout: number;  private readonly logger: AuthnLogger;
   private readonly fetchFn: typeof globalThis.fetch;
   private readonly getAccessToken?: () => string | null;
   private readonly onRefreshToken?: () => Promise<SessionResult>;
@@ -52,7 +57,11 @@ export class HttpClient {
 
   constructor(config: HttpClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
-    this.publishableKey = config.publishableKey;
+    // Normalised to a string so the prefix test below is unconditional. An
+    // unconfigured client is a real state — AuthnClient asserts its key rather
+    // than proving it to the type system — and a missing key must produce a 401
+    // from the server, not a TypeError from the header builder.
+    this.apiKey = config.apiKey ?? "";
     this.timeout = config.timeout;
     this.logger = config.logger;
     this.fetchFn = config.customFetch ?? globalThis.fetch.bind(globalThis);
@@ -148,18 +157,33 @@ export class HttpClient {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-Authn-Publishable-Key": this.publishableKey,
       "X-Authn-Client-Type": "web",
     };
 
-    if (this.publishableKey && this.publishableKey.startsWith("sk_")) {
-      headers["Authorization"] = `Bearer ${this.publishableKey}`;
-      headers["X-Authn-Secret-Key"] = this.publishableKey;
+    // AuthnAdminClient stores whichever credential it resolved in the same
+    // field, so the prefix is what distinguishes them. A secret key must not
+    // travel in X-Authn-Publishable-Key: that header is documented as safe to
+    // expose, which is exactly why proxies, CDNs and access logs capture it
+    // freely. It goes in the two headers that are understood to carry a
+    // credential instead.
+    const isSecretKey = this.apiKey.startsWith("sk_");
+
+    if (isSecretKey) {
+      headers["X-Authn-Secret-Key"] = this.apiKey;
+    } else if (this.apiKey) {
+      headers["X-Authn-Publishable-Key"] = this.apiKey;
     }
 
+    // One decision for the Authorization slot rather than two writes racing to
+    // fill it. A user's access token wins: it names the caller, whereas the
+    // secret key only proves the caller is the backend. The engine reads
+    // X-Authn-Secret-Key before Authorization, so an admin call still
+    // authenticates when a session token occupies this slot.
     const accessToken = this.getAccessToken?.();
     if (accessToken) {
       headers["Authorization"] = `Bearer ${accessToken}`;
+    } else if (isSecretKey) {
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
     if (extraHeaders) {

@@ -116,7 +116,7 @@ export class AuthnAdminClient {
 
     this.http = new HttpClient({
       baseUrl: endpoint,
-      publishableKey: this.secretKey, // passed as header fallback
+      apiKey: this.secretKey,
       timeout: config.timeout || 10000,
       customHeaders: config.headers,
       logger: noopLogger,
