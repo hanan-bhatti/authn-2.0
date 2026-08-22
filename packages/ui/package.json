@@ -25,11 +25,13 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./styles/globals.css": "./src/styles/globals.css"
+    "./styles/globals.css": "./src/styles/globals.css",
+    "./fonts/*": "./src/fonts/*"
   },
   "files": [
     "dist",
     "src/styles/globals.css",
+    "src/fonts",
     "README.md",
     "LICENSE"
   ],

@@ -3,163 +3,446 @@
 /*
  * Authn Platform — Design System Tokens & Base Styles
  * File: packages/ui/src/styles/globals.css
- * Theme: Black Velvet with Iris Violet Neon
+ * Theme: Editorial Black — off-white ink on true black, white as the brand
  *
- * Description: Master Tailwind CSS v4 design tokens, CSS variables,
- * elevation rules, typography scales, and utility classes for @authn/ui.
+ * Description: Master Tailwind CSS v4 design tokens for @authn/ui. Every token
+ *              here is the canonical value from DESIGN.md at the repository
+ *              root; token names match that document one-for-one so a value can
+ *              be traced between the two by grep.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
 
 /* ==========================================================================
-   SECTION 1: CSS CUSTOM PROPERTIES (:root)
-   ========================================================================== */
+   SECTION 1: THEME TOKENS
 
-:root {
-  /* Surface & Canvas Colors */
-  --color-void-black: #000000;
-  --color-graphite-hairline: #292d30;
-  --color-surface-lift: #0b0e14;
-  --color-backdrop-blur: rgba(0, 0, 0, 0.95);
+   Tailwind v4 emits every @theme entry as a custom property on :root and has
+   the generated utilities reference it — `bg-canvas` compiles to
+   `background-color: var(--color-canvas)` rather than to a literal. Two
+   consequences the rest of the system depends on:
 
-  /* Monochrome Text Colors */
-  --color-white: #ffffff;
-  --color-bone-white: #f0f0f0;
-  --color-ash-gray: #a1a4a5;
-  --color-smoke-gray: #abafb4;
-  --color-iron: #6e727a;
-  --color-charcoal: #464a4d;
-
-  /* Brand & Developer Accents */
-  --color-iris-violet: #9281f7;
-  --color-iris-violet-glow: #baa7ff;
-  --gradient-iris-violet: linear-gradient(to right bottom in oklab, rgb(146, 129, 247) 0%, rgb(154, 84, 220) 100%);
-
-  /* Semantic Status Accents */
-  --color-signal-blue: #3b9eff;
-  --color-sky-blue: #70b8ff;
-  --color-pulse-green: #3ad389;
-  --color-alarm-red: #ff9592;
-  --color-crimson: #ff6465;
-  --color-amber: #ffca16;
-  --color-amber-glow: #ffd60a;
-
-  /* Typography Families */
-  --font-inter: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-commit-mono: 'JetBrains Mono', 'Commit Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  /* Typography Scale */
-  --text-caption: 12px;
-  --leading-caption: 1.33;
-  --text-body-sm: 14px;
-  --leading-body-sm: 1.43;
-  --text-body: 16px;
-  --leading-body: 1.5;
-  --text-subheading: 20px;
-  --leading-subheading: 1.0;
-  --text-heading-sm: 24px;
-  --leading-heading-sm: 1.5;
-  --text-heading: 56px;
-  --leading-heading: 1.2;
-  --tracking-heading: -2.8px;
-
-  /* Strict Radii Scale */
-  --radius-controls: 6px;   /* Buttons, Badges, Inputs, Switches */
-  --radius-containers: 16px; /* Cards, Terminals, Modals, Panels */
-  --radius-pill: 9999px;
-
-  /* Spacing Base Unit (4px) */
-  --spacing-4: 4px;
-  --spacing-8: 8px;
-  --spacing-12: 12px;
-  --spacing-16: 16px;
-  --spacing-20: 20px;
-  --spacing-24: 24px;
-  --spacing-32: 32px;
-  --spacing-48: 48px;
-  --spacing-64: 64px;
-}
-
-/* ==========================================================================
-   SECTION 2: TAILWIND V4 THEME DIRECTIVE
+   1. A tenant's branding can be applied at runtime by setting the same
+      property on the document root, because an inline style on :root
+      outranks the stylesheet's :root. No rebuild, no second theme.
+   2. There is exactly one declaration per token. A token defined in both a
+      plain :root block and an @theme block would collide, and a token defined
+      in terms of itself is invalid at computed-value time — it resolves to
+      nothing at all rather than to the value it shadowed.
    ========================================================================== */
 
 @theme {
-  --color-void-black: var(--color-void-black);
-  --color-graphite-hairline: var(--color-graphite-hairline);
-  --color-surface-lift: var(--color-surface-lift);
+  /* ---- Brand ------------------------------------------------------------
+     White is the brand. It is the loudest colour available on a black canvas,
+     which is why it carries the primary call to action instead of a hue. */
+  --color-primary: #fcfdff;
+  --color-primary-on: #000000;
+  --color-surface-light: #f1f7fe;
 
-  --color-white: var(--color-white);
-  --color-bone-white: var(--color-bone-white);
-  --color-ash-gray: var(--color-ash-gray);
-  --color-smoke-gray: var(--color-smoke-gray);
-  --color-iron: var(--color-iron);
-  --color-charcoal: var(--color-charcoal);
+  /* ---- Surface ----------------------------------------------------------
+     Four steps, separated by luminance and temperature rather than by shadow.
+     surface-deep is cooler *and* darker than the canvas, which reads as
+     recession; code wells use it for that reason. */
+  --color-canvas: #000000;
+  --color-surface-card: #0a0a0c;
+  --color-surface-elevated: #101012;
+  --color-surface-deep: #06060a;
 
-  --color-iris-violet: var(--color-iris-violet);
-  --color-signal-blue: var(--color-signal-blue);
-  --color-pulse-green: var(--color-pulse-green);
-  --color-alarm-red: var(--color-alarm-red);
-  --color-amber: var(--color-amber);
+  /* ---- Borders ----------------------------------------------------------
+     Translucent white, not opaque grey. Translucency means one border value
+     reads correctly over all four surface steps; an opaque grey tuned against
+     the canvas turns muddy the moment it sits on an elevated surface. */
+  --color-hairline: rgba(255, 255, 255, 0.06);
+  --color-hairline-strong: rgba(255, 255, 255, 0.14);
+  --color-divider-soft: rgba(255, 255, 255, 0.04);
 
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-commit-mono);
+  /* ---- Text -------------------------------------------------------------
+     ink is faintly blue-cool rather than pure white so long reads feel like
+     printed paper instead of a backlit panel. */
+  --color-ink: #fcfdff;
+  --color-body: rgba(252, 253, 255, 0.86);
+  --color-charcoal: rgba(252, 253, 255, 0.7);
+  --color-mute: #a1a4a5;
+  --color-ash: #888e90;
+  --color-stone: #464a4d;
 
-  --radius-control: var(--radius-controls);
-  --radius-card: var(--radius-containers);
+  /* Text colours for the rare light-surface inset. */
+  --color-on-light: #000000;
+  --color-on-light-mute: rgba(0, 0, 51, 0.7);
+
+  /* ---- Semantic accents -------------------------------------------------
+     Each accent pairs a solid with a glow. The solid is for inline marks —
+     error text, a status dot, a syntax token. The glow is for atmospheric
+     washes behind a section. They are not interchangeable: an accent used as
+     a filled button surface competes with the white primary and breaks the
+     one-bright-element rule the canvas is built on. */
+  --color-accent-orange: #ff801f;
+  --color-accent-orange-glow: rgba(255, 89, 0, 0.22);
+  --color-accent-yellow: #ffc53d;
+  --color-accent-blue: #3b9eff;
+  --color-accent-blue-glow: rgba(0, 117, 255, 0.34);
+  --color-accent-green: #11ff99;
+  --color-accent-green-glow: rgba(34, 255, 153, 0.18);
+  --color-accent-red: #ff2047;
+  --color-accent-red-glow: rgba(255, 32, 71, 0.34);
+  --color-link: #3b9eff;
+
+  /* ---- Font families ----------------------------------------------------
+     Domaine Display and ABC Favorit Mono are self-hosted from SECTION 2.
+
+     ABC Favorit proportional is deliberately absent from --font-favorit even
+     though SECTION 2 registers it: only its Bold cut is on hand, and CSS
+     resolves a family before it resolves a weight. Naming a bold-only family
+     first would render every 400-weight body string bold rather than falling
+     through to the next stack entry. Restoring it is a one-word edit once a
+     Regular or Book cut exists.
+
+     Instrument Serif trails Domaine Display to cover the glyphs the trial cut
+     omits — see the unicode-range in SECTION 2. */
+  --font-display: "Domaine Display", "Instrument Serif", ui-serif, Georgia,
+    serif;
+  --font-favorit: "Geist", "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "ABC Favorit Mono", "Geist Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, monospace;
+
+  /* ---- Type scale -------------------------------------------------------
+     Line height and tracking travel with the size. Tailwind v4 folds the
+     `--text-*--line-height` and `--text-*--letter-spacing` companions into the
+     one utility, so `text-display-xxl` cannot be applied without its 1.0 line
+     height — which is structural to the display treatment, not a preference. */
+  --text-display-xxl: 96px;
+  --text-display-xxl--line-height: 1;
+  --text-display-xxl--letter-spacing: -0.96px;
+  --text-display-xxl--font-weight: 400;
+
+  --text-display-xl: 76.8px;
+  --text-display-xl--line-height: 1;
+  --text-display-xl--letter-spacing: -0.768px;
+  --text-display-xl--font-weight: 400;
+
+  --text-display-lg: 56px;
+  --text-display-lg--line-height: 1.2;
+  --text-display-lg--letter-spacing: -2.8px;
+  --text-display-lg--font-weight: 400;
+
+  --text-heading-md: 24px;
+  --text-heading-md--line-height: 1.5;
+  --text-heading-md--letter-spacing: -0.4px;
+  --text-heading-md--font-weight: 500;
+
+  --text-heading-sm: 20px;
+  --text-heading-sm--line-height: 1.3;
+  --text-heading-sm--letter-spacing: -0.3px;
+  --text-heading-sm--font-weight: 500;
+
+  --text-subtitle: 20px;
+  --text-subtitle--line-height: 1.3;
+  --text-subtitle--font-weight: 400;
+
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 1.5;
+  --text-body-lg--font-weight: 400;
+
+  --text-body-md: 16px;
+  --text-body-md--line-height: 1.5;
+  --text-body-md--letter-spacing: -0.8px;
+  --text-body-md--font-weight: 400;
+
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 1.43;
+  --text-body-sm--font-weight: 400;
+
+  --text-button-md: 14px;
+  --text-button-md--line-height: 1.43;
+  --text-button-md--font-weight: 500;
+
+  --text-button-sm: 14px;
+  --text-button-sm--line-height: 1.43;
+  --text-button-sm--letter-spacing: 0.35px;
+  --text-button-sm--font-weight: 500;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 1.5;
+  --text-caption--font-weight: 400;
+
+  --text-caption-emph: 14px;
+  --text-caption-emph--line-height: 1;
+  --text-caption-emph--font-weight: 600;
+
+  --text-code-md: 13px;
+  --text-code-md--line-height: 1.6;
+  --text-code-md--font-weight: 400;
+
+  /* ---- Radii ------------------------------------------------------------
+     Buttons and inputs at md (8px); cards, code wells and panels at lg
+     (12px). The two must not converge — the step between a control and its
+     container is what makes a form read as nested rather than as one slab. */
+  --radius-none: 0px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* ---- Spacing ----------------------------------------------------------
+     Named steps on a 4px base. `section` and `band` are page rhythm, not
+     component padding. */
+  --spacing-xxs: 2px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+  --spacing-xxxl: 48px;
+  --spacing-section: 96px;
+  --spacing-band: 128px;
+
+  /* ---- Motion -----------------------------------------------------------
+     Durations and easings are tokens so micro-interactions stay coherent
+     across components. `standard` is the default for hover and colour
+     transitions; `entrance` is longer and eased-out for elements arriving on
+     screen; `exit` is shortest, because a dismissal that lingers reads as lag.
+
+     `emphasis` overshoots slightly. It belongs on confirmations only — a
+     control that overshoots on every hover reads as unstable. */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasis: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-instant: 80ms;
+  --duration-fast: 150ms;
+  --duration-standard: 220ms;
+  --duration-slow: 320ms;
+  --duration-deliberate: 480ms;
+
+  --animate-status-ping: status-ping 2s var(--ease-exit) infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-caret: caret 1.1s steps(1, end) infinite;
 }
 
 /* ==========================================================================
-   SECTION 3: BASE RESEND CANVAS STYLES
+   SECTION 2: WEBFONTS
+
+   Self-hosted from ../fonts. The url() paths are relative to this file, which
+   is why the declarations live here rather than in an imported partial — one
+   location to resolve, no dependency on how the bundler rebases an @import.
+
+   @font-face is lazy: a declared face is only fetched when the cascade
+   actually matches it, so the italic and bold mono cuts below cost nothing on
+   a page that never uses them.
+   ========================================================================== */
+
+/* Domaine Display — the trial cut, and it carries only 66 codepoints: letters,
+   digits, space, comma, hyphen, period. The unicode-range makes that limit
+   explicit so the browser resolves anything outside it against the next family
+   in the stack instead of fetching this file to render a character it lacks.
+
+   A display headline containing an apostrophe or a question mark will visibly
+   mix two serifs. DESIGN.md's own display copy has no punctuation at all, so
+   the constraint and the documented usage agree — but it is a constraint. */
+@font-face {
+  font-family: "Domaine Display";
+  src: url("../fonts/domaine-display-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020, U+002C-002E, U+0030-0039, U+0041-005A, U+0061-007A;
+}
+
+/* ABC Favorit — Bold only. Registered so the family is addressable, but held
+   out of --font-favorit; see the note on that token in SECTION 1. */
+@font-face {
+  font-family: "ABC Favorit";
+  src: url("../fonts/abc-favorit-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ABC Favorit Mono — a complete family: two weights, both with italics, and
+   the full stylistic-set range. Book reports usWeightClass 350; it is declared
+   at 400 because it is the family's regular cut and `font-normal` should reach
+   it without relying on nearest-weight fallback. */
+@font-face {
+  font-family: "ABC Favorit Mono";
+  src: url("../fonts/abc-favorit-mono-350.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ABC Favorit Mono";
+  src: url("../fonts/abc-favorit-mono-350-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ABC Favorit Mono";
+  src: url("../fonts/abc-favorit-mono-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ABC Favorit Mono";
+  src: url("../fonts/abc-favorit-mono-700-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ==========================================================================
+   SECTION 3: BASE CANVAS
    ========================================================================== */
 
 body {
-  background-color: var(--color-void-black);
-  color: var(--color-bone-white);
-  font-family: var(--font-inter);
+  background-color: var(--color-canvas);
+  color: var(--color-body);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 1px Hairline Border Utility */
-.border-hairline {
-  border: 1px solid var(--color-graphite-hairline);
+/* These class names deliberately collide with the Tailwind utilities the
+   matching --font-* tokens generate, so one class carries both the family and
+   the stylistic sets that family is meant to be set with. The properties do
+   not overlap, so both declarations apply.
+
+   A family ignores a feature tag it does not implement rather than erroring.
+   That matters here: the retail Domaine Display ships ss01/ss04/ss11, the
+   trial cut ships no GSUB table at all, and the same declaration is correct
+   for whichever one resolves. */
+.font-display {
+  font-feature-settings: "ss01", "ss04", "ss11", "liga";
 }
 
-/* Backdrop Blur Scrim */
+.font-favorit {
+  font-feature-settings: "ss01", "ss03", "ss04";
+}
+
+/* ABC Favorit Mono implements liga and dlig, so this is load-bearing rather
+   than defensive: an `!=` fused into one glyph misrepresents the characters
+   actually in the buffer, which matters when the text is an API key, a
+   recovery code or a code sample. */
+.font-mono {
+  font-variant-ligatures: none;
+}
+
+/* ==========================================================================
+   SECTION 4: SURFACE UTILITIES
+   ========================================================================== */
+
+/* Atmospheric glow: a single radial wash anchored at a section's top edge,
+   falling off to canvas within roughly 600px. Set --glow to an accent's glow
+   token. One glow per section — two washes in one band cancel into grey. */
+.glow-section {
+  position: relative;
+  isolation: isolate;
+}
+
+.glow-section::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 600px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 100% at 50% 0%,
+    var(--glow, transparent) 0%,
+    transparent 70%
+  );
+}
+
+/* Scrim for modal and sheet backdrops. */
 .backdrop-scrim {
-  background-color: var(--color-backdrop-blur);
+  background-color: rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(25px);
   -webkit-backdrop-filter: blur(25px);
 }
 
-/* Custom Monospaced Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-void-black);
+  background: var(--color-canvas);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-graphite-hairline);
-  border-radius: var(--radius-controls);
+  background: var(--color-hairline-strong);
+  border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-iron);
+  background: var(--color-mute);
 }
 
-/* Live Status Pulse Animation */
+/* ==========================================================================
+   SECTION 5: FOCUS
+
+   A single focus treatment, on :focus-visible only. Keyboard users get a
+   visible ring; pointer users do not, because a ring that appears on click
+   reads as an error state.
+   ========================================================================== */
+
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   SECTION 6: KEYFRAMES
+   ========================================================================== */
+
 @keyframes status-ping {
-  75%, 100% {
+  75%,
+  100% {
     transform: scale(2);
     opacity: 0;
   }
 }
 
-.animate-status-ping {
-  animation: status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+   SECTION 7: REDUCED MOTION
+
+   Transitions collapse to a duration short enough to be imperceptible rather
+   than to zero. Zero would fire transitionend synchronously, and a component
+   that sequences state off that event would skip a step; 1ms keeps the event
+   ordering intact while removing the motion.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }
