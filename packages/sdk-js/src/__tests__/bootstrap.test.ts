@@ -1,5 +1,5 @@
 /**
- * @authn/js — The 2FA challenge
+ * @authn/js — Bootstrap document and the 2FA challenge
  *
  * A password can be correct without signing anyone in. The engine answers that
  * case with 200 and an mfa_token in place of an access_token, so a client that
@@ -152,5 +152,136 @@ describe("AuthnClient 2FA challenge on login", () => {
     expect(result.mfaRequired).toBeUndefined();
     expect(result.session?.accessToken).toBe("jwt_access_token");
     expect(client.isAuthenticated()).toBe(true);
+  });
+});
+
+const appConfigBody = {
+  application: { id: "app_123", name: "Acme", environment: "test" },
+  tenant: { name: "Acme Inc", slug: "acme" },
+  branding: {
+    app_name: "Acme Auth",
+    logo_url: "https://cdn.example.com/logo.svg",
+    logo_dark_url: "",
+    favicon_url: "",
+    primary_color: "#ffffff",
+    background_color: "#000000",
+    text_color: "",
+    button_text_color: "",
+    font_family: "",
+    support_url: "https://acme.example.com/help",
+    terms_url: "",
+    privacy_url: "",
+    custom_css: "",
+  },
+  sign_in_methods: {
+    password: true,
+    magic_link: false,
+    passkey: true,
+    enterprise_sso: false,
+    social_providers: ["github", "google"],
+  },
+  second_factors: {
+    totp: true,
+    sms: false,
+    passkey: true,
+    recovery_codes: true,
+    push: false,
+  },
+  password_rules: {
+    min_length: 12,
+    max_length: 128,
+    require_uppercase: true,
+    require_lowercase: true,
+    require_numeric: true,
+    require_special: false,
+    enforced: true,
+  },
+  email_verification: { required: true, mode: "soft" },
+  account_recovery: {
+    guardians: true,
+    phone_otp: false,
+    email_otp: true,
+    old_password: true,
+    security_questions: false,
+    min_guardians: 2,
+    max_guardians: 5,
+  },
+};
+
+describe("AuthnClient getAppConfig", () => {
+  it("fetches the bootstrap document and camelCases it", async () => {
+    const mockFetch = jsonFetch(200, appConfigBody);
+    const client = new AuthnClient({
+      publishableKey,
+      endpoint: "http://localhost:8080",
+      fetch: mockFetch as never,
+    });
+
+    const result = await client.getAppConfig();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "http://localhost:8080/v1/client/app-config",
+    );
+    expect(result.config.application.environment).toBe("test");
+    expect(result.config.signInMethods.magicLink).toBe(false);
+    expect(result.config.signInMethods.socialProviders).toEqual([
+      "github",
+      "google",
+    ]);
+    expect(result.config.passwordRules.minLength).toBe(12);
+    expect(result.config.passwordRules.requireSpecial).toBe(false);
+    expect(result.config.emailVerification.mode).toBe("soft");
+    expect(result.config.accountRecovery.maxGuardians).toBe(5);
+    expect(result.config.branding.supportUrl).toBe(
+      "https://acme.example.com/help",
+    );
+  });
+
+  it("reads an unrecognised verification mode as the stricter one", async () => {
+    const client = new AuthnClient({
+      publishableKey,
+      fetch: jsonFetch(200, {
+        ...appConfigBody,
+        email_verification: { required: true, mode: "lenient" },
+      }) as never,
+    });
+
+    const result = await client.getAppConfig();
+
+    // Defaulting to "soft" would admit an unverified user the tenant may have
+    // meant to block.
+    expect(result.ok && result.config.emailVerification.mode).toBe("hard");
+  });
+
+  it("reads an unrecognised environment as test", async () => {
+    const client = new AuthnClient({
+      publishableKey,
+      fetch: jsonFetch(200, {
+        ...appConfigBody,
+        application: { id: "app_123", name: "Acme", environment: "staging" },
+      }) as never,
+    });
+
+    const result = await client.getAppConfig();
+
+    // A test-mode banner shown in error is a cosmetic mistake; one withheld in
+    // error lets someone believe test data is live.
+    expect(result.ok && result.config.application.environment).toBe("test");
+  });
+
+  it("surfaces a refused key as an error rather than throwing", async () => {
+    const client = new AuthnClient({
+      publishableKey,
+      fetch: jsonFetch(401, {
+        error: { code: "unauthorized", message: "invalid publishable key" },
+      }) as never,
+    });
+
+    const result = await client.getAppConfig();
+
+    expect(result.ok).toBe(false);
   });
 });

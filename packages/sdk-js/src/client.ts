@@ -31,6 +31,8 @@ import type {
   AcceptGuardianInviteResult,
   AcceptOrgInvitationParams,
   AcceptOrgInvitationResult,
+  AppConfig,
+  AppConfigResult,
   AuthnClientConfig,
   AuthnDeviceSession,
   AuthnGuardian,
@@ -161,6 +163,60 @@ interface ServerAuthResponse {
   mfa_required?: boolean;
   mfa_token?: string;
   methods?: string[];
+}
+
+/** Mirrors appconfig.AppConfig in the Go backend. */
+interface ServerAppConfigResponse {
+  application: { id: string; name: string; environment: string };
+  tenant: { name: string; slug: string };
+  branding: {
+    app_name: string;
+    logo_url: string;
+    logo_dark_url: string;
+    favicon_url: string;
+    primary_color: string;
+    background_color: string;
+    text_color: string;
+    button_text_color: string;
+    font_family: string;
+    support_url: string;
+    terms_url: string;
+    privacy_url: string;
+    custom_css: string;
+  };
+  sign_in_methods: {
+    password: boolean;
+    magic_link: boolean;
+    passkey: boolean;
+    enterprise_sso: boolean;
+    social_providers: string[];
+  };
+  second_factors: {
+    totp: boolean;
+    sms: boolean;
+    passkey: boolean;
+    recovery_codes: boolean;
+    push: boolean;
+  };
+  password_rules: {
+    min_length: number;
+    max_length: number;
+    require_uppercase: boolean;
+    require_lowercase: boolean;
+    require_numeric: boolean;
+    require_special: boolean;
+    enforced: boolean;
+  };
+  email_verification: { required: boolean; mode: string };
+  account_recovery: {
+    guardians: boolean;
+    phone_otp: boolean;
+    email_otp: boolean;
+    old_password: boolean;
+    security_questions: boolean;
+    min_guardians: number;
+    max_guardians: number;
+  };
 }
 
 interface ServerMessageResponse {
@@ -483,6 +539,45 @@ export class AuthnClient {
       environment: this.config.environment,
       autoRefresh,
     });
+  }
+
+  // -----------------------------------------------------------------------
+  // Bootstrap
+  // -----------------------------------------------------------------------
+
+  /**
+   * Fetch the configuration a sign-in or sign-up page needs before it renders:
+   * branding, which methods to offer, and the password policy it must agree with.
+   *
+   * Call this first and render from the answer. Hardcoding the form instead
+   * produces a page that offers methods the tenant disabled and a password field
+   * whose rules disagree with the ones the request is judged against.
+   *
+   * The response is cacheable and the engine says so, so a browser serves
+   * repeat calls without a round trip.
+   *
+   * @returns `{ ok: true, config }` on success, `{ ok: false, error }` on failure.
+   *
+   * @example
+   * ```ts
+   * const bootstrap = await authn.getAppConfig();
+   * if (bootstrap.ok && bootstrap.config.signInMethods.magicLink) {
+   *   showMagicLinkButton();
+   * }
+   * ```
+   */
+  async getAppConfig(): Promise<AppConfigResult> {
+    this.guardDestroyed();
+
+    try {
+      const res = await this.http.get<ServerAppConfigResponse>(
+        "/v1/client/app-config",
+      );
+
+      return { ok: true, config: mapAppConfig(res.data) };
+    } catch (err) {
+      return this.handleError(err, "getAppConfig");
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -2466,4 +2561,69 @@ function normaliseTwoFactorMethods(methods?: string[]): TwoFactorMethod[] {
   );
 
   return known.length > 0 ? known : ["totp"];
+}
+
+function mapAppConfig(data: ServerAppConfigResponse): AppConfig {
+  return {
+    application: {
+      id: data.application.id,
+      name: data.application.name,
+      environment: data.application.environment === "live" ? "live" : "test",
+    },
+    tenant: { name: data.tenant.name, slug: data.tenant.slug },
+    branding: {
+      appName: data.branding.app_name,
+      logoUrl: data.branding.logo_url,
+      logoDarkUrl: data.branding.logo_dark_url,
+      faviconUrl: data.branding.favicon_url,
+      primaryColor: data.branding.primary_color,
+      backgroundColor: data.branding.background_color,
+      textColor: data.branding.text_color,
+      buttonTextColor: data.branding.button_text_color,
+      fontFamily: data.branding.font_family,
+      supportUrl: data.branding.support_url,
+      termsUrl: data.branding.terms_url,
+      privacyUrl: data.branding.privacy_url,
+      customCss: data.branding.custom_css,
+    },
+    signInMethods: {
+      password: data.sign_in_methods.password,
+      magicLink: data.sign_in_methods.magic_link,
+      passkey: data.sign_in_methods.passkey,
+      enterpriseSso: data.sign_in_methods.enterprise_sso,
+      socialProviders: data.sign_in_methods.social_providers ?? [],
+    },
+    secondFactors: {
+      totp: data.second_factors.totp,
+      sms: data.second_factors.sms,
+      passkey: data.second_factors.passkey,
+      recoveryCodes: data.second_factors.recovery_codes,
+      push: data.second_factors.push,
+    },
+    passwordRules: {
+      minLength: data.password_rules.min_length,
+      maxLength: data.password_rules.max_length,
+      requireUppercase: data.password_rules.require_uppercase,
+      requireLowercase: data.password_rules.require_lowercase,
+      requireNumeric: data.password_rules.require_numeric,
+      requireSpecial: data.password_rules.require_special,
+      enforced: data.password_rules.enforced,
+    },
+    emailVerification: {
+      required: data.email_verification.required,
+      // Anything other than the two documented values is read as the stricter
+      // one: treating an unknown mode as "soft" would admit an unverified user
+      // the tenant may have meant to block.
+      mode: data.email_verification.mode === "soft" ? "soft" : "hard",
+    },
+    accountRecovery: {
+      guardians: data.account_recovery.guardians,
+      phoneOtp: data.account_recovery.phone_otp,
+      emailOtp: data.account_recovery.email_otp,
+      oldPassword: data.account_recovery.old_password,
+      securityQuestions: data.account_recovery.security_questions,
+      minGuardians: data.account_recovery.min_guardians,
+      maxGuardians: data.account_recovery.max_guardians,
+    },
+  };
 }

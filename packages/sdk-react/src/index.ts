@@ -11,6 +11,7 @@
 export { AuthnProvider } from "./provider";
 export {
   useAuth,
+  useAppConfig,
   useUser,
   useSignIn,
   useSignUp,
@@ -45,3 +46,4 @@ export type {
   UseGuardiansReturn,
   UseAccountRecoveryReturn,
 } from "./types";
+export type { UseAppConfigReturn } from "./hooks/useAppConfig";

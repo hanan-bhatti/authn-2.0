@@ -1,6 +1,7 @@
 "use client";
 
 export { useAuth } from "./useAuth";
+export { useAppConfig } from "./useAppConfig";
 export { useUser } from "./useUser";
 export { useSignIn } from "./useSignIn";
 export { useSignUp } from "./useSignUp";

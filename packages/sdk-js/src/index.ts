@@ -30,6 +30,20 @@ export type {
   AuthStateCallback,
 } from "./types";
 
+// Bootstrap — the document a sign-in page renders itself from
+export type {
+  AppConfig,
+  AppConfigResult,
+  AppConfigApplication,
+  AppConfigTenant,
+  AppConfigBranding,
+  SignInMethods,
+  SecondFactors,
+  PasswordRules,
+  EmailVerificationPolicy,
+  AccountRecoveryOptions,
+} from "./types";
+
 // Domain 1 — Active Session Management
 export type {
   AuthnDeviceInfo,
@@ -100,8 +114,17 @@ export { AuthnError, AuthnErrorCode, isAuthnError } from "./types";
 // Admin types
 export * from "./types/admin";
 
-// SDK version — injected at build time by tsup/esbuild
-export const SDK_VERSION = "0.1.0";
+/**
+ * __SDK_VERSION__ is replaced with package.json's version at build time. It is
+ * absent when the source is consumed directly — vitest, or a consumer compiling
+ * from src — and `typeof` on an undeclared identifier is the one test that does
+ * not throw there.
+ */
+declare const __SDK_VERSION__: string | undefined;
+
+/** The published package version, or `0.0.0-dev` when running from source. */
+export const SDK_VERSION: string =
+  typeof __SDK_VERSION__ === "string" ? __SDK_VERSION__ : "0.0.0-dev";
 
 // SDK name constant
 export const SDK_NAME = "@authn/js";
