@@ -110,6 +110,26 @@ func (au *ApplicationUpdate) ClearExactRedirectUris() *ApplicationUpdate {
 	return au
 }
 
+// SetFrontendBaseURL sets the "frontend_base_url" field.
+func (au *ApplicationUpdate) SetFrontendBaseURL(s string) *ApplicationUpdate {
+	au.mutation.SetFrontendBaseURL(s)
+	return au
+}
+
+// SetNillableFrontendBaseURL sets the "frontend_base_url" field if the given value is not nil.
+func (au *ApplicationUpdate) SetNillableFrontendBaseURL(s *string) *ApplicationUpdate {
+	if s != nil {
+		au.SetFrontendBaseURL(*s)
+	}
+	return au
+}
+
+// ClearFrontendBaseURL clears the value of the "frontend_base_url" field.
+func (au *ApplicationUpdate) ClearFrontendBaseURL() *ApplicationUpdate {
+	au.mutation.ClearFrontendBaseURL()
+	return au
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (au *ApplicationUpdate) SetUpdatedAt(t time.Time) *ApplicationUpdate {
 	au.mutation.SetUpdatedAt(t)
@@ -302,6 +322,12 @@ func (au *ApplicationUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if au.mutation.ExactRedirectUrisCleared() {
 		_spec.ClearField(application.FieldExactRedirectUris, field.TypeJSON)
+	}
+	if value, ok := au.mutation.FrontendBaseURL(); ok {
+		_spec.SetField(application.FieldFrontendBaseURL, field.TypeString, value)
+	}
+	if au.mutation.FrontendBaseURLCleared() {
+		_spec.ClearField(application.FieldFrontendBaseURL, field.TypeString)
 	}
 	if value, ok := au.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)
@@ -520,6 +546,26 @@ func (auo *ApplicationUpdateOne) AppendExactRedirectUris(s []string) *Applicatio
 // ClearExactRedirectUris clears the value of the "exact_redirect_uris" field.
 func (auo *ApplicationUpdateOne) ClearExactRedirectUris() *ApplicationUpdateOne {
 	auo.mutation.ClearExactRedirectUris()
+	return auo
+}
+
+// SetFrontendBaseURL sets the "frontend_base_url" field.
+func (auo *ApplicationUpdateOne) SetFrontendBaseURL(s string) *ApplicationUpdateOne {
+	auo.mutation.SetFrontendBaseURL(s)
+	return auo
+}
+
+// SetNillableFrontendBaseURL sets the "frontend_base_url" field if the given value is not nil.
+func (auo *ApplicationUpdateOne) SetNillableFrontendBaseURL(s *string) *ApplicationUpdateOne {
+	if s != nil {
+		auo.SetFrontendBaseURL(*s)
+	}
+	return auo
+}
+
+// ClearFrontendBaseURL clears the value of the "frontend_base_url" field.
+func (auo *ApplicationUpdateOne) ClearFrontendBaseURL() *ApplicationUpdateOne {
+	auo.mutation.ClearFrontendBaseURL()
 	return auo
 }
 
@@ -745,6 +791,12 @@ func (auo *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Applicatio
 	}
 	if auo.mutation.ExactRedirectUrisCleared() {
 		_spec.ClearField(application.FieldExactRedirectUris, field.TypeJSON)
+	}
+	if value, ok := auo.mutation.FrontendBaseURL(); ok {
+		_spec.SetField(application.FieldFrontendBaseURL, field.TypeString, value)
+	}
+	if auo.mutation.FrontendBaseURLCleared() {
+		_spec.ClearField(application.FieldFrontendBaseURL, field.TypeString)
 	}
 	if value, ok := auo.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)

@@ -134,7 +134,7 @@ func (s *Service) RequestEmailChange(ctx context.Context, tenantID, env, userID,
 
 	if s.emailProvider != nil {
 		subject := email.SubjectEmailChange
-		body := fmt.Sprintf("Click the link to verify your new email: %s/v1/client/user/email/verify?token=%s", s.verificationBaseURL(), tokenStr)
+		body := fmt.Sprintf("Click the link to verify your new email: %s/verify-email-change?token=%s", s.verificationBaseURL(ctx), tokenStr)
 		// Sent on a scoped context rather than the bypassing one the reads use.
 		// The bypass exists so this operation can find an account without a
 		// request's tenant filter; carrying it into the send would strip the
@@ -248,7 +248,7 @@ func (s *Service) SetRecoveryEmail(ctx context.Context, tenantID, env, userID, r
 
 	if s.emailProvider != nil {
 		subject := email.SubjectRecoveryEmail
-		body := fmt.Sprintf("Click the link to verify your recovery email: %s/v1/client/user/recovery-email/verify?token=%s", s.verificationBaseURL(), tokenStr)
+		body := fmt.Sprintf("Click the link to verify your recovery email: %s/verify-recovery-email?token=%s", s.verificationBaseURL(ctx), tokenStr)
 		// Scoped for the same reason the email-change notice is: the sandbox reads
 		// the environment off this context to decide whether to capture the message
 		// or deliver it.

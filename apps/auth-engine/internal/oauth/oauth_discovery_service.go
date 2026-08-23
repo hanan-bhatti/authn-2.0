@@ -35,15 +35,16 @@ func (s *Service) GetPublicJWKS() jwtpkg.JWKSResponse {
 // publishable keys may be called from.
 //
 // env is "test" or "live". redirectURIs and corsOrigins may be empty; an empty
-// CORS list leaves origin checking to the deployment-wide policy. Returns the
+// CORS list leaves origin checking to the deployment-wide policy. An empty
+// frontendBaseURL leaves emailed links on the deployment default. Returns the
 // stored record — including schema defaults the caller did not set, such as the
 // environment and timestamps — or an error if the repository is unavailable or
 // the write fails (a duplicate client_id surfaces as an *ent.ConstraintError).
-func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, name, env string, redirectURIs, corsOrigins []string) (*ent.Application, error) {
+func (s *Service) CreateClientApplication(ctx context.Context, id, tenantID, name, env string, redirectURIs, corsOrigins []string, frontendBaseURL string) (*ent.Application, error) {
 	if s.authRepo == nil {
 		return nil, fmt.Errorf("auth repository uninitialized")
 	}
-	return s.authRepo.CreateApplication(ctx, id, tenantID, name, env, redirectURIs, corsOrigins)
+	return s.authRepo.CreateApplication(ctx, id, tenantID, name, env, redirectURIs, corsOrigins, frontendBaseURL)
 }
 
 // ListClientApplications returns the caller's tenant's applications. The tenant
@@ -67,11 +68,11 @@ func (s *Service) GetClientApplication(ctx context.Context, id string) (*ent.App
 // UpdateClientApplication applies a partial update within the caller's tenant. A
 // nil field is left unchanged. Returns nil when the application does not exist
 // in this tenant.
-func (s *Service) UpdateClientApplication(ctx context.Context, id string, name *string, redirectURIs, corsOrigins *[]string) (*ent.Application, error) {
+func (s *Service) UpdateClientApplication(ctx context.Context, id string, name *string, redirectURIs, corsOrigins *[]string, frontendBaseURL *string) (*ent.Application, error) {
 	if s.authRepo == nil {
 		return nil, fmt.Errorf("auth repository uninitialized")
 	}
-	return s.authRepo.UpdateApplication(ctx, id, name, redirectURIs, corsOrigins)
+	return s.authRepo.UpdateApplication(ctx, id, name, redirectURIs, corsOrigins, frontendBaseURL)
 }
 
 // DeleteClientApplication removes an application within the caller's tenant,

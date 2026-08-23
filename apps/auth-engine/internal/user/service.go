@@ -14,16 +14,19 @@
 package user
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 )
 
@@ -38,8 +41,10 @@ const (
 	// confirmation link works. Longer than the primary-email window, since
 	// confirming a secondary address grants no immediate access.
 	fallbackRecoveryEmailTokenTTL = 24 * time.Hour
-	// fallbackVerificationBaseURL is the origin prefixed to emailed links.
-	fallbackVerificationBaseURL = "http://localhost:8080"
+	// fallbackVerificationBaseURL is the origin prefixed to emailed links when
+	// neither the calling application nor the deployment names one. It is the
+	// account app's dev port, because an emailed link has to open a page.
+	fallbackVerificationBaseURL = config.DefaultFrontendBaseURL
 )
 
 // Keys under which pending-verification state is held in a user's metadata bag.
@@ -76,6 +81,25 @@ type Service struct {
 	// cfg supplies token lifetimes and the public origin used to build emailed
 	// links. Nil falls back to the constants above.
 	cfg *config.Config
+	// frontendURLs supplies the calling application's own UI origin for emailed
+	// links. Nil gives every application the deployment default; see
+	// verificationBaseURL.
+	frontendURLs FrontendURLResolver
+}
+
+// FrontendURLResolver supplies the origin an application's emailed links point at.
+//
+// Declared here rather than imported so this package does not depend on the
+// settings cache and a test can fix an origin without a database.
+// settings.Resolver satisfies it, as does auth.FrontendURLResolver's
+// implementation — they are the same method.
+//
+// It does not fail: "" means the application configured none, so a lookup problem
+// downgrades a link to the deployment default rather than failing the send.
+type FrontendURLResolver interface {
+	// FrontendBaseURL returns the application's configured origin, or "" when it
+	// has none.
+	FrontendBaseURL(ctx context.Context, applicationID string) string
 }
 
 // NewService constructs a user Service. emailProvider, policyRepo and
@@ -97,6 +121,16 @@ func NewService(authRepo *auth.Repository, emailProvider email.EmailProvider, po
 	return s
 }
 
+// WithFrontendURLResolver points emailed links at the calling application's own
+// UI origin and returns the service for chaining.
+//
+// Optional: a test building this service wants the deployment default rather than
+// a settings cache.
+func (s *Service) WithFrontendURLResolver(r FrontendURLResolver) *Service {
+	s.frontendURLs = r
+	return s
+}
+
 // emailChangeTokenTTL returns how long a primary-email change link stays valid.
 func (s *Service) emailChangeTokenTTL() time.Duration {
 	if s.cfg != nil && s.cfg.EmailVerificationTTL > 0 {
@@ -115,10 +149,30 @@ func (s *Service) recoveryEmailTokenTTL() time.Duration {
 }
 
 // verificationBaseURL returns the origin prefixed to emailed verification
-// links, which must be the address a recipient's browser can actually reach.
-func (s *Service) verificationBaseURL() string {
-	if s.cfg != nil && s.cfg.AppBaseURL != "" {
-		return s.cfg.AppBaseURL
+// links, with no trailing slash.
+//
+// It must be the address a recipient's browser can actually reach, and it must be
+// a page rather than an API route: the click carries no publishable-key header,
+// so the landing page makes the call with the key it already holds.
+//
+// Precedence is the calling application's configured origin, then the
+// deployment's, then the local development default. The application comes first
+// because one tenant may run several applications on separate domains.
+//
+// The application is read from the privacy context, never from a request field. A
+// publishable key ships in browser bundles, so a caller-supplied origin would let
+// anyone holding one have the engine mail a live confirmation token to a domain
+// they control.
+func (s *Service) verificationBaseURL(ctx context.Context) string {
+	if s.frontendURLs != nil {
+		if p, ok := privacy.FromContext(ctx); ok && p.ApplicationID != "" {
+			if configured := strings.TrimSpace(s.frontendURLs.FrontendBaseURL(ctx, p.ApplicationID)); configured != "" {
+				return strings.TrimRight(configured, "/")
+			}
+		}
+	}
+	if s.cfg != nil && s.cfg.FrontendBaseURL != "" {
+		return strings.TrimRight(s.cfg.FrontendBaseURL, "/")
 	}
 	return fallbackVerificationBaseURL
 }

@@ -61,6 +61,20 @@ func (ac *ApplicationCreate) SetExactRedirectUris(s []string) *ApplicationCreate
 	return ac
 }
 
+// SetFrontendBaseURL sets the "frontend_base_url" field.
+func (ac *ApplicationCreate) SetFrontendBaseURL(s string) *ApplicationCreate {
+	ac.mutation.SetFrontendBaseURL(s)
+	return ac
+}
+
+// SetNillableFrontendBaseURL sets the "frontend_base_url" field if the given value is not nil.
+func (ac *ApplicationCreate) SetNillableFrontendBaseURL(s *string) *ApplicationCreate {
+	if s != nil {
+		ac.SetFrontendBaseURL(*s)
+	}
+	return ac
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (ac *ApplicationCreate) SetCreatedAt(t time.Time) *ApplicationCreate {
 	ac.mutation.SetCreatedAt(t)
@@ -264,6 +278,10 @@ func (ac *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 	if value, ok := ac.mutation.ExactRedirectUris(); ok {
 		_spec.SetField(application.FieldExactRedirectUris, field.TypeJSON, value)
 		_node.ExactRedirectUris = value
+	}
+	if value, ok := ac.mutation.FrontendBaseURL(); ok {
+		_spec.SetField(application.FieldFrontendBaseURL, field.TypeString, value)
+		_node.FrontendBaseURL = value
 	}
 	if value, ok := ac.mutation.CreatedAt(); ok {
 		_spec.SetField(application.FieldCreatedAt, field.TypeTime, value)

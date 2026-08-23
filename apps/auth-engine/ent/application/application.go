@@ -25,6 +25,8 @@ const (
 	FieldAllowedCorsOrigins = "allowed_cors_origins"
 	// FieldExactRedirectUris holds the string denoting the exact_redirect_uris field in the database.
 	FieldExactRedirectUris = "exact_redirect_uris"
+	// FieldFrontendBaseURL holds the string denoting the frontend_base_url field in the database.
+	FieldFrontendBaseURL = "frontend_base_url"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -68,6 +70,7 @@ var Columns = []string{
 	FieldEnvironment,
 	FieldAllowedCorsOrigins,
 	FieldExactRedirectUris,
+	FieldFrontendBaseURL,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -142,6 +145,11 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByEnvironment orders the results by the environment field.
 func ByEnvironment(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnvironment, opts...).ToFunc()
+}
+
+// ByFrontendBaseURL orders the results by the frontend_base_url field.
+func ByFrontendBaseURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFrontendBaseURL, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -12,6 +12,8 @@ package oauth
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -73,6 +75,7 @@ type applicationResponse struct {
 	Environment        string   `json:"environment"`
 	AllowedCorsOrigins []string `json:"allowed_cors_origins"`
 	ExactRedirectURIs  []string `json:"exact_redirect_uris"`
+	FrontendBaseURL    string   `json:"frontend_base_url"`
 	CreatedAt          string   `json:"created_at"`
 	UpdatedAt          string   `json:"updated_at"`
 }
@@ -94,9 +97,46 @@ func toApplicationResponse(app *ent.Application) applicationResponse {
 		Environment:        string(app.Environment),
 		AllowedCorsOrigins: cors,
 		ExactRedirectURIs:  uris,
+		FrontendBaseURL:    app.FrontendBaseURL,
 		CreatedAt:          app.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:          app.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+// normalizeFrontendBaseURL validates the origin emailed links will point at,
+// returning it without a trailing slash.
+//
+// This value receives single-use credentials — a magic-link token signs its
+// bearer in — so what it permits is deliberately narrow. An absolute http(s) URL
+// with a host is required, since a relative one cannot be opened from a mail
+// client, and `javascript:` or `data:` would turn a link in an email into script
+// execution. Embedded credentials, a query string and a fragment are all refused:
+// the engine appends `?token=`, so an existing query would be duplicated and a
+// fragment would sit ahead of it and swallow it.
+//
+// A path is allowed, because an application legitimately mounts under one. Empty
+// is allowed and means "clear the override", returning this application to the
+// deployment default.
+func normalizeFrontendBaseURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", true
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+	default:
+		return "", false
+	}
+	if parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false
+	}
+
+	return strings.TrimRight(trimmed, "/"), true
 }
 
 // normalizeCorsOrigins validates and normalizes a caller-supplied origin list.
@@ -147,6 +187,9 @@ type createApplicationRequest struct {
 	// publishable keys may be called from. Empty means "not configured" — origin
 	// checks fall back to the deployment-wide CORS policy.
 	AllowedCorsOrigins []string `json:"allowed_cors_origins"`
+	// FrontendBaseURL is where this application's emailed links land. Empty leaves
+	// them on the deployment-wide default.
+	FrontendBaseURL string `json:"frontend_base_url"`
 }
 
 // CreateApplication handles POST /v1/tenant/applications and registers an OAuth
@@ -176,12 +219,18 @@ func (h *Handler) CreateApplication(c *fiber.Ctx) error {
 			fmt.Sprintf("allowed_cors_origins contains an invalid origin: %q — each must be a scheme and host with no path", bad))
 	}
 
+	frontendBaseURL, ok := normalizeFrontendBaseURL(req.FrontendBaseURL)
+	if !ok {
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			fmt.Sprintf("frontend_base_url is invalid: %q — it must be an absolute http(s) URL with no query string or fragment", req.FrontendBaseURL))
+	}
+
 	// The environment is fixed by the credential the admin authenticated with, not
 	// chosen in the body: a test-scoped key must not be able to mint a live-scoped
 	// application. An empty value lets the schema default (test) apply.
 	env, _ := c.Locals("environment").(string)
 
-	app, err := h.service.CreateClientApplication(c.UserContext(), req.ID, tenantID, req.Name, env, req.ExactRedirectURIs, corsOrigins)
+	app, err := h.service.CreateClientApplication(c.UserContext(), req.ID, tenantID, req.Name, env, req.ExactRedirectURIs, corsOrigins, frontendBaseURL)
 	if err != nil {
 		if ent.IsConstraintError(err) {
 			return httperr.Conflict(c, httperr.CodeAlreadyExists,
@@ -246,6 +295,7 @@ type updateApplicationRequest struct {
 	Name               *string   `json:"name"`
 	ExactRedirectURIs  *[]string `json:"exact_redirect_uris"`
 	AllowedCorsOrigins *[]string `json:"allowed_cors_origins"`
+	FrontendBaseURL    *string   `json:"frontend_base_url"`
 }
 
 // UpdateApplication handles PATCH /v1/tenant/applications/:id, applying a partial
@@ -277,7 +327,19 @@ func (h *Handler) UpdateApplication(c *fiber.Ctx) error {
 		req.AllowedCorsOrigins = &normalized
 	}
 
-	app, err := h.service.UpdateClientApplication(c.UserContext(), c.Params("id"), req.Name, req.ExactRedirectURIs, req.AllowedCorsOrigins)
+	// Validated on the same terms and for the same reason: a bad value is a 400
+	// rather than a half-applied write. A present-but-empty string clears the
+	// override, which is distinct from an omitted field.
+	if req.FrontendBaseURL != nil {
+		normalized, ok := normalizeFrontendBaseURL(*req.FrontendBaseURL)
+		if !ok {
+			return httperr.BadRequest(c, httperr.CodeValidationFailed,
+				fmt.Sprintf("frontend_base_url is invalid: %q — it must be an absolute http(s) URL with no query string or fragment", *req.FrontendBaseURL))
+		}
+		req.FrontendBaseURL = &normalized
+	}
+
+	app, err := h.service.UpdateClientApplication(c.UserContext(), c.Params("id"), req.Name, req.ExactRedirectURIs, req.AllowedCorsOrigins, req.FrontendBaseURL)
 	if err != nil {
 		return httperr.SendInternal(c, "oauth.update_application", err)
 	}

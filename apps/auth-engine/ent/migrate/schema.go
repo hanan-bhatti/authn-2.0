@@ -55,6 +55,7 @@ var (
 		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live"}, Default: "test"},
 		{Name: "allowed_cors_origins", Type: field.TypeJSON, Nullable: true},
 		{Name: "exact_redirect_uris", Type: field.TypeJSON, Nullable: true},
+		{Name: "frontend_base_url", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "tenant_id", Type: field.TypeString},
@@ -67,7 +68,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_tenants_applications",
-				Columns:    []*schema.Column{ApplicationsColumns[7]},
+				Columns:    []*schema.Column{ApplicationsColumns[8]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -76,7 +77,7 @@ var (
 			{
 				Name:    "application_tenant_id_environment",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[7], ApplicationsColumns[2]},
+				Columns: []*schema.Column{ApplicationsColumns[8], ApplicationsColumns[2]},
 			},
 		},
 	}

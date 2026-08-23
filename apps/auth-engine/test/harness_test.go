@@ -110,6 +110,17 @@ const platformTenantSlug = "authn-console"
 // hundreds of milliseconds, and signup performs one on the request path.
 const requestTimeoutMillis = 30_000
 
+// testFrontendBaseURL is the deployment-wide origin the booted engine prefixes to
+// emailed links, standing in for WEB_ACCOUNT_URL.
+//
+// A host the engine does not itself serve, so a link that still pointed at the API
+// would be visible rather than indistinguishable from a correct one.
+const testFrontendBaseURL = "http://account.test"
+
+// testApplicationFrontendBaseURL is the per-application override a suite writes to
+// the application row to check that it wins over testFrontendBaseURL.
+const testApplicationFrontendBaseURL = "https://app.example.test/ui"
+
 // sessionGracePeriod is how long a just-rotated refresh token keeps working.
 // It is short so the grace-window tests spend a beat waiting rather than the
 // ten-plus seconds a production-shaped value would demand.
@@ -211,6 +222,31 @@ func tokenFromBody(body string) (string, bool) {
 		return "", false
 	}
 	return token, true
+}
+
+// linkFromBody returns the whole URL carrying the "token" query parameter,
+// including its scheme and host.
+//
+// The boundaries are found by walking outward from the parameter rather than by
+// looking for "http", so a link rendered with no scheme at all comes back as it
+// stands. That is the failure worth catching here — an origin-less link is not
+// openable from a mail client — and an assertion naming what it received says more
+// than one reporting no link was found.
+func linkFromBody(body string) (string, bool) {
+	idx := strings.Index(body, "token=")
+	if idx == -1 {
+		return "", false
+	}
+
+	start := strings.LastIndexAny(body[:idx], "\"'<>( \t\r\n")
+	link := body[start+1:]
+	if end := strings.IndexAny(link, "\"'<>) \t\r\n"); end != -1 {
+		link = link[:end]
+	}
+	if link == "" {
+		return "", false
+	}
+	return link, true
 }
 
 // captureSMSProvider implements sms.SMSProvider by recording messages instead of
@@ -350,7 +386,10 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter, opt
 		// http(s) URL, so a deployment always has one. Leaving it empty here would
 		// render links with no scheme or host — a shape no deployment emits, which
 		// anything reading a link out of a message would then be tested against.
-		AppBaseURL:         "http://localhost:8080",
+		AppBaseURL: "http://localhost:8080",
+		// Deliberately a different origin from AppBaseURL, so an assertion that a
+		// link opens the frontend cannot pass against the engine's own host.
+		FrontendBaseURL:    testFrontendBaseURL,
 		JWTSigningKeyPath:  "./keys/rsa_private.pem",
 		EmailDriver:        "noop",
 		RateLimitEnabled:   rateLimiter != nil,
@@ -389,6 +428,13 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter, opt
 	// database. That matches the server's degraded path and keeps a test from
 	// asserting against a value another test left in a shared cache.
 	settingsResolver := settings.NewResolver(factory, policyRepo, nil, 0)
+
+	// Emailed links consult the calling application's own origin before the
+	// deployment default, exactly as the server wires them. Without this the suite
+	// would only ever exercise the default, and a per-application override could
+	// break without a test noticing.
+	authService = authService.WithFrontendURLResolver(settingsResolver)
+
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithSessionPolicyResolver(settingsResolver)
 
@@ -573,6 +619,49 @@ func (e *testEnv) tokenFor(t *testing.T, recipient string) (string, bool) {
 	}
 
 	return e.emails.tokenFor(recipient)
+}
+
+// linkFor returns the whole emailed URL from the newest message addressed to
+// recipient, so a test can assert on the origin a link points at rather than only
+// on the token it carries.
+//
+// It reads the same two places tokenFor reads, in the same order and for the same
+// reasons: the sandbox holds messages captured on the request path, the recorder
+// behind it holds those sent on a bypassing context.
+func (e *testEnv) linkFor(t *testing.T, recipient string) (string, bool) {
+	t.Helper()
+
+	ctx := privacy.NewContext(context.Background(), testTenant, "", testEnvironment)
+	messages, _, err := e.sandboxStore.List(ctx, sandbox.Filter{Recipient: recipient})
+	if err != nil {
+		t.Fatalf("reading the sandbox inbox for %s: %v", recipient, err)
+	}
+
+	for _, m := range messages {
+		if link, ok := m.Metadata["link"].(string); ok {
+			if found, ok := linkFromBody(link); ok {
+				return found, true
+			}
+		}
+		if found, ok := linkFromBody(m.Body); ok {
+			return found, true
+		}
+	}
+
+	// messagesTo is oldest first, so it is walked backwards to keep "newest wins"
+	// consistent with the sandbox above.
+	recorded := e.emails.messagesTo(recipient)
+	for i := len(recorded) - 1; i >= 0; i-- {
+		body := recorded[i].html
+		if body == "" {
+			body = recorded[i].text
+		}
+		if found, ok := linkFromBody(body); ok {
+			return found, true
+		}
+	}
+
+	return "", false
 }
 
 // bypassContext returns a context that skips the privacy interceptor's tenant

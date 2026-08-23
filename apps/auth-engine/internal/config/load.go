@@ -60,7 +60,11 @@ func Load() (*Config, error) {
 		AppVersion: r.str("AUTHN_APP_VERSION", "0.1.0"),
 
 		AppBaseURL: r.absoluteURL("APP_BASE_URL", "http://localhost:8080"),
-		Issuer:     r.absoluteURL("ISSUER_URL", "http://localhost:8080"),
+		// Defaults to the account app's dev origin, which WEB_ACCOUNT_PORT must
+		// track. Validate requires https in production for the same reason
+		// APP_BASE_URL does: the link carries a single-use credential.
+		FrontendBaseURL: r.absoluteURL("WEB_ACCOUNT_URL", DefaultFrontendBaseURL),
+		Issuer:          r.absoluteURL("ISSUER_URL", "http://localhost:8080"),
 
 		CORSAllowedOrigins:   r.originList("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
 		CORSAllowedMethods:   r.list("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),

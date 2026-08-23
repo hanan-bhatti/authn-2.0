@@ -30,6 +30,8 @@ type Application struct {
 	AllowedCorsOrigins []string `json:"allowed_cors_origins,omitempty"`
 	// Strict exact-match redirect URIs permitted for OAuth2/OIDC PKCE login flows
 	ExactRedirectUris []string `json:"exact_redirect_uris,omitempty"`
+	// Origin of this application's own UI, prefixed to emailed link landings; empty falls back to the deployment default
+	FrontendBaseURL string `json:"frontend_base_url,omitempty"`
 	// Timestamp when application was registered
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Timestamp when application was last modified
@@ -89,7 +91,7 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case application.FieldAllowedCorsOrigins, application.FieldExactRedirectUris:
 			values[i] = new([]byte)
-		case application.FieldID, application.FieldTenantID, application.FieldName, application.FieldEnvironment:
+		case application.FieldID, application.FieldTenantID, application.FieldName, application.FieldEnvironment, application.FieldFrontendBaseURL:
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -147,6 +149,12 @@ func (a *Application) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &a.ExactRedirectUris); err != nil {
 					return fmt.Errorf("unmarshal field exact_redirect_uris: %w", err)
 				}
+			}
+		case application.FieldFrontendBaseURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field frontend_base_url", values[i])
+			} else if value.Valid {
+				a.FrontendBaseURL = value.String
 			}
 		case application.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -225,6 +233,9 @@ func (a *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("exact_redirect_uris=")
 	builder.WriteString(fmt.Sprintf("%v", a.ExactRedirectUris))
+	builder.WriteString(", ")
+	builder.WriteString("frontend_base_url=")
+	builder.WriteString(a.FrontendBaseURL)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(a.CreatedAt.Format(time.ANSIC))

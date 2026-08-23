@@ -167,7 +167,8 @@ func wireFeatures(
 	authRepo := auth.NewRepository(factory)
 	authService := auth.NewService(authRepo, cfg, emailProvider, smsProvider).
 		WithWebhooks(webhookDispatcher).
-		WithTokenTTLResolver(tokenTTL)
+		WithTokenTTLResolver(tokenTTL).
+		WithFrontendURLResolver(settingsResolver)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithBlocklist(bl).
 		WithSessionPolicyResolver(settingsResolver)
@@ -219,7 +220,8 @@ func wireFeatures(
 	samlHandler := saml.NewHandler(samlService).
 		WithSessionPolicyResolver(settingsResolver)
 
-	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher, cfg)
+	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher, cfg).
+		WithFrontendURLResolver(settingsResolver)
 	userHandler := user.NewHandler(userService)
 	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey, bl)
 

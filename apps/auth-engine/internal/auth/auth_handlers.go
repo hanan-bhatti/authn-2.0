@@ -58,17 +58,18 @@ func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
 }
 
 // VerifyMagicLink validates a magic login token, consumes it, marks email verified, and issues session tokens.
+//
+// POST only, so the token arrives in a body rather than a URL. The query string is
+// still read as a fallback for a caller that posts an empty body, but nothing
+// reaches this handler by browser navigation: the emailed link opens the frontend,
+// which makes this call itself.
 func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 	var token string
-	if c.Method() == fiber.MethodGet {
-		token = c.Query("token")
+	var req VerifyMagicLinkDTO
+	if err := c.BodyParser(&req); err == nil && req.Token != "" {
+		token = req.Token
 	} else {
-		var req VerifyMagicLinkDTO
-		if err := c.BodyParser(&req); err == nil && req.Token != "" {
-			token = req.Token
-		} else {
-			token = c.Query("token")
-		}
+		token = c.Query("token")
 	}
 
 	if strings.TrimSpace(token) == "" {

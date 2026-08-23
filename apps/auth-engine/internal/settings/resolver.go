@@ -85,6 +85,10 @@ type Application struct {
 	AllowedCorsOrigins []string `json:"allowed_cors_origins"`
 	// ExactRedirectURIs is the OAuth redirect allowlist, matched exactly.
 	ExactRedirectURIs []string `json:"exact_redirect_uris"`
+	// FrontendBaseURL is the origin of this application's own UI, prefixed to
+	// emailed link landings. Empty means the application has configured none and
+	// the deployment default applies.
+	FrontendBaseURL string `json:"frontend_base_url"`
 }
 
 // Resolver reads runtime settings, serving them from Redis when it can and from
@@ -193,10 +197,30 @@ func (r *Resolver) Application(ctx context.Context, applicationID string) (*Appl
 		Environment:        string(row.Environment),
 		AllowedCorsOrigins: row.AllowedCorsOrigins,
 		ExactRedirectURIs:  row.ExactRedirectUris,
+		FrontendBaseURL:    row.FrontendBaseURL,
 	}
 
 	r.putCached(ctx, key, resolved)
 	return resolved, nil
+}
+
+// FrontendBaseURL returns the origin an application's emailed links should point
+// at, or "" when it has configured none.
+//
+// It reports only what the row says, leaving the deployment default to the
+// caller: only the caller knows whether it is building a link at all, and a
+// resolver that substituted a default would make "this application chose an
+// origin" indistinguishable from "nobody has".
+//
+// Like SessionPolicy it never fails. An unreadable row or an absent application
+// yields "", so a cache or database problem downgrades a link to the deployment
+// default rather than failing the send that carries it.
+func (r *Resolver) FrontendBaseURL(ctx context.Context, applicationID string) string {
+	app, err := r.Application(ctx, applicationID)
+	if err != nil || app == nil {
+		return ""
+	}
+	return app.FrontendBaseURL
 }
 
 // InvalidateApplication drops an application's cached settings.

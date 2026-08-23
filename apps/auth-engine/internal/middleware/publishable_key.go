@@ -51,14 +51,11 @@ type pkQueryFallbackRoute struct {
 // browser navigation rather than fetch or XHR, and (c) behind
 // RequirePublishableKey. Non-GET methods are refused outright, which keeps the
 // fallback unreachable from any API-style call that had a header available.
+//
+// Emailed links are deliberately absent. They land on the application's own
+// frontend, which holds a publishable key already and can set the header, so the
+// only requests reaching the verification routes are its own.
 var pkQueryFallbackRoutes = []pkQueryFallbackRoute{
-	// Emailed-link landings: the link is opened from a mail client, and no
-	// JavaScript runs before the request is issued.
-	{prefix: "/v1/client/auth/verify-email"},
-	{prefix: "/v1/client/auth/magic-link/verify"},
-	{prefix: "/v1/client/user/email/verify"},
-	{prefix: "/v1/client/user/recovery-email/verify"},
-
 	// Social login: top-level navigation out to the identity provider, and the
 	// provider's 302 back. The callback URL is registered verbatim in the
 	// provider console and matched exactly, so no header can be attached to it.

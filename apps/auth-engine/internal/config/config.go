@@ -37,6 +37,17 @@ const (
 	EnvProduction  = "production"
 )
 
+// DefaultFrontendBaseURL is the origin prefixed to an emailed link when neither
+// the calling application nor the deployment names one — the account app's dev
+// port.
+//
+// Exported because three callers need the same last resort: the loader's default,
+// and the two services that render links. Those services cannot fall back to an
+// empty string, because a link with no scheme or host is not openable from a mail
+// client at all, and a Config assembled in a test rather than by the loader has
+// no value set.
+const DefaultFrontendBaseURL = "http://localhost:4001"
+
 // Config holds every validated runtime setting. It is built once by Load and
 // treated as read-only afterwards, so it is safe to share across goroutines
 // without locking.
@@ -91,6 +102,17 @@ type Config struct {
 	// OAuth callbacks and SAML metadata. It must be the address a browser
 	// reaches, which behind a TLS-terminating proxy is the https:// one.
 	AppBaseURL string
+	// FrontendBaseURL is where the UI that handles emailed links lives, used
+	// whenever the calling application has set no frontend_base_url of its own.
+	//
+	// It is a separate setting from AppBaseURL rather than derived from it,
+	// because an emailed link must open a page and not an API call. A recipient
+	// clicking a link sends no headers a browser can be told to add, so a link
+	// aimed at the engine either fails the publishable-key guard or answers with
+	// JSON — and for a magic link that JSON is a usable credential rendered into
+	// a browser window and its history. The frontend holds its own publishable
+	// key already, so it can make the call the click cannot.
+	FrontendBaseURL string
 	// Issuer is the OpenID Connect issuer identifier placed in the `iss` claim
 	// of every token and published at the discovery endpoint. Changing it
 	// invalidates tokens that relying parties have already accepted.

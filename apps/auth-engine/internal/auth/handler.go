@@ -183,8 +183,12 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	api.Post("/auth/resend-verification", public(h.ResendVerification)...)
 
 	// Passwordless magic link (FR-15). The emailed token is the credential.
+	//
+	// POST only. The emailed link opens the frontend, which posts the token here
+	// with its own publishable key; a GET reachable by browser navigation would
+	// answer a top-level request with an access token in the response body, where
+	// it lands in history and in the Referer of every link on the page.
 	api.Post("/auth/magic-link", public(h.SendMagicLink)...)
-	api.Get("/auth/magic-link/verify", public(h.VerifyMagicLink)...)
 	api.Post("/auth/magic-link/verify", public(h.VerifyMagicLink)...)
 
 	// TOTP second factor (FR-4). Verification is public because it also serves the login

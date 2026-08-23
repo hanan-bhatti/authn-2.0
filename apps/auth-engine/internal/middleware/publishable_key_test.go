@@ -137,10 +137,13 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	app.Get("/v1/client/user/profile", pkMw, okHandler)
 	app.Post("/v1/client/auth/login", pkMw, okHandler)
 	// Allowlisted redirect landings.
-	app.Get("/v1/client/auth/verify-email", pkMw, okHandler)
-	app.Get("/v1/client/auth/magic-link/verify", pkMw, okHandler)
 	app.Get("/v1/client/auth/social/:provider/callback", pkMw, okHandler)
 	app.Get("/v1/oauth/authorize", pkMw, okHandler)
+	// Emailed-link landings, which are NOT on the allowlist: they are reached by
+	// the frontend with a header, not by browser navigation.
+	app.Get("/v1/client/auth/verify-email", pkMw, okHandler)
+	app.Get("/v1/client/user/email/verify", pkMw, okHandler)
+	app.Get("/v1/client/user/recovery-email/verify", pkMw, okHandler)
 	// Allowlisted path, non-GET method.
 	app.Post("/v1/client/auth/verify-email", pkMw, okHandler)
 
@@ -176,11 +179,9 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// --- The fallback is PRESERVED on redirect landings ---------------------
+	// --- The fallback is PRESERVED on provider redirects --------------------
 
 	for _, path := range []string{
-		"/v1/client/auth/verify-email?token=abc&publishable_key=" + rawKey,
-		"/v1/client/auth/magic-link/verify?token=abc&pk=" + rawKey,
 		"/v1/client/auth/social/google/callback?code=abc&publishable_key=" + rawKey,
 		"/v1/oauth/authorize?response_type=code&pk=" + rawKey,
 	} {
@@ -190,6 +191,34 @@ func TestPublishableKeyQueryFallbackScoping(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode,
 			"redirect landing %s must still accept the key from the query string", path)
 	}
+
+	// --- The fallback is GONE from the emailed-link landings -----------------
+	//
+	// These links now open the application's own frontend, which holds a
+	// publishable key and sets the header. Nothing arrives at them by browser
+	// navigation, so a key in the query string is a key needlessly written into
+	// browser history and access logs.
+
+	for _, path := range []string{
+		"/v1/client/auth/verify-email?token=abc&publishable_key=" + rawKey,
+		"/v1/client/user/email/verify?token=abc&pk=" + rawKey,
+		"/v1/client/user/recovery-email/verify?token=abc&pk=" + rawKey,
+	} {
+		req = httptest.NewRequest("GET", path, nil)
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
+			"emailed-link landing %s must no longer accept the key from the query string", path)
+	}
+
+	// The header still authenticates those same routes, which is how the frontend
+	// calls them.
+	req = httptest.NewRequest("GET", "/v1/client/auth/verify-email?token=abc", nil)
+	req.Header.Set("X-Authn-Publishable-Key", rawKey)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode,
+		"the emailed-link landing must still accept a key from the header")
 
 	// 5. The allowlist is keyed on method as well as path: POSTing to an
 	//    allowlisted path does not inherit the exemption.

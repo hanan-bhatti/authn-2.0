@@ -75,6 +75,11 @@ func Name(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldName, v))
 }
 
+// FrontendBaseURL applies equality check predicate on the "frontend_base_url" field. It's identical to FrontendBaseURLEQ.
+func FrontendBaseURL(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldFrontendBaseURL, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldCreatedAt, v))
@@ -253,6 +258,81 @@ func ExactRedirectUrisIsNil() predicate.Application {
 // ExactRedirectUrisNotNil applies the NotNil predicate on the "exact_redirect_uris" field.
 func ExactRedirectUrisNotNil() predicate.Application {
 	return predicate.Application(sql.FieldNotNull(FieldExactRedirectUris))
+}
+
+// FrontendBaseURLEQ applies the EQ predicate on the "frontend_base_url" field.
+func FrontendBaseURLEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLNEQ applies the NEQ predicate on the "frontend_base_url" field.
+func FrontendBaseURLNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLIn applies the In predicate on the "frontend_base_url" field.
+func FrontendBaseURLIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldFrontendBaseURL, vs...))
+}
+
+// FrontendBaseURLNotIn applies the NotIn predicate on the "frontend_base_url" field.
+func FrontendBaseURLNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldFrontendBaseURL, vs...))
+}
+
+// FrontendBaseURLGT applies the GT predicate on the "frontend_base_url" field.
+func FrontendBaseURLGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLGTE applies the GTE predicate on the "frontend_base_url" field.
+func FrontendBaseURLGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLLT applies the LT predicate on the "frontend_base_url" field.
+func FrontendBaseURLLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLLTE applies the LTE predicate on the "frontend_base_url" field.
+func FrontendBaseURLLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLContains applies the Contains predicate on the "frontend_base_url" field.
+func FrontendBaseURLContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLHasPrefix applies the HasPrefix predicate on the "frontend_base_url" field.
+func FrontendBaseURLHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLHasSuffix applies the HasSuffix predicate on the "frontend_base_url" field.
+func FrontendBaseURLHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLIsNil applies the IsNil predicate on the "frontend_base_url" field.
+func FrontendBaseURLIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldFrontendBaseURL))
+}
+
+// FrontendBaseURLNotNil applies the NotNil predicate on the "frontend_base_url" field.
+func FrontendBaseURLNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldFrontendBaseURL))
+}
+
+// FrontendBaseURLEqualFold applies the EqualFold predicate on the "frontend_base_url" field.
+func FrontendBaseURLEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldFrontendBaseURL, v))
+}
+
+// FrontendBaseURLContainsFold applies the ContainsFold predicate on the "frontend_base_url" field.
+func FrontendBaseURLContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldFrontendBaseURL, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

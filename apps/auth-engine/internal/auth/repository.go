@@ -523,7 +523,7 @@ func (r *Repository) FindApplicationByID(ctx context.Context, appID string) (*en
 //
 // Returns the raw ent error unwrapped, unlike most methods in this file, so a
 // duplicate client_id arrives as an *ent.ConstraintError.
-func (r *Repository) CreateApplication(ctx context.Context, id, tenantID, name, env string, redirectURIs, corsOrigins []string) (*ent.Application, error) {
+func (r *Repository) CreateApplication(ctx context.Context, id, tenantID, name, env string, redirectURIs, corsOrigins []string, frontendBaseURL string) (*ent.Application, error) {
 	client := r.factory.GetClient(ctx, tenantID, env)
 	builder := client.Application.Create().
 		SetID(id).
@@ -535,6 +535,9 @@ func (r *Repository) CreateApplication(ctx context.Context, id, tenantID, name, 
 	}
 	if len(corsOrigins) > 0 {
 		builder = builder.SetAllowedCorsOrigins(corsOrigins)
+	}
+	if frontendBaseURL != "" {
+		builder = builder.SetFrontendBaseURL(frontendBaseURL)
 	}
 	return builder.Save(ctx)
 }
@@ -588,7 +591,7 @@ func (r *Repository) GetApplicationByIDScoped(ctx context.Context, id string) (*
 // the interceptor filters — is what stops one tenant editing another's
 // application by guessing its ID. A nil pointer argument leaves that field
 // unchanged; a non-nil one sets it, including to an empty slice to clear a list.
-func (r *Repository) UpdateApplication(ctx context.Context, id string, name *string, redirectURIs, corsOrigins *[]string) (*ent.Application, error) {
+func (r *Repository) UpdateApplication(ctx context.Context, id string, name *string, redirectURIs, corsOrigins *[]string, frontendBaseURL *string) (*ent.Application, error) {
 	existing, err := r.GetApplicationByIDScoped(ctx, id)
 	if err != nil {
 		return nil, err
@@ -606,6 +609,12 @@ func (r *Repository) UpdateApplication(ctx context.Context, id string, name *str
 	}
 	if corsOrigins != nil {
 		upd = upd.SetAllowedCorsOrigins(*corsOrigins)
+	}
+	// An empty string is the caller clearing the override, which returns the
+	// application to the deployment default. Distinct from a nil pointer, which is
+	// an omitted field the update leaves alone.
+	if frontendBaseURL != nil {
+		upd = upd.SetFrontendBaseURL(*frontendBaseURL)
 	}
 
 	app, err := upd.Save(ctx)

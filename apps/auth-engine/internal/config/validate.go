@@ -179,6 +179,10 @@ func (c *Config) validateProduction(add func(string, ...any)) {
 	if !strings.HasPrefix(strings.ToLower(c.Issuer), "https://") {
 		add("ISSUER_URL must use https:// in production, got %q", c.Issuer)
 	}
+	if !strings.HasPrefix(strings.ToLower(c.FrontendBaseURL), "https://") {
+		add("WEB_ACCOUNT_URL must use https:// in production, got %q — "+
+			"emailed links carry single-use sign-in and verification tokens", c.FrontendBaseURL)
+	}
 	if c.WebAuthnRPID == "localhost" {
 		add("WEBAUTHN_RP_ID is still \"localhost\" in production")
 	}

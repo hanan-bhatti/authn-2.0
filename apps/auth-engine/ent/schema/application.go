@@ -53,6 +53,9 @@ func (Application) Fields() []ent.Field {
 		field.Strings("exact_redirect_uris").
 			Optional().
 			Comment("Strict exact-match redirect URIs permitted for OAuth2/OIDC PKCE login flows"),
+		field.String("frontend_base_url").
+			Optional().
+			Comment("Origin of this application's own UI, prefixed to emailed link landings; empty falls back to the deployment default"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().

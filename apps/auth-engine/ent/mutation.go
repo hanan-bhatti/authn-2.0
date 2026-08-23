@@ -1046,6 +1046,7 @@ type ApplicationMutation struct {
 	appendallowed_cors_origins []string
 	exact_redirect_uris        *[]string
 	appendexact_redirect_uris  []string
+	frontend_base_url          *string
 	created_at                 *time.Time
 	updated_at                 *time.Time
 	clearedFields              map[string]struct{}
@@ -1404,6 +1405,55 @@ func (m *ApplicationMutation) ResetExactRedirectUris() {
 	delete(m.clearedFields, application.FieldExactRedirectUris)
 }
 
+// SetFrontendBaseURL sets the "frontend_base_url" field.
+func (m *ApplicationMutation) SetFrontendBaseURL(s string) {
+	m.frontend_base_url = &s
+}
+
+// FrontendBaseURL returns the value of the "frontend_base_url" field in the mutation.
+func (m *ApplicationMutation) FrontendBaseURL() (r string, exists bool) {
+	v := m.frontend_base_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFrontendBaseURL returns the old "frontend_base_url" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldFrontendBaseURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFrontendBaseURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFrontendBaseURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFrontendBaseURL: %w", err)
+	}
+	return oldValue.FrontendBaseURL, nil
+}
+
+// ClearFrontendBaseURL clears the value of the "frontend_base_url" field.
+func (m *ApplicationMutation) ClearFrontendBaseURL() {
+	m.frontend_base_url = nil
+	m.clearedFields[application.FieldFrontendBaseURL] = struct{}{}
+}
+
+// FrontendBaseURLCleared returns if the "frontend_base_url" field was cleared in this mutation.
+func (m *ApplicationMutation) FrontendBaseURLCleared() bool {
+	_, ok := m.clearedFields[application.FieldFrontendBaseURL]
+	return ok
+}
+
+// ResetFrontendBaseURL resets all changes to the "frontend_base_url" field.
+func (m *ApplicationMutation) ResetFrontendBaseURL() {
+	m.frontend_base_url = nil
+	delete(m.clearedFields, application.FieldFrontendBaseURL)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ApplicationMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1645,7 +1695,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.tenant != nil {
 		fields = append(fields, application.FieldTenantID)
 	}
@@ -1660,6 +1710,9 @@ func (m *ApplicationMutation) Fields() []string {
 	}
 	if m.exact_redirect_uris != nil {
 		fields = append(fields, application.FieldExactRedirectUris)
+	}
+	if m.frontend_base_url != nil {
+		fields = append(fields, application.FieldFrontendBaseURL)
 	}
 	if m.created_at != nil {
 		fields = append(fields, application.FieldCreatedAt)
@@ -1685,6 +1738,8 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowedCorsOrigins()
 	case application.FieldExactRedirectUris:
 		return m.ExactRedirectUris()
+	case application.FieldFrontendBaseURL:
+		return m.FrontendBaseURL()
 	case application.FieldCreatedAt:
 		return m.CreatedAt()
 	case application.FieldUpdatedAt:
@@ -1708,6 +1763,8 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldAllowedCorsOrigins(ctx)
 	case application.FieldExactRedirectUris:
 		return m.OldExactRedirectUris(ctx)
+	case application.FieldFrontendBaseURL:
+		return m.OldFrontendBaseURL(ctx)
 	case application.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case application.FieldUpdatedAt:
@@ -1755,6 +1812,13 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetExactRedirectUris(v)
+		return nil
+	case application.FieldFrontendBaseURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFrontendBaseURL(v)
 		return nil
 	case application.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -1806,6 +1870,9 @@ func (m *ApplicationMutation) ClearedFields() []string {
 	if m.FieldCleared(application.FieldExactRedirectUris) {
 		fields = append(fields, application.FieldExactRedirectUris)
 	}
+	if m.FieldCleared(application.FieldFrontendBaseURL) {
+		fields = append(fields, application.FieldFrontendBaseURL)
+	}
 	return fields
 }
 
@@ -1825,6 +1892,9 @@ func (m *ApplicationMutation) ClearField(name string) error {
 		return nil
 	case application.FieldExactRedirectUris:
 		m.ClearExactRedirectUris()
+		return nil
+	case application.FieldFrontendBaseURL:
+		m.ClearFrontendBaseURL()
 		return nil
 	}
 	return fmt.Errorf("unknown Application nullable field %s", name)
@@ -1848,6 +1918,9 @@ func (m *ApplicationMutation) ResetField(name string) error {
 		return nil
 	case application.FieldExactRedirectUris:
 		m.ResetExactRedirectUris()
+		return nil
+	case application.FieldFrontendBaseURL:
+		m.ResetFrontendBaseURL()
 		return nil
 	case application.FieldCreatedAt:
 		m.ResetCreatedAt()

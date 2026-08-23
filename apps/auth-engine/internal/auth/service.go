@@ -46,6 +46,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/accountstatus"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	emailPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/email"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/rbac"
 	smsPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sms"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
@@ -310,6 +311,21 @@ type TokenTTLResolver interface {
 	RefreshTokenTTLOr(ctx context.Context, tenantID, environment string, fallback time.Duration) time.Duration
 }
 
+// FrontendURLResolver supplies the origin an application's emailed links point at.
+//
+// It is an interface for the same reasons as TokenTTLResolver: this package does
+// not depend on the settings cache, and a test can fix an origin without a
+// database. settings.Resolver satisfies it.
+//
+// It does not fail. An empty return means "this application configured none", not
+// "the lookup broke", so a send never fails on account of a link's origin — it
+// falls back to the deployment default instead.
+type FrontendURLResolver interface {
+	// FrontendBaseURL returns the application's configured origin, or "" when it
+	// has none.
+	FrontendBaseURL(ctx context.Context, applicationID string) string
+}
+
 // Service handles domain business logic for authentication.
 type Service struct {
 	// repo is the persistence boundary for users, sessions, two-factor methods and audit rows.
@@ -327,6 +343,9 @@ type Service struct {
 	// tokenTTL supplies the tenant's chosen token lifetimes. May be nil, in which case every
 	// tenant gets the deployment default; see accessTokenTTL and refreshTokenTTL.
 	tokenTTL TokenTTLResolver
+	// frontendURLs supplies the calling application's own UI origin for emailed links. May be
+	// nil, in which case every application gets the deployment default; see frontendBaseURL.
+	frontendURLs FrontendURLResolver
 	// webauthn is the configured relying party. Nil when no RP ID is set, which disables the
 	// passkey endpoints rather than failing at startup.
 	webauthn *webauthn.WebAuthn
@@ -405,6 +424,49 @@ func (s *Service) WithWebhooks(d WebhookDispatcher) *Service {
 func (s *Service) WithTokenTTLResolver(r TokenTTLResolver) *Service {
 	s.tokenTTL = r
 	return s
+}
+
+// WithFrontendURLResolver points emailed links at the calling application's own
+// UI origin and returns the service for chaining.
+//
+// Optional for the same reason as the token resolver: a test building this service
+// wants the deployment default, not a settings cache.
+func (s *Service) WithFrontendURLResolver(r FrontendURLResolver) *Service {
+	s.frontendURLs = r
+	return s
+}
+
+// frontendBaseURL returns the origin to prefix to an emailed link, with no
+// trailing slash.
+//
+// Precedence is the calling application's configured origin, then the
+// deployment-wide default, then config.DefaultFrontendBaseURL. The application
+// comes first because one tenant may run several applications on separate
+// domains, and a link that opens the wrong one leaves the recipient signed in
+// somewhere they were not trying to reach. The constant is last because an empty
+// result would render a link with no scheme or host, which no mail client can
+// open — the loader always sets a value, but a Config assembled directly does not.
+//
+// The application is read from the privacy context rather than passed in, because
+// every caller here is on a request the publishable-key middleware has already
+// resolved, and the alternative is threading an ID through mail-sending code that
+// has no other use for it.
+//
+// Deliberately not derived from any request field. A publishable key ships in
+// browser bundles, so a caller-supplied origin would let anyone holding one have
+// the engine mail a working sign-in token to a domain they control.
+func (s *Service) frontendBaseURL(ctx context.Context) string {
+	if s.frontendURLs != nil {
+		if p, ok := privacy.FromContext(ctx); ok && p.ApplicationID != "" {
+			if configured := strings.TrimSpace(s.frontendURLs.FrontendBaseURL(ctx, p.ApplicationID)); configured != "" {
+				return strings.TrimRight(configured, "/")
+			}
+		}
+	}
+	if s.config != nil && strings.TrimSpace(s.config.FrontendBaseURL) != "" {
+		return strings.TrimRight(strings.TrimSpace(s.config.FrontendBaseURL), "/")
+	}
+	return config.DefaultFrontendBaseURL
 }
 
 // emit queues a webhook event, doing nothing when no dispatcher is attached.
@@ -873,7 +935,7 @@ func (s *Service) SendVerificationEmail(ctx context.Context, u *ent.User) error 
 		return err
 	}
 
-	verifyURL := fmt.Sprintf("%s/v1/client/auth/verify-email?token=%s", s.config.AppBaseURL, rawToken)
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", s.frontendBaseURL(ctx), rawToken)
 
 	htmlBody, textBody, err := emailPkg.RenderVerificationEmail(emailPkg.VerificationEmailData{
 		UserName:         u.Name,
@@ -995,11 +1057,7 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 		return fmt.Errorf("failed saving magic link token: %w", err)
 	}
 
-	baseURL := s.config.AppBaseURL
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-	magicURL := fmt.Sprintf("%s/v1/client/auth/magic-link/verify?token=%s", baseURL, rawToken)
+	magicURL := fmt.Sprintf("%s/magic-link?token=%s", s.frontendBaseURL(ctx), rawToken)
 
 	htmlBody, textBody, err := emailPkg.RenderMagicLinkEmail(emailPkg.MagicLinkEmailData{
 		UserName:  u.Name,
