@@ -77,8 +77,8 @@ describe("AuthnClient Sign Up Flow", () => {
       headers: new Headers(),
       text: async () =>
         JSON.stringify({
-          code: "EMAIL_ALREADY_EXISTS",
-          message: "An account with this email already exists",
+          error: "user with this email already exists",
+          code: "already_exists",
         }),
     });
 
@@ -144,8 +144,8 @@ describe("AuthnClient Login Flow", () => {
       headers: new Headers(),
       text: async () =>
         JSON.stringify({
-          code: "INVALID_CREDENTIALS",
-          message: "Invalid email or password",
+          error: "invalid email or password",
+          code: "invalid_credentials",
         }),
     });
 

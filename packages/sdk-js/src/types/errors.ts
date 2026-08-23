@@ -23,13 +23,118 @@ export enum AuthnErrorCode {
   RATE_LIMITED = "RATE_LIMITED",
   VALIDATION_ERROR = "VALIDATION_ERROR",
   EMAIL_ALREADY_EXISTS = "EMAIL_ALREADY_EXISTS",
+  /**
+   * Something else already holds the value being claimed — an organization slug,
+   * a second factor of a kind already enrolled. Distinct from
+   * EMAIL_ALREADY_EXISTS because that one has a sign-in link as its remedy and
+   * this one does not.
+   */
+  CONFLICT = "CONFLICT",
   INVALID_CREDENTIALS = "INVALID_CREDENTIALS",
+  /**
+   * The credential was right but the account may not sign in: banned, suspended,
+   * or held after a recovery. Separate from FORBIDDEN because retrying is
+   * pointless — the way out is contacting support, not entering a better
+   * password.
+   */
+  ACCOUNT_DISABLED = "ACCOUNT_DISABLED",
+  /**
+   * The second factor was wrong. A challenge screen keeps the user on the same
+   * step for this, where an expired challenge sends them back to the start.
+   */
+  INVALID_MFA_CODE = "INVALID_MFA_CODE",
   EMAIL_VERIFICATION_REQUIRED = "EMAIL_VERIFICATION_REQUIRED",
   MAGIC_LINK_EXPIRED = "MAGIC_LINK_EXPIRED",
   SESSION_EXPIRED = "SESSION_EXPIRED",
   REFRESH_FAILED = "REFRESH_FAILED",
+  /**
+   * A test environment holds its limit of something. Unlike RATE_LIMITED,
+   * waiting does not help: the ceiling is on stored rows, so room is made by
+   * deleting or by moving to live.
+   */
+  TEST_QUOTA_EXCEEDED = "TEST_QUOTA_EXCEEDED",
   SERVER_ERROR = "SERVER_ERROR",
   UNKNOWN = "UNKNOWN",
+}
+
+/**
+ * The engine's `code` field, translated.
+ *
+ * Every error body the engine sends carries a stable snake_case `code`, and it
+ * is the only part of the body meant to be branched on — the prose beside it may
+ * be reworded at any time. Several of these collapse onto one client code
+ * deliberately: a page has nothing different to do about `forbidden` than about
+ * `tenant_admin_required`, and pretending otherwise would push the engine's
+ * permission model into every consumer.
+ *
+ * A code missing from this table falls back to the HTTP status, which is why
+ * adding an engine code does not break an older client — it just loses the
+ * distinction until the table catches up.
+ */
+const ENGINE_ERROR_CODES: Readonly<Record<string, AuthnErrorCode>> = {
+  invalid_request_body: AuthnErrorCode.INVALID_PARAMS,
+  validation_failed: AuthnErrorCode.VALIDATION_ERROR,
+  missing_parameter: AuthnErrorCode.INVALID_PARAMS,
+
+  unauthorized: AuthnErrorCode.UNAUTHORIZED,
+  invalid_credentials: AuthnErrorCode.INVALID_CREDENTIALS,
+  session_expired: AuthnErrorCode.SESSION_EXPIRED,
+  invalid_token: AuthnErrorCode.UNAUTHORIZED,
+  email_verification_required: AuthnErrorCode.EMAIL_VERIFICATION_REQUIRED,
+  magic_link_expired: AuthnErrorCode.MAGIC_LINK_EXPIRED,
+  // A challenge is issued as a 200 carrying `mfaRequired`, so this arrives only
+  // when a request that needed a completed challenge was made without one.
+  mfa_required: AuthnErrorCode.UNAUTHORIZED,
+  invalid_mfa_code: AuthnErrorCode.INVALID_MFA_CODE,
+  account_disabled: AuthnErrorCode.ACCOUNT_DISABLED,
+
+  forbidden: AuthnErrorCode.FORBIDDEN,
+  insufficient_permissions: AuthnErrorCode.FORBIDDEN,
+  tenant_admin_required: AuthnErrorCode.FORBIDDEN,
+  impersonation_blocked: AuthnErrorCode.FORBIDDEN,
+  live_key_required: AuthnErrorCode.FORBIDDEN,
+
+  // Both mean the credential is individually valid but does not belong with the
+  // rest of the request. Nothing the end user did causes either, so they read as
+  // a misconfigured client rather than a refusal to relay.
+  tenant_mismatch: AuthnErrorCode.INVALID_CONFIG,
+  origin_not_allowed: AuthnErrorCode.INVALID_CONFIG,
+
+  not_found: AuthnErrorCode.NOT_FOUND,
+  already_exists: AuthnErrorCode.EMAIL_ALREADY_EXISTS,
+  conflict: AuthnErrorCode.CONFLICT,
+
+  rate_limited: AuthnErrorCode.RATE_LIMITED,
+  service_unavailable: AuthnErrorCode.SERVER_ERROR,
+  test_quota_exceeded: AuthnErrorCode.TEST_QUOTA_EXCEEDED,
+
+  internal_error: AuthnErrorCode.SERVER_ERROR,
+};
+
+/**
+ * Pulls everything the body says beyond its two contract fields.
+ *
+ * The engine reports supporting facts — `missing_criteria` for a rejected
+ * password, `retry_after` for a throttle — as siblings of `error` and `code`
+ * rather than under a `details` key, so reading only `details` silently drops
+ * them and leaves a form saying "your password does not meet policy" without
+ * being able to say which part. Both shapes are collected, with a nested
+ * `details` object flattened in.
+ */
+function extractDetails(body: Record<string, unknown>): Record<string, unknown> | undefined {
+  const details: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(body)) {
+    if (key === "error" || key === "code" || key === "message" || key === "details") continue;
+    details[key] = value;
+  }
+
+  const nested = body["details"];
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    Object.assign(details, nested as Record<string, unknown>);
+  }
+
+  return Object.keys(details).length > 0 ? details : undefined;
 }
 
 export interface AuthnErrorOptions {
@@ -123,6 +228,16 @@ export class AuthnError extends Error {
     });
   }
 
+  /**
+   * fromResponse builds an error from a server error body.
+   *
+   * The body's `code` wins over the HTTP status whenever it is recognised,
+   * because a status is a category and the code is the specific fact: a 400
+   * covers both a malformed body and a password the policy rejected, and only
+   * one of those is worth pointing a form field at. The status ladder stays as
+   * the fallback for whatever sits between the client and the engine — a proxy
+   * or load balancer answers with no code at all.
+   */
   static fromResponse(
     status: number,
     body: Record<string, unknown>,
@@ -132,15 +247,21 @@ export class AuthnError extends Error {
     const rawCode = (body["code"] as string) || "";
 
     let code = AuthnErrorCode.UNKNOWN;
-    if (status === 401) code = AuthnErrorCode.UNAUTHORIZED;
+    if (status === 400) code = AuthnErrorCode.INVALID_PARAMS;
+    else if (status === 401) code = AuthnErrorCode.UNAUTHORIZED;
     else if (status === 403) code = AuthnErrorCode.FORBIDDEN;
     else if (status === 404) code = AuthnErrorCode.NOT_FOUND;
-    else if (status === 409) code = AuthnErrorCode.EMAIL_ALREADY_EXISTS;
+    else if (status === 409) code = AuthnErrorCode.CONFLICT;
     else if (status === 422) code = AuthnErrorCode.VALIDATION_ERROR;
     else if (status === 429) code = AuthnErrorCode.RATE_LIMITED;
     else if (status >= 500) code = AuthnErrorCode.SERVER_ERROR;
 
-    if (rawCode in AuthnErrorCode) {
+    const mapped = ENGINE_ERROR_CODES[rawCode];
+    if (mapped) {
+      code = mapped;
+    } else if (rawCode in AuthnErrorCode) {
+      // An error that has already been through this class once, re-serialized by
+      // an intermediary from toJSON(). Its code is a client code, not a wire one.
       code = rawCode as AuthnErrorCode;
     }
 
@@ -149,7 +270,7 @@ export class AuthnError extends Error {
       code,
       statusCode: status,
       requestId,
-      details: (body["details"] as Record<string, unknown>) || undefined,
+      details: extractDetails(body),
     });
   }
 
