@@ -1,0 +1,33 @@
+{
+  "name": "@authn/web-account",
+  "version": "0.1.0",
+  "description": "Authn Platform — the end user's own account: sign in, sign up, sessions, profile, second factors and recovery.",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "Hanan Bhatti (https://github.com/hanan-bhatti)",
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- sh -c 'next dev --turbopack --port ${WEB_ACCOUNT_PORT:-3001}'",
+    "build": "dotenv -e ../../.env -- next build",
+    "start": "dotenv -e ../../.env -- sh -c 'next start --port ${WEB_ACCOUNT_PORT:-3001}'",
+    "lint": "dotenv -e ../../.env -- sh -c 'next typegen && tsc --noEmit'"
+  },
+  "dependencies": {
+    "@authn/js": "workspace:*",
+    "@authn/react": "workspace:*",
+    "@authn/ui": "workspace:*",
+    "next": "^16.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "dotenv": "^17.2.5",
+    "dotenv-cli": "^11.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,25 @@
+/*
+ * Authn Platform — Account app stylesheet
+ * File: apps/web-account/src/app/globals.css
+ *
+ * The design system is a single import. Every token, webfont and base style
+ * comes from @authn/ui; nothing is redefined here, because a token declared in
+ * two places is a token that will disagree with itself.
+ *
+ * @authn/ui's globals.css carries the `@import "tailwindcss"` that starts the
+ * build, so this file must not repeat it.
+ */
+
+@import "@authn/ui/styles/globals.css";
+
+/*
+ * Tailwind v4 generates a utility only if it finds the class name in a scanned
+ * file, and automatic detection stops at node_modules. @authn/ui reaches this
+ * app as a workspace symlink into node_modules, so without this line every
+ * utility its components name — every bg-canvas, every text-mute — would be
+ * absent from the compiled sheet and the components would render unstyled.
+ *
+ * The path points at the real package directory rather than the symlink so the
+ * scanner does not have to resolve one.
+ */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
