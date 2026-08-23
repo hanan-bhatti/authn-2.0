@@ -38,10 +38,10 @@ export const Dialog: React.FC<DialogProps> = ({
   if (!isOpen) return null;
 
   const widthMap = {
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
+    sm: "max-w-compact",
+    md: "max-w-panel",
+    lg: "max-w-wide",
+    xl: "max-w-broad",
   };
 
   return (

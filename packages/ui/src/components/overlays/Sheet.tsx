@@ -50,7 +50,7 @@ export const Sheet: React.FC<SheetProps> = ({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full max-w-md h-full bg-canvas border-l border-hairline-strong p-6 transition-transform duration-200 flex flex-col justify-between ml-auto",
+          "relative z-10 w-full max-w-panel h-full bg-canvas border-l border-hairline-strong p-6 transition-transform duration-200 flex flex-col justify-between ml-auto",
           position === "left" && "mr-auto ml-0 border-r border-l-0",
           className
         )}

@@ -200,6 +200,22 @@
   --spacing-section: 96px;
   --spacing-band: 128px;
 
+  /* ---- Layout widths ----------------------------------------------------
+     Named for what they hold rather than by t-shirt size, and deliberately
+     sharing no name with a spacing step.
+
+     Tailwind resolves `max-w-<name>` against the spacing scale before the
+     container scale, so a width step called `md` does not read as 448px — it
+     compiles to `max-width: var(--spacing-md)`, which is 12px. The utility
+     still exists and the class name still looks right, so the only symptom is
+     a dialog rendered as a sliver. Keeping the two vocabularies disjoint is
+     what makes that collision impossible rather than merely fixed. */
+  --container-compact: 20rem; /* 320px — a toast, a confirmation, a short prompt */
+  --container-panel: 28rem; /* 448px — the default: an auth card, a form dialog */
+  --container-wide: 36rem; /* 576px — a command palette, a long option list */
+  --container-broad: 40rem; /* 640px — DESIGN.md's inset card width */
+  --container-page: 75rem; /* 1200px — DESIGN.md's max body content width */
+
   /* ---- Motion -----------------------------------------------------------
      Durations and easings are tokens so micro-interactions stay coherent
      across components. `standard` is the default for hover and colour

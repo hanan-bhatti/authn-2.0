@@ -41,7 +41,7 @@ export const Toast: React.FC<ToastProps> = ({
       role={isUrgent ? "alert" : "status"}
       aria-live={isUrgent ? "assertive" : "polite"}
       className={cn(
-        "flex items-start gap-3 p-3.5 bg-canvas border border-hairline-strong rounded-md backdrop-scrim max-w-sm select-none animate-enter-rise",
+        "flex items-start gap-3 p-3.5 bg-canvas border border-hairline-strong rounded-md backdrop-scrim max-w-compact select-none animate-enter-rise",
         className
       )}
     >
