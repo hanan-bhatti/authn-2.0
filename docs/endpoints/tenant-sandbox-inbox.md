@@ -71,9 +71,8 @@ curl "https://api.authn.com/v1/tenant/sandbox/messages?recipient=ada@example.tes
       "recipient": "ada@example.test",
       "subject": "Verify your email address",
       "template": "email_verification",
-      "code": "",
       "metadata": {
-        "link": "https://api.authn.com/v1/client/auth/verify-email?token=32b3c1b7a1695dbb",
+        "link": "https://app.example.com/verify-email?token=32b3c1b7a1695dbb",
         "text_body": "Welcome to Acme! Please verify your email address..."
       },
       "created_at": "2026-08-19T11:04:22Z"
@@ -88,7 +87,9 @@ curl "https://api.authn.com/v1/tenant/sandbox/messages?recipient=ada@example.tes
 
 **`total` counts every message matching the filter, before paging.** A test polling for a message cannot learn that from the page length, which is why it is reported separately.
 
-**`code` and `metadata.link` are extracted at capture time**, so completing a flow does not mean parsing rendered HTML. The rendering is styling and changes freely; these two are the contract. A message carrying no code stores `""` rather than guessing, and the extraction is deliberately strict — a loose match is worse than no match, because a test reading a wrong value fails in a way that looks like the engine generated the wrong credential.
+**`code` and `metadata.link` are extracted at capture time**, so completing a flow does not mean parsing rendered HTML. The rendering is styling and changes freely; these two are the contract. A message carrying no code omits the field rather than guessing a value, so read it as absent-or-string. The extraction is deliberately strict — a loose match is worse than no match, because a test reading a wrong value fails in a way that looks like the engine generated the wrong credential.
+
+**`metadata.link` points at your frontend, not at the API.** Emailed links land on the application's own pages — `application.frontend_base_url` when set, otherwise the deployment-wide `WEB_ACCOUNT_URL` — because a mail client cannot attach the publishable-key header the API requires. A test pulls the `token` query parameter out of the link and calls the API route itself.
 
 ---
 
@@ -107,8 +108,7 @@ Same as a listing entry, plus `body` — the message exactly as the provider wou
     "recipient": "ada@example.test",
     "subject": "Verify your email address",
     "template": "email_verification",
-    "code": "",
-    "metadata": { "link": "https://api.authn.com/v1/client/auth/verify-email?token=32b3c1b7a1695dbb" },
+    "metadata": { "link": "https://app.example.com/verify-email?token=32b3c1b7a1695dbb" },
     "created_at": "2026-08-19T11:04:22Z",
     "body": "<!DOCTYPE html><html>...</html>"
   }
@@ -228,7 +228,7 @@ Do not treat the inbox as a log. It is a mailbox with a short lease.
 1. `DELETE /v1/tenant/sandbox/messages` — start from empty.
 2. `POST /v1/client/auth/signup` with `pk_test_...`.
 3. `GET /v1/tenant/sandbox/messages?recipient=...` — assert `total` is 1 and `template` is `email_verification`.
-4. Pull the token out of `metadata.link` and `GET /v1/client/auth/verify-email?token=...`.
+4. Pull the `token` query parameter out of `metadata.link` — the link addresses your frontend — and call `GET /v1/client/auth/verify-email?token=...` yourself with the publishable key as a header.
 5. Separately, once, after configuring SMTP: `POST /v1/tenant/delivery/verify` and check your own inbox.
 
 Step 5 is the one that catches a wrong SMTP password. Steps 1–4 never would, and would keep passing while every live message bounced.

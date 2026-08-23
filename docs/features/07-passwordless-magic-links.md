@@ -46,7 +46,8 @@ If a user requests a magic link for an email address that does not exist in the 
 ```
 
 ### 3.2 Verify Magic Link & Issue Session (Option A)
-* **Endpoint**: `POST /v1/client/auth/magic-link/verify` or `GET /v1/client/auth/magic-link/verify?token=...`
+* **Endpoint**: `POST /v1/client/auth/magic-link/verify`
+* **Called by**: the application's own frontend. The emailed link opens `<frontend base>/magic-link?token=…` — `application.frontend_base_url` when set, otherwise `WEB_ACCOUNT_URL` — and that page makes this call. There is no `GET` form: a mail client cannot set the publishable-key header, and a browser navigation answered with an access token would leave it in history and in the `Referer`.
 * **Headers**: `X-Authn-Publishable-Key: pk_test_...`, `X-Authn-Client-Type: web` (or `native`/`mobile`)
 * **Payload**:
 ```json

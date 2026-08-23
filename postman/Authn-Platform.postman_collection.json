@@ -1284,7 +1284,7 @@
 					}
 				},
 				{
-					"name": "Verify Magic Link Token (POST)",
+					"name": "Verify Magic Link Token",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -1299,22 +1299,8 @@
 							"raw": "{{baseUrl}}/v1/client/auth/magic-link/verify",
 							"host": ["{{baseUrl}}"],
 							"path": ["v1", "client", "auth", "magic-link", "verify"]
-						}
-					}
-				},
-				{
-					"name": "Verify Magic Link Token (GET redirect)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
-						],
-						"url": {
-							"raw": "{{baseUrl}}/v1/client/auth/magic-link/verify?token=replace_with_token_from_email_link",
-							"host": ["{{baseUrl}}"],
-							"path": ["v1", "client", "auth", "magic-link", "verify"],
-							"query": [{ "key": "token", "value": "replace_with_token_from_email_link" }]
-						}
+						},
+						"description": "POST only. The emailed link opens the application's own frontend, which posts the token here with its publishable key as a header. There is no GET form: a GET would answer a top-level browser navigation with an access token in the body, which the browser records in history and leaks as a Referer."
 					}
 				},
 				{

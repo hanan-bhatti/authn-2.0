@@ -12,7 +12,17 @@ These two endpoints form a single user flow and are documented together.
 
 ### Overview
 * **Route**: `GET /v1/client/auth/verify-email?token=<raw_token>`
-* **Purpose**: Validates a single-use 64-hex-character email verification token, marks the user's `email_verified` field `true`, and clears the token from the database. Intended to be opened by the user clicking the link from their verification email.
+* **Purpose**: Validates a single-use 64-hex-character email verification token, marks the user's `email_verified` field `true`, and clears the token from the database.
+
+> This route is **not** the destination of the emailed link. The link opens the application's own frontend at `/verify-email?token=…`, and that page calls this endpoint with the publishable key as a header. A mail client cannot attach a header to a click, so a link pointing straight here answers `401 missing publishable API key`. Unlike the social-authorize routes, the verify-email route has no `?pk=` / `?publishable_key=` query fallback — the allowlist in `internal/middleware/publishable_key.go` deliberately excludes emailed links.
+
+### Where the emailed link points
+The link is built from `<frontend base>/verify-email?token=<raw_token>`, where the base is resolved per request:
+
+1. `application.frontend_base_url` — the per-application override, set through the applications CRUD. Each application's mail lands on its own domain.
+2. `WEB_ACCOUNT_URL` — the deployment-wide default, used whenever the override is empty.
+
+An override must be an absolute `http(s)` URL with a host and no query string or fragment; anything else is refused with `400 validation_failed` when the application is created or patched.
 
 ### Authentication & Access Control
 * **Header Required**: `X-Authn-Publishable-Key: pk_<env>_<hash>`
@@ -227,6 +237,7 @@ Retry-After: 900
 | `AUTHN_RESEND_RATELIMIT_ENABLED` | `true` | Enables per-email rate limiting on verification resends |
 | `AUTHN_RESEND_RATELIMIT_MAX_ATTEMPTS` | `3` | Maximum resend attempts per email address within window |
 | `AUTHN_RESEND_RATELIMIT_WINDOW_SECONDS` | `3600` | Sliding window duration in seconds (3600s = 1 hour) |
+| `WEB_ACCOUNT_URL` | `http://localhost:4001` | Deployment-wide base the emailed link is built against, when the application sets no `frontend_base_url` |
 
 ---
 

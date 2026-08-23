@@ -223,7 +223,10 @@ paths:
   /v1/client/auth/verify-email:
     get:
       summary: Verify User Email Address
-      description: Validates an email verification token received via email link and marks the user's email address as verified.
+      description: >-
+        Validates an email verification token received via email link and marks the user's email address as verified.
+        Called by the application's own frontend, which the emailed link opens; the token travels in the query string and
+        the publishable key must be supplied as a header.
       operationId: clientVerifyEmail
       tags:
         - Authentication
@@ -236,18 +239,6 @@ paths:
           schema:
             type: string
           description: Verification token passed in the query string from the emailed link.
-        - in: query
-          name: publishable_key
-          required: false
-          schema:
-            type: string
-          description: Query string fallback for X-Authn-Publishable-Key header on top-level browser navigation.
-        - in: query
-          name: pk
-          required: false
-          schema:
-            type: string
-          description: Shortened query string fallback for X-Authn-Publishable-Key header.
       responses:
         '200':
           description: Email verified successfully
@@ -425,87 +416,14 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
   /v1/client/auth/magic-link/verify:
-    get:
-      summary: Verify Magic Link Token (GET)
-      description: Validates a magic login link token passed via query parameter, authenticates the user, and issues session tokens.
-      operationId: clientVerifyMagicLinkGet
-      tags:
-        - Authentication
-      security:
-        - PublishableKey: []
-      parameters:
-        - in: header
-          name: X-Authn-Client-Type
-          required: false
-          schema:
-            type: string
-            enum: [web, native, mobile]
-            default: web
-          description: Identifies client platform type.
-        - in: query
-          name: token
-          required: true
-          schema:
-            type: string
-          description: Magic link token.
-        - in: query
-          name: publishable_key
-          required: false
-          schema:
-            type: string
-          description: Query string fallback for X-Authn-Publishable-Key header.
-        - in: query
-          name: pk
-          required: false
-          schema:
-            type: string
-          description: Shortened query string fallback for X-Authn-Publishable-Key header.
-      responses:
-        '200':
-          description: Magic link verified and session created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          description: Missing token parameter, unrecognized X-Authn-Client-Type header, or invalid/expired magic link token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '401':
-          description: Missing or invalid publishable API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '403':
-          description: >-
-            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
-            users in the test environment and this request would provision a new
-            one. Live credentials are not bounded by this ceiling. Not 429 —
-            waiting does not help, because the ceiling is on stored rows.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '429':
-          description: Request throttled due to rate limiting
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-
     post:
-      summary: Verify Magic Link Token (POST)
-      description: Validates a magic login link token passed via JSON body (or query fallback), authenticates the user, and issues session tokens.
-      operationId: clientVerifyMagicLinkPost
+      summary: Verify Magic Link Token
+      description: >-
+        Validates a magic login link token passed via JSON body (or query fallback), authenticates the user, and issues
+        session tokens. The emailed link opens the application's own frontend, which posts the token here with its
+        publishable key as a header; there is no GET form, because answering a top-level browser navigation would put an
+        access token in a response body the browser records in history and leaks as a Referer.
+      operationId: clientVerifyMagicLink
       tags:
         - Authentication
       security:

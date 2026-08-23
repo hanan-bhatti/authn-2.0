@@ -66,6 +66,7 @@ Tenant administrators can configure `security_policy` per tenant (`apps/auth-eng
 
 ### 5.1 Verify Email Address
 * **Endpoint**: `GET /v1/client/auth/verify-email?token=raw_token_string`
+* **Called by**: the application's own frontend. The emailed link opens `<frontend base>/verify-email?token=…` — `application.frontend_base_url` when set, otherwise `WEB_ACCOUNT_URL` — and that page calls this endpoint with the publishable key as a header.
 * **Response (200 OK)**:
 ```json
 {

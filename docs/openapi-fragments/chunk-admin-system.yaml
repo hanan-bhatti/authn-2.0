@@ -2360,9 +2360,13 @@ components:
           additionalProperties: true
           description: >-
             link is the action URL carrying the authenticating token; text_body is the
-            plain-text alternative of an email.
+            plain-text alternative of an email. The link addresses the application's own
+            frontend — application.frontend_base_url when set, otherwise the deployment-wide
+            WEB_ACCOUNT_URL — not this API, because a mail client cannot attach the
+            publishable-key header the API requires. A test reads the token query parameter
+            out of it and calls the API route itself.
           example:
-            link: https://api.authn.com/v1/client/auth/verify-email?token=32b3c1b7a1695dbb
+            link: https://app.example.com/verify-email?token=32b3c1b7a1695dbb
             text_body: Welcome to Acme! Please verify your email address...
         body:
           type: string

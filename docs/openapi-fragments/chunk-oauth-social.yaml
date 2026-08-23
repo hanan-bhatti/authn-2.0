@@ -997,6 +997,7 @@ components:
       properties:
         id:
           type: string
+          description: The client_id this application will authenticate with.
           example: app_my_client
         name:
           type: string
@@ -1005,30 +1006,71 @@ components:
           type: array
           items:
             type: string
+          description: Allowlist of destinations the authorization endpoint will return codes to. Entries are matched exactly.
           example: ["https://app.example.com/callback"]
+        allowed_cors_origins:
+          type: array
+          items:
+            type: string
+          description: >-
+            Browser origins this application's publishable keys may be called from. Omitted or empty means "not configured",
+            and origin checks fall back to the deployment-wide CORS policy.
+          example: ["https://app.example.com"]
+        frontend_base_url:
+          type: string
+          description: >-
+            Origin of this application's own UI. Emailed links (verify email, magic link, password reset, email change) are
+            built against it, so each application's mail lands on its own domain. Omitted or empty falls back to the
+            deployment-wide WEB_ACCOUNT_URL. Must be an absolute http(s) URL with a host and no query string or fragment;
+            anything else is refused with 400 validation_failed. A trailing slash is trimmed.
+          example: https://app.example.com
 
     CreateApplicationResponse:
       type: object
+      description: The stored application record. Every application-management route returns this same shape.
       required:
-        - message
         - id
         - name
+        - environment
+        - allowed_cors_origins
         - exact_redirect_uris
+        - frontend_base_url
       properties:
-        message:
-          type: string
-          example: application registered successfully
         id:
           type: string
           example: app_my_client
         name:
           type: string
           example: My OAuth Client Application
+        environment:
+          type: string
+          description: Assigned by the server, not the request body.
+          enum: ["test", "live"]
+          example: test
+        allowed_cors_origins:
+          type: array
+          items:
+            type: string
+          description: Always an array. Empty means the deployment-wide CORS policy applies.
+          example: ["https://app.example.com"]
         exact_redirect_uris:
           type: array
           items:
             type: string
+          description: Always an array.
           example: ["https://app.example.com/callback"]
+        frontend_base_url:
+          type: string
+          description: Empty when no override is set, in which case emailed links use the deployment-wide WEB_ACCOUNT_URL.
+          example: https://app.example.com
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-08-23T11:42:47Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-08-23T11:42:47Z"
 
     SocialCallbackResponse:
       type: object

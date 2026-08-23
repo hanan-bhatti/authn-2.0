@@ -417,6 +417,7 @@ Constant-time CPU execution (~190ms) using `DummyArgon2idHash` when user not fou
 * **24-hour expiry**. **Single-use**: token + expiry cleared from DB on first successful verification.
 
 #### `GET /v1/client/auth/verify-email?token=<raw_token>`
+Called by the application's own frontend, not by the mail click. The emailed link opens `<frontend base>/verify-email?token=…` — `application.frontend_base_url` when set, otherwise the deployment-wide `WEB_ACCOUNT_URL` — and that page calls this route with the publishable key as a header. A link aimed here directly answers `401`, and there is no `?pk=` query fallback on emailed-link routes.
 ```json
 // 200 OK — success
 {
@@ -566,13 +567,14 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - Sets the HttpOnly `authn_refresh_token` cookie for that session. The refresh token is never placed in the URL fragment or the JSON body, so the resulting sign-in is refreshable, listed by `GET /v1/client/sessions`, and ended by a revocation or a ban exactly like a password sign-in.
 - **Edge Cases & Error Codes**:
   - `400 Bad Request`: Missing `redirect_uri`, missing `code`/`state`, or expired/invalid CSRF state token.
-### 3.6 Passwordless Magic Links (`POST /v1/client/auth/magic-link` & `GET|POST /v1/client/auth/magic-link/verify`)
+### 3.6 Passwordless Magic Links (`POST /v1/client/auth/magic-link` & `POST /v1/client/auth/magic-link/verify`)
 
 > **Last Verified**: `2026-08-06` — live `curl` & Mailpit API verification against running server.
 > See full endpoint doc: [`docs/endpoints/client-magic-link.md`](endpoints/client-magic-link.md)
 
 - **Description**: Passwordless login & auto-provisioning flow. Generates 32-byte cryptographically secure single-use tokens sent via email (15-minute TTL). Verification marks email verified, creates login session, issues JWT with `sid`, and clears token to prevent replay attacks.
 - **Headers**: `X-Authn-Publishable-Key: pk_<env>_<hash>`, `Content-Type: application/json`
+- **Emailed link destination**: `<frontend base>/magic-link?token=…`, not this API. The base is `application.frontend_base_url` when set, otherwise the deployment-wide `WEB_ACCOUNT_URL`. The landing page posts the token to the verify route with its publishable key as a header. There is no `GET` verify route: a mail click cannot set that header, and answering a top-level navigation would put an access token in a body the browser keeps in history.
 - **Request (`POST /v1/client/auth/magic-link`)**:
 ```json
 {

@@ -2161,6 +2161,8 @@ paths:
     get:
       summary: Verify User Email Address
       description: Validates an email verification token received via email link and marks the user's email address as verified.
+        Called by the application's own frontend, which the emailed link opens; the token travels in the query string and the
+        publishable key must be supplied as a header.
       operationId: clientVerifyEmail
       tags:
       - Authentication
@@ -2173,18 +2175,6 @@ paths:
         schema:
           type: string
         description: Verification token passed in the query string from the emailed link.
-      - in: query
-        name: publishable_key
-        required: false
-        schema:
-          type: string
-        description: Query string fallback for X-Authn-Publishable-Key header on top-level browser navigation.
-      - in: query
-        name: pk
-        required: false
-        schema:
-          type: string
-        description: Shortened query string fallback for X-Authn-Publishable-Key header.
       responses:
         '200':
           description: Email verified successfully
@@ -2359,91 +2349,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
   /v1/client/auth/magic-link/verify:
-    get:
-      summary: Verify Magic Link Token (GET)
-      description: Validates a magic login link token passed via query parameter, authenticates the user, and issues session
-        tokens.
-      operationId: clientVerifyMagicLinkGet
-      tags:
-      - Authentication
-      security:
-      - PublishableKey: []
-      parameters:
-      - in: header
-        name: X-Authn-Client-Type
-        required: false
-        schema:
-          type: string
-          enum:
-          - web
-          - native
-          - mobile
-          default: web
-        description: Identifies client platform type.
-      - in: query
-        name: token
-        required: true
-        schema:
-          type: string
-        description: Magic link token.
-      - in: query
-        name: publishable_key
-        required: false
-        schema:
-          type: string
-        description: Query string fallback for X-Authn-Publishable-Key header.
-      - in: query
-        name: pk
-        required: false
-        schema:
-          type: string
-        description: Shortened query string fallback for X-Authn-Publishable-Key header.
-      responses:
-        '200':
-          description: Magic link verified and session created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          description: Missing token parameter, unrecognized X-Authn-Client-Type header, or invalid/expired magic link token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '401':
-          description: Missing or invalid publishable API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '403':
-          description: >-
-            Code `test_quota_exceeded`. The tenant already holds TEST_MAX_USERS
-            users in the test environment and this request would provision a new
-            one. Live credentials are not bounded by this ceiling. Not 429 —
-            waiting does not help, because the ceiling is on stored rows.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '429':
-          description: Request throttled due to rate limiting
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
     post:
-      summary: Verify Magic Link Token (POST)
+      summary: Verify Magic Link Token
       description: Validates a magic login link token passed via JSON body (or query fallback), authenticates the user, and
-        issues session tokens.
-      operationId: clientVerifyMagicLinkPost
+        issues session tokens. The emailed link opens the application's own frontend, which posts the token here with its
+        publishable key as a header; there is no GET form, because answering a top-level browser navigation would put an
+        access token in a response body the browser records in history and leaks as a Referer.
+      operationId: clientVerifyMagicLink
       tags:
       - Authentication
       security:
@@ -7784,9 +7696,13 @@ components:
           additionalProperties: true
           description: >-
             link is the action URL carrying the authenticating token; text_body is the
-            plain-text alternative of an email.
+            plain-text alternative of an email. The link addresses the application's own
+            frontend — application.frontend_base_url when set, otherwise the deployment-wide
+            WEB_ACCOUNT_URL — not this API, because a mail client cannot attach the
+            publishable-key header the API requires. A test reads the token query parameter
+            out of it and calls the API route itself.
           example:
-            link: https://api.authn.com/v1/client/auth/verify-email?token=32b3c1b7a1695dbb
+            link: https://app.example.com/verify-email?token=32b3c1b7a1695dbb
             text_body: Welcome to Acme! Please verify your email address...
         body:
           type: string
@@ -9593,6 +9509,7 @@ components:
       properties:
         id:
           type: string
+          description: The client_id this application will authenticate with.
           example: app_my_client
         name:
           type: string
@@ -9601,31 +9518,76 @@ components:
           type: array
           items:
             type: string
+          description: Allowlist of destinations the authorization endpoint will return codes to. Entries are matched exactly.
           example:
           - https://app.example.com/callback
+        allowed_cors_origins:
+          type: array
+          items:
+            type: string
+          description: >-
+            Browser origins this application's publishable keys may be called from. Omitted or empty means "not configured",
+            and origin checks fall back to the deployment-wide CORS policy.
+          example:
+          - https://app.example.com
+        frontend_base_url:
+          type: string
+          description: >-
+            Origin of this application's own UI. Emailed links (verify email, magic link, password reset, email change) are
+            built against it, so each application's mail lands on its own domain. Omitted or empty falls back to the
+            deployment-wide WEB_ACCOUNT_URL. Must be an absolute http(s) URL with a host and no query string or fragment;
+            anything else is refused with 400 validation_failed. A trailing slash is trimmed.
+          example: https://app.example.com
     CreateApplicationResponse:
       type: object
+      description: The stored application record. Every application-management route returns this same shape.
       required:
-      - message
       - id
       - name
+      - environment
+      - allowed_cors_origins
       - exact_redirect_uris
+      - frontend_base_url
       properties:
-        message:
-          type: string
-          example: application registered successfully
         id:
           type: string
           example: app_my_client
         name:
           type: string
           example: My OAuth Client Application
+        environment:
+          type: string
+          description: Assigned by the server, not the request body.
+          enum:
+          - test
+          - live
+          example: test
+        allowed_cors_origins:
+          type: array
+          items:
+            type: string
+          description: Always an array. Empty means the deployment-wide CORS policy applies.
+          example:
+          - https://app.example.com
         exact_redirect_uris:
           type: array
           items:
             type: string
+          description: Always an array.
           example:
           - https://app.example.com/callback
+        frontend_base_url:
+          type: string
+          description: Empty when no override is set, in which case emailed links use the deployment-wide WEB_ACCOUNT_URL.
+          example: https://app.example.com
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-08-23T11:42:47Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-08-23T11:42:47Z'
     SocialCallbackResponse:
       type: object
       required:

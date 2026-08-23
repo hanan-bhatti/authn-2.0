@@ -21,7 +21,8 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 > [!IMPORTANT]
 > **Summary of Backend Server Impact**:
 > - **Sections 1 through 15b** (Variables 1–53): Loaded by `apps/auth-engine/internal/config/load.go` and directly control the Go backend server runtime, database pools, Fiber HTTP engine, rate limiters, crypto engines, and notification dispatchers.
-> - **Section 16** (`NEXT_PUBLIC_AUTHN_API_URL` & `NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY`): **DO NOT affect the Go backend server**. They are built into client-side JavaScript bundles (Next.js web console and `@authn/js` browser SDK).
+> - **Section 16** (`NEXT_PUBLIC_AUTHN_API_URL`, `NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY`, `WEB_CONSOLE_PORT`, `WEB_ACCOUNT_PORT`): **DO NOT affect the Go backend server**. The `NEXT_PUBLIC_` pair is built into client-side JavaScript bundles (Next.js web console and `@authn/js` browser SDK); the ports are read by the dev-server launchers.
+> - **Section 16b** (`WEB_ACCOUNT_URL`): the one variable in this group that **does** reach the engine — it is the origin prefixed to every emailed link.
 
 ---
 
@@ -40,7 +41,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | | `SERVER_TRUST_PROXY_HEADERS` | `false` | Optional | Reads client IP from `X-Forwarded-For` |
 | **3. Public Identity** | `AUTHN_APP_NAME` | `Authn Platform` | Optional | TOTP issuer label, email headers, server banner |
 | | `AUTHN_APP_VERSION` | `0.1.0` | Optional | `/v1/health` and `/healthz` response payload |
-| | `APP_BASE_URL` | `http://localhost:8080` | **MANDATORY HTTPS** | Base URL for email links, OAuth callbacks, cookies |
+| | `APP_BASE_URL` | `http://localhost:8080` | **MANDATORY HTTPS** | The engine's own public URL: OAuth callbacks, SAML metadata, cookie `Secure` flag. **Not** emailed links — those use `WEB_ACCOUNT_URL` |
 | | `ISSUER_URL` | `http://localhost:8080` | **MANDATORY HTTPS** | OIDC `iss` claim and discovery endpoint |
 | **4. CORS** | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | No Wildcards (`*`) | Browser cross-origin fetch allowlist |
 | | `CORS_ALLOWED_METHODS` | `GET,POST,PUT,...` | Optional | `Access-Control-Allow-Methods` header |
@@ -124,6 +125,9 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | | `DEGRADED_MODE_CHECK_INTERVAL` | `1s` | Optional | Redis health check probe frequency |
 | **16. SDK/Console**| `NEXT_PUBLIC_AUTHN_API_URL` | `http://localhost:8080` | Client build var | **Frontend Only** (Target API URL) |
 | | `NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY` | `pk_test_...` | Client build var | **Frontend Only** (Publishable Key) |
+| | `WEB_ACCOUNT_URL` | `http://localhost:4001` | **MANDATORY HTTPS** | Origin prefixed to every emailed link, unless the application overrides it |
+| | `WEB_CONSOLE_PORT` | `4000` | Dev only | **Frontend Only** (console dev-server port) |
+| | `WEB_ACCOUNT_PORT` | `4001` | Dev only | **Frontend Only** (account dev-server port; must match `WEB_ACCOUNT_URL`) |
 
 ---
 
@@ -266,6 +270,19 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 - **Definition**: `NEXT_PUBLIC_AUTHN_API_URL` and `NEXT_PUBLIC_AUTHN_PUBLISHABLE_KEY`.
 - **Target**: Consumed by Next.js web application (`apps/console`) and `@authn/js` browser package.
 - **Server Impact**: **NONE**. The Go backend engine completely ignores these variables.
+- **`WEB_CONSOLE_PORT` / `WEB_ACCOUNT_PORT`**: the ports the Next.js dev servers bind. Read before Next boots (`dotenv -e ../../.env`), so they are not `NEXT_PUBLIC_`. Both apps run at once in development, so the values must not collide, and `WEB_ACCOUNT_PORT` must match the port in `WEB_ACCOUNT_URL`.
+
+### Section 16b: Emailed Link Destinations (`WEB_ACCOUNT_URL`)
+- **Definition**: `WEB_ACCOUNT_URL` — the origin the engine prefixes to every emailed link.
+- **Server Impact**: **YES**, unlike the rest of section 16. It is `config.FrontendBaseURL`, read by `internal/auth` and `internal/user` when composing mail.
+- **Why it is separate from `APP_BASE_URL`**: an emailed link must open a page, not an API route. A recipient's click sends no header a browser can be told to add, so a link aimed at the engine either fails the publishable-key guard with `401` or answers with JSON — and for a magic link that JSON is a usable credential rendered into a browser window and its history. The landing page already holds a publishable key, so it can make the call the click cannot.
+- **Precedence**, resolved per request, highest first:
+  1. `application.frontend_base_url` on the application the publishable key resolved to. One tenant may run several applications on separate domains, and a link opening the wrong one leaves the recipient signed in somewhere they were not trying to reach.
+  2. `WEB_ACCOUNT_URL` — the deployment-wide default.
+  3. `config.DefaultFrontendBaseURL` (`http://localhost:4001`) — a compiled last resort so a `Config` assembled without the loader still renders an openable link. The loader always sets a value, so a real deployment never reaches this.
+- **Never derived from the request.** A publishable key ships in browser bundles, so honouring a caller-supplied origin would let anyone holding one have the engine mail a working sign-in token to a domain they control.
+- **Paths the engine appends**: `/verify-email`, `/magic-link`, `/verify-email-change`, `/verify-recovery-email`, each with `?token=<raw_token>`. The frontend must serve all four.
+- **Per-application override validation**: an absolute `http(s)` URL with a host, no user info, no query string and no fragment. A trailing slash is trimmed; an empty string clears the override. Anything else is refused with `400 validation_failed` on application create or patch.
 
 ---
 

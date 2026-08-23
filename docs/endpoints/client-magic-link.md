@@ -1,12 +1,21 @@
-# Endpoint Specification: Passwordless Magic Links (`POST /v1/client/auth/magic-link` & `GET|POST /v1/client/auth/magic-link/verify`)
+# Endpoint Specification: Passwordless Magic Links (`POST /v1/client/auth/magic-link` & `POST /v1/client/auth/magic-link/verify`)
 
 ## Overview
 * **Routes**:
   * `POST /v1/client/auth/magic-link` — Request a 15-minute single-use magic login link
-  * `GET /v1/client/auth/magic-link/verify` — Verify magic link via browser redirect URL
   * `POST /v1/client/auth/magic-link/verify` — Verify magic link via JSON API payload
-* **HTTP Methods**: `POST`, `GET`
+* **HTTP Methods**: `POST`
 * **Purpose**: Passwordless authentication flow. Generates cryptographically secure 32-byte random hex tokens, emails single-use magic links to users, auto-provisions new accounts if un-registered, marks email verified upon click, and neutralizes token replay attacks.
+
+> There is no `GET` form of the verify route. The emailed link opens the application's own frontend at `/magic-link?token=…`, and that page posts the token here with its publishable key as a header. A `GET` route would have to answer a top-level browser navigation with an access token in the response body — a body the browser records in history and leaks as a `Referer` — and a mail client cannot attach the publishable-key header a click would need.
+
+### Where the emailed link points
+The link is built from `<frontend base>/magic-link?token=<raw_token>`, where the base is resolved per request:
+
+1. `application.frontend_base_url` — the per-application override, set through the applications CRUD. Each application's mail lands on its own domain.
+2. `WEB_ACCOUNT_URL` — the deployment-wide default, used whenever the override is empty.
+
+An override must be an absolute `http(s)` URL with a host and no query string or fragment; anything else is refused with `400 validation_failed` when the application is created or patched.
 
 ---
 
@@ -105,4 +114,4 @@ X-Authn-Degraded-Mode: false
 | **Valid Verification** | `POST /auth/magic-link/verify` (Real Token) | `200 OK` | Issues JWT with `sid`, sets HttpOnly cookie, marks email verified |
 | **Replay Attack** | 2nd call with same magic link token | `400 Bad Request` | Single-use consumption cleared hash in DB |
 
-*Last Verified*: `2026-08-06` — live `curl` & Mailpit API verification against running server.
+*Last Verified*: `2026-08-06` — live `curl` & Mailpit API verification against running server. Route surface re-verified `2026-08-23` after the `GET` verify route was removed: one `POST /v1/client/auth/magic-link/verify` → `200` from the frontend landing page, no second attempt.
