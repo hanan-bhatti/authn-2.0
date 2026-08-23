@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from "react";
 import { CopyButton } from "../actions/CopyButton.js";
 import { cn } from "../../utils/cn.js";

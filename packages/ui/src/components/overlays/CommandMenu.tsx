@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 import { Kbd } from "../display/Kbd.js";
 import { cn } from "../../utils/cn.js";
