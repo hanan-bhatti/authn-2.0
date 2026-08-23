@@ -30,8 +30,8 @@
 
 ### Request Fields
 * `email` (string, required) — User email address. Must be a valid email format.
-* `password` (string, required) — User password. Evaluated against active tenant password policies.
-* `name` (string, optional) — Display name of user (max 255 characters).
+* `password` (string, required) — User password. Evaluated against active tenant password policies. Normalized to Unicode NFKC before it is measured and before it is hashed, so a password typed as a decomposed sequence on one platform still signs in from another. Policy lengths therefore count characters of the normalized form, not bytes and not UTF-16 units. Raw input above 16384 bytes is refused as `max_length` without being normalized.
+* `name` (string, optional) — Display name of user (max 255 bytes, so a multi-byte name reaches the limit in fewer characters).
 * `tenant_id` (string, optional) — Target tenant identifier (defaults to `tnt_00000000000000000000000000000001`).
 * `environment` (string, optional) — Application environment mode (defaults to `test`).
 

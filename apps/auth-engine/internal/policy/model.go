@@ -24,6 +24,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
+
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 )
 
 // PasswordPolicy defines tenant-level password complexity requirements.
@@ -43,6 +46,7 @@ type PasswordPolicy struct {
 	// set a new one at their next sign-in.
 	ForceUpgradeOnSignin bool `json:"force_upgrade_on_signin"`
 	// MinLength is the minimum character count, floored at MinPasswordLength.
+	// Characters, not bytes: see ValidatePassword for how a password is measured.
 	MinLength int `json:"min_length"`
 	// MaxLength is the maximum character count, capped at MaxPasswordLength. The
 	// cap exists because hashing is deliberately expensive: an unbounded password
@@ -482,12 +486,28 @@ func parseLockoutStepDuration(step string) (time.Duration, error) {
 //
 // Lengths are measured with EffectivePasswordBounds, so a stored policy weakened
 // below the engine's own minimum cannot admit a shorter password.
+//
+// The password is measured in characters after NFKC normalization, which is the
+// form that gets hashed. Both halves of that matter. Counting Go's len would
+// count bytes, so an eight-character password with two accents would be refused
+// by an eight-character minimum for being "too short". Counting before
+// normalizing would measure a string the engine then throws away, since
+// composing "e" plus a combining acute into "é" turns two characters into one.
 func ValidatePassword(p PasswordPolicy, password string) []string {
 	var missing []string
 
 	minLen, maxLen := EffectivePasswordBounds(p)
 
-	length := len(password)
+	// Above the normalization ceiling nothing needs measuring: the input cannot
+	// satisfy any maximum the engine permits, and this is the check that keeps
+	// an over-long password cheap to refuse.
+	if len(password) > crypto.MaxPasswordInputBytes {
+		return []string{"max_length"}
+	}
+
+	normalized := crypto.NormalizePassword(password)
+
+	length := utf8.RuneCountInString(normalized)
 	if length < minLen {
 		missing = append(missing, "min_length")
 	}
@@ -496,7 +516,7 @@ func ValidatePassword(p PasswordPolicy, password string) []string {
 	}
 
 	var hasUpper, hasLower, hasDigit, hasSpecial bool
-	for _, ch := range password {
+	for _, ch := range normalized {
 		switch {
 		case unicode.IsUpper(ch):
 			hasUpper = true

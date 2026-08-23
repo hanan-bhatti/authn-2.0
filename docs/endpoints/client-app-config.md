@@ -154,6 +154,8 @@ Labels an MFA challenge before the client knows which factor the user enrolled.
 ### `password_rules`
 The lengths are the **effective bounds**, not the stored ones. A tenant may store a minimum below the engine's own floor (`policy.MinPasswordLength`), and the engine still enforces the floor. Publishing the stored value would produce a form that accepts a password the API then rejects.
 
+They count **characters of the NFKC-normalized password** — not bytes, and not UTF-16 units. A client that mirrors these bounds has to measure the same way or it will disagree with the API on the same input: `String.length` reads five characters plus two astral characters as seven, a UTF-8 byte count reads it as eleven, and the engine counts five. Normalize first, then count code points.
+
 `enforced` collapses the policy's `require` and `notify` modes: a client only needs to know whether to block or to warn, and a three-state enum invites the third state to be mishandled. When `false`, the tenant is in `notify` mode — the password is accepted and the unmet criteria are reported, so a page should warn rather than block.
 
 ### `email_verification`

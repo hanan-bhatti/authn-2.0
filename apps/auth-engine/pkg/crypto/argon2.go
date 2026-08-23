@@ -71,6 +71,13 @@ const DummyArgon2idHash = "$argon2id$v=19$m=65536,t=3,p=4$0000000000000000000000
 // HashPasswordArgon2id derives an Argon2id hash of password under a freshly
 // generated random salt.
 //
+// The password is NFKC-normalized first — see normalize.go. Normalizing here
+// rather than at the caller is what keeps the guarantee: this function and
+// VerifyPasswordArgon2id are the only two doors, so a stored digest is always
+// of the normalized form. Threading it through every handler that sets a
+// password instead would mean one missed call site silently creates an account
+// whose password only matches from the keyboard that typed it.
+//
 // The result is self-describing and safe to store as-is:
 //
 //	$argon2id$v=19$m=65536,t=3,p=4$<hex salt>$<hex digest>
@@ -85,7 +92,7 @@ func HashPasswordArgon2id(password string) (string, error) {
 		return "", fmt.Errorf("failed generating random salt: %w", err)
 	}
 
-	hash := argon2.IDKey([]byte(password), salt, argon2Time, argon2MemoryKiB, argon2Threads, argon2KeyLen)
+	hash := argon2.IDKey([]byte(NormalizePassword(password)), salt, argon2Time, argon2MemoryKiB, argon2Threads, argon2KeyLen)
 
 	encoded := fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
 		argon2MemoryKiB, argon2Time, argon2Threads,
@@ -96,6 +103,12 @@ func HashPasswordArgon2id(password string) (string, error) {
 }
 
 // VerifyPasswordArgon2id reports whether password produces encodedHash.
+//
+// The password is NFKC-normalized on the same terms as HashPasswordArgon2id, so
+// a password typed as a decomposed sequence still matches a digest stored from
+// the composed one. Normalization runs before the hash is even parsed, which
+// keeps it on both the real and the DummyArgon2idHash path and leaves the
+// constant-work property below intact.
 //
 // It returns false rather than an error for every failure — wrong password,
 // malformed hash, unparseable hex — because the caller's response is identical
@@ -111,6 +124,8 @@ func HashPasswordArgon2id(password string) (string, error) {
 // values would let anyone who can write to the user table downgrade a hash to
 // t=1,m=8 and make it trivially crackable.
 func VerifyPasswordArgon2id(password string, encodedHash string) bool {
+	normalized := NormalizePassword(password)
+
 	// Splitting the leading "$" yields an empty first element, so a well-formed
 	// hash has six parts: "", "argon2id", "v=19", cost, salt, digest.
 	parts := strings.Split(encodedHash, "$")
@@ -128,6 +143,6 @@ func VerifyPasswordArgon2id(password string, encodedHash string) bool {
 		return false
 	}
 
-	hash := argon2.IDKey([]byte(password), salt, argon2Time, argon2MemoryKiB, argon2Threads, argon2KeyLen)
+	hash := argon2.IDKey([]byte(normalized), salt, argon2Time, argon2MemoryKiB, argon2Threads, argon2KeyLen)
 	return subtle.ConstantTimeCompare(hash, targetHash) == 1
 }
