@@ -40,6 +40,21 @@ export function validateEmail(value: unknown): ValidationResult {
   return ok;
 }
 
+/**
+ * The engine's own floor, below which no tenant policy can go. Measured in
+ * UTF-8 bytes because that is what the engine measures — Go's `len` on a string
+ * counts bytes, so `AA1` followed by two emoji is 11 bytes there and 7 units to
+ * JavaScript's `String.length`. Checking the JavaScript count would refuse,
+ * before sending, a password the engine accepts.
+ *
+ * Only the floor is checked here. A tenant's own minimum, and every character
+ * class it requires, stay with the server: it is the only authority on them, and
+ * a second copy in the client is a second policy to disagree with.
+ */
+const MIN_PASSWORD_BYTES = 8;
+
+const utf8 = new TextEncoder();
+
 export function validatePassword(value: unknown): ValidationResult {
   if (value === undefined || value === null || value === "") {
     return fail("password", "Password is required.");
@@ -47,8 +62,8 @@ export function validatePassword(value: unknown): ValidationResult {
   if (typeof value !== "string") {
     return fail("password", "Password must be a string.");
   }
-  if (value.length < 8) {
-    return fail("password", "Password must be at least 8 characters.");
+  if (utf8.encode(value).length < MIN_PASSWORD_BYTES) {
+    return fail("password", `Password must be at least ${MIN_PASSWORD_BYTES} characters.`);
   }
   return ok;
 }
