@@ -17,7 +17,7 @@ export interface TabsProps {
 
 export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onChange, className }) => {
   return (
-    <div className={cn("flex items-center gap-6 border-b border-[#292d30] w-full select-none", className)}>
+    <div className={cn("flex items-center gap-6 border-b border-hairline-strong w-full select-none", className)}>
       {tabs.map((tab) => {
         const isActive = activeId === tab.id;
         return (
@@ -28,13 +28,13 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onChange, className 
             onClick={() => !tab.disabled && onChange(tab.id)}
             className={cn(
               "relative pb-3 text-xs font-medium font-sans transition-colors duration-150 outline-none cursor-pointer flex items-center gap-2",
-              isActive ? "text-white" : "text-[#a1a4a5] hover:text-white",
+              isActive ? "text-ink" : "text-mute hover:text-ink",
               tab.disabled && "opacity-40 cursor-not-allowed"
             )}
           >
             <span>{tab.label}</span>
             {tab.badge}
-            {isActive && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white rounded-full" />}
+            {isActive && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" />}
           </button>
         );
       })}

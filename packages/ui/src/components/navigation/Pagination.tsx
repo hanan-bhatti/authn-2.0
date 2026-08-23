@@ -17,10 +17,10 @@ export const Pagination: React.FC<PaginationProps> = ({
   className,
 }) => {
   return (
-    <div className={cn("flex items-center justify-between px-2 py-3 border-t border-[#292d30] w-full text-xs font-mono text-[#a1a4a5] select-none", className)}>
+    <div className={cn("flex items-center justify-between px-2 py-3 border-t border-hairline-strong w-full text-xs font-mono text-mute select-none", className)}>
       <span>
-        Page <span className="text-white font-medium">{currentPage}</span> of{" "}
-        <span className="text-white font-medium">{totalPages}</span>
+        Page <span className="text-ink font-medium">{currentPage}</span> of{" "}
+        <span className="text-ink font-medium">{totalPages}</span>
       </span>
 
       <div className="flex items-center gap-2">

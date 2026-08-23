@@ -48,7 +48,7 @@ export const Dialog: React.FC<DialogProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
       {/* Backdrop Scrim */}
       <div
-        className="fixed inset-0 bg-[#000000]/80 backdrop-blur-[25px] transition-opacity duration-150"
+        className="fixed inset-0 bg-canvas/80 backdrop-blur-[25px] transition-opacity duration-150"
         onClick={onClose}
       />
 
@@ -57,15 +57,15 @@ export const Dialog: React.FC<DialogProps> = ({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full bg-[#000000] border border-[#292d30] rounded-[16px] p-6 shadow-2xl transition-all duration-150 flex flex-col gap-4 animate-in fade-in zoom-in-95",
+          "relative z-10 w-full bg-canvas border border-hairline-strong rounded-lg p-6 shadow-2xl transition-all duration-150 flex flex-col gap-4 animate-in fade-in zoom-in-95",
           widthMap[maxWidth],
           className
         )}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            {title && <h2 className="text-base font-semibold text-white font-sans tracking-tight">{title}</h2>}
-            {description && <p className="text-xs text-[#a1a4a5] font-sans mt-0.5">{description}</p>}
+            {title && <h2 className="text-base font-semibold text-ink font-sans tracking-tight">{title}</h2>}
+            {description && <p className="text-xs text-mute font-sans mt-0.5">{description}</p>}
           </div>
           <IconButton
             size="sm"
@@ -82,7 +82,7 @@ export const Dialog: React.FC<DialogProps> = ({
 
         <div className="py-2">{children}</div>
 
-        {footer && <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#292d30]">{footer}</div>}
+        {footer && <div className="flex items-center justify-end gap-3 pt-3 border-t border-hairline-strong">{footer}</div>}
       </div>
     </div>
   );

@@ -21,18 +21,18 @@ export const SecretKeyInput: React.FC<SecretKeyInputProps> = ({
 
   return (
     <div className={cn("flex flex-col gap-1.5 w-full", className)}>
-      {label && <span className="text-xs font-medium text-[#f0f0f0] font-sans">{label}</span>}
-      <div className="flex items-center gap-2 p-1.5 bg-[#000000] border border-[#292d30] rounded-[6px]">
+      {label && <span className="text-xs font-medium text-ink font-sans">{label}</span>}
+      <div className="flex items-center gap-2 p-1.5 bg-canvas border border-hairline-strong rounded-md">
         <input
           type="text"
           readOnly
           value={isRevealed ? value : maskedValue}
-          className="flex-1 bg-transparent font-mono text-xs text-[#9281f7] outline-none px-2 select-all"
+          className="flex-1 bg-transparent font-mono text-xs text-ink outline-none px-2 select-all"
         />
         <button
           type="button"
           onClick={() => setIsRevealed(!isRevealed)}
-          className="px-2 py-1 text-xs font-mono text-[#a1a4a5] hover:text-white transition-colors cursor-pointer"
+          className="px-2 py-1 text-xs font-mono text-mute hover:text-ink transition-colors cursor-pointer"
         >
           {isRevealed ? "Hide" : "Reveal"}
         </button>

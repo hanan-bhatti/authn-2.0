@@ -16,11 +16,13 @@ export type ButtonProps = React.PropsWithChildren<
 /**
  * Ghost & Action Button
  *
- * Rules:
- * - 6px border-radius
- * - Ghost on Black default: transparent bg, 1px #292d30 border, #ffffff text
- * - Hover shifts border opacity to white
- * - Zero drop shadows
+ * Ghost is the default because the design system allows at most one solid
+ * bright surface per viewport: `primary` is a white rectangle on a black
+ * canvas, the brightest pixel on the page, so it has to stay scarce enough to
+ * read as the single anchor. Every other variant builds its edge from a
+ * translucent hairline instead — the system has no drop-shadow elevation
+ * language at all, so borders carry the whole weight of separating a control
+ * from its surface.
  */
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -39,25 +41,25 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      "inline-flex items-center justify-center font-medium transition-all duration-150 ease-out select-none outline-none focus-visible:ring-1 focus-visible:ring-white disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
+      "inline-flex items-center justify-center font-medium transition-all duration-150 ease-out select-none outline-none focus-visible:ring-1 focus-visible:ring-ink disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
 
     const variantStyles = {
       ghost:
-        "bg-transparent border border-[#292d30] text-[#ffffff] hover:border-white hover:bg-white/[0.04] active:opacity-80",
+        "bg-transparent border border-hairline-strong text-ink hover:border-ink hover:bg-ink/[0.04] active:opacity-80",
       primary:
-        "bg-[#3b9eff] border border-[#3b9eff] text-[#000000] font-semibold hover:bg-[#70b8ff] hover:border-[#70b8ff] active:opacity-90",
+        "bg-primary border border-primary text-primary-on hover:bg-surface-light hover:border-surface-light active:opacity-90",
       secondary:
-        "bg-transparent border border-[#292d30] text-[#f0f0f0] hover:border-[#a1a4a5] hover:text-white active:opacity-80",
+        "bg-transparent border border-hairline-strong text-ink hover:border-mute hover:text-ink active:opacity-80",
       destructive:
-        "bg-transparent border border-[#ff9592]/40 text-[#ff9592] hover:border-[#ff9592] hover:bg-[#ff9592]/10 active:opacity-80",
+        "bg-transparent border border-accent-red/40 text-accent-red hover:border-accent-red hover:bg-accent-red/10 active:opacity-80",
       outline:
-        "bg-transparent border border-[#292d30] text-[#a1a4a5] hover:border-white hover:text-white active:opacity-80",
+        "bg-transparent border border-hairline-strong text-mute hover:border-ink hover:text-ink active:opacity-80",
     };
 
     const sizeStyles = {
-      sm: "h-8 px-3 text-xs rounded-[6px] gap-1.5",
-      md: "h-10 px-4 text-sm rounded-[6px] gap-2",
-      lg: "h-12 px-6 text-base rounded-[6px] gap-2.5",
+      sm: "h-8 px-3 text-xs rounded-md gap-1.5",
+      md: "h-10 px-4 text-sm rounded-md gap-2",
+      lg: "h-12 px-6 text-base rounded-md gap-2.5",
     };
 
     return (
@@ -65,7 +67,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={cn(baseStyles, variantStyles[variant], sizeStyles[size], className)}
-        style={{ borderRadius: "6px", ...style }}
+        style={style}
         {...props}
       >
         {isLoading ? (

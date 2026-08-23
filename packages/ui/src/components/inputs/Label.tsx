@@ -16,16 +16,16 @@ export const Label: React.FC<LabelProps> = ({
   return (
     <label
       className={cn(
-        "inline-flex items-center justify-between w-full text-xs font-medium text-[#f0f0f0] font-sans select-none mb-1.5",
+        "inline-flex items-center justify-between w-full text-xs font-medium text-ink font-sans select-none mb-1.5",
         className
       )}
       {...props}
     >
       <span>
         {children}
-        {isRequired && <span className="text-[#ff9592] ml-0.5">*</span>}
+        {isRequired && <span className="text-accent-red ml-0.5">*</span>}
       </span>
-      {monospaceTag && <span className="font-mono text-[11px] text-[#9281f7]">{monospaceTag}</span>}
+      {monospaceTag && <span className="font-mono text-[11px] text-mute">{monospaceTag}</span>}
     </label>
   );
 };

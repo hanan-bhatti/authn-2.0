@@ -64,7 +64,7 @@ export function DataTable<T>({
       <TableBody>
         {data.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={columns.length + (selectable ? 1 : 0)} className="h-24 text-center text-[#a1a4a5]">
+            <TableCell colSpan={columns.length + (selectable ? 1 : 0)} className="h-24 text-center text-mute">
               {emptyMessage}
             </TableCell>
           </TableRow>
@@ -73,7 +73,7 @@ export function DataTable<T>({
             const key = keyExtractor(row);
             const isSelected = selectedKeys.includes(key);
             return (
-              <TableRow key={key} className={isSelected ? "bg-white/[0.04]" : undefined}>
+              <TableRow key={key} className={isSelected ? "bg-ink/[0.04]" : undefined}>
                 {selectable && (
                   <TableCell className="w-10">
                     <Checkbox checked={isSelected} onChange={() => toggleRow(key)} />

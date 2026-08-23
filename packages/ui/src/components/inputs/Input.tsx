@@ -13,11 +13,11 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 /**
  * Form Input
  *
- * Rules:
- * - 6px border radius
- * - Pure #000000 background
- * - 1px #292d30 hairline border
- * - Focus border #ffffff
+ * Fills from the card surface rather than the canvas so the field reads as an
+ * inset well even before it is focused — on a true-black page an unfocused
+ * canvas-filled input is just a rectangle of border. Focus swaps the hairline
+ * for ink instead of adding a ring, keeping the control the same size in both
+ * states so a focused field never nudges the layout.
  */
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   (
@@ -36,7 +36,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="relative flex items-center w-full">
         {leftIcon && (
-          <div className="absolute left-3 text-[#a1a4a5] pointer-events-none flex items-center justify-center">
+          <div className="absolute left-3 text-mute pointer-events-none flex items-center justify-center">
             {leftIcon}
           </div>
         )}
@@ -44,20 +44,21 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           disabled={disabled}
+          aria-invalid={isInvalid || undefined}
           className={cn(
-            "w-full h-10 bg-[#000000] border border-[#292d30] text-sm text-[#ffffff] placeholder-[#464a4d] transition-all duration-150 ease-out outline-none focus:border-white disabled:opacity-40 disabled:cursor-not-allowed",
+            "w-full h-10 rounded-md bg-surface-card border border-hairline-strong text-sm text-ink placeholder-stone transition-all duration-150 ease-out outline-none focus:border-ink disabled:opacity-40 disabled:cursor-not-allowed",
             isMonospace ? "font-mono" : "font-sans",
             leftIcon ? "pl-9" : "px-3.5",
             rightIcon ? "pr-9" : "pr-3.5",
-            isInvalid && "border-[#ff9592] focus:border-[#ff9592]",
+            isInvalid && "border-accent-red focus:border-accent-red",
             className
           )}
-          style={{ borderRadius: "6px", ...style }}
+          style={style}
           {...props}
         />
 
         {rightIcon && (
-          <div className="absolute right-3 text-[#a1a4a5] flex items-center justify-center">
+          <div className="absolute right-3 text-mute flex items-center justify-center">
             {rightIcon}
           </div>
         )}

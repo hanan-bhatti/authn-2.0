@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={cn(
-        "flex flex-col justify-between w-60 h-full bg-[#000000] border-r border-[#292d30] p-4 select-none flex-shrink-0",
+        "flex flex-col justify-between w-60 h-full bg-canvas border-r border-hairline-strong p-4 select-none flex-shrink-0",
         className
       )}
     >
@@ -39,7 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {groups.map((group, idx) => (
           <div key={idx} className="flex flex-col gap-1">
             {group.title && (
-              <span className="px-2 text-[10px] font-mono font-medium text-[#6e727a] uppercase tracking-wider mb-1">
+              <span className="px-2 text-[10px] font-mono font-medium text-ash uppercase tracking-wider mb-1">
                 {group.title}
               </span>
             )}
@@ -54,8 +54,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }
                 }}
                 className={cn(
-                  "flex items-center justify-between px-2.5 py-1.5 rounded-[6px] text-xs font-medium font-sans text-[#a1a4a5] transition-all duration-150 ease-out hover:text-white hover:bg-white/[0.04]",
-                  item.isActive && "text-white bg-white/[0.06] border border-[#292d30]"
+                  "flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium font-sans text-mute transition-all duration-150 ease-out hover:text-ink hover:bg-ink/[0.04]",
+                  item.isActive && "text-ink bg-ink/[0.06] border border-hairline-strong"
                 )}
               >
                 <div className="flex items-center gap-2.5">
@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      {footer && <div className="pt-4 border-t border-[#292d30]">{footer}</div>}
+      {footer && <div className="pt-4 border-t border-hairline-strong">{footer}</div>}
     </aside>
   );
 };

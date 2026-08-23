@@ -1,11 +1,11 @@
 # Inputs Components (`@authn/ui/inputs`)
 
-Form input primitives built for the Resend **Black Velvet & Hairline Graphite** design system (`DESIGN.md`).
+Form input primitives built for the **Authn Product Design** system (`DESIGN.md`).
 
 ## Components Included
 
 ### 1. `Input`
-Standard text, email, password, and monospaced token input fields with 6px border-radius and `#000000` canvas background.
+Standard text, email, password, and monospaced token input fields. 8px radius, card-surface fill so the field reads as an inset well before focus, and `aria-invalid` wired to `isInvalid`.
 
 ```tsx
 import { Input } from "@authn/ui";
@@ -33,7 +33,7 @@ import { Textarea } from "@authn/ui";
 ```
 
 ### 4. `Select`
-Custom searchable dropdown with 1px hairline border and custom SVG arrow.
+Native `<select>` with the chrome hidden and a custom SVG chevron drawn over it, so keyboard and mobile pickers behave exactly as the platform expects.
 
 ```tsx
 import { Select } from "@authn/ui";

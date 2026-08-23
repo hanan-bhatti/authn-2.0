@@ -18,17 +18,17 @@ export const TerminalWindow: React.FC<TerminalWindowProps> = ({
   return (
     <div
       className={cn(
-        "flex flex-col bg-[#000000] border border-[#292d30] rounded-[16px] overflow-hidden font-mono text-xs",
+        "flex flex-col bg-canvas border border-hairline-strong rounded-lg overflow-hidden font-mono text-xs",
         className
       )}
     >
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#292d30] bg-[#000000]">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline-strong bg-canvas">
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#292d30]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#292d30]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#292d30]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-hairline-strong" />
+          <div className="w-2.5 h-2.5 rounded-full bg-hairline-strong" />
+          <div className="w-2.5 h-2.5 rounded-full bg-hairline-strong" />
         </div>
-        <span className="text-[11px] text-[#a1a4a5] font-medium">{title}</span>
+        <span className="text-[11px] text-mute font-medium">{title}</span>
         <div className="w-12" /> {/* Spacer */}
       </div>
 

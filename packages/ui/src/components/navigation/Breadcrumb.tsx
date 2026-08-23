@@ -20,11 +20,11 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({ items, className }) => {
         const isLast = index === items.length - 1;
         return (
           <React.Fragment key={index}>
-            {index > 0 && <Chevron direction="right" size="sm" className="text-[#6e727a]" />}
+            {index > 0 && <Chevron direction="right" size="sm" className="text-ash" />}
             {isLast || item.isCurrent ? (
-              <span className="font-medium text-[#ffffff] font-mono">{item.label}</span>
+              <span className="font-medium text-ink font-mono">{item.label}</span>
             ) : (
-              <a href={item.href || "#"} className="text-[#a1a4a5] hover:text-white transition-colors">
+              <a href={item.href || "#"} className="text-mute hover:text-ink transition-colors">
                 {item.label}
               </a>
             )}

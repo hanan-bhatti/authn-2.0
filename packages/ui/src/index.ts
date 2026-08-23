@@ -1,5 +1,5 @@
 /**
- * Authn Platform — Resend Design System UI Component Package
+ * Authn Platform — Authn Design System Component Package
  * File: packages/ui/src/index.ts
  */
 

@@ -34,8 +34,8 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
       onClick={handleCopy}
       aria-label={copied ? "Copied to clipboard" : label}
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-[#a1a4a5] bg-[#000000] border border-[#292d30] rounded-[6px] hover:text-white hover:border-white transition-all duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-white cursor-pointer",
-        copied && "border-[#3ad389] text-[#3ad389] hover:border-[#3ad389] hover:text-[#3ad389]",
+        "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-mute bg-canvas border border-hairline-strong rounded-md hover:text-ink hover:border-ink transition-all duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-ink cursor-pointer",
+        copied && "border-accent-green text-accent-green hover:border-accent-green hover:text-accent-green",
         className
       )}
       {...props}

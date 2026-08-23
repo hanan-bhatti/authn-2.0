@@ -1,19 +1,19 @@
 # Actions Components (`@authn/ui/actions`)
 
-Action components provide interactive trigger elements following the Resend **Black Velvet & Hairline Graphite** design system (`DESIGN.md`).
+Action components provide interactive trigger elements following the **Authn Product Design** system (`DESIGN.md`).
 
 ## Components Included
 
 ### 1. `Button`
-The foundational trigger element with Ghost-on-Black default styling, 6px radius, and hairline borders.
+The foundational trigger element with Ghost-on-Black default styling, 8px radius, and hairline borders.
 
 ```tsx
 import { Button } from "@authn/ui";
 
-// Ghost Default (Signature Resend style)
+// Ghost default — the everyday action
 <Button variant="ghost">Continue with Email</Button>
 
-// Primary Filled (Signal Blue)
+// Primary — a white rectangle on black; at most one per viewport
 <Button variant="primary">Create Tenant</Button>
 
 // Destructive
@@ -36,12 +36,13 @@ import { ButtonGroup, Button } from "@authn/ui";
 ```
 
 ### 3. `IconButton`
-Compact SVG icon action button.
+Compact SVG icon action button. Shares `Button`'s `ghost` / `secondary` / `outline` variants.
 
 ```tsx
 import { IconButton } from "@authn/ui";
 
 <IconButton icon={<FilterIcon />} label="Filter results" />
+<IconButton icon={<TrashIcon />} label="Delete" variant="outline" />
 ```
 
 ### 4. `CopyButton`

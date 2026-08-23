@@ -9,7 +9,7 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({ children, className, .
   return (
     <div
       className={cn(
-        "inline-flex items-center rounded-[6px] border border-[#292d30] p-0.5 bg-[#000000]",
+        "inline-flex items-center rounded-md border border-hairline-strong p-0.5 bg-canvas",
         className
       )}
       {...props}
@@ -19,7 +19,7 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({ children, className, .
           const childProps = child.props as { className?: string };
           return React.cloneElement(child, {
             className: cn(
-              "rounded-[4px] border-none text-xs h-7 px-2.5 hover:bg-white/[0.06]",
+              "rounded-xs border-none text-xs h-7 px-2.5 hover:bg-ink/[0.06]",
               childProps?.className
             ),
           } as any);

@@ -18,14 +18,14 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             checked={checked}
             disabled={disabled}
             className={cn(
-              "peer w-4 h-4 appearance-none bg-[#000000] border border-[#292d30] transition-all duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-white checked:bg-white checked:border-white cursor-pointer",
+              "peer w-4 h-4 rounded-xs appearance-none bg-surface-card border border-hairline-strong transition-all duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-ink checked:bg-primary checked:border-ink cursor-pointer",
               className
             )}
-            style={{ borderRadius: "4px", ...style }}
+            style={style}
             {...props}
           />
           <svg
-            className="absolute w-3 h-3 text-[#000000] opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity duration-150"
+            className="absolute w-3 h-3 text-primary-on opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity duration-150"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -34,7 +34,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
         </div>
-        {label && <span className="text-xs text-[#f0f0f0] font-sans">{label}</span>}
+        {label && <span className="text-xs text-ink font-sans">{label}</span>}
       </label>
     );
   }

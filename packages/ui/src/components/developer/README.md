@@ -1,11 +1,11 @@
 # Developer Components (`@authn/ui/developer`)
 
-Developer-facing code containers, JSON syntax highlighters, and security key tools following the Resend **Black Velvet & Iris Violet Neon** design system (`DESIGN.md`).
+Developer-facing code containers, JSON syntax highlighters, and security key tools following the **Authn Product Design** system (`DESIGN.md`).
 
 ## Components Included
 
 ### 1. `SyntaxHighlighter`
-Syntax highlighter rendering Iris Violet (`#9281f7`) strings, Pulse Green (`#3ad389`) booleans, and Alarm Red (`#ff9592`) numbers.
+JSON tokenizer. Keys are muted, string values green, booleans blue, `null` yellow and numbers orange — red stays reserved for genuine failure so an error surface beside a payload is still the alarming one. Output is React nodes, never an HTML string, because a response field is allowed to contain angle brackets.
 
 ```tsx
 import { SyntaxHighlighter } from "@authn/ui";

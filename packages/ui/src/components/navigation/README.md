@@ -1,6 +1,6 @@
 # Navigation Components (`@authn/ui/navigation`)
 
-Navigation shell, sidebars, breadcrumbs, tabs, dropdown menus, and pagination primitives following the Resend **Black Velvet & Hairline Graphite** design system (`DESIGN.md`).
+Navigation shell, sidebars, breadcrumbs, tabs, dropdown menus, and pagination primitives following the **Authn Product Design** system (`DESIGN.md`).
 
 ## Components Included
 

@@ -19,13 +19,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   return (
     <div
       className={cn(
-        "flex flex-col bg-[#000000] border border-[#292d30] rounded-[16px] overflow-hidden",
+        "flex flex-col bg-canvas border border-hairline-strong rounded-lg overflow-hidden",
         className
       )}
     >
       {(title || code) && (
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#292d30] bg-[#000000]">
-          <span className="font-mono text-xs font-medium text-[#a1a4a5]">{title || language}</span>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-hairline-strong bg-canvas">
+          <span className="font-mono text-xs font-medium text-mute">{title || language}</span>
           <CopyButton value={code} label="Copy" />
         </div>
       )}

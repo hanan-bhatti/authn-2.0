@@ -41,7 +41,7 @@ export const Sheet: React.FC<SheetProps> = ({
     <div className="fixed inset-0 z-50 flex select-none">
       {/* Backdrop Scrim */}
       <div
-        className="fixed inset-0 bg-[#000000]/80 backdrop-blur-[25px] transition-opacity duration-150"
+        className="fixed inset-0 bg-canvas/80 backdrop-blur-[25px] transition-opacity duration-150"
         onClick={onClose}
       />
 
@@ -50,16 +50,16 @@ export const Sheet: React.FC<SheetProps> = ({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full max-w-md h-full bg-[#000000] border-l border-[#292d30] p-6 shadow-2xl transition-transform duration-200 flex flex-col justify-between ml-auto",
+          "relative z-10 w-full max-w-md h-full bg-canvas border-l border-hairline-strong p-6 shadow-2xl transition-transform duration-200 flex flex-col justify-between ml-auto",
           position === "left" && "mr-auto ml-0 border-r border-l-0",
           className
         )}
       >
         <div className="flex flex-col gap-4 overflow-y-auto">
-          <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#292d30]">
+          <div className="flex items-start justify-between gap-4 pb-4 border-b border-hairline-strong">
             <div>
-              {title && <h2 className="text-base font-semibold text-white font-sans tracking-tight">{title}</h2>}
-              {description && <p className="text-xs text-[#a1a4a5] font-sans mt-0.5">{description}</p>}
+              {title && <h2 className="text-base font-semibold text-ink font-sans tracking-tight">{title}</h2>}
+              {description && <p className="text-xs text-mute font-sans mt-0.5">{description}</p>}
             </div>
             <IconButton
               size="sm"
@@ -77,7 +77,7 @@ export const Sheet: React.FC<SheetProps> = ({
           <div className="py-2">{children}</div>
         </div>
 
-        {footer && <div className="pt-4 border-t border-[#292d30] flex items-center justify-end gap-3">{footer}</div>}
+        {footer && <div className="pt-4 border-t border-hairline-strong flex items-center justify-end gap-3">{footer}</div>}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 # Display Components (`@authn/ui/display`)
 
-Data display and visual hierarchy primitives following the Resend **Black Velvet & Hairline Graphite** design system (`DESIGN.md`).
+Data display and visual hierarchy primitives following the **Authn Product Design** system (`DESIGN.md`).
 
 ## Components Included
 
@@ -14,12 +14,12 @@ import { Chevron } from "@authn/ui";
 ```
 
 ### 2. `Badge`
-Monospaced terminal-style status badges with hairline borders.
+Monospaced terminal-style status badges with hairline borders. Variants: `orange`, `green`, `red`, `yellow`, `blue`, `gray`.
 
 ```tsx
 import { Badge } from "@authn/ui";
 
-<Badge variant="violet">webauthn_passkey</Badge>
+<Badge variant="orange">webauthn_passkey</Badge>
 <Badge variant="green" dot>Active</Badge>
 <Badge variant="red">Locked</Badge>
 ```
@@ -34,7 +34,7 @@ import { StatusDot } from "@authn/ui";
 ```
 
 ### 4. `StatCard`
-Dashboard counter card with 16px radius and hairline graphite border.
+Dashboard counter card with 12px radius and a hairline border, sitting directly on the canvas so a grid of them does not read as stripes.
 
 ```tsx
 import { StatCard } from "@authn/ui";

@@ -1,11 +1,11 @@
 # Overlays Components (`@authn/ui/overlays`)
 
-Modal dialogs, slide-over sheets, command palette (`⌘K`), toasts, popovers, and loading skeletons following the Resend **Black Velvet & Hairline Graphite** design system (`DESIGN.md`).
+Modal dialogs, slide-over sheets, command palette (`⌘K`), toasts, popovers, and loading skeletons following the **Authn Product Design** system (`DESIGN.md`).
 
 ## Components Included
 
 ### 1. `Dialog` & `Sheet`
-Modals and slide-over drawers with `#000000f2` backdrop blur (25px) and 16px radius containers.
+Modals and slide-over drawers over a 25px-blurred canvas scrim, with 12px radius containers.
 
 ```tsx
 import { Dialog, Sheet } from "@authn/ui";

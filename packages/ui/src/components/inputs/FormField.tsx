@@ -29,8 +29,8 @@ export const FormField: React.FC<FormFieldProps> = ({
         </Label>
       )}
       {children}
-      {error && <span className="text-[11px] font-sans text-[#ff9592] mt-1">{error}</span>}
-      {!error && hint && <span className="text-[11px] font-sans text-[#a1a4a5] mt-1">{hint}</span>}
+      {error && <span className="text-[11px] font-sans text-accent-red mt-1">{error}</span>}
+      {!error && hint && <span className="text-[11px] font-sans text-mute mt-1">{hint}</span>}
     </div>
   );
 };

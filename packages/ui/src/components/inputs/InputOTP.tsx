@@ -88,7 +88,7 @@ export const InputOTP: React.FC<InputOTPProps> = ({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={handlePaste}
-          className="w-10 h-12 bg-[#000000] border border-[#292d30] rounded-[6px] text-center font-mono text-lg text-[#ffffff] outline-none transition-all duration-150 focus:border-white disabled:opacity-40"
+          className="w-10 h-12 bg-canvas border border-hairline-strong rounded-md text-center font-mono text-lg text-ink outline-none transition-all duration-150 focus:border-ink disabled:opacity-40"
         />
       ))}
     </div>

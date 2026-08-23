@@ -1,15 +1,15 @@
-# `@authn/ui` — Resend Design System UI Component Package
+# `@authn/ui` — Authn Design System Component Package
 
-Production-grade, accessible React component library for the **Authn Platform** adhering strictly to the Resend **Black Velvet & Iris Violet Neon** design specification (`DESIGN.md`).
+Production-grade, accessible React component library for the **Authn Platform** adhering strictly to the **Authn Product Design** specification (`DESIGN.md`).
 
 ## Design Tokens Summary (`DESIGN.md`)
 
-- **Canvas Surface:** Void Black `#000000`
-- **Layer Separation:** 1px Graphite Hairline borders (`#292d30`). Zero drop shadows.
-- **Typography:** `Inter` for prose/UI, `JetBrains Mono` / `Commit Mono` for code, keys, IDs, and badges.
-- **Brand Accent:** Iris Violet (`#9281f7`) exclusively for strings, developer tokens, tags, and syntax highlighting.
-- **Buttons:** Ghost on Black (transparent fill, 1px `#292d30` border, `#ffffff` text, 6px radius, hover glow).
-- **Radii Scale:** Strict two-tier — `6px` for controls (buttons, inputs, badges), `16px` for containers (cards, modals, terminal windows).
+- **Canvas Surface:** true black `#000000` — never near-black.
+- **Layer Separation:** 1px borders made from translucent white (`hairline` 6%, `hairline-strong` 14%). Cards and code wells carry no drop shadow.
+- **Typography:** `Domaine Display` for oversized serif headlines, `Inter` for prose and UI, `ABC Favorit Mono` for code, keys, IDs, and badges.
+- **Brand Accent:** white. `primary` (`#fcfdff`) is the only solid bright surface in the system; the six `accent-*` tokens are inline highlights and atmospheric glows, never fills.
+- **Buttons:** ghost on black by default (transparent fill, hairline border, ink text, 8px radius). `primary` is a white rectangle with black text — at most one per viewport.
+- **Radii Scale:** `4px` xs, `6px` sm, `8px` md for controls, `12px` lg for containers, `16px` xl, plus `full`.
 
 ## Component Categories
 
@@ -30,7 +30,7 @@ export function App() {
   return (
     <Card className="p-6">
       <StatusDot status="active" pulse label="System Online" />
-      <Badge variant="violet">v1.0.0</Badge>
+      <Badge variant="blue">v1.0.0</Badge>
       <Input placeholder="Enter work email" />
       <Button variant="ghost">Continue &rarr;</Button>
     </Card>

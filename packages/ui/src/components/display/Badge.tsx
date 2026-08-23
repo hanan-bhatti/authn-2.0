@@ -3,7 +3,7 @@ import { cn } from "../../utils/cn.js";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   children?: React.ReactNode;
-  variant?: "violet" | "green" | "red" | "amber" | "gray" | "blue";
+  variant?: "orange" | "green" | "red" | "yellow" | "gray" | "blue";
   size?: "sm" | "md";
   dot?: boolean;
 }
@@ -11,10 +11,10 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 /**
  * Monospaced Badge
  *
- * Rules:
- * - 6px border radius
- * - Commit Mono / JetBrains Mono font
- * - 1px hairline border against black canvas
+ * An inline mark, not a control: it takes the sm radius so it does not read as
+ * a button sitting in the same row as one, and it fills from
+ * surface-elevated rather than the canvas so a neutral badge is still legible
+ * as a distinct object against a card.
  */
 export const Badge: React.FC<BadgeProps> = ({
   children,
@@ -25,12 +25,12 @@ export const Badge: React.FC<BadgeProps> = ({
   ...props
 }) => {
   const variantMap = {
-    violet: "border-[#9281f7]/40 text-[#9281f7] bg-[#9281f7]/[0.06]",
-    green: "border-[#3ad389]/40 text-[#3ad389] bg-[#3ad389]/[0.06]",
-    red: "border-[#ff9592]/40 text-[#ff9592] bg-[#ff9592]/[0.06]",
-    amber: "border-[#ffca16]/40 text-[#ffca16] bg-[#ffca16]/[0.06]",
-    blue: "border-[#3b9eff]/40 text-[#3b9eff] bg-[#3b9eff]/[0.06]",
-    gray: "border-[#292d30] text-[#a1a4a5] bg-[#000000]",
+    orange: "border-accent-orange/40 text-accent-orange bg-accent-orange/[0.06]",
+    green: "border-accent-green/40 text-accent-green bg-accent-green/[0.06]",
+    red: "border-accent-red/40 text-accent-red bg-accent-red/[0.06]",
+    yellow: "border-accent-yellow/40 text-accent-yellow bg-accent-yellow/[0.06]",
+    blue: "border-accent-blue/40 text-link bg-accent-blue/[0.06]",
+    gray: "border-hairline text-body bg-surface-elevated",
   };
 
   const sizeMap = {
@@ -39,18 +39,18 @@ export const Badge: React.FC<BadgeProps> = ({
   };
 
   const dotColorMap = {
-    violet: "bg-[#9281f7]",
-    green: "bg-[#3ad389]",
-    red: "bg-[#ff9592]",
-    amber: "bg-[#ffca16]",
-    blue: "bg-[#3b9eff]",
-    gray: "bg-[#a1a4a5]",
+    orange: "bg-accent-orange",
+    green: "bg-accent-green",
+    red: "bg-accent-red",
+    yellow: "bg-accent-yellow",
+    blue: "bg-accent-blue",
+    gray: "bg-mute",
   };
 
   return (
     <span
       className={cn(
-        "inline-flex items-center font-mono border rounded-[6px] transition-colors select-none",
+        "inline-flex items-center font-mono border rounded-sm transition-colors select-none",
         variantMap[variant],
         sizeMap[size],
         className

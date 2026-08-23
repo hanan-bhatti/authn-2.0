@@ -31,8 +31,8 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
           <label
             key={opt.value}
             className={cn(
-              "flex items-start gap-3 p-3 bg-[#000000] border border-[#292d30] rounded-[6px] cursor-pointer transition-all duration-150 ease-out hover:border-white/[0.4]",
-              isSelected && "border-white bg-white/[0.02]",
+              "flex items-start gap-3 p-3 bg-canvas border border-hairline-strong rounded-md cursor-pointer transition-all duration-150 ease-out hover:border-ink/[0.4]",
+              isSelected && "border-ink bg-ink/[0.02]",
               opt.disabled && "opacity-40 cursor-not-allowed"
             )}
           >
@@ -47,15 +47,15 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
             />
             <div
               className={cn(
-                "mt-0.5 w-4 h-4 rounded-full border border-[#292d30] flex items-center justify-center transition-colors",
-                isSelected && "border-white bg-white"
+                "mt-0.5 w-4 h-4 rounded-full border border-hairline-strong flex items-center justify-center transition-colors",
+                isSelected && "border-ink bg-primary"
               )}
             >
-              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-[#000000]" />}
+              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-canvas" />}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-medium text-[#f0f0f0] font-sans">{opt.label}</span>
-              {opt.description && <span className="text-[11px] text-[#a1a4a5] font-sans">{opt.description}</span>}
+              <span className="text-xs font-medium text-ink font-sans">{opt.label}</span>
+              {opt.description && <span className="text-[11px] text-mute font-sans">{opt.description}</span>}
             </div>
           </label>
         );

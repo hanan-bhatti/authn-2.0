@@ -12,16 +12,16 @@ export const Skeleton: React.FC<SkeletonProps> = ({
   ...props
 }) => {
   const variantStyles = {
-    control: "h-10 w-full rounded-[6px]",
-    card: "h-32 w-full rounded-[16px]",
-    text: "h-4 w-3/4 rounded-[4px]",
+    control: "h-10 w-full rounded-md",
+    card: "h-32 w-full rounded-lg",
+    text: "h-4 w-3/4 rounded-xs",
     avatar: "h-8 w-8 rounded-full flex-shrink-0",
   };
 
   return (
     <div
       className={cn(
-        "bg-[#292d30]/50 animate-pulse transition-opacity",
+        "bg-hairline-strong animate-pulse transition-opacity",
         variantStyles[variant],
         className
       )}

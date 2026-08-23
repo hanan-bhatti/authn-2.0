@@ -12,10 +12,18 @@ export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ icon, label, className, variant = "ghost", size = "md", style, ...props }, ref) => {
+    // Mirrors Button's variant vocabulary so an icon-only action sitting in the
+    // same row as a labelled one shares its resting and hover treatment.
+    const variantMap = {
+      ghost: "text-ink hover:border-ink hover:bg-ink/[0.04]",
+      secondary: "text-ink hover:border-mute",
+      outline: "text-mute hover:border-ink hover:text-ink",
+    };
+
     const sizeMap = {
-      sm: "w-7 h-7 rounded-[6px] p-1 text-xs",
-      md: "w-9 h-9 rounded-[6px] p-2 text-sm",
-      lg: "w-11 h-11 rounded-[6px] p-2.5 text-base",
+      sm: "w-7 h-7 rounded-md p-1 text-xs",
+      md: "w-9 h-9 rounded-md p-2 text-sm",
+      lg: "w-11 h-11 rounded-md p-2.5 text-base",
     };
 
     return (
@@ -24,11 +32,12 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
         aria-label={label}
         title={label}
         className={cn(
-          "inline-flex items-center justify-center bg-transparent border border-[#292d30] text-[#a1a4a5] hover:text-white hover:border-white transition-all duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-white disabled:opacity-40 cursor-pointer",
+          "inline-flex items-center justify-center bg-transparent border border-hairline-strong transition-all duration-150 ease-out outline-none focus-visible:ring-1 focus-visible:ring-ink disabled:opacity-40 cursor-pointer",
+          variantMap[variant],
           sizeMap[size],
           className
         )}
-        style={{ borderRadius: "6px", ...style }}
+        style={style}
         {...props}
       >
         {icon}

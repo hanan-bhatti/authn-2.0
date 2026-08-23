@@ -47,7 +47,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
       {isOpen && (
         <div
           className={cn(
-            "absolute z-50 mt-1.5 w-48 bg-[#000000] border border-[#292d30] rounded-[6px] p-1 shadow-2xl backdrop-scrim transition-all duration-150 animate-in fade-in zoom-in-95",
+            "absolute z-50 mt-1.5 w-48 bg-canvas border border-hairline-strong rounded-md p-1 shadow-2xl backdrop-scrim transition-all duration-150 animate-in fade-in zoom-in-95",
             align === "right" ? "right-0" : "left-0",
             className
           )}
@@ -64,10 +64,10 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
                 }
               }}
               className={cn(
-                "flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-[4px] text-xs font-sans font-medium transition-colors text-left outline-none cursor-pointer",
+                "flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-xs text-xs font-sans font-medium transition-colors text-left outline-none cursor-pointer",
                 item.isDestructive
-                  ? "text-[#ff9592] hover:bg-[#ff9592]/10"
-                  : "text-[#f0f0f0] hover:text-white hover:bg-white/[0.04]",
+                  ? "text-accent-red hover:bg-accent-red/10"
+                  : "text-ink hover:text-ink hover:bg-ink/[0.04]",
                 item.disabled && "opacity-40 cursor-not-allowed"
               )}
             >
