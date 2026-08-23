@@ -41,19 +41,21 @@ export function validateEmail(value: unknown): ValidationResult {
 }
 
 /**
- * The engine's own floor, below which no tenant policy can go. Measured in
- * UTF-8 bytes because that is what the engine measures — Go's `len` on a string
- * counts bytes, so `AA1` followed by two emoji is 11 bytes there and 7 units to
- * JavaScript's `String.length`. Checking the JavaScript count would refuse,
- * before sending, a password the engine accepts.
+ * The engine's own floor, below which no tenant policy can go.
+ *
+ * Counted in characters after NFKC, which is how the engine counts. Two things
+ * are wrong with the obvious alternatives. `String.length` counts UTF-16 units,
+ * so "AA1" plus two emoji reads as 7 when it is 5 characters. Counting UTF-8
+ * bytes reads the same input as 11, which is how a five-character password used
+ * to satisfy a minimum of eight. And measuring before normalizing measures a
+ * string the engine discards, since "e" plus a combining acute composes to a
+ * single "é".
  *
  * Only the floor is checked here. A tenant's own minimum, and every character
  * class it requires, stay with the server: it is the only authority on them, and
  * a second copy in the client is a second policy to disagree with.
  */
-const MIN_PASSWORD_BYTES = 8;
-
-const utf8 = new TextEncoder();
+const MIN_PASSWORD_CHARACTERS = 8;
 
 export function validatePassword(value: unknown): ValidationResult {
   if (value === undefined || value === null || value === "") {
@@ -62,8 +64,8 @@ export function validatePassword(value: unknown): ValidationResult {
   if (typeof value !== "string") {
     return fail("password", "Password must be a string.");
   }
-  if (utf8.encode(value).length < MIN_PASSWORD_BYTES) {
-    return fail("password", `Password must be at least ${MIN_PASSWORD_BYTES} characters.`);
+  if ([...value.normalize("NFKC")].length < MIN_PASSWORD_CHARACTERS) {
+    return fail("password", `Password must be at least ${MIN_PASSWORD_CHARACTERS} characters.`);
   }
   return ok;
 }

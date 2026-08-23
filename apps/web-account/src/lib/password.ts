@@ -9,7 +9,7 @@
  */
 
 import type { PasswordRules } from "@authn/js";
-import { byteLength } from "./text";
+import { characterLength } from "./text";
 
 /**
  * The engine's criterion names, verbatim.
@@ -56,9 +56,15 @@ const CLASS_PATTERNS: Record<string, RegExp> = {
  * enforce. `max_length` is the exception: it appears only once exceeded, because
  * a ceiling of a few thousand characters is noise as a standing requirement and
  * a genuine refusal once crossed.
+ *
+ * Every test runs against the NFKC form, because that is what the engine
+ * classifies. The difference is not theoretical: "①" is category No, which no
+ * digit pattern matches, but it composes to "1", which is Nd. Testing the raw
+ * input would report a missing number for a password the engine accepts.
  */
 export function evaluatePassword(password: string, rules: PasswordRules): Criterion[] {
-  const length = byteLength(password);
+  const normalized = password.normalize("NFKC");
+  const length = characterLength(password);
 
   const criteria: Criterion[] = [
     {
@@ -72,28 +78,28 @@ export function evaluatePassword(password: string, rules: PasswordRules): Criter
     criteria.push({
       id: "require_uppercase",
       label: "An uppercase letter",
-      met: CLASS_PATTERNS["require_uppercase"]!.test(password),
+      met: CLASS_PATTERNS["require_uppercase"]!.test(normalized),
     });
   }
   if (rules.requireLowercase) {
     criteria.push({
       id: "require_lowercase",
       label: "A lowercase letter",
-      met: CLASS_PATTERNS["require_lowercase"]!.test(password),
+      met: CLASS_PATTERNS["require_lowercase"]!.test(normalized),
     });
   }
   if (rules.requireNumeric) {
     criteria.push({
       id: "require_numeric",
       label: "A number",
-      met: CLASS_PATTERNS["require_numeric"]!.test(password),
+      met: CLASS_PATTERNS["require_numeric"]!.test(normalized),
     });
   }
   if (rules.requireSpecial) {
     criteria.push({
       id: "require_special",
       label: "A symbol or punctuation mark",
-      met: CLASS_PATTERNS["require_special"]!.test(password),
+      met: CLASS_PATTERNS["require_special"]!.test(normalized),
     });
   }
 
