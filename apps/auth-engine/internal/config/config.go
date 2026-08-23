@@ -48,6 +48,13 @@ const (
 // no value set.
 const DefaultFrontendBaseURL = "http://localhost:4001"
 
+// DefaultConsoleBaseURL is the tenant console's dev origin. It is not a link
+// destination — the engine mails nothing that opens the console — but the console
+// calls the API from a browser, so it belongs in the CORS fallback alongside
+// DefaultFrontendBaseURL. A dev origin missing from that list has every request
+// blocked before the engine sees it.
+const DefaultConsoleBaseURL = "http://localhost:4000"
+
 // Config holds every validated runtime setting. It is built once by Load and
 // treated as read-only afterwards, so it is safe to share across goroutines
 // without locking.

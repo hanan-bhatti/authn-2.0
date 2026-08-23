@@ -66,7 +66,10 @@ func Load() (*Config, error) {
 		FrontendBaseURL: r.absoluteURL("WEB_ACCOUNT_URL", DefaultFrontendBaseURL),
 		Issuer:          r.absoluteURL("ISSUER_URL", "http://localhost:8080"),
 
-		CORSAllowedOrigins:   r.originList("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+		// Both dev origins, because both web apps call the API from a browser and an
+		// origin absent from this list is blocked by the browser before the engine
+		// sees it. Production sets the variable; a wildcard is refused there.
+		CORSAllowedOrigins:   r.originList("CORS_ALLOWED_ORIGINS", []string{DefaultConsoleBaseURL, DefaultFrontendBaseURL}),
 		CORSAllowedMethods:   r.list("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
 		CORSAllowedHeaders:   r.list("CORS_ALLOWED_HEADERS", defaultCORSHeaders()),
 		CORSAllowCredentials: r.boolean("CORS_ALLOW_CREDENTIALS", true),
@@ -145,7 +148,7 @@ func Load() (*Config, error) {
 		MessageBirdOriginator: r.str("MESSAGEBIRD_ORIGINATOR", "Authn"),
 
 		WebAuthnRPID:          r.str("WEBAUTHN_RP_ID", "localhost"),
-		WebAuthnRPOrigins:     r.originList("WEBAUTHN_RP_ORIGINS", []string{"http://localhost:8080", "http://localhost:3000"}),
+		WebAuthnRPOrigins:     r.originList("WEBAUTHN_RP_ORIGINS", []string{DefaultConsoleBaseURL, DefaultFrontendBaseURL}),
 		WebAuthnRPDisplayName: r.str("WEBAUTHN_RP_DISPLAY_NAME", "Authn Platform"),
 
 		SAMLSPEntityIDPrefix:      r.str("SAML_SP_ENTITY_ID_PREFIX", "https://authn.com/saml/sp/"),

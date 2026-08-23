@@ -43,7 +43,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | | `AUTHN_APP_VERSION` | `0.1.0` | Optional | `/v1/health` and `/healthz` response payload |
 | | `APP_BASE_URL` | `http://localhost:8080` | **MANDATORY HTTPS** | The engine's own public URL: OAuth callbacks, SAML metadata, cookie `Secure` flag. **Not** emailed links — those use `WEB_ACCOUNT_URL` |
 | | `ISSUER_URL` | `http://localhost:8080` | **MANDATORY HTTPS** | OIDC `iss` claim and discovery endpoint |
-| **4. CORS** | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | No Wildcards (`*`) | Browser cross-origin fetch allowlist |
+| **4. CORS** | `CORS_ALLOWED_ORIGINS` | `http://localhost:4000,http://localhost:4001` | No Wildcards (`*`) | Browser cross-origin fetch allowlist |
 | | `CORS_ALLOWED_METHODS` | `GET,POST,PUT,...` | Optional | `Access-Control-Allow-Methods` header |
 | | `CORS_ALLOWED_HEADERS` | Default Header List | Optional | `Access-Control-Allow-Headers` header |
 | | `CORS_ALLOW_CREDENTIALS` | `true` | Refuses `*` origins | `Access-Control-Allow-Credentials` header |
@@ -106,7 +106,7 @@ The **Authn Engine** (`apps/auth-engine`) implements a fail-fast, zero-silent-fa
 | | `MESSAGEBIRD_ACCESS_KEY` | `""` | Required if `messagebird` | MessageBird Access Key |
 | | `MESSAGEBIRD_ORIGINATOR` | `Authn` | Required if `messagebird` | MessageBird sender ID |
 | **12. WebAuthn** | `WEBAUTHN_RP_ID` | `localhost` | **MUST NOT be localhost** | Passkey Relying Party domain |
-| | `WEBAUTHN_RP_ORIGINS` | `http://localhost:8080,...` | Origins match RP ID | Allowed passkey ceremony origins |
+| | `WEBAUTHN_RP_ORIGINS` | `http://localhost:4000,http://localhost:4001` | Origins match RP ID | Allowed passkey ceremony origins (the two web apps) |
 | | `WEBAUTHN_RP_DISPLAY_NAME` | `Authn Platform` | Optional | Passkey prompt display title |
 | **13. SAML** | `SAML_ACS_PATH` | `/v1/saml/acs` | Optional | Endpoint path for IdP POST assertions |
 | | `SAML_SP_ENTITY_ID_PREFIX` | `https://authn.com/saml/sp/` | Optional | URI namespace prefix for SP Entity IDs |
