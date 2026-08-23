@@ -31,7 +31,7 @@ export const Switch: React.FC<SwitchProps> = ({
       >
         <span
           className={cn(
-            "pointer-events-none inline-block h-3.5 w-3.5 rounded-full transition-transform duration-150 ease-out shadow-sm",
+            "pointer-events-none inline-block h-3.5 w-3.5 rounded-full transition-transform duration-150 ease-out",
             checked ? "translate-x-4 bg-canvas" : "translate-x-0.5 bg-mute"
           )}
         />

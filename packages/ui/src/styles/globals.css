@@ -222,6 +222,16 @@
   --animate-status-ping: status-ping 2s var(--ease-exit) infinite;
   --animate-shimmer: shimmer 1.6s linear infinite;
   --animate-caret: caret 1.1s steps(1, end) infinite;
+
+  /* Overlay entrances. One-shot and eased-out, so a panel decelerates into
+     place instead of arriving at constant speed.
+
+     `rise` is the slowest of the three because it travels a distance and the
+     eye tracks it; `fade` and `scale` happen where the element already is, and
+     the same duration there would read as sluggish. */
+  --animate-enter-fade: enter-fade var(--duration-fast) var(--ease-entrance);
+  --animate-enter-scale: enter-scale var(--duration-fast) var(--ease-entrance);
+  --animate-enter-rise: enter-rise var(--duration-standard) var(--ease-entrance);
 }
 
 /* ==========================================================================
@@ -424,6 +434,32 @@ body {
 @keyframes caret {
   50% {
     opacity: 0;
+  }
+}
+
+/* Overlay entrances. Each declares only a `from`, so the resting state is
+   whatever the element's own classes say — an overlay that also sets a
+   transform for positioning keeps it, where a `to { transform: none }` would
+   overwrite it the instant the animation ended. */
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 95%, not something smaller: a panel that grows from noticeably under size
+   reads as a zoom effect, where a few percent reads as it settling into place. */
+@keyframes enter-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 

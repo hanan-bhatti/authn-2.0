@@ -57,7 +57,7 @@ export const Dialog: React.FC<DialogProps> = ({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full bg-canvas border border-hairline-strong rounded-lg p-6 shadow-2xl transition-all duration-150 flex flex-col gap-4 animate-in fade-in zoom-in-95",
+          "relative z-10 w-full bg-canvas border border-hairline-strong rounded-lg p-6 flex flex-col gap-4 animate-enter-scale",
           widthMap[maxWidth],
           className
         )}

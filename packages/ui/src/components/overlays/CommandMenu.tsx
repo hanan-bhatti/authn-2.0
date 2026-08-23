@@ -57,7 +57,7 @@ export const CommandMenu: React.FC<CommandMenuProps> = ({
 
       <div
         className={cn(
-          "relative z-10 w-full max-w-lg bg-canvas border border-hairline-strong rounded-lg overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95",
+          "relative z-10 w-full max-w-lg bg-canvas border border-hairline-strong rounded-lg overflow-hidden flex flex-col animate-enter-scale",
           className
         )}
       >

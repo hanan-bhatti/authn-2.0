@@ -10,6 +10,16 @@ export interface ToastProps {
   className?: string;
 }
 
+/**
+ * Toast
+ *
+ * The colour carries the whole meaning of a toast for a sighted user, so the
+ * role has to carry it for everyone else. An error or warning is announced with
+ * `alert`, which interrupts whatever the screen reader is reading; a success or
+ * an informational note uses `status`, which waits its turn. Getting that the
+ * wrong way round either buries a failed sign-in or talks over the user for a
+ * message that said "saved".
+ */
 export const Toast: React.FC<ToastProps> = ({
   type = "info",
   title,
@@ -24,10 +34,14 @@ export const Toast: React.FC<ToastProps> = ({
     info: "opened",
   } as const;
 
+  const isUrgent = type === "error" || type === "warning";
+
   return (
     <div
+      role={isUrgent ? "alert" : "status"}
+      aria-live={isUrgent ? "assertive" : "polite"}
       className={cn(
-        "flex items-start gap-3 p-3.5 bg-canvas border border-hairline-strong rounded-md shadow-2xl backdrop-scrim max-w-sm select-none animate-in fade-in slide-in-from-bottom-2",
+        "flex items-start gap-3 p-3.5 bg-canvas border border-hairline-strong rounded-md backdrop-scrim max-w-sm select-none animate-enter-rise",
         className
       )}
     >
@@ -40,9 +54,16 @@ export const Toast: React.FC<ToastProps> = ({
         <button
           type="button"
           onClick={onClose}
+          aria-label="Dismiss notification"
           className="text-mute hover:text-ink transition-colors cursor-pointer p-0.5"
         >
-          <svg className="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+          <svg
+            aria-hidden="true"
+            className="w-3.5 h-3.5 stroke-current"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth="2"
+          >
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>

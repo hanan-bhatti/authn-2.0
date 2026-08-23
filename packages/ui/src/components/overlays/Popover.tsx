@@ -38,7 +38,7 @@ export const Popover: React.FC<PopoverProps> = ({
       {isOpen && (
         <div
           className={cn(
-            "absolute z-50 mt-2 w-64 bg-canvas border border-hairline-strong rounded-lg p-4 shadow-2xl backdrop-scrim transition-all duration-150 animate-in fade-in zoom-in-95",
+            "absolute z-50 mt-2 w-64 bg-canvas border border-hairline-strong rounded-lg p-4 backdrop-scrim animate-enter-scale",
             align === "right" ? "right-0" : "left-0",
             className
           )}
