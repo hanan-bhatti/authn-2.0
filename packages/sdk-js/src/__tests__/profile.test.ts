@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AuthnClient } from "../client";
 import { AuthnErrorCode } from "../types";
+import { callBody, callInit, callUrl, nth } from "./helpers";
 
 const PK = "pk_test_demo12345678901234567890123456789012";
 
@@ -86,7 +87,8 @@ describe("AuthnClient — getProfile()", () => {
       expect(p.updatedAt).toBe("2026-08-06T12:00:00Z");
     }
 
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
     expect(url).toContain("/v1/client/user/profile");
     expect(init.method).toBe("GET");
     expect(init.credentials).toBe("include");
@@ -136,11 +138,13 @@ describe("AuthnClient — updateProfile()", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.profile.name).toBe("Grace Hopper");
 
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
+    const body = callBody(mockFetch, 1);
     expect(url).toContain("/v1/client/user/profile");
     expect(init.method).toBe("PATCH");
     // locale / avatar_url / metadata must be absent, not null.
-    expect(JSON.parse(init.body)).toEqual({ name: "Grace Hopper" });
+    expect(body).toEqual({ name: "Grace Hopper" });
   });
 
   it("maps every camelCase field to its snake_case wire name", async () => {
@@ -155,7 +159,7 @@ describe("AuthnClient — updateProfile()", () => {
       metadata: { tier: "gold" },
     });
 
-    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+    expect(callBody(mockFetch, 1)).toEqual({
       name: "Ada",
       avatar_url: "https://cdn.example.com/new.png",
       locale: "fr-FR",
@@ -170,7 +174,7 @@ describe("AuthnClient — updateProfile()", () => {
 
     await client.updateProfile();
 
-    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({});
+    expect(callBody(mockFetch, 1)).toEqual({});
   });
 
   it("preserves an explicit empty string, which clears a field server-side", async () => {
@@ -180,7 +184,7 @@ describe("AuthnClient — updateProfile()", () => {
 
     await client.updateProfile({ avatarUrl: "" });
 
-    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ avatar_url: "" });
+    expect(callBody(mockFetch, 1)).toEqual({ avatar_url: "" });
   });
 
   it("surfaces a 400 validation failure from the server", async () => {
@@ -206,10 +210,12 @@ describe("AuthnClient — changePassword()", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.message).toBe("password updated successfully");
 
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
+    const body = callBody(mockFetch, 1);
     expect(url).toContain("/v1/client/user/password");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({
+    expect(body).toEqual({
       current_password: "OldPassword1!",
       new_password: "NewPassword2!",
     });
@@ -274,7 +280,7 @@ describe("AuthnClient — email change", () => {
       expect(JSON.stringify(result)).not.toContain("tok_leaked_by_backend");
     }
 
-    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+    expect(callBody(mockFetch, 1)).toEqual({
       new_email: "new@example.com",
     });
   });
@@ -319,7 +325,8 @@ describe("AuthnClient — email change", () => {
 
     expect(result.ok).toBe(true);
 
-    const [url, init] = mockFetch.mock.calls[0];
+    const url = callUrl(mockFetch, 0);
+    const init = callInit(mockFetch, 0);
     expect(url).toContain("/v1/client/user/email/verify");
     expect(url).toContain("token=tok_from_email");
     expect(init.method).toBe("GET");
@@ -384,7 +391,7 @@ describe("AuthnClient — recovery email", () => {
       expect(JSON.stringify(result)).not.toContain("tok_recovery_leaked");
     }
 
-    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+    expect(callBody(mockFetch, 1)).toEqual({
       recovery_email: "backup@example.com",
     });
   });
@@ -406,7 +413,8 @@ describe("AuthnClient — recovery email", () => {
     const result = await client.verifyRecoveryEmail("tok_recovery");
 
     expect(result.ok).toBe(true);
-    const [url, init] = mockFetch.mock.calls[0];
+    const url = callUrl(mockFetch, 0);
+    const init = callInit(mockFetch, 0);
     expect(url).toContain("/v1/client/user/recovery-email/verify");
     expect(url).toContain("token=tok_recovery");
     expect(init.method).toBe("GET");
@@ -420,7 +428,8 @@ describe("AuthnClient — recovery email", () => {
     const result = await client.deleteRecoveryEmail();
 
     expect(result.ok).toBe(true);
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
     expect(url).toContain("/v1/client/user/recovery-email");
     expect(init.method).toBe("DELETE");
   });
@@ -451,12 +460,14 @@ describe("AuthnClient — social accounts", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.accounts).toHaveLength(2);
-      expect(result.accounts[0].provider).toBe("google");
-      expect(result.accounts[0].providerUserId).toBe("google_1234");
-      expect(result.accounts[0].email).toBe("owner@gmail.com");
-      expect(result.accounts[0].connectedAt).toBe("2026-07-01T08:00:00Z");
+
+      const google = nth(result.accounts, 0);
+      expect(google.provider).toBe("google");
+      expect(google.providerUserId).toBe("google_1234");
+      expect(google.email).toBe("owner@gmail.com");
+      expect(google.connectedAt).toBe("2026-07-01T08:00:00Z");
       // `email` is omitempty server-side.
-      expect(result.accounts[1].email).toBeUndefined();
+      expect(nth(result.accounts, 1).email).toBeUndefined();
     }
   });
 
@@ -479,7 +490,8 @@ describe("AuthnClient — social accounts", () => {
     const result = await client.unlinkSocialAccount("google");
 
     expect(result.ok).toBe(true);
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
     expect(url).toContain("/v1/client/user/social-accounts/google");
     expect(init.method).toBe("DELETE");
   });
@@ -537,10 +549,12 @@ describe("AuthnClient — deleteAccount()", () => {
     const result = await client.deleteAccount("SuperSecret123!");
 
     expect(result.ok).toBe(true);
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
+    const body = callBody(mockFetch, 1);
     expect(url).toContain("/v1/client/user/account");
     expect(init.method).toBe("DELETE");
-    expect(JSON.parse(init.body)).toEqual({ password: "SuperSecret123!" });
+    expect(body).toEqual({ password: "SuperSecret123!" });
 
     expect(client.isAuthenticated()).toBe(false);
     expect(client.getSession()).toBeNull();

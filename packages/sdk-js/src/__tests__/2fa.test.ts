@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AuthnClient } from "../client";
-import { AuthnErrorCode } from "../types";
 import {
   base64UrlToBuffer,
   bufferToBase64Url,
-  formatCreationCredential,
-  formatRequestCredential,
   prepareCreationOptions,
   prepareRequestOptions,
 } from "../webauthn";
+import { nth } from "./helpers";
 
 describe("WebAuthn Base64URL Helpers", () => {
   it("should convert ArrayBuffer to base64url and back", () => {
@@ -35,7 +33,9 @@ describe("WebAuthn Base64URL Helpers", () => {
     const prepared = prepareCreationOptions(rawOptions);
     expect(prepared.challenge).toBeInstanceOf(ArrayBuffer);
     expect(prepared.user.id).toBeInstanceOf(ArrayBuffer);
-    expect(prepared.excludeCredentials![0].id).toBeInstanceOf(ArrayBuffer);
+    expect(nth(prepared.excludeCredentials ?? [], 0).id).toBeInstanceOf(
+      ArrayBuffer,
+    );
   });
 
   it("should prepare request options converting challenge and allowCredentials to ArrayBuffer", () => {
@@ -48,7 +48,9 @@ describe("WebAuthn Base64URL Helpers", () => {
 
     const prepared = prepareRequestOptions(rawOptions);
     expect(prepared.challenge).toBeInstanceOf(ArrayBuffer);
-    expect(prepared.allowCredentials![0].id).toBeInstanceOf(ArrayBuffer);
+    expect(nth(prepared.allowCredentials ?? [], 0).id).toBeInstanceOf(
+      ArrayBuffer,
+    );
   });
 });
 
@@ -104,6 +106,11 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
       expect(result.recoveryCodes).toEqual(["code1", "code2"]);
       expect(result.recoveryCodesCreated).toBe(true);
     }
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/client/auth/2fa/totp/confirm"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("3. disableTOTP — POST /v1/client/auth/2fa/totp/disable", async () => {
@@ -116,6 +123,11 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     if (result.ok) {
       expect(result.message).toBe("2FA TOTP disabled");
     }
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/client/auth/2fa/totp/disable"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("4. verifyTOTP — POST /v1/client/auth/2fa/totp/verify", async () => {
@@ -296,7 +308,7 @@ describe("2FA, TOTP & WebAuthn SDK Methods", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.credentials).toHaveLength(1);
-      expect(result.credentials[0].name).toBe("Work MacBook TouchID");
+      expect(nth(result.credentials, 0).name).toBe("Work MacBook TouchID");
     }
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining("/v1/client/auth/2fa/webauthn/credentials"),

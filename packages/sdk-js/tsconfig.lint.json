@@ -1,0 +1,10 @@
+{
+  // The base config excludes tests, because `build` runs tsc to emit
+  // declarations and test files have no place in dist. That exclusion also hid
+  // them from `tsc --noEmit`, so a rename in src could leave a test naming a
+  // field that no longer exists and only vitest would notice. This config
+  // typechecks them too, and emits nothing.
+  "extends": "./tsconfig.json",
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

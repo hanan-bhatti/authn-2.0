@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AuthnClient } from "../client";
 import { AuthnErrorCode } from "../types";
+import { callBody, callHeaders, callInit, callUrl, nth } from "./helpers";
 
 const PK = "pk_test_demo12345678901234567890123456789012";
 
@@ -92,7 +93,8 @@ describe("AuthnClient — listSessions()", () => {
     if (result.ok) {
       expect(result.sessions).toHaveLength(2);
 
-      const [current, phone] = result.sessions;
+      const current = nth(result.sessions, 0);
+      const phone = nth(result.sessions, 1);
       expect(current.id).toBe("ses_current_abc");
       expect(current.isCurrent).toBe(true);
       expect(current.ipAddress).toBe("203.0.113.10");
@@ -124,12 +126,14 @@ describe("AuthnClient — listSessions()", () => {
 
     await client.listSessions();
 
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
+    const headers = callHeaders(mockFetch, 1);
     expect(url).toContain("/v1/client/sessions");
     expect(init.method).toBe("GET");
     expect(init.credentials).toBe("include");
-    expect(init.headers["Authorization"]).toBe("Bearer jwt_access_token");
-    expect(init.headers["X-Authn-Publishable-Key"]).toBe(PK);
+    expect(headers["Authorization"]).toBe("Bearer jwt_access_token");
+    expect(headers["X-Authn-Publishable-Key"]).toBe(PK);
   });
 
   it("returns an empty array when the server omits the sessions key", async () => {
@@ -187,10 +191,11 @@ describe("AuthnClient — revokeSession()", () => {
       expect(result.message).toBe("session revoked");
     }
 
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
     expect(url).toContain("/v1/client/sessions/revoke");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ session_id: "ses_phone_xyz" });
+    expect(callBody(mockFetch, 1)).toEqual({ session_id: "ses_phone_xyz" });
   });
 
   it("returns a validation error for an empty session id without making a request", async () => {
@@ -270,7 +275,8 @@ describe("AuthnClient — revokeOtherSessions()", () => {
     expect(client.isAuthenticated()).toBe(true);
     expect(client.getToken()).toBe("jwt_access_token");
 
-    const [url, init] = mockFetch.mock.calls[1];
+    const url = callUrl(mockFetch, 1);
+    const init = callInit(mockFetch, 1);
     expect(url).toContain("/v1/client/sessions/revoke-others");
     expect(init.method).toBe("POST");
   });

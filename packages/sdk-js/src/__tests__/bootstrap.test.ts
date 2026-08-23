@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { AuthnClient } from "../client";
+import { callUrl } from "./helpers";
 
 const publishableKey = "pk_test_demo12345678901234567890123456789012";
 
@@ -53,9 +54,11 @@ describe("AuthnClient 2FA challenge on login", () => {
     if (!result.ok) return;
 
     expect(result.mfaRequired).toBe(true);
+    if (!result.mfaRequired) return;
+
     expect(result.mfaToken).toBe("mfa_challenge_token");
     expect(result.session).toBeUndefined();
-    expect(result.user?.email).toBe("gated@example.com");
+    expect(result.user.email).toBe("gated@example.com");
   });
 
   it("stores no session, so nothing reports the user as signed in", async () => {
@@ -222,7 +225,7 @@ describe("AuthnClient getAppConfig", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(mockFetch.mock.calls[0][0]).toBe(
+    expect(callUrl(mockFetch, 0)).toBe(
       "http://localhost:8080/v1/client/app-config",
     );
     expect(result.config.application.environment).toBe("test");

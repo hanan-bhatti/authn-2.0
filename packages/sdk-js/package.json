@@ -79,7 +79,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit -p tsconfig.lint.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run build"
   },

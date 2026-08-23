@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AuthnClient } from "../client";
 import { generateCodeChallenge, generateCodeVerifier, generatePKCEPair } from "../pkce";
 import { AuthnError, AuthnErrorCode } from "../types";
+import { sessionOf } from "./helpers";
 
 describe("AuthnClient Initialization & Validation", () => {
   it("should throw an error when initialized with an invalid publishable key format", () => {
@@ -61,13 +62,12 @@ describe("AuthnClient Sign Up Flow", () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.session.user.id).toBe("usr_signup_123");
-      expect(result.session.accessToken).toBe("jwt_signup_access_token");
-      expect(client.isAuthenticated()).toBe(true);
-      expect(client.getUser()?.email).toBe("signup@example.com");
-      expect(client.getToken()).toBe("jwt_signup_access_token");
-    }
+    const session = sessionOf(result);
+    expect(session.user.id).toBe("usr_signup_123");
+    expect(session.accessToken).toBe("jwt_signup_access_token");
+    expect(client.isAuthenticated()).toBe(true);
+    expect(client.getUser()?.email).toBe("signup@example.com");
+    expect(client.getToken()).toBe("jwt_signup_access_token");
   });
 
   it("should handle signup email already exists error", async () => {
@@ -130,12 +130,11 @@ describe("AuthnClient Login Flow", () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.session.user.email).toBe("test@example.com");
-      expect(result.session.accessToken).toBe("jwt_token_abc");
-      expect(client.isAuthenticated()).toBe(true);
-      expect(client.getSession()?.accessToken).toBe("jwt_token_abc");
-    }
+    const session = sessionOf(result);
+    expect(session.user.email).toBe("test@example.com");
+    expect(session.accessToken).toBe("jwt_token_abc");
+    expect(client.isAuthenticated()).toBe(true);
+    expect(client.getSession()?.accessToken).toBe("jwt_token_abc");
   });
 
   it("should handle login credentials error", async () => {
@@ -211,10 +210,8 @@ describe("AuthnClient Magic Link & Email Verification Flows", () => {
 
     const result = await client.verifyMagicLink({ token: "magic_token_xyz" });
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.session.user.id).toBe("usr_magic_123");
-      expect(client.isAuthenticated()).toBe(true);
-    }
+    expect(sessionOf(result).user.id).toBe("usr_magic_123");
+    expect(client.isAuthenticated()).toBe(true);
   });
 
   it("should verify email and update active session", async () => {

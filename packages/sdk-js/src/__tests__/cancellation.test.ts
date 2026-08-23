@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../core/http";
 import { AuthnClient } from "../client";
 import { AuthnError, AuthnErrorCode } from "../types";
+import { callHeaders } from "./helpers";
 
 const publishableKey = "pk_test_demo12345678901234567890123456789012";
 
@@ -165,10 +166,7 @@ describe("HttpClient cancellation", () => {
     await http.post("/v1/mfa/verify", { code: "000000" }, { "X-Authn-MFA-Token": "mfa_abc" });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const retried = fetchMock.mock.calls[1]![1] as RequestInit;
-    expect((retried.headers as Record<string, string>)["X-Authn-MFA-Token"]).toBe(
-      "mfa_abc",
-    );
+    expect(callHeaders(fetchMock, 1)["X-Authn-MFA-Token"]).toBe("mfa_abc");
   }, 10_000);
 });
 
