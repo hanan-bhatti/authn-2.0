@@ -296,6 +296,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v1/client/auth/2fa/sms/challenge:
+    post:
+      summary: Send SMS Code For A Login Challenge
+      description: >-
+        Delivers a fresh SMS code to the confirmed phone number on the account behind the mfa_token,
+        so a sign-in that listed sms among its methods can be completed. Public because this caller
+        holds a challenge token and has no session yet, which is what separates it from
+        /2fa/sms/enroll. The gate is the challenge's own sealed methods list rather than the
+        account's current factors, so a number enrolled during the challenge window is not usable
+        until the next sign-in. Only an enabled number is accepted as a destination, since a number
+        still pending confirmation is one an attacker could have submitted. There is deliberately no
+        email fallback on this path: the caller has proven only the password, so mailing the second
+        factor to the account address would reduce two factors to one. Submit the delivered code to
+        /v1/client/auth/2fa/totp/verify with method=sms.
+      operationId: sendSMSChallenge
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - PublishableKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SMSChallengeRequest'
+      responses:
+        '200':
+          description: Verification code sent via SMS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSChallengeResponse'
+        '400':
+          description: mfa_token missing, the challenge does not offer sms, or no confirmed phone number is on file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: mfa_token is malformed, expired, tampered with, or names an unknown user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: The account was suspended between the password and this send
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: SMS send budget spent - 3 sends per 10 minutes per user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The SMS provider refused the message, or the stored number could not be read. Offer another factor from the challenge rather than retrying.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /v1/client/auth/2fa/sms/confirm:
     post:
       summary: Confirm SMS 2FA Enrollment
@@ -919,6 +982,35 @@ components:
           example: OTP verification code sent via SMS
         expires_in_seconds:
           type: integer
+          example: 300
+
+    SMSChallengeRequest:
+      type: object
+      required:
+        - mfa_token
+      properties:
+        mfa_token:
+          type: string
+          description: The challenge token returned by /v1/client/auth/login. Its sealed methods list must include sms.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    SMSChallengeResponse:
+      type: object
+      required:
+        - message
+        - phone_number
+        - expires_in_seconds
+      properties:
+        message:
+          type: string
+          example: Verification code sent via SMS
+        phone_number:
+          type: string
+          description: The destination redacted to its country prefix and last two digits, so the reader is told which handset to check without the number being disclosed to a caller who has proven only the password.
+          example: "+12•••99"
+        expires_in_seconds:
+          type: integer
+          description: How long the delivered code stays valid. Follows MFA_CHALLENGE_TTL, so read it rather than assuming 300.
           example: 300
 
     SMSConfirmRequest:

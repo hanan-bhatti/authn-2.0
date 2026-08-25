@@ -11,7 +11,7 @@
 
 | Tool / Technology | Version | Purpose & Description |
 | :--- | :--- | :--- |
-| **Go** | `v1.23+` | High-performance backend engine & Ent ORM data layer |
+| **Go** | `v1.26+` | High-performance backend engine & Ent ORM data layer |
 | **Kotlin (Android)** | `v2.1.0+` | Native Android client with K2 compiler & AccountManager SSO |
 | **Gradle** | `v8.12+` | Android build automation system |
 | **Android Gradle Plugin (AGP)** | `v8.8+` | Android Gradle build plugin |

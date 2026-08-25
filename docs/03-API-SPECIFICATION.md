@@ -118,6 +118,7 @@ The **Authn Engine** exposes four distinct HTTP API surfaces:
 - `GET /v1/client/auth/2fa/webauthn/credentials` — List user's registered WebAuthn passkeys
 - `DELETE /v1/client/auth/2fa/webauthn/credentials/:id` — Delete a WebAuthn passkey (requires password)
 - `POST /v1/client/auth/2fa/sms/enroll` — Initiate SMS 2FA enrollment & send verification OTP
+- `POST /v1/client/auth/2fa/sms/challenge` — Send the SMS code for a login awaiting a second factor *(publishable key + `mfa_token`)*
 - `POST /v1/client/auth/2fa/sms/confirm` — Confirm SMS 2FA with 6-digit OTP & activate
 - `DELETE /v1/client/auth/2fa/sms/disable` — Disable SMS 2FA (requires password)
 - `POST /v1/client/auth/2fa/verify` — Unified login 2FA verification endpoint (`totp`, `webauthn`, `sms`, `backup_code`)
@@ -780,6 +781,7 @@ Enumeration-safe — unknown emails, already-verified accounts, and valid unveri
   - List & Delete: `GET /v1/client/auth/2fa/webauthn/credentials` lists registered passkeys; `DELETE /v1/client/auth/2fa/webauthn/credentials/:id` deletes passkey requiring password confirmation.
 - **SMS 2FA (`/v1/client/auth/2fa/sms/*`)**:
   - `POST /v1/client/auth/2fa/sms/enroll`: Body `{"phone_number": "+15551234567"}`. Sends 6-digit OTP via configured SMS driver.
+  - `POST /v1/client/auth/2fa/sms/challenge`: Body `{"mfa_token": "eyJ..."}`. The login-path send, authorized by the challenge token rather than a session, returning `{"phone_number": "+12•••99", "expires_in_seconds": 300}`. Requires `sms` in the token's sealed `methods`, delivers only to an **enabled** number, and has no email fallback — this caller has proven the password alone. Budget: 3 sends per 10 minutes per user. Detail in [`client-2fa-verification.md`](./endpoints/client-2fa-verification.md).
   - `POST /v1/client/auth/2fa/sms/confirm`: Body `{"code": "123456"}`. Activates SMS 2FA.
   - `DELETE /v1/client/auth/2fa/sms/disable`: Body `{"password": "..."}`. Disables SMS 2FA requiring password confirmation.
 - **Unified Login 2FA Verification (`POST /v1/client/auth/2fa/verify`)**:

@@ -1515,6 +1515,46 @@
 					}
 				},
 				{
+					"name": "Send SMS Challenge Code (login)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"mfa_token\": \"mfa_token_from_login_response\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/sms/challenge",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "2fa", "sms", "challenge"]
+						},
+						"description": "The login-path SMS send. Authorized by the mfa_token from POST /v1/client/auth/login rather than by a session, so there is no Authorization header.\n\nDo not confuse it with Enroll: enroll adds a new number and needs a session, while this delivers a code to the number already confirmed on the account. Verification reads the code from server memory and a code exists only once it has been sent, so on the login path this request is what creates one.\n\nRequires `sms` in the token's sealed `methods`, delivers only to an enabled number, and has no email fallback: this caller has proven the password alone, so mailing the second factor to the account address would reduce two factors to one. Budget is 3 sends per 10 minutes per user.\n\nVerified response (200):\n{\n  \"message\": \"Verification code sent via SMS\",\n  \"phone_number\": \"+12•••99\",\n  \"expires_in_seconds\": 300\n}\n\nThen submit the delivered code to \"Verify 2FA Challenge\" with \"method\": \"sms\"."
+					}
+				},
+				{
+					"name": "Send SMS Challenge — Bad Token (expect 401)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"mfa_token\": \"not-a-real-token\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/sms/challenge",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "2fa", "sms", "challenge"]
+						},
+						"description": "A token that does not verify answers 401 invalid_token. For contrast: a challenge whose `methods` omit sms answers 400 validation_failed, an account with no confirmed number answers 400 not_found, and a spent send budget answers 429 rate_limited."
+					}
+				},
+				{
 					"name": "Disable SMS OTP",
 					"request": {
 						"method": "DELETE",

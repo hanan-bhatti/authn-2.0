@@ -1,7 +1,7 @@
 # Authn 2.0 — Enterprise Open-Source Authentication & Identity Platform
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=flat&logo=kotlin)](https://kotlinlang.org/)
 [![Swift](https://img.shields.io/badge/Swift-6.0+-F05138?style=flat&logo=swift)](https://swift.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
@@ -16,7 +16,7 @@
 
 ## ✨ Key Features
 
-* **⚡ Ultra-Low Latency Go Engine**: Sub-10ms P95 latency powered by Go 1.23+ and Fiber, backed by **Ent ORM** supporting PostgreSQL, MySQL, SQLite, and CockroachDB.
+* **⚡ Ultra-Low Latency Go Engine**: Sub-10ms P95 latency powered by Go 1.26+ and Fiber, backed by **Ent ORM** supporting PostgreSQL, MySQL, SQLite, and CockroachDB.
 * **🔐 Dual API Key Architecture**: Firebase-style publishable keys (`pk_live_...`) for direct frontend SDK calls, and secret keys (`sk_live_...`) for backend admin tasks.
 * **📱 Native Mobile SSO**: Android `AccountManager` system integration (Kotlin 2.0+) and iOS Shared Keychain Groups (Swift 6.0+) for silent cross-app single sign-on across companion mobile apps.
 * **🛡️ Push 2FA with Number-Matching Defense**: FCM (Android) & APNs (iOS) real-time push prompts. Displays a 2-digit code on the web login screen while insulating the push payload (the phone never receives the correct answer), neutralizing push fatigue malware attacks.
@@ -35,7 +35,7 @@
 ```
 authn-2.0/
 ├── apps/
-│   ├── auth-engine/          # Go 1.23+ Backend Service (Ent ORM, Fiber HTTP/gRPC, OIDC Server)
+│   ├── auth-engine/          # Go 1.26+ Backend Service (Ent ORM, Fiber HTTP/gRPC, OIDC Server)
 │   ├── web-console/          # Next.js 16 Developer & Tenant Portal (console.authn.com)
 │   ├── web-landing/          # Next.js 16 Platform Landing Page (authn.com)
 │   ├── web-docs/             # Next.js 16 / Fumadocs Documentation Hub (docs.authn.com)
@@ -78,7 +78,7 @@ Explore our comprehensive technical specifications:
 
 | Target Platform | Technology Stack | Linux Compilation & Testing Status | Details |
 | :--- | :--- | :---: | :--- |
-| **Go Engine** | Go 1.23+ | ✅ **Native Native Support** | Direct native compilation, unit testing, and Docker execution on Linux. |
+| **Go Engine** | Go 1.26+ | ✅ **Native Native Support** | Direct native compilation, unit testing, and Docker execution on Linux. |
 | **Web Applications** | Next.js 16 + React 19 | ✅ **Native Support** | Runs natively via Node.js v20+ and pnpm v11+. |
 | **Android App** | Kotlin 2.0+ & Gradle 8.5+ | ✅ **Native Support** | Android APK compilation, JVM unit tests, and Robolectric test execution run **100% natively on Linux** via `./gradlew build test`. |
 | **iOS App** | Swift 6.0+ | 🟡 **Linux Unit Testing / macOS Packaging** | Swift 6 Linux toolchain compiles and runs **pure Swift logic unit tests natively on Linux**. Full Xcode iOS Simulator execution and `.ipa` app bundling are delegated to GitHub Actions `macos-latest` runners. |
@@ -150,23 +150,67 @@ without them: `AUTHN_ENCRYPTION_KEY` and `AUTHN_API_KEY_PEPPER`, each at least
 ### Common commands
 
 ```bash
-make help        # every target
+make help        # every target, grouped
+make doctor      # check the toolchain, configuration, ports and containers
 make logs        # follow the engine
-make test        # run the engine test suite
+make test        # every suite CI gates on
 make migrate     # apply the schema
 make down        # stop, keeping data
 make clean       # stop and delete all local data
 ```
 
-### Developing without Docker
+`make doctor` is the first thing to run when something is wrong. It reports every
+problem it finds in one pass, each with the command that resolves it.
+
+If Compose reports that a container name is already in use, a container is
+holding one of its names without carrying its labels — usually left by an earlier
+`docker run`. Compose matches containers by label, so it cannot adopt that one.
+`make adopt` stops and renames them, freeing the names without deleting a
+container or detaching a volume.
+
+### Two ways to run the engine
+
+`make dev` runs everything in containers, which is closest to production.
+`make run` compiles the engine and runs it on the host with its dependencies
+still in containers, so a code change costs a Go compile rather than an image
+build and a debugger can attach to it.
 
 ```bash
-make migrate
-cd apps/auth-engine && go run ./cmd/server
+make run         # dependencies, schema, compile, then run
+make serve       # run the existing binary, skipping dependency and schema work
+make stop        # stop the host engine, whatever holds its port
+make deps        # dependencies only, reusing whatever is already up
+make deps-status # each dependency: its port, its container, and who manages it
+make ports       # everything listening on a port this project uses
 ```
 
-`DATABASE_URL` defaults to SQLite, so this needs no external services. Redis is
-optional in development; without it, rate limiting falls back to local state.
+The two modes answer differently when something is already up. Native mode reuses
+a container already serving a port, which is the ordinary state of a development
+machine. Docker mode treats the same container as a conflict, because Compose has
+to own what it manages.
+
+`DATABASE_URL` defaults to SQLite, so native mode needs no external services at
+all. Redis is optional in development; without it, rate limiting falls back to
+local state.
+
+### Building and running the frontend
+
+Workspaces are addressed by a short alias — `sdk`, `react`, `ui`, `account`.
+`make list` prints all of them with their ports and available scripts.
+
+```bash
+make build             # engine binaries and every workspace
+make build-sdk         # packages/sdk-js
+make build-packages    # both SDKs and the UI package, in dependency order
+make build-js TARGET=ui
+
+make dev-account       # the account application's dev server
+make dev-web APP=account
+make start-account     # serve its production build
+```
+
+`make setup` prepares a fresh clone end to end: `.env`, workspace dependencies,
+containers, the schema, and the packages the applications import.
 
 ### Demo data
 

@@ -10,6 +10,7 @@ system — the enrollment half is documented in
 * **Routes**:
   * `POST /v1/client/auth/2fa/totp/verify` — Verify a TOTP/recovery code, completing login
   * `POST /v1/client/auth/2fa/verify` — Alias of the above, identical handler
+  * `POST /v1/client/auth/2fa/sms/challenge` — Send the SMS code for a sign-in awaiting a second factor
   * `POST /v1/client/auth/2fa/sms/confirm` — Confirm an SMS 2FA enrollment with the delivered code
   * `DELETE /v1/client/auth/2fa/sms/disable` — Remove SMS 2FA (password re-verification required)
   * `POST /v1/client/auth/2fa/webauthn/login/begin` — Start a passkey login challenge
@@ -27,6 +28,7 @@ common integration mistake (audit finding D3).
 |---|---|
 | `POST /2fa/totp/verify` (with `mfa_token`) | The `mfa_token` returned by `/login` — **not** a bearer token |
 | `POST /2fa/totp/verify` (without `mfa_token`) | `Authorization: Bearer <access_token>` |
+| `POST /2fa/sms/challenge` | The `mfa_token` from `/login` |
 | `POST /2fa/sms/confirm` | `Authorization: Bearer <access_token>` |
 | `DELETE /2fa/sms/disable` | `Authorization: Bearer <access_token>` + password in body |
 | `POST /2fa/webauthn/login/begin` | The `mfa_token` from `/login` |
@@ -102,7 +104,7 @@ value against every enrolled method. So `method` names the single factor to chec
 * **`method: "passkey"`** → `400 validation_failed` naming
   `POST /v1/client/auth/2fa/webauthn/login/begin`. Passkeys appear in `methods` because the
   account can satisfy the challenge with one, but there is no code to submit — a passkey is
-  proven by signing an assertion. See §4 and §5 below.
+  proven by signing an assertion. See §5 and §6 below.
 
 **Response (200 OK)** — issues the real session:
 ```json
@@ -130,7 +132,67 @@ wrong code — the user's code may well have been correct.
 
 ---
 
-## 2. Confirm SMS enrollment (`POST /v1/client/auth/2fa/sms/confirm`)
+## 2. Send the SMS code for a login challenge (`POST /v1/client/auth/2fa/sms/challenge`)
+
+Delivers a fresh code to the phone on file for the account behind an `mfa_token`, so a sign-in that
+listed `sms` among its `methods` can actually satisfy it.
+
+Public for the same reason `/2fa/verify` is: the caller holds a challenge token and has no session
+yet. Do not confuse it with `POST /2fa/sms/enroll`, which adds a *new* number and needs a bearer
+token. Verification loads the code from server memory, and a code exists only once it has been
+sent — so on the login path this route is what creates one.
+
+**Request**
+```json
+{ "mfa_token": "eyJhbGciOiJIUzI1NiIs..." }
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `mfa_token` | yes | The challenge token from `/login`. Its sealed `methods` must include `sms`. |
+
+**Response (200 OK)**
+```json
+{
+  "message": "Verification code sent via SMS",
+  "phone_number": "+12•••99",
+  "expires_in_seconds": 300
+}
+```
+
+`phone_number` is redacted to its country prefix and last two digits — enough to say which handset
+to check, without printing the number to a caller who has proven only the password.
+`expires_in_seconds` follows `MFA_CHALLENGE_TTL`; read it rather than hardcoding 300.
+
+Submit the delivered code to §1 with `method: "sms"`.
+
+**Errors**
+
+| Status | `code` | Cause |
+|---|---|---|
+| `400` | `missing_parameter` | `mfa_token` absent or blank |
+| `400` | `validation_failed` | The challenge does not offer `sms` |
+| `400` | `not_found` | No confirmed phone number is on file for this account |
+| `401` | `invalid_token` | `mfa_token` is malformed, expired, tampered with, or names an unknown user |
+| `403` | `account_disabled` | The account was suspended between the password and this send |
+| `429` | `rate_limited` | 3 sends per 10 minutes per user |
+| `503` | `service_unavailable` | The provider refused the message, or the stored number could not be read |
+
+Three of those need care in a client:
+
+* **`validation_failed`** — the gate is the challenge's own `methods`, not the account's current
+  factors, matching §1. A number enrolled *during* the challenge window is not usable until the
+  next sign-in, so send and verify can never disagree mid-login.
+* **`not_found`** — only an **enabled** number is accepted as a destination. A number still pending
+  confirmation is one an attacker could have submitted, and sending a login code there would hand
+  them the second factor.
+* **`503`** — there is deliberately **no email fallback here**, unlike SMS enrollment. The caller
+  has proven the password and nothing else, so mailing the second factor to the account address
+  would reduce two factors to one. Offer another entry from `methods` instead.
+
+---
+
+## 3. Confirm SMS enrollment (`POST /v1/client/auth/2fa/sms/confirm`)
 
 Completes the enrollment started by `POST /v1/client/auth/2fa/sms/enroll`.
 
@@ -146,7 +208,7 @@ Completes the enrollment started by `POST /v1/client/auth/2fa/sms/enroll`.
 
 ---
 
-## 3. Disable SMS 2FA (`DELETE /v1/client/auth/2fa/sms/disable`)
+## 4. Disable SMS 2FA (`DELETE /v1/client/auth/2fa/sms/disable`)
 
 Note the method: `DELETE`, not `POST`. Requires password re-verification, and is
 blocked during an active impersonation session.
@@ -170,7 +232,7 @@ blocked during an active impersonation session.
 
 ---
 
-## 4. Passkey login begin (`POST /v1/client/auth/2fa/webauthn/login/begin`)
+## 5. Passkey login begin (`POST /v1/client/auth/2fa/webauthn/login/begin`)
 
 **Request**
 ```json
@@ -195,7 +257,7 @@ Pass `publicKey` to `navigator.credentials.get()` in the browser.
 
 ---
 
-## 5. Passkey login finish (`POST /v1/client/auth/2fa/webauthn/login/finish`)
+## 6. Passkey login finish (`POST /v1/client/auth/2fa/webauthn/login/finish`)
 
 **This endpoint does not follow the usual body convention** (audit finding D4).
 The `go-webauthn` library requires the raw credential assertion JSON as the *entire*
@@ -237,6 +299,17 @@ Branch on `code`, never on `error` — the prose is subject to change.
 
 ## Verification History
 
+* **`2026-08-24`** — `POST /2fa/sms/challenge` verified live end to end against an SMS + recovery-code
+  account. Before the route existed, `/2fa/verify` with `method:"sms"` answered `400 invalid_mfa_code`
+  on every attempt, because a code is only written to memory by a send and the only sender was the
+  session-protected `/2fa/sms/enroll` — so a challenge listing `sms` could never be satisfied. After:
+  the send answered `200` with `phone_number:"+12•••99"` and `expires_in_seconds:300`, the delivered
+  code answered `200` with a session, replaying that code answered `400 invalid_mfa_code`, a blank
+  `mfa_token` answered `400 missing_parameter`, garbage and signature-tampered tokens answered
+  `401 invalid_token`, a TOTP-only challenge answered `400 validation_failed`, the fourth send inside
+  the window answered `429 rate_limited`, and reusing an older token after SMS was disabled answered
+  `400 not_found`. Setting `MFA_CHALLENGE_TTL=7m` moved both this route and `/2fa/sms/enroll` to
+  `expires_in_seconds:420`, confirming neither hardcodes 300.
 * **`2026-08-22`** — `method` selection verified live against a TOTP + recovery-code account:
   `method:"sms"` (outside the challenge set) answered `400 validation_failed` without testing
   the code, `method:"backup_code"` with a wrong code answered `400 invalid_mfa_code`,

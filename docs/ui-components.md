@@ -75,6 +75,53 @@ packages/ui/src/components/
     └── EmptyState.tsx       (Clean empty state graphic with action CTA)
 ```
 
+### The two drawing layers
+
+Kept apart from `components/` and from each other. An icon is a 24-unit
+functional glyph; an illustration is a 200-unit scene. A set that scales one into
+the other gives a wireframe at the top end and mud at the bottom, so neither
+shares geometry with the other. What they *do* share is `utils/accent.ts` — what a
+hue means — because a reader learns that code once: the small green tick beside
+"Two-factor is on" and the large green shield above the section heading have to be
+making the same claim.
+
+```
+packages/ui/src/icons/
+├── createIcon.tsx           (Factory: variant → geometry, one <svg> shell)
+├── identity.tsx             (User, Mail, AtSign, Globe, Camera)
+├── security.tsx             (Shield, ShieldCheck, Key, Fingerprint, QrCode, Phone, Lock, BackupCodes)
+├── activity.tsx             (Monitor, Smartphone, Clock, MapPin, Pulse)
+├── structure.tsx            (Building, Users, Link, LifeBuoy)
+└── ui.tsx                   (Menu, Close, Check, Plus, Alert, Trash, LogOut, Copy, ExternalLink, Settings, Search, Dots)
+```
+
+Every glyph is one export taking `variant?: "line" | "filled" | "color"`, so
+`<KeyIcon />`, `<KeyIcon variant="filled" />` and `<KeyIcon variant="color" />`
+are the same import. Three separate components per glyph would have made the
+choice an import decision, which is the wrong place for it: a row that switches
+from line to filled on selection would need both in scope to do it.
+
+```
+packages/ui/src/illustrations/
+├── createIllustration.tsx   (Factory: accent + size, with solid/tint helpers)
+├── IdCard.tsx               (Profile)
+├── ShieldKey.tsx            (Security)
+├── Devices.tsx              (Sessions)
+├── Rings.tsx                (Connected accounts)
+├── Buoy.tsx                 (Recovery)
+├── NodeTree.tsx             (Organizations)
+├── Shredder.tsx             (Danger zone)
+└── OpenBox.tsx              (Empty states)
+```
+
+Each takes `accent` and `size`. `EmptyState` renders one through its
+`illustration` prop rather than its `icon` prop — `icon` sets its child on a fixed
+48px plaque, which a 180-unit scene overflows while the layout goes on reserving
+48px for it.
+
+Raster assets — the two things vector cannot do, and where they land — are in
+[`image-assets.md`](image-assets.md).
+
 ---
 
 ## 3. Integration Code Examples

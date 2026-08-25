@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-Authn provides a comprehensive, multi-factor authentication (MFA) suite supporting **TOTP Authenticator Apps**, **SMS/WhatsApp OTP** (with email fallback), **Backup Recovery Codes**, and **WebAuthn / Passkeys (FIDO2)**.
+Authn provides a comprehensive, multi-factor authentication (MFA) suite supporting **TOTP Authenticator Apps**, **SMS/WhatsApp OTP** (with email fallback during enrollment), **Backup Recovery Codes**, and **WebAuthn / Passkeys (FIDO2)**.
 
 All MFA methods are bound to user accounts and enforced during login challenges via a single, uniform `twoFactorToken` challenge token (120s TTL).
 
@@ -29,8 +29,10 @@ All MFA methods are bound to user accounts and enforced during login challenges 
 ### 2.3 SMS / WhatsApp OTP
 - `POST /v1/client/auth/2fa/sms/enroll` — Registers E.164 phone number.
 - `POST /v1/client/auth/2fa/sms/confirm` — Validates initial SMS verification code.
+- `POST /v1/client/auth/2fa/sms/challenge` — Sends the code for a login already holding an `mfa_token`. Public, since that caller has no session yet, and the only sender on the login path — verification reads the code from memory, and a code exists only once it has been sent.
 - `DELETE /v1/client/auth/2fa/sms/disable` — Disables SMS 2FA with step-up authentication.
-- **Rate Limiting**: Strictly enforces 3 SMS requests per 10 minutes per phone number.
+- **Rate Limiting**: Strictly enforces 3 SMS requests per 10 minutes per user, counted across enrollment and login sends alike.
+- **Email fallback applies to enrollment only.** A login challenge that cannot reach the provider answers `503` rather than mailing the code: that caller has proven the password alone, and a second factor delivered to the account address is not a second factor.
 
 ### 2.4 WebAuthn / Passkeys (FIDO2)
 - `POST /v1/client/auth/2fa/webauthn/register/begin` & `finish` — Enrolls biometrics/hardware keys (FaceID, TouchID, YubiKey). Credential ID and public key stored AES-256-GCM encrypted.
