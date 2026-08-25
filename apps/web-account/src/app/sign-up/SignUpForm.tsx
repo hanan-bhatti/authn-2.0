@@ -16,8 +16,15 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { Button, FormField, Input, Skeleton, Toast } from "@authn/ui";
-import { useAppConfig, useMagicLink, useSignUp } from "@authn/react";
+import {
+  useAppConfig,
+  useMagicLink,
+  useSignUp,
+  useUsernameAvailability,
+  type UsernameStatus,
+} from "@authn/react";
 import type { AuthnError } from "@authn/js";
+import { USERNAME_MIN_LENGTH, USERNAME_RULE_HINT } from "@authn/js";
 import { PasswordCriteria } from "@/components/PasswordCriteria";
 import { presentSignUpError, type FieldName } from "@/lib/authError";
 import { applyServerCriteria, evaluatePassword } from "@/lib/password";
@@ -40,6 +47,8 @@ type Outcome =
 interface FieldMessage {
   field: FieldName;
   message: string;
+  /** Free alternatives the engine sent with a taken handle. */
+  suggestions?: string[];
 }
 
 /** A toast's colour and its screen-reader urgency both come from this. */
@@ -57,8 +66,10 @@ export function SignUpForm(): ReactNode {
   const [usePassword, setUsePassword] = useState(true);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [hasTypedPassword, setHasTypedPassword] = useState(false);
+  const [hasLeftHandle, setHasLeftHandle] = useState(false);
 
   const [fieldMessage, setFieldMessage] = useState<FieldMessage | null>(null);
   const [serverMissing, setServerMissing] = useState<readonly string[]>([]);
@@ -67,9 +78,37 @@ export function SignUpForm(): ReactNode {
 
   const router = useRouter();
   const criteriaId = useId();
+  const handleStatusId = useId();
   const emailRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  // A handle is only asked for in password mode: the magic-link path posts to an
+  // endpoint that provisions the account itself and has nowhere to put one.
+  const handle = useUsernameAvailability(username, {
+    name,
+    enabled: usePassword && !outcome,
+  });
+
+  const trimmedHandle = username.trim();
+
+  /**
+   * Holds a shape complaint back until the value could plausibly satisfy the
+   * rules, or until the field has been left.
+   *
+   * The hook answers a shape problem on the first keystroke, which is right for
+   * the hook and wrong for the field: "must be at least 3 characters" under a
+   * one-character handle marks it red for the act of starting to fill it in. The
+   * rule the user has not finished typing is already stated as the hint.
+   */
+  const isHandleJudged =
+    hasLeftHandle || [...trimmedHandle].length >= USERNAME_MIN_LENGTH;
+
+  const handleError =
+    isHandleJudged && (handle.status === "invalid" || handle.status === "unavailable")
+      ? (handle.message ?? "Choose a different username.")
+      : undefined;
 
   const localCriteria = useMemo(
     () => (config ? evaluatePassword(password, config.passwordRules) : []),
@@ -89,7 +128,13 @@ export function SignUpForm(): ReactNode {
 
   const focusField = useCallback((field: FieldName) => {
     const target =
-      field === "email" ? emailRef.current : field === "password" ? passwordRef.current : nameRef.current;
+      field === "email"
+        ? emailRef.current
+        : field === "password"
+          ? passwordRef.current
+          : field === "username"
+            ? usernameRef.current
+            : nameRef.current;
     target?.focus();
   }, []);
 
@@ -110,7 +155,11 @@ export function SignUpForm(): ReactNode {
         return;
       }
 
-      setFieldMessage({ field: presented.field, message: presented.message });
+      setFieldMessage({
+        field: presented.field,
+        message: presented.message,
+        suggestions: presented.suggestions,
+      });
       if (presented.missingCriteria) setServerMissing(presented.missingCriteria);
       focusField(presented.field);
     },
@@ -143,7 +192,30 @@ export function SignUpForm(): ReactNode {
         return;
       }
 
-      const result = await signUp({ email, password, name: trimmedName || undefined });
+      // A refusal the probe already reported is refused here rather than sent: the
+      // engine would answer the same thing after hashing a password for an account
+      // it was never going to create. A handle still being checked is sent anyway —
+      // the probe is guidance and the server is the authority, so waiting on it
+      // would make the button feel stuck for no gain.
+      if (
+        trimmedHandle !== "" &&
+        (handle.status === "invalid" || handle.status === "unavailable")
+      ) {
+        setFieldMessage({
+          field: "username",
+          message: handle.message ?? "Choose a different username.",
+          suggestions: handle.suggestions,
+        });
+        focusField("username");
+        return;
+      }
+
+      const result = await signUp({
+        email,
+        password,
+        name: trimmedName || undefined,
+        username: trimmedHandle || undefined,
+      });
       if (!result.ok) {
         present(result.error);
         return;
@@ -170,7 +242,7 @@ export function SignUpForm(): ReactNode {
         missingCriteria: result.policyWarning?.missingCriteria,
       });
     },
-    [config, email, name, password, usePassword, focusField, present, sendMagicLink, signUp],
+    [config, email, name, trimmedHandle, password, usePassword, handle, focusField, present, sendMagicLink, signUp],
   );
 
   if (isConfigLoading || (!config && !configError)) return <FormSkeleton />;
@@ -275,6 +347,54 @@ export function SignUpForm(): ReactNode {
         {isPasswordMode && (
           <div className="flex flex-col gap-sm">
             <FormField
+              label="Username"
+              hint={`Optional. ${USERNAME_RULE_HINT}.`}
+              error={fieldMessage?.field === "username" ? fieldMessage.message : handleError}
+            >
+              <Input
+                ref={usernameRef}
+                type="text"
+                name="username"
+                value={username}
+                isMonospace
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="alexsmith"
+                aria-describedby={handleStatusId}
+                leftIcon={<span className="font-mono text-caption">@</span>}
+                onBlur={() => setHasLeftHandle(true)}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  if (fieldMessage?.field === "username") setFieldMessage(null);
+                }}
+              />
+            </FormField>
+
+            <HandleStatus
+              id={handleStatusId}
+              status={handle.status}
+              canonical={handle.canonical}
+              typed={trimmedHandle}
+            />
+
+            {/* Whichever list is fresher. The submit-time one came from the engine
+                a moment ago and describes the value in the box; the probe's is
+                replaced on the next keystroke. */}
+            <Suggestions
+              options={fieldMessage?.suggestions ?? handle.suggestions}
+              onPick={(pick) => {
+                setUsername(pick);
+                setFieldMessage(null);
+                usernameRef.current?.focus();
+              }}
+            />
+          </div>
+        )}
+
+        {isPasswordMode && (
+          <div className="flex flex-col gap-sm">
+            <FormField
               label="Password"
               isRequired
               error={fieldMessage?.field === "password" ? fieldMessage.message : undefined}
@@ -350,6 +470,99 @@ export function SignUpForm(): ReactNode {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The live verdict on the handle, as prose.
+ *
+ * Only the states the field itself cannot show land here. A refusal — bad shape,
+ * already taken — is the field's `error`, and repeating it underneath would read
+ * as two problems. What is left is the waiting state, the confirmation, and the
+ * one case that is neither: a probe that could not reach the server, which must
+ * not look like a refusal because the handle may well be free.
+ *
+ * Rendered even when it has nothing to say. The field points at this node with
+ * `aria-describedby`, and a live region has to be in the document before its text
+ * changes or the change is never announced.
+ */
+function HandleStatus({
+  id,
+  status,
+  canonical,
+  typed,
+}: {
+  id: string;
+  status: UsernameStatus;
+  canonical: string | null;
+  typed: string;
+}): ReactNode {
+  // Worth saying only when the stored form differs from what was typed, so
+  // someone who entered `AlexSmith` learns the handle is held as `alexsmith`
+  // before they find out from their profile.
+  const isFolded = canonical !== null && canonical !== typed;
+
+  const text =
+    status === "checking"
+      ? "Checking availability…"
+      : status === "available"
+        ? isFolded
+          ? `Available, and saved as @${canonical}.`
+          : "Available."
+        : status === "error"
+          ? "Could not check this username right now. You can still submit it."
+          : "";
+
+  const tone =
+    status === "available"
+      ? "text-accent-green"
+      : status === "error"
+        ? "text-accent-yellow"
+        : "text-mute";
+
+  return (
+    <span id={id} role="status" aria-live="polite" className={`text-caption ${tone}`}>
+      {text}
+    </span>
+  );
+}
+
+/**
+ * Free alternatives, as buttons rather than text.
+ *
+ * The engine generates these knowing which ones are actually unclaimed, so the
+ * useful action is taking one — retyping a name from a sentence is the work this
+ * saves. `type="button"` is load-bearing: the shared Button sets no default type,
+ * and a typeless button inside a form submits it, so a tap meant to fill the field
+ * would post the form with the old value still in it.
+ */
+function Suggestions({
+  options,
+  onPick,
+}: {
+  options: readonly string[];
+  onPick: (username: string) => void;
+}): ReactNode {
+  if (options.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-xs">
+      <span className="text-caption text-mute">These are free:</span>
+      <div className="flex flex-wrap gap-xs">
+        {options.map((option) => (
+          <Button
+            key={option}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="font-mono"
+            onClick={() => onPick(option)}
+          >
+            @{option}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
 

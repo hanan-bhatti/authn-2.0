@@ -48,4 +48,13 @@ export const env = {
    * cosmetic loss, and refusing to boot over one would be a worse trade.
    */
   appVersion: process.env.NEXT_PUBLIC_AUTHN_APP_VERSION ?? "0.0.0-dev",
+
+  /**
+   * Where the documentation is published, with no trailing slash.
+   *
+   * Empty until a docs site exists. Help text is written to stand on its own and
+   * `docs.ts` only adds a link when this is set, so an unset value costs the
+   * reader nothing — it does not leave a button that goes nowhere.
+   */
+  docsUrl: (process.env.NEXT_PUBLIC_AUTHN_DOCS_URL ?? "").replace(/\/+$/, ""),
 } as const;

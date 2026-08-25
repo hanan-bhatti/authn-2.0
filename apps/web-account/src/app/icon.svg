@@ -1,0 +1,57 @@
+<!--
+  Authn Platform — Browser and tab mark
+  File: apps/web-account/src/app/icon.svg
+
+  Picked up by Next's file convention: the name and location are the wiring, so
+  there is no <link rel="icon"> to keep in step with it.
+
+  A keyhole rather than a letter. The mark is read at 16 physical pixels in a tab
+  strip, and at that size a glyph has room for one circle and one wedge — a
+  Domaine "A" traced to paths loses its thin strokes to the pixel grid and the
+  result is a grey smudge no reader distinguishes from the tab beside it.
+
+  Colours are literals, not tokens. An icon file is fetched by the browser
+  outside the page, so it inherits no custom properties: a var() here resolves to
+  nothing, and a fill that resolves to nothing paints black on black.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    Not full-bleed. Chrome and Safari both round and inset a tab icon, and a mark
+    drawn to the edges loses its outermost pixel row to that; the 1-unit inset is
+    what keeps the plaque's own corners intact.
+  -->
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="#0a0a0c" />
+  <!--
+    The frame's colour is `#11ff99` at 28% already composited over the plaque, not
+    the accent with a `stroke-opacity`. An icon file is rasterised by things that
+    are not browsers — an OS icon cache, an ImageMagick call in a build script, a
+    feed reader — and the weaker of those renderers drop opacity attributes while
+    honouring the colour, which turns a 28% hairline into a solid green ring. A
+    pre-composited literal cannot be misread: there is nothing to blend.
+  -->
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="none" stroke="#0c4f34" stroke-width="1.5" />
+
+  <!--
+    Bore and keyway as two overlapping shapes of one colour rather than one
+    stitched outline. Two primitives can be reasoned about exactly — a circle at a
+    stated centre and radius, a quadrilateral at four stated corners — where a
+    single path would need an arc endpoint computed to agree with the taper, and
+    an arc that misses by a fraction of a unit shows a notch at the join. The
+    5.7-unit overlap means there is no join to show.
+
+    Filled solid, with no inner hole punched. At 16 physical pixels the hole would
+    be about one pixel of near-black inside green, which renders as mud rather
+    than as an aperture; the silhouette is what carries "keyhole" at this size.
+
+    The glyph spans 6.5 to 25 of 32 — 58% of the height, with 5.5 units of air
+    above it and 7 below. The asymmetry is the point: the keyway is at its widest
+    at the bottom, so equal margins make the mark sit visibly low in its plaque.
+  -->
+  <circle cx="16" cy="12.2" r="5.7" fill="#11ff99" />
+  <!--
+    The keyway widens on the way down. Drawn parallel it reads as a keypad glyph
+    or an exclamation mark; the taper is the whole difference. It stays narrower
+    than the bore at every point, which is what gives the silhouette its waist.
+  -->
+  <path fill="#11ff99" d="M14.15 12.2h3.7L19.7 25H12.3l1.85-12.8Z" />
+</svg>

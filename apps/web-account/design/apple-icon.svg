@@ -1,0 +1,48 @@
+<!--
+  Authn Platform — iOS home-screen icon source
+  File: apps/web-account/design/apple-icon.svg
+
+  The source for `../src/app/apple-icon.png`, which is the committed artefact. iOS
+  ignores an SVG for a home-screen bookmark, so this file is never served — it is
+  the artboard the PNG is rendered from:
+
+    convert -background '#0a0a0c' -density 384 apps/web-account/design/apple-icon.svg \
+      -resize 180x180 -alpha remove -alpha off -depth 8 \
+      apps/web-account/src/app/apple-icon.png
+
+  A separate artboard from `../src/app/icon.svg` rather than the same drawing at a
+  second size, because the two targets disagree about who owns the corners. A
+  browser tab does not mask its favicon, so that mark carries its own rounded
+  plaque and a hairline frame — without them the glyph floats loose in the tab
+  strip with nothing separating it from the strip's own background. iOS *does*
+  mask, to a squircle it draws itself, so the same plaque here would be rounded
+  twice: dark wedges outside iOS's curve, and the frame surviving inside it as a
+  second inset outline.
+
+  Kept out of `src/app` on purpose. Next resolves icons by filename, and anything
+  matching `apple-icon*.{svg,png,…}` in that directory becomes a served asset — so
+  a source file parked beside its own output would be picked up as a second icon.
+
+  The glyph is 60% of the canvas here against 62% of the plaque in `icon.svg`,
+  which is the same optical size. Colours are literals for the same reason as
+  there: an icon is rasterised outside any page and inherits no custom properties.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <!--
+    Full-bleed and square. The PNG must have no alpha and no rounding of its own;
+    both are iOS's to apply, and an icon that arrives pre-cut is cut again.
+  -->
+  <rect width="180" height="180" fill="#0a0a0c" />
+
+  <!--
+    Bore and keyway, as in `icon.svg`: two overlapping shapes of one colour, so
+    the seam between them is inside the overlap rather than on a computed arc
+    endpoint. 33 units of overlap here.
+
+    Spans y=34 to y=142, leaving 34 above and 38 below. More air underneath
+    because the keyway is at its widest there — equal margins make the mark sit
+    visibly low.
+  -->
+  <circle cx="90" cy="67" r="33" fill="#11ff99" />
+  <path fill="#11ff99" d="M79.3 67h21.4L111.4 142H68.6L79.3 67Z" />
+</svg>

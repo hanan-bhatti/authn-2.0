@@ -11,12 +11,16 @@
 
 import type { ReactNode } from "react";
 import { AuthnProvider } from "@authn/react";
+import { ToastProvider } from "@authn/ui";
 import { env } from "@/lib/env";
 
 export function Providers({ children }: { children: ReactNode }): ReactNode {
   return (
     <AuthnProvider publishableKey={env.publishableKey} endpoint={env.apiUrl}>
-      {children}
+      {/* Inside the auth provider, not outside it: a hook that reports a failed
+          save needs both, and nesting the other way round would leave the toast
+          API unreachable from anything that also reads the session. */}
+      <ToastProvider>{children}</ToastProvider>
     </AuthnProvider>
   );
 }

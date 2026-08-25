@@ -5,7 +5,7 @@
 
 import { AuthnErrorCode, type AuthnError } from "@authn/js";
 
-export type FieldName = "email" | "password" | "name";
+export type FieldName = "email" | "password" | "name" | "username" | "identifier";
 
 /**
  * Presented carries exactly one destination.
@@ -17,8 +17,18 @@ export type FieldName = "email" | "password" | "name";
  * to say everything they cannot act on, goes to the toast.
  */
 export type Presented =
-  | { field: FieldName; message: string; missingCriteria?: string[] }
+  | { field: FieldName; message: string; missingCriteria?: string[]; suggestions?: string[] }
   | { toast: { title: string; description?: string } };
+
+/**
+ * Sign-in adds a third destination: a message about the submission as a whole.
+ *
+ * Wrong credentials are the case that needs it. Which of the two fields was wrong
+ * is not knowable — deliberately, since answering it would confirm that an
+ * account exists — so pinning the message to either one states something the
+ * engine did not say and sends the user to re-type a value that may be correct.
+ */
+export type PresentedSignIn = Presented | { form: string };
 
 function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -46,10 +56,16 @@ export function presentSignUpError(error: AuthnError): Presented {
   const missingCriteria = asStringArray(details?.["missing_criteria"]);
 
   // The SDK validates before sending and names the field it rejected. That is
-  // the most specific signal available, so it wins.
+  // the most specific signal available, so it wins. The engine names one too —
+  // a taken handle is a conflict on `username` rather than on the registration —
+  // and sends alternatives with it.
   const declaredField = details?.["field"];
   if (typeof declaredField === "string" && isFieldName(declaredField)) {
-    return { field: declaredField, message: error.message };
+    return {
+      field: declaredField,
+      message: error.message,
+      suggestions: asStringArray(details?.["suggestions"]),
+    };
   }
 
   switch (error.code) {
@@ -133,6 +149,87 @@ export function presentSignUpError(error: AuthnError): Presented {
   }
 }
 
+/**
+ * Decides where a sign-in refusal belongs.
+ *
+ * The set of things that can go wrong here barely overlaps sign-up's, which is
+ * why this is a second function rather than a flag on the first. Nothing is a
+ * conflict, nothing names a password rule, and the one case that dominates in
+ * practice — wrong credentials — belongs to neither field.
+ */
+export function presentSignInError(error: AuthnError): PresentedSignIn {
+  const details = error.details;
+
+  const declaredField = details?.["field"];
+  if (typeof declaredField === "string" && isFieldName(declaredField)) {
+    return { field: declaredField, message: error.message };
+  }
+
+  switch (error.code) {
+    case AuthnErrorCode.INVALID_CREDENTIALS:
+      return { form: "That email or username and password do not match an account." };
+
+    // The password was right. Saying so is safe — the account holder is standing
+    // there — and saying anything vaguer sends them into a password reset that
+    // will succeed and change nothing about why they cannot get in.
+    case AuthnErrorCode.EMAIL_VERIFICATION_REQUIRED:
+      return {
+        form: "Verify your email address before signing in. Open the link we sent you.",
+      };
+
+    case AuthnErrorCode.VALIDATION_ERROR:
+      return { form: "Check your details and try again." };
+
+    case AuthnErrorCode.RATE_LIMITED:
+      return {
+        toast: {
+          title: "Too many attempts",
+          description: retryHint(details) ?? "Wait a moment before trying again.",
+        },
+      };
+
+    case AuthnErrorCode.NETWORK_ERROR:
+    case AuthnErrorCode.TIMEOUT:
+      return {
+        toast: {
+          title: "Could not reach the server",
+          description: "Check your connection and try again.",
+        },
+      };
+
+    case AuthnErrorCode.ACCOUNT_DISABLED:
+      return {
+        toast: {
+          title: "This account cannot be used",
+          description: "Contact support to have it reviewed.",
+        },
+      };
+
+    case AuthnErrorCode.INVALID_CONFIG:
+    case AuthnErrorCode.INVALID_PUBLISHABLE_KEY:
+      return {
+        toast: {
+          title: "Sign-in is unavailable",
+          description: "This page is misconfigured. The site owner has been given the details.",
+        },
+      };
+
+    default:
+      return {
+        toast: {
+          title: "Could not sign you in",
+          description: error.isRetryable ? "Try again in a moment." : undefined,
+        },
+      };
+  }
+}
+
 function isFieldName(value: string): value is FieldName {
-  return value === "email" || value === "password" || value === "name";
+  return (
+    value === "email" ||
+    value === "password" ||
+    value === "name" ||
+    value === "username" ||
+    value === "identifier"
+  );
 }
