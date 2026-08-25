@@ -233,3 +233,148 @@ function isFieldName(value: string): value is FieldName {
     value === "identifier"
   );
 }
+
+/**
+ * Where a second-factor refusal belongs.
+ *
+ * This step has a destination the other two do not: the challenge itself can die
+ * while the screen is open. The token lives minutes, not hours, and once it has
+ * expired nothing on the page can revive it — a message under the code field
+ * would invite the user to retype a code that was never the problem. So an
+ * expired challenge is its own outcome, and the panel it goes to offers the way
+ * back to the password rather than another attempt.
+ */
+export type PresentedSecondFactor =
+  | { code: string }
+  | { restart: { title: string; description: string } }
+  | { toast: { title: string; description?: string } };
+
+/**
+ * @param method Which factor was being answered, because the same engine code
+ * means different things per method: `not_found` is a missing phone number for
+ * `sms` and a spent code for `backup_code`.
+ */
+export function presentSecondFactorError(
+  error: AuthnError,
+  method: "totp" | "sms" | "backup_code" | "passkey",
+): PresentedSecondFactor {
+  const details = error.details;
+
+  switch (error.code) {
+    case AuthnErrorCode.INVALID_MFA_CODE:
+      if (method === "backup_code") {
+        return { code: "That recovery code is not valid, or it has already been used." };
+      }
+      if (method === "sms") {
+        return { code: "That code is not right. Check the last message you received." };
+      }
+      return { code: "That code is not right. Check your authenticator app and try the current code." };
+
+    // `invalid_token` on this screen always means the challenge, not the code:
+    // the code is checked only after the token has been opened.
+    case AuthnErrorCode.UNAUTHORIZED:
+    case AuthnErrorCode.SESSION_EXPIRED:
+      return {
+        restart: {
+          title: "This sign-in attempt expired",
+          description:
+            "Two-step verification has a short window and this one has closed. Enter your password again to start a new attempt.",
+        },
+      };
+
+    // The engine checks the requested method against the sealed list inside the
+    // challenge token, not against the account's factors now. So this is reachable
+    // by a factor removed on another device mid-sign-in, and starting over is the
+    // fix — the new challenge will list what the account actually has.
+    case AuthnErrorCode.VALIDATION_ERROR:
+      return {
+        restart: {
+          title: "That method is no longer available",
+          description:
+            "The ways to verify this account have changed since this attempt started. Enter your password again to see the current options.",
+        },
+      };
+
+    case AuthnErrorCode.NOT_FOUND:
+      if (method === "sms") {
+        return {
+          toast: {
+            title: "No confirmed phone number",
+            description: "Text messages are not set up on this account. Use another method below.",
+          },
+        };
+      }
+      return {
+        toast: {
+          title: "That method is not set up",
+          description: "Choose another way to verify below.",
+        },
+      };
+
+    case AuthnErrorCode.RATE_LIMITED:
+      return {
+        toast: {
+          title: "Too many attempts",
+          description: retryHint(details) ?? "Wait a few minutes before trying again.",
+        },
+      };
+
+    // The passkey prompt was dismissed or timed out. Not a failure, and saying
+    // nothing at all leaves the button looking broken, so this is the one case
+    // that reports as information rather than as a refusal.
+    case AuthnErrorCode.CANCELLED:
+      return {
+        toast: {
+          title: "Passkey not used",
+          description: "The prompt closed before it finished. Try again when you are ready.",
+        },
+      };
+
+    case AuthnErrorCode.INVALID_PARAMS:
+      return {
+        toast: {
+          title: "This device cannot use your passkey",
+          description: typeof error.message === "string" ? error.message : undefined,
+        },
+      };
+
+    case AuthnErrorCode.NETWORK_ERROR:
+    case AuthnErrorCode.TIMEOUT:
+      return {
+        toast: {
+          title: "Could not reach the server",
+          description: "Check your connection and try again.",
+        },
+      };
+
+    case AuthnErrorCode.ACCOUNT_DISABLED:
+      return {
+        toast: {
+          title: "This account cannot be used",
+          description: "Contact support to have it reviewed.",
+        },
+      };
+
+    // `service_unavailable` lands here, which on this screen means the SMS
+    // provider refused the send. There is deliberately no email fallback during a
+    // login challenge, so the honest advice is another method.
+    case AuthnErrorCode.SERVER_ERROR:
+      return {
+        toast: {
+          title: method === "sms" ? "Could not send the code" : "Something went wrong",
+          description:
+            method === "sms"
+              ? "Text messages are not getting through right now. Use another method below."
+              : "Try again in a moment.",
+        },
+      };
+
+    default:
+      return {
+        toast: {
+          title: "Could not verify that",
+          description: error.isRetryable ? "Try again in a moment." : undefined,
+        },
+      };
+  }
+}

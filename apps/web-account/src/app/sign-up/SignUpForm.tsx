@@ -264,7 +264,7 @@ export function SignUpForm(): ReactNode {
     return (
       <Confirmation
         outcome={outcome}
-        onContinue={() => router.push("/")}
+        onContinue={() => router.push("/account")}
         // In hard mode an unverified account cannot use the session it was just
         // given, so offering a way in would hand the user a door that is locked
         // on the other side.

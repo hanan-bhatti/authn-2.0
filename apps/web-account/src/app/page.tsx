@@ -1,16 +1,24 @@
-import { Button } from "@authn/ui";
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { env } from "@/lib/env";
+import { HomeActions } from "./HomeActions";
 
 /**
  * Authn Platform — Account app index
  * File: apps/web-account/src/app/page.tsx
  *
- * Placeholder. Exercises one token from each family and one @authn/ui component
- * so that a scaffold problem — Tailwind not scanning the package, a webfont not
- * resolving — shows up here rather than inside a real page.
+ * The way in. Everything a visitor can reach without being signed in leads from
+ * here, and a visitor who already has a session is offered their account rather
+ * than being asked to sign in again.
  */
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Your account",
+  description:
+    "Sign in to manage your profile, sessions, devices, two-step verification and recovery options.",
+};
+
+export default function Home(): ReactNode {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-xl px-xl">
       <p className="font-mono text-caption tracking-wide text-mute uppercase">
@@ -20,13 +28,11 @@ export default function Home() {
       <h1 className="font-display text-display-lg text-ink">Your account</h1>
 
       <p className="text-body-md text-charcoal">
-        Sign in, manage your sessions and devices, and secure your account.
+        One place for your profile, the devices you are signed in on, two-step
+        verification and how you get back in if you lose access.
       </p>
 
-      <div className="flex gap-md">
-        <Button variant="primary">Sign in</Button>
-        <Button variant="secondary">Create account</Button>
-      </div>
+      <HomeActions />
     </main>
   );
 }

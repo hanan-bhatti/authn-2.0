@@ -15,8 +15,9 @@ import {
 import { useRouter } from "next/navigation";
 import { Button, FormField, Input, Skeleton, Toast } from "@authn/ui";
 import { useAppConfig, useMagicLink, useSignIn } from "@authn/react";
-import type { AuthnError, TwoFactorMethod } from "@authn/js";
+import type { AuthnError, AuthnUser, TwoFactorMethod } from "@authn/js";
 import { presentSignInError, type FieldName } from "@/lib/authError";
+import { SecondFactorPanel } from "./SecondFactorPanel";
 
 /**
  * What the form is asking for.
@@ -33,7 +34,12 @@ type Mode = "password" | "link";
  */
 type Outcome =
   | { kind: "linkSent"; email: string }
-  | { kind: "secondFactor"; methods: readonly TwoFactorMethod[] };
+  | {
+      kind: "secondFactor";
+      methods: readonly TwoFactorMethod[];
+      mfaToken: string;
+      user: AuthnUser;
+    };
 
 interface FieldMessage {
   field: FieldName;
@@ -153,11 +159,19 @@ export function SignInForm(): ReactNode {
       }
 
       if (result.mfaRequired) {
-        setOutcome({ kind: "secondFactor", methods: result.methods });
+        setOutcome({
+          kind: "secondFactor",
+          methods: result.methods,
+          mfaToken: result.mfaToken,
+          user: result.user,
+        });
         return;
       }
 
-      router.push("/");
+      // `replace` rather than `push`: going back to a sign-in form you have
+      // already used is never what the back button was for, and the guard on
+      // `/account` would only bounce a signed-in visitor straight back here.
+      router.replace("/account");
     },
     [identifier, password, mode, focusField, present, router, sendMagicLink, signIn],
   );
@@ -174,6 +188,26 @@ export function SignInForm(): ReactNode {
           Try again
         </Button>
       </div>
+    );
+  }
+
+  if (outcome?.kind === "secondFactor") {
+    return (
+      <SecondFactorPanel
+        mfaToken={outcome.mfaToken}
+        methods={outcome.methods}
+        user={outcome.user}
+        // The challenge token cannot be renewed, so starting again means
+        // presenting the password again. The identifier is kept and the password
+        // cleared: the address was not what expired.
+        onRestart={() => {
+          setOutcome(null);
+          setPassword("");
+          setFieldMessage(null);
+          setFormMessage(null);
+          setToast(null);
+        }}
+      />
     );
   }
 
@@ -305,51 +339,19 @@ export function SignInForm(): ReactNode {
   );
 }
 
-function OutcomePanel({ outcome }: { outcome: Outcome }): ReactNode {
-  if (outcome.kind === "linkSent") {
-    return (
-      <div className="flex flex-col gap-md">
-        <h2 className="font-display text-heading-sm text-ink">Check your email</h2>
-        <p className="text-body-sm text-charcoal">
-          A sign-in link is on its way to{" "}
-          <span className="font-mono text-ink">{outcome.email}</span>. Opening it signs you in.
-        </p>
-        <p className="text-caption text-mute">
-          The link is single-use and expires shortly.
-        </p>
-      </div>
-    );
-  }
-
-  // The password was accepted and nothing was signed in: the engine holds a
-  // challenge token and wants a second factor. The screen that spends it is a
-  // separate page that does not exist yet, so this says where the attempt
-  // stopped rather than pretending it finished.
+function OutcomePanel({ outcome }: { outcome: Extract<Outcome, { kind: "linkSent" }> }): ReactNode {
   return (
     <div className="flex flex-col gap-md">
-      <h2 className="font-display text-heading-sm text-ink">Two-step verification required</h2>
+      <h2 className="font-display text-heading-sm text-ink">Check your email</h2>
       <p className="text-body-sm text-charcoal">
-        Your password was accepted. This account also needs{" "}
-        {describeMethods(outcome.methods)}, and that step is not available on this page yet.
+        A sign-in link is on its way to{" "}
+        <span className="font-mono text-ink">{outcome.email}</span>. Opening it signs you in.
       </p>
-      <p className="text-caption text-mute">You have not been signed in.</p>
+      <p className="text-caption text-mute">
+        The link is single-use and expires shortly.
+      </p>
     </div>
   );
-}
-
-const METHOD_LABELS: Record<TwoFactorMethod, string> = {
-  totp: "a code from your authenticator app",
-  passkey: "your passkey",
-  sms: "a code sent by text message",
-  backup_code: "a recovery code",
-};
-
-/** Names the factors in prose, so the panel reads as a sentence rather than a list. */
-function describeMethods(methods: readonly TwoFactorMethod[]): string {
-  const labels = methods.map((method) => METHOD_LABELS[method]).filter(Boolean);
-  if (labels.length === 0) return "a second factor";
-  if (labels.length === 1) return labels[0]!;
-  return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
 }
 
 function FormSkeleton(): ReactNode {
