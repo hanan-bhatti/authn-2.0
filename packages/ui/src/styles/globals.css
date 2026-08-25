@@ -78,6 +78,16 @@
   --color-accent-orange: #ff801f;
   --color-accent-orange-glow: rgba(255, 89, 0, 0.22);
   --color-accent-yellow: #ffc53d;
+  /* Deeper and less transparent than the solid, like every other pair here: a
+     wash the same hue as the mark it sits behind flattens the two together.
+     Yellow's alpha sits with green's rather than with blue's because both are
+     near the top of the luminance range on a black canvas, where a wash at 0.34
+     stops reading as atmosphere and starts reading as a filled panel.
+
+     Its absence used to be a trap rather than a gap — a presentation attribute
+     holding an undefined `var()` resolves to black, not to nothing, so an SVG
+     that reached for this token drew a black shape instead of no shape. */
+  --color-accent-yellow-glow: rgba(255, 170, 0, 0.18);
   --color-accent-blue: #3b9eff;
   --color-accent-blue-glow: rgba(0, 117, 255, 0.34);
   --color-accent-green: #11ff99;
@@ -254,6 +264,14 @@
   --animate-enter-fade: enter-fade var(--duration-fast) var(--ease-entrance);
   --animate-enter-scale: enter-scale var(--duration-fast) var(--ease-entrance);
   --animate-enter-rise: enter-rise var(--duration-standard) var(--ease-entrance);
+
+  /* An edge-anchored panel arriving from off-screen, for a navigation drawer.
+     Distinct from `rise` because the distance is the viewport's edge rather than
+     eight pixels: the same duration over that travel reads as a jump, and the
+     same easing over it is what makes the panel look attached to the edge it
+     came from rather than dropped onto the page. */
+  --animate-enter-slide-left: enter-slide-left var(--duration-standard)
+    var(--ease-entrance);
 }
 
 /* ==========================================================================
@@ -482,6 +500,16 @@ body {
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+}
+
+/* No opacity ramp, unlike the other three. A drawer travels its own width, so it
+   is already visibly arriving; fading it as well makes the leading edge
+   translucent over the scrim and the panel looks like it is dissolving into the
+   page rather than sliding over it. */
+@keyframes enter-slide-left {
+  from {
+    transform: translateX(-100%);
   }
 }
 

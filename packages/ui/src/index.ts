@@ -5,6 +5,13 @@
 
 // Utilities
 export * from "./utils/cn.js";
+export * from "./utils/accent.js";
+
+// Icons
+export * from "./icons/index.js";
+
+// Illustrations
+export * from "./illustrations/index.js";
 
 // Actions
 export * from "./components/actions/Button.js";
@@ -55,5 +62,6 @@ export * from "./components/overlays/Sheet.js";
 export * from "./components/overlays/CommandMenu.js";
 export * from "./components/overlays/Popover.js";
 export * from "./components/overlays/Toast.js";
+export * from "./components/overlays/ToastProvider.js";
 export * from "./components/overlays/Skeleton.js";
 export * from "./components/overlays/EmptyState.js";

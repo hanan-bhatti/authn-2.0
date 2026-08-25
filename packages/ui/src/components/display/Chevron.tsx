@@ -6,6 +6,20 @@ export interface ChevronProps extends React.SVGProps<SVGSVGElement> {
   size?: "sm" | "md" | "lg";
 }
 
+/**
+ * The set's disclosure and separator arrow.
+ *
+ * Drawn on the same 24-unit grid at the same 1.5 weight as every icon, because
+ * this is the one glyph that routinely sits directly beside one — a tree row's
+ * chevron next to the row's own icon — and a quarter-unit of extra weight there
+ * reads as two different icon sets sharing a row.
+ *
+ * A lighter stroke needs more length to hold the same optical presence, so the
+ * arms run 4.75 to 19.25 rather than the 6 to 18 a 2-unit stroke can get away
+ * with. Rotation rather than four paths keeps the four directions identical, and
+ * makes the open/closed transition on a tree row a transform the compositor can
+ * animate.
+ */
 export const Chevron: React.FC<ChevronProps> = ({
   direction = "right",
   size = "md",
@@ -35,12 +49,14 @@ export const Chevron: React.FC<ChevronProps> = ({
       )}
       fill="none"
       viewBox="0 0 24 24"
-      strokeWidth="2"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
       {...props}
     >
-      <polyline points="9 18 15 12 9 6"></polyline>
+      <path d="M8.75 4.75 16 12l-7.25 7.25" />
     </svg>
   );
 };

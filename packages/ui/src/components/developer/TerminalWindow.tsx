@@ -33,7 +33,7 @@ export const TerminalWindow: React.FC<TerminalWindowProps> = ({
       </div>
 
       <div className="p-4 overflow-x-auto">
-        <SyntaxHighlighter code={output} language={language} />
+        <SyntaxHighlighter code={output} language={language} lineNumbers={false} />
       </div>
     </div>
   );

@@ -4,6 +4,16 @@ import { cn } from "../../utils/cn.js";
 export interface SyntaxHighlighterProps {
   code: string;
   language?: "json" | "javascript" | "bash" | "go" | "html";
+  /**
+   * The gutter. On by default, because the usual caller is a code block or a
+   * payload, where a number is how a reader points at a line in conversation.
+   *
+   * Off for a terminal transcript, which has no lines to point at: a shell prints
+   * output, it does not hold a numbered document, and a gutter beside `$ authn
+   * sessions list` claims the reader could refer to "line 3" of something that
+   * will never exist again.
+   */
+  lineNumbers?: boolean;
   className?: string;
 }
 
@@ -66,21 +76,38 @@ function tokenize(line: string): Token[] {
 }
 
 interface CodeLineProps {
-  number: number;
+  number: number | undefined;
   tokens: Token[];
 }
 
 const CodeLine: React.FC<CodeLineProps> = ({ number, tokens }) => (
   <div className="table-row">
-    <span className="table-cell w-8 pr-4 text-right font-mono text-[11px] text-stone select-none">
-      {number}
-    </span>
+    {number === undefined ? null : (
+      <span className="table-cell w-8 pr-4 text-right font-mono text-[11px] text-stone select-none">
+        {number}
+      </span>
+    )}
     <span className="table-cell font-mono text-xs text-ink whitespace-pre">
-      {tokens.map((token, i) => (
-        <span key={i} className={token.className}>
-          {token.text}
-        </span>
-      ))}
+      {/*
+        A cell holding no text generates no line box and collapses to nothing, so
+        the blank line a snippet uses to separate two statements closes up and the
+        statements run together — while the gutter beside it goes on counting, which
+        leaves the numbers claiming a line that is not there.
+
+        `<br>` is what fills it rather than a space or a zero-width character: it
+        gives the cell exactly one line box, it tracks the leading instead of
+        hardcoding a height that has to be kept in step with it, and a hand-made
+        selection across the block copies it back as the newline it actually is.
+      */}
+      {tokens.every((token) => token.text === "") ? (
+        <br />
+      ) : (
+        tokens.map((token, i) => (
+          <span key={i} className={token.className}>
+            {token.text}
+          </span>
+        ))
+      )}
     </span>
   </div>
 );
@@ -103,7 +130,8 @@ function highlight(code: string, language: SyntaxHighlighterProps["language"]): 
  *
  * Only JSON is tokenized. Any other language is still numbered and set in the
  * mono family, so a bash or Go snippet keeps the same gutter and rhythm as the
- * payload it sits beside instead of falling back to unstyled text.
+ * payload it sits beside instead of falling back to unstyled text — unless the
+ * caller turns the gutter off, which is what a terminal transcript does.
  *
  * Deliberately hook-free: highlighting a payload is something a docs page wants
  * to do on the server, and a `useMemo` here would force every importing page
@@ -112,6 +140,7 @@ function highlight(code: string, language: SyntaxHighlighterProps["language"]): 
 export const SyntaxHighlighter: React.FC<SyntaxHighlighterProps> = ({
   code,
   language = "json",
+  lineNumbers = true,
   className,
 }) => {
   const lines = highlight(code, language);
@@ -120,7 +149,7 @@ export const SyntaxHighlighter: React.FC<SyntaxHighlighterProps> = ({
     <div className={cn("overflow-x-auto font-mono text-xs leading-relaxed", className)}>
       <div className="table w-full border-collapse">
         {lines.map((tokens, i) => (
-          <CodeLine key={i} number={i + 1} tokens={tokens} />
+          <CodeLine key={i} number={lineNumbers ? i + 1 : undefined} tokens={tokens} />
         ))}
       </div>
     </div>
