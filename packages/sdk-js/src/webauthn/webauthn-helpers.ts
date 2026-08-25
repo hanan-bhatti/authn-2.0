@@ -181,3 +181,79 @@ export function formatRequestCredential(
     clientExtensionResults: credential.getClientExtensionResults(),
   };
 }
+
+/** The ceremony outcomes worth telling apart from a generic failure. */
+export type PasskeyCeremonyOutcome = "cancelled" | "already-registered" | "unsupported";
+
+/**
+ * Whether this browser can run a passkey ceremony at all.
+ *
+ * A sign-in screen has to know before it offers the option: the engine lists
+ * `passkey` among an account's methods because the account has a credential
+ * enrolled, which says nothing about the browser now in front of it. Offered
+ * anyway, the button reaches `navigator.credentials` and throws a TypeError,
+ * which reads as a fault rather than as an unsupported browser.
+ *
+ * Requires a secure context, because WebAuthn is unavailable over plain HTTP
+ * except on localhost — where `isSecureContext` is already true.
+ */
+export function isPasskeySupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.isSecureContext &&
+    typeof window.PublicKeyCredential === "function" &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.credentials?.get === "function"
+  );
+}
+
+/**
+ * Translates what the authenticator threw into the SDK's own error vocabulary.
+ *
+ * The browser reports every outcome of a ceremony as a `DOMException`, and the
+ * one that matters most is not a failure: dismissing the system prompt and
+ * letting it time out both arrive as `NotAllowedError`. Left unmapped it reaches
+ * the caller as `UNKNOWN` carrying the browser's own sentence — "The operation
+ * either timed out or was not allowed" — so a person who changed their mind is
+ * shown an error they cannot act on.
+ *
+ * Returns null for anything that is not a recognised ceremony outcome, leaving
+ * the caller's generic handling in place.
+ */
+export function mapCeremonyError(
+  err: unknown,
+): { outcome: PasskeyCeremonyOutcome; message: string } | null {
+  const name = err instanceof Error ? err.name : "";
+
+  switch (name) {
+    case "NotAllowedError":
+    case "AbortError":
+      return {
+        outcome: "cancelled",
+        message: "The passkey prompt was dismissed or timed out.",
+      };
+    case "InvalidStateError":
+      return {
+        outcome: "already-registered",
+        message: "This device already has a passkey for this account.",
+      };
+    case "NotSupportedError":
+      return {
+        outcome: "unsupported",
+        message: "This device cannot create a passkey of the kind this account requires.",
+      };
+    case "SecurityError":
+      return {
+        outcome: "unsupported",
+        message: "Passkeys need a secure connection to this exact domain.",
+      };
+    case "ConstraintError":
+      return {
+        outcome: "unsupported",
+        message:
+          "This device cannot satisfy the passkey requirements — a screen lock may be missing.",
+      };
+    default:
+      return null;
+  }
+}

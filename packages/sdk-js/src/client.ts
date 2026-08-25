@@ -146,6 +146,7 @@ import {
 import {
   formatCreationCredential,
   formatRequestCredential,
+  mapCeremonyError,
   prepareCreationOptions,
   prepareRequestOptions,
 } from "./webauthn/webauthn-helpers";
@@ -2261,7 +2262,7 @@ export class AuthnClient {
         credential: formattedCredential,
       });
     } catch (err) {
-      return this.handleError(err, "registerPasskey");
+      return this.handleError(this.asCeremonyError(err), "registerPasskey");
     }
   }
 
@@ -2291,8 +2292,31 @@ export class AuthnClient {
         credential: formattedCredential,
       });
     } catch (err) {
-      return this.handleError(err, "loginWithPasskey");
+      return this.handleError(this.asCeremonyError(err), "loginWithPasskey");
     }
+  }
+
+  /**
+   * Names the ceremony outcomes the browser reports as generic DOMExceptions.
+   *
+   * Passed through unchanged, a dismissed system prompt reaches the caller as
+   * `UNKNOWN` — indistinguishable from a real fault, so a UI cannot tell "you
+   * changed your mind" from "something broke". Anything unrecognised is returned
+   * as it came, so this narrows the vocabulary without swallowing detail.
+   */
+  private asCeremonyError(err: unknown): unknown {
+    if (err instanceof AuthnError) return err;
+    const mapped = mapCeremonyError(err);
+    if (!mapped) return err;
+    return new AuthnError({
+      message: mapped.message,
+      code:
+        mapped.outcome === "cancelled"
+          ? AuthnErrorCode.CANCELLED
+          : AuthnErrorCode.INVALID_PARAMS,
+      details: { passkey_outcome: mapped.outcome },
+      cause: err,
+    });
   }
 
   private notifyListeners(): void {

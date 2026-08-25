@@ -115,7 +115,10 @@ export {
   formatCreationCredential,
   prepareRequestOptions,
   formatRequestCredential,
+  isPasskeySupported,
+  mapCeremonyError,
 } from "./webauthn";
+export type { PasskeyCeremonyOutcome } from "./webauthn";
 
 // Username handle rules — shared with the engine, so a form can validate the
 // shape of a handle without a round trip and word the failure the same way.

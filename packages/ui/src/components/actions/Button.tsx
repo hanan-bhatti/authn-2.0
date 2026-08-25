@@ -3,15 +3,62 @@
 import React from "react";
 import { cn } from "../../utils/cn.js";
 
+export type ButtonVariant = "ghost" | "primary" | "secondary" | "destructive" | "outline";
+export type ButtonSize = "sm" | "md" | "lg";
+
 export type ButtonProps = React.PropsWithChildren<
   React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: "ghost" | "primary" | "secondary" | "destructive" | "outline";
-    size?: "sm" | "md" | "lg";
+    variant?: ButtonVariant;
+    size?: ButtonSize;
     isLoading?: boolean;
     leftIcon?: React.ReactNode;
     rightIcon?: React.ReactNode;
   }
 >;
+
+const BASE_STYLES =
+  "inline-flex items-center justify-center font-medium transition-all duration-150 ease-out select-none outline-none focus-visible:ring-1 focus-visible:ring-ink disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
+
+const VARIANT_STYLES: Record<ButtonVariant, string> = {
+  ghost:
+    "bg-transparent border border-hairline-strong text-ink hover:border-ink hover:bg-ink/[0.04] active:opacity-80",
+  primary:
+    "bg-primary border border-primary text-primary-on hover:bg-surface-light hover:border-surface-light active:opacity-90",
+  secondary:
+    "bg-transparent border border-hairline-strong text-ink hover:border-mute hover:text-ink active:opacity-80",
+  destructive:
+    "bg-transparent border border-accent-red/40 text-accent-red hover:border-accent-red hover:bg-accent-red/10 active:opacity-80",
+  outline:
+    "bg-transparent border border-hairline-strong text-mute hover:border-ink hover:text-ink active:opacity-80",
+};
+
+const SIZE_STYLES: Record<ButtonSize, string> = {
+  sm: "h-8 px-3 text-xs rounded-md gap-1.5",
+  md: "h-10 px-4 text-sm rounded-md gap-2",
+  lg: "h-12 px-6 text-base rounded-md gap-2.5",
+};
+
+/**
+ * The classes a button wears, for the case where the control has to be an anchor.
+ *
+ * An action that navigates belongs in an `<a href>`: that is what gives
+ * middle-click, cmd-click, "copy link address" and the status-bar preview, none
+ * of which a `<button onClick={router.push}>` has. Nesting a button inside a link
+ * is invalid markup, so the anchor wears these instead, and taking them from here
+ * keeps one definition of what "primary" looks like.
+ */
+export function buttonClassName(options?: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
+}): string {
+  return cn(
+    BASE_STYLES,
+    VARIANT_STYLES[options?.variant ?? "ghost"],
+    SIZE_STYLES[options?.size ?? "md"],
+    options?.className,
+  );
+}
 
 /**
  * Ghost & Action Button
@@ -40,33 +87,11 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    const baseStyles =
-      "inline-flex items-center justify-center font-medium transition-all duration-150 ease-out select-none outline-none focus-visible:ring-1 focus-visible:ring-ink disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
-
-    const variantStyles = {
-      ghost:
-        "bg-transparent border border-hairline-strong text-ink hover:border-ink hover:bg-ink/[0.04] active:opacity-80",
-      primary:
-        "bg-primary border border-primary text-primary-on hover:bg-surface-light hover:border-surface-light active:opacity-90",
-      secondary:
-        "bg-transparent border border-hairline-strong text-ink hover:border-mute hover:text-ink active:opacity-80",
-      destructive:
-        "bg-transparent border border-accent-red/40 text-accent-red hover:border-accent-red hover:bg-accent-red/10 active:opacity-80",
-      outline:
-        "bg-transparent border border-hairline-strong text-mute hover:border-ink hover:text-ink active:opacity-80",
-    };
-
-    const sizeStyles = {
-      sm: "h-8 px-3 text-xs rounded-md gap-1.5",
-      md: "h-10 px-4 text-sm rounded-md gap-2",
-      lg: "h-12 px-6 text-base rounded-md gap-2.5",
-    };
-
     return (
       <button
         ref={ref}
         disabled={disabled || isLoading}
-        className={cn(baseStyles, variantStyles[variant], sizeStyles[size], className)}
+        className={buttonClassName({ variant, size, className })}
         style={style}
         {...props}
       >
