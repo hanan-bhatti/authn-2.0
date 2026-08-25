@@ -52,7 +52,16 @@ interface ToastMessage {
   description?: string;
 }
 
-export function SignInForm(): ReactNode {
+export interface SignInFormProps {
+  /**
+   * Where to go once there is a session. The account guard puts the page the
+   * visitor actually asked for in `?next=`, so being bounced through sign-in
+   * costs them the redirect and not their place.
+   */
+  destination: string;
+}
+
+export function SignInForm({ destination }: SignInFormProps): ReactNode {
   const { config, isLoading: isConfigLoading, error: configError, reload } = useAppConfig();
   const { signIn, isLoading: isSigningIn } = useSignIn();
   const { sendMagicLink, isLoading: isSendingLink } = useMagicLink();
@@ -170,10 +179,11 @@ export function SignInForm(): ReactNode {
 
       // `replace` rather than `push`: going back to a sign-in form you have
       // already used is never what the back button was for, and the guard on
-      // `/account` would only bounce a signed-in visitor straight back here.
-      router.replace("/account");
+      // the account section would only bounce a signed-in visitor straight
+      // back here.
+      router.replace(destination);
     },
-    [identifier, password, mode, focusField, present, router, sendMagicLink, signIn],
+    [identifier, password, mode, destination, focusField, present, router, sendMagicLink, signIn],
   );
 
   if (isConfigLoading || (!config && !configError)) return <FormSkeleton />;
@@ -197,6 +207,7 @@ export function SignInForm(): ReactNode {
         mfaToken={outcome.mfaToken}
         methods={outcome.methods}
         user={outcome.user}
+        destination={destination}
         // The challenge token cannot be renewed, so starting again means
         // presenting the password again. The identifier is kept and the password
         // cleared: the address was not what expired.

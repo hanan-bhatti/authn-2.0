@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AuthShell } from "@/components/AuthShell";
 import { SignInForm } from "./SignInForm";
 import { env } from "@/lib/env";
+import { firstParam, safeNextPath } from "@/lib/searchParams";
 
 /**
  * Authn Platform — Sign-in page
@@ -14,6 +15,11 @@ import { env } from "@/lib/env";
  * links — lives in the bootstrap document the form fetches, which is a client
  * concern, so what is set here is the platform's default. A tenant-branded shell
  * is a later change that moves the fetch to the server.
+ *
+ * `next` is read here rather than with `useSearchParams` in the form. Reading it
+ * in a client component would make this page's static render illegal without a
+ * Suspense boundary around the form, and the boundary would buy nothing: the
+ * value is known before the form mounts.
  */
 
 export const metadata: Metadata = {
@@ -21,7 +27,14 @@ export const metadata: Metadata = {
   description: "Sign in to your Authn account to manage sessions, devices and security settings.",
 };
 
-export default function SignInPage(): ReactNode {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<ReactNode> {
+  const params = await searchParams;
+  const destination = safeNextPath(firstParam(params["next"]));
+
   return (
     <AuthShell
       brand={`Authn · v${env.appVersion}`}
@@ -36,7 +49,7 @@ export default function SignInPage(): ReactNode {
         </>
       }
     >
-      <SignInForm />
+      <SignInForm destination={destination} />
     </AuthShell>
   );
 }

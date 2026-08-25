@@ -92,6 +92,8 @@ export interface SecondFactorPanelProps {
   /** The engine's list, most recently used first. */
   methods: readonly TwoFactorMethod[];
   user: AuthnUser;
+  /** Where to land once the factor is accepted, already checked for safety. */
+  destination: string;
   /** Returns to the credentials form, for when the challenge can no longer be spent. */
   onRestart: () => void;
 }
@@ -111,6 +113,7 @@ export function SecondFactorPanel({
   mfaToken,
   methods,
   user,
+  destination,
   onRestart,
 }: SecondFactorPanelProps): ReactNode {
   const router = useRouter();
@@ -184,8 +187,8 @@ export function SecondFactorPanel({
    * it.
    */
   const succeed = useCallback(() => {
-    router.replace("/account");
-  }, [router]);
+    router.replace(destination);
+  }, [destination, router]);
 
   const requestSms = useCallback(async () => {
     setFieldMessage(null);
