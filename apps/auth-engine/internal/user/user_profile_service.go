@@ -34,6 +34,10 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/validator"
 )
 
+// maxNameLength is the ceiling on a display name, in bytes, matching the one
+// signup applies and the width of the column behind it.
+const maxNameLength = 255
+
 // GetProfile returns the profile of userID, or ErrUserNotFound if no such
 // account exists.
 func (s *Service) GetProfile(ctx context.Context, userID string) (*UserProfileResponse, error) {
@@ -102,7 +106,10 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdatePr
 	updater := client.User.UpdateOneID(userID)
 
 	if req.Name != nil {
-		cleanName, err := validator.SanitizeString(*req.Name, 1, 100)
+		// The same ceiling signup applies. A stricter limit here would refuse a name
+		// the account was created with, so the owner could open their profile, save
+		// nothing, and be told the value already on the page is invalid.
+		cleanName, err := validator.SanitizeString(*req.Name, 1, maxNameLength)
 		if err != nil {
 			return nil, fmt.Errorf("invalid name: %w", err)
 		}
