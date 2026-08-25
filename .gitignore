@@ -85,3 +85,4 @@ reference-login.png
 # families; this repository is public, so committing the files would
 # redistribute them. See packages/ui/src/fonts/README.md for what belongs here.
 packages/ui/src/fonts/*.woff2
+.impeccable/
