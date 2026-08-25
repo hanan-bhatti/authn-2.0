@@ -94,3 +94,43 @@ export interface RecoveryCodesStatus {
 export type RecoveryCodesStatusResult =
   | { ok: true; status: RecoveryCodesStatus }
   | { ok: false; error: AuthnError };
+
+/** One enrolled second factor's state. */
+export interface TwoFactorMethodState {
+  /** Whether the factor is confirmed and usable. */
+  enabled: boolean;
+  /** When enrollment began. Absent when the factor is not enrolled. */
+  createdAt?: string;
+  /** When the factor last satisfied a verification. Absent if it never has. */
+  lastUsedAt?: string;
+}
+
+/** The text-message factor, with the number codes are delivered to. */
+export interface SMSMethodState extends TwoFactorMethodState {
+  /**
+   * The confirmed number, in full.
+   *
+   * Unredacted, unlike {@link SendSMSChallengeResult}'s: that one answers a caller who has proven
+   * only the password, while this read needs a session — and the profile already returns the same
+   * number to the same caller.
+   */
+  phoneNumber?: string;
+}
+
+export interface TwoFactorMethods {
+  /**
+   * What the next sign-in challenge will offer, most recently used first and `backup_code` last.
+   * Empty when the account has no second factor.
+   *
+   * Distinct from the per-factor fields: `passkey` and `backup_code` appear here without a detail
+   * object, because their own endpoints — `listWebAuthnCredentials` and `getRecoveryCodesStatus` —
+   * carry the detail.
+   */
+  methods: string[];
+  totp: TwoFactorMethodState;
+  sms: SMSMethodState;
+}
+
+export type TwoFactorMethodsResult =
+  | { ok: true; methods: TwoFactorMethods }
+  | { ok: false; error: AuthnError };

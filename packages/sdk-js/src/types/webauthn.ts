@@ -9,7 +9,22 @@ import type { AuthnError } from "./errors";
 export interface WebAuthnPasskey {
   id: string;
   name: string;
+  /**
+   * The authenticator model's identifier, as hex. Read from the registration
+   * metadata; all zeroes when the authenticator declined to identify itself,
+   * which platform authenticators in privacy-preserving modes routinely do.
+   */
   aaguid?: string;
+  /**
+   * How the authenticator can be reached: `internal` for one built into the
+   * device, `usb`, `nfc` or `ble` for a key carried between devices, `hybrid` for
+   * a phone answering for a desktop.
+   *
+   * Worth surfacing because it is the difference between "the fingerprint reader
+   * on this laptop" and "the key on your keyring", and a list of passkeys that
+   * cannot tell those apart is a list nobody can safely prune.
+   */
+  transports?: string[];
   createdAt: string;
   lastUsedAt?: string;
 }

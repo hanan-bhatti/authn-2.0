@@ -88,6 +88,8 @@ import type {
   PolicyWarning,
   ProfileResult,
   RecoveryCodesStatusResult,
+  TwoFactorMethodState,
+  TwoFactorMethodsResult,
   RecoveryEmailResult,
   RegenerateRecoveryCodesParams,
   RegenerateRecoveryCodesResult,
@@ -272,6 +274,8 @@ interface ServerProfileResponse {
   tenant_id: string;
   email: string;
   email_verified: boolean;
+  /** Absent on an account that has claimed no handle, which is a valid state. */
+  username?: string;
   name?: string;
   phone_number?: string;
   phone_verified: boolean;
@@ -326,6 +330,18 @@ interface ServerRecoveryCodesStatusResponse {
   has_recovery_codes: boolean;
 }
 
+interface ServerTwoFactorMethodState {
+  enabled: boolean;
+  created_at?: string;
+  last_used_at?: string;
+}
+
+interface ServerTwoFactorMethodsResponse {
+  methods: string[];
+  totp: ServerTwoFactorMethodState;
+  sms: ServerTwoFactorMethodState & { phone_number?: string };
+}
+
 interface ServerBeginPasskeyRegistrationResponse {
   options: Record<string, unknown>;
   session_id: string;
@@ -337,8 +353,24 @@ interface ServerBeginPasskeyLoginResponse {
   user_id: string;
 }
 
+/** Mirrors `auth.PasskeyDTO` in the Go backend. */
+interface ServerPasskey {
+  id: string;
+  name: string;
+  credential_id: string;
+  sign_count: number;
+  created_at: string;
+  last_used_at?: string;
+  /**
+   * The AAGUID, attestation type, transports and authenticator flags captured
+   * during the ceremony. Untyped because it is a free-form bag on the server and
+   * an authenticator that reports nothing leaves it empty.
+   */
+  metadata?: Record<string, unknown>;
+}
+
 interface ServerListPasskeysResponse {
-  credentials: WebAuthnPasskey[];
+  credentials: ServerPasskey[];
 }
 
 /** Mirrors org.OrgResponse in the Go backend. */
@@ -1745,6 +1777,7 @@ export class AuthnClient {
       emailVerified: data.email_verified === true,
       status: (data.status as "active" | "suspended" | "banned") ?? "active",
       name: data.name,
+      username: data.username,
       phone: data.phone_number,
       phoneNumber: data.phone_number,
       phoneVerified: data.phone_verified === true,
@@ -1756,6 +1789,41 @@ export class AuthnClient {
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };
+  }
+
+  /**
+   * Turns the server's passkey row into the documented shape.
+   *
+   * The mapping is not cosmetic. The engine sends `created_at` and `last_used_at`,
+   * and handing the row through unmapped left every consumer reading
+   * `credential.createdAt` — a property that type-checked and was always
+   * `undefined`, so a passkey list rendered "Added Unknown" with nothing to
+   * explain why. The AAGUID and the transports live inside the metadata bag and
+   * are lifted out here, so a caller naming an authenticator does not have to know
+   * that.
+   */
+  private mapPasskey(data: ServerPasskey): WebAuthnPasskey {
+    const metadata = data.metadata ?? {};
+
+    const aaguid = typeof metadata["aaguid"] === "string" ? metadata["aaguid"] : undefined;
+    const rawTransports = metadata["transports"];
+    const transports = Array.isArray(rawTransports)
+      ? rawTransports.filter((t): t is string => typeof t === "string")
+      : undefined;
+
+    const passkey: WebAuthnPasskey = {
+      id: data.id,
+      name: data.name,
+      createdAt: data.created_at,
+    };
+
+    if (data.last_used_at) passkey.lastUsedAt = data.last_used_at;
+    // An authenticator that declines to identify itself reports all zeroes, which
+    // is not a model identifier and must not be presented as one.
+    if (aaguid && !/^0+$/.test(aaguid)) passkey.aaguid = aaguid;
+    if (transports && transports.length > 0) passkey.transports = transports;
+
+    return passkey;
   }
 
   private mapPolicyWarning(
@@ -2095,6 +2163,51 @@ export class AuthnClient {
   }
 
   /**
+   * Get which second factors the account has enrolled.
+   * Target Route: GET /v1/client/auth/2fa/methods
+   *
+   * `methods` is the list a sign-in challenge would offer, so a settings screen can state what the
+   * next sign-in will ask for rather than deducing it. Passkeys and recovery codes appear there but
+   * carry no detail object — {@link listWebAuthnCredentials} and {@link getRecoveryCodesStatus}
+   * hold that.
+   */
+  async getTwoFactorMethods(): Promise<TwoFactorMethodsResult> {
+    this.guardDestroyed();
+    try {
+      const res = await this.http.get<ServerTwoFactorMethodsResponse>("/v1/client/auth/2fa/methods");
+      return {
+        ok: true,
+        methods: {
+          methods: res.data.methods ?? [],
+          totp: AuthnClient.mapTwoFactorMethodState(res.data.totp),
+          sms: {
+            ...AuthnClient.mapTwoFactorMethodState(res.data.sms),
+            ...(res.data.sms?.phone_number ? { phoneNumber: res.data.sms.phone_number } : {}),
+          },
+        },
+      };
+    } catch (err) {
+      return this.handleError(err, "getTwoFactorMethods");
+    }
+  }
+
+  /**
+   * Turns one factor's row into the documented shape.
+   *
+   * A missing object is read as not enrolled rather than thrown on: the caller's next move is to
+   * offer enrollment either way, and a settings page that fails wholesale because one factor was
+   * omitted tells the reader nothing about the factors that were present.
+   */
+  private static mapTwoFactorMethodState(
+    data: ServerTwoFactorMethodState | undefined,
+  ): TwoFactorMethodState {
+    const state: TwoFactorMethodState = { enabled: data?.enabled === true };
+    if (data?.created_at) state.createdAt = data.created_at;
+    if (data?.last_used_at) state.lastUsedAt = data.last_used_at;
+    return state;
+  }
+
+  /**
    * Begin WebAuthn passkey registration ceremony.
    * Target Route: POST /v1/client/auth/2fa/webauthn/register/begin
    */
@@ -2208,7 +2321,7 @@ export class AuthnClient {
       );
       return {
         ok: true,
-        credentials: res.data.credentials,
+        credentials: (res.data.credentials ?? []).map((c) => this.mapPasskey(c)),
       };
     } catch (err) {
       return this.handleError(err, "listWebAuthnCredentials");
