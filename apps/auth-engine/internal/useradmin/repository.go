@@ -35,6 +35,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 )
 
 // Page size bounds for the directory listing. The maximum exists to keep one
@@ -248,12 +249,26 @@ func (r *Repository) SetStatus(ctx context.Context, userID string, status user.S
 	return client.User.UpdateOneID(userID).SetStatus(status).Exec(ctx)
 }
 
-// SoftDelete stamps deleted_at, retiring the account without releasing its email
-// address. The row is what reserves the address, so a hard delete would let the
-// same address be registered again by someone else.
+// SoftDelete stamps deleted_at and releases the account's username handle,
+// retiring the account without releasing its email address. The row is what
+// reserves the address, so a hard delete would let the same address be registered
+// again by someone else.
+//
+// The handle is treated the opposite way because an email address identifies a
+// person outside the system while a handle only names them inside it: holding
+// "alexsmith" out of circulation forever for an account nobody can sign into
+// costs a live user a name for no protection. Clearing it here rather than
+// filtering deleted rows out of the availability check is what keeps the check
+// and the unique index looking at the same set of rows — a check that ignored
+// deleted rows the index still indexes would report a handle free and then fail
+// the write that claimed it.
 func (r *Repository) SoftDelete(ctx context.Context, userID string, at time.Time) error {
 	client := r.factory.GetClient(ctx, "", "")
-	return client.User.UpdateOneID(userID).SetDeletedAt(at).Exec(ctx)
+	return client.User.UpdateOneID(userID).
+		SetDeletedAt(at).
+		ClearUsername().
+		ClearUsernameCanonical().
+		Exec(ctx)
 }
 
 // Restore clears deleted_at, returning the account to whatever status it held.
@@ -362,27 +377,69 @@ func mergeMetadata(current, patch map[string]interface{}) map[string]interface{}
 	return merged
 }
 
-// UsernameTaken reports whether another user in the caller's scope already holds
-// username.
+// TakenAmong returns the subset of candidates already held in the caller's scope,
+// excluding the row identified by userID so that re-submitting one's own handle is
+// not reported as a collision.
 //
-// The supporting index is not unique, so uniqueness is enforced here rather than
-// by the database. That makes this a check-then-write with a race between the
-// two: two administrators assigning the same username in the same instant can
-// both pass. The consequence is a duplicate display handle, not an
-// authentication bypass — nothing authenticates on this column — which is why
-// the cheap check is preferred to a transaction that would serialise every
-// profile edit.
-func (r *Repository) UsernameTaken(ctx context.Context, userID, username string) (bool, error) {
-	if username == "" {
+// Every candidate is answered by one query. Probing them one at a time would be
+// the same index work spread over as many round trips as there are candidates,
+// and the suggestion path asks about two dozen at once. The predicate is an
+// equality set over the indexed canonical column, so the database touches exactly
+// the keys named and the cost is set by len(candidates) rather than by the size of
+// the table.
+//// Soft-deleted rows are not filtered out, because SoftDelete clears the canonical
+// column outright. The check and the unique index therefore examine the same set
+// of rows, which is the property that matters: a check that skipped rows the index
+// still indexes would report a handle free and then fail the write claiming it.
+//
+// The result is a set rather than a list so a caller filtering a candidate pool
+// does so without a nested scan. Returns an empty map for empty input.
+func (r *Repository) TakenAmong(ctx context.Context, userID string, candidates []string) (map[string]struct{}, error) {
+	taken := make(map[string]struct{}, len(candidates))
+	if len(candidates) == 0 {
+		return taken, nil
+	}
+
+	predicates := []predicate.User{user.UsernameCanonicalIn(candidates...)}
+	if userID != "" {
+		predicates = append(predicates, user.IDNEQ(userID))
+	}
+
+	client := r.factory.GetClient(ctx, "", "")
+	rows, err := client.User.Query().
+		Where(predicates...).
+		Select(user.FieldUsernameCanonical).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		if row.UsernameCanonical != nil {
+			taken[*row.UsernameCanonical] = struct{}{}
+		}
+	}
+	return taken, nil
+}
+
+// UsernameTaken reports whether another user in the caller's scope already holds
+// canonical.
+//
+// This is the single-candidate form of TakenAmong and shares its scoping. It
+// remains a check-then-write with a window between the two, so it is a way to
+// return a useful error rather than the uniqueness guarantee: that is the unique
+// index on (tenant_id, environment, username_canonical), which turns a lost race
+// into a constraint violation instead of a duplicate row.
+func (r *Repository) UsernameTaken(ctx context.Context, userID, canonical string) (bool, error) {
+	if canonical == "" {
 		return false, nil
 	}
-	client := r.factory.GetClient(ctx, "", "")
-	return client.User.Query().
-		Where(
-			user.UsernameEQ(username),
-			user.IDNEQ(userID),
-		).
-		Exist(ctx)
+	taken, err := r.TakenAmong(ctx, userID, []string{canonical})
+	if err != nil {
+		return false, err
+	}
+	_, exists := taken[canonical]
+	return exists, nil
 }
 
 // UpdateProfile applies p to the loaded user and returns the updated row.
@@ -390,10 +447,16 @@ func (r *Repository) UsernameTaken(ctx context.Context, userID, username string)
 // current supplies the metadata the merge builds on, so the caller's already
 // loaded row is reused rather than read a second time.
 //
-// An empty username clears the column rather than storing a blank one, so the
-// username index does not fill with empty strings. Changing a phone number
-// clears its verified flag: the new number has not been proven, and carrying the
-// old flag over would present an unverified number as verified.
+// An empty username clears both username columns rather than storing a blank one,
+// so the unique index holds no empty strings — one blank would otherwise reserve
+// the empty handle for the whole scope. Changing a phone number clears its
+// verified flag: the new number has not been proven, and carrying the old flag
+// over would present an unverified number as verified.
+//
+// The display and canonical columns are written together here and nowhere else,
+// which is what keeps them from disagreeing. A caller that set only the display
+// form would leave a handle that no lookup finds and that the unique index does
+// not protect.
 func (r *Repository) UpdateProfile(ctx context.Context, current *ent.User, p ProfilePatch) (*ent.User, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	builder := client.User.UpdateOneID(current.ID)
@@ -403,9 +466,13 @@ func (r *Repository) UpdateProfile(ctx context.Context, current *ent.User, p Pro
 	}
 	if p.Username != nil {
 		if *p.Username == "" {
-			builder.ClearUsername()
+			builder.ClearUsername().ClearUsernameCanonical()
 		} else {
-			builder.SetUsername(*p.Username)
+			canonical, err := username.Canonical(*p.Username)
+			if err != nil {
+				return nil, err
+			}
+			builder.SetUsername(*p.Username).SetUsernameCanonical(canonical)
 		}
 	}
 	if p.AvatarURL != nil {

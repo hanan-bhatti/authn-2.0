@@ -99,7 +99,7 @@ func TestUpdateDoesNotMoveRowBetweenTenants(t *testing.T) {
 	ctx := env.bypassContext()
 	victimUser, err := env.authRepo.CreateUser(ctx, "usr_victim_update_target",
 		victimTenant, testEnvironment, "target@victim-tenant.example",
-		"argon2id$placeholder$hash", "Victim Target")
+		"argon2id$placeholder$hash", "Victim Target", "")
 	if err != nil {
 		t.Fatalf("seeding victim user: %v", err)
 	}

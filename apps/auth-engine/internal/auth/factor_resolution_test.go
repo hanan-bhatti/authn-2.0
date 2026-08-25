@@ -73,7 +73,7 @@ func TestLogin_RefusesWhenFactorSetUnreadable(t *testing.T) {
 	svc, repo, _ := newFactorTestService(t, dsn)
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "failclosed@example.com", "MyPassword123!", "Fail Closed", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "failclosed@example.com", "MyPassword123!", "Fail Closed", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 	enableTOTP(t, repo, u.ID)
 
@@ -108,7 +108,7 @@ func TestLogin_OffersFactorsMostRecentlyUsedFirst(t *testing.T) {
 	svc, repo, _ := newFactorTestService(t, "file:ent_factor_order?mode=memory&cache=shared&_fk=1")
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "ordering@example.com", "MyPassword123!", "Ordering", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "ordering@example.com", "MyPassword123!", "Ordering", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 
 	totpID := enableTOTP(t, repo, u.ID)
@@ -145,7 +145,7 @@ func TestLogin_RecoveryCodesStayLast(t *testing.T) {
 	svc, repo, _ := newFactorTestService(t, "file:ent_factor_backup_last?mode=memory&cache=shared&_fk=1")
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "backuplast@example.com", "MyPassword123!", "Backup Last", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "backuplast@example.com", "MyPassword123!", "Backup Last", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 
 	enableTOTP(t, repo, u.ID)
@@ -168,7 +168,7 @@ func TestVerify2FA_RefusesFactorOutsideChallengeSet(t *testing.T) {
 	svc, repo, _ := newFactorTestService(t, "file:ent_factor_outside_set?mode=memory&cache=shared&_fk=1")
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "outsideset@example.com", "MyPassword123!", "Outside Set", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "outsideset@example.com", "MyPassword123!", "Outside Set", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 	enableTOTP(t, repo, u.ID)
 
@@ -188,7 +188,7 @@ func TestVerify2FA_PasskeyNamesItsOwnRoute(t *testing.T) {
 	svc, repo, _ := newFactorTestService(t, "file:ent_factor_passkey_route?mode=memory&cache=shared&_fk=1")
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "passkeyroute@example.com", "MyPassword123!", "Passkey Route", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "passkeyroute@example.com", "MyPassword123!", "Passkey Route", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 	_, err = repo.CreateWebAuthnPasskey(testCtx(), u.ID, "Laptop", "credential-id-2", []byte("public-key"), 0, nil)
 	require.NoError(t, err)

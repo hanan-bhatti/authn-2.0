@@ -39,6 +39,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/tokenblocklist"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 )
 
 // cutoffSkewMargin extends an issued-at cutoff past the access-token lifetime.
@@ -76,6 +77,10 @@ var (
 	// ErrUsernameTaken reports a username already held by another account in the
 	// same tenant and environment.
 	ErrUsernameTaken = errors.New("username is already taken")
+	// ErrUsernameInvalid reports a username that breaks one of the handle rules.
+	// The wrapped error from the username package names which one, so the response
+	// can say what to change rather than only that something is wrong.
+	ErrUsernameInvalid = errors.New("username is not valid")
 )
 
 // Actor identifies who performed an administrative action, and is recorded on
@@ -548,8 +553,10 @@ func (s *Service) VerifyEmail(ctx context.Context, tenantID, userID string, acto
 
 // UpdateProfile applies an administrative profile change.
 //
-// A username is checked for collision inside the caller's tenant before it is
-// written, since the column carries no unique constraint of its own.
+// A username is canonicalised and checked for collision inside the caller's
+// tenant before it is written. The check produces a useful error; the unique index
+// on the canonical column is what guarantees uniqueness, so a claim that loses the
+// race between check and write is refused by the database rather than duplicated.
 //
 // The changed field names are audited; their values are not. A profile carries
 // personal data, and an audit trail an operator reads routinely is the wrong
@@ -561,7 +568,14 @@ func (s *Service) UpdateProfile(ctx context.Context, tenantID, userID string, pa
 	}
 
 	if patch.Username != nil && *patch.Username != "" {
-		taken, err := s.repo.UsernameTaken(ctx, userID, *patch.Username)
+		canonical, err := username.Canonical(*patch.Username)
+		if err != nil {
+			// Both errors are wrapped: the sentinel so the handler can classify the
+			// failure, and the rule error so it can name which rule was broken
+			// without a second lookup table.
+			return nil, fmt.Errorf("%w: %w", ErrUsernameInvalid, err)
+		}
+		taken, err := s.repo.UsernameTaken(ctx, userID, canonical)
 		if err != nil {
 			return nil, fmt.Errorf("checking username availability: %w", err)
 		}
@@ -574,6 +588,12 @@ func (s *Service) UpdateProfile(ctx context.Context, tenantID, userID string, pa
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, ErrUserNotFound
+		}
+		// A constraint violation here is the lost half of the race the check above
+		// usually wins, so it is reported as the collision it is rather than as an
+		// internal failure the caller cannot act on.
+		if ent.IsConstraintError(err) {
+			return nil, ErrUsernameTaken
 		}
 		return nil, err
 	}

@@ -47,7 +47,7 @@ func TestMandatoryAdmin2FA(t *testing.T) {
 	svc := auth.NewService(repo, cfg, emailProv)
 
 	// 1. Create Admin User via SignUpWithPassword
-	adminUser, _, _, err := svc.SignUpWithPassword(sysCtx, tnt.ID, "test", "admin.mandatory2fa@example.com", "AdminPassword123!", "Admin User", "web", "127.0.0.1")
+	adminUser, _, _, err := svc.SignUpWithPassword(sysCtx, tnt.ID, "test", "admin.mandatory2fa@example.com", "AdminPassword123!", "Admin User", "", "web", "127.0.0.1")
 	require.NoError(t, err)
 
 	// Assign tenant_admin role to user in DB
@@ -79,7 +79,7 @@ func TestMandatoryAdmin2FA(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 5. Regular User (non-admin) 2FA test
-	regUser, _, _, err := svc.SignUpWithPassword(sysCtx, tnt.ID, "test", "regular.user@example.com", "RegularPassword123!", "Regular User", "web", "127.0.0.1")
+	regUser, _, _, err := svc.SignUpWithPassword(sysCtx, tnt.ID, "test", "regular.user@example.com", "RegularPassword123!", "Regular User", "", "web", "127.0.0.1")
 	require.NoError(t, err)
 
 	totpReg, err := svc.EnrollTOTP(sysCtx, regUser.ID)

@@ -87,6 +87,15 @@ type InitiateRecoveryResponse struct {
 	IsTrustedDeviceOrigin bool `json:"is_trusted_device_origin"`
 	// AvailableMethods lists the permitted proof methods in descending trust order.
 	AvailableMethods []string `json:"available_methods"`
+	// SecurityQuestions carries the prompts to answer, and is present only when
+	// "security_questions" is among AvailableMethods. It holds no answers and no
+	// digests — only the prompt text and the ID each answer is keyed to.
+	//
+	// The prompts are the account holder's own words and could name a person or a
+	// place, so they are sent only where that method is actually on offer, which is
+	// only when nothing stronger exists. The miss path never offers it, so an absent
+	// list says nothing about whether the address resolved.
+	SecurityQuestions []SecurityQuestionDTO `json:"security_questions,omitempty"`
 	// CancellationToken is the one-time secret delivered to the account owner so a legitimate owner
 	// can kill an attacker-initiated recovery. Only its hash is stored, so this is the only
 	// opportunity to read it.
@@ -225,9 +234,21 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 	}
 
 	// Security questions are the weakest proof and are never offered alongside a stronger one.
+	//
+	// The prompts travel with the offer. Whoever is recovering the account has no session and no
+	// other route to them, so a method offered without its questions is one they cannot attempt.
+	var securityQuestions []SecurityQuestionDTO
 	if recPolicy.SecurityQuestionsEnabled && len(methods) == 0 {
-		if hasSecurityQuestions(u.Metadata) {
+		// Decoded rather than merely probed for presence: a roster whose entries carry no answer
+		// hash cannot be verified against, so offering it would advertise a method whose proof
+		// always fails.
+		enrolled, err := decodeSecurityQuestions(u.Metadata)
+		if err == nil && len(enrolled) > 0 {
 			methods = append(methods, "security_questions")
+			securityQuestions = make([]SecurityQuestionDTO, len(enrolled))
+			for i, q := range enrolled {
+				securityQuestions[i] = SecurityQuestionDTO{ID: q.ID, Question: q.Question}
+			}
 		}
 	}
 
@@ -255,29 +276,9 @@ func (s *RecoveryService) InitiateRecovery(ctx context.Context, input InitiateRe
 		Status:                string(req.Status),
 		IsTrustedDeviceOrigin: isTrustedOrigin,
 		AvailableMethods:      methods,
+		SecurityQuestions:     securityQuestions,
 		CancellationToken:     cancelTokenHex,
 	}, nil
-}
-
-// hasSecurityQuestions reports whether meta carries a non-empty "security_questions" entry, encoded
-// either as a JSON array or as a JSON object. It returns false for absent, nil, empty, or
-// differently typed values. It tests configuration only and says nothing about the answers.
-func hasSecurityQuestions(meta map[string]interface{}) bool {
-	if meta == nil {
-		return false
-	}
-	sq, exists := meta["security_questions"]
-	if !exists || sq == nil {
-		return false
-	}
-	switch v := sq.(type) {
-	case []interface{}:
-		return len(v) > 0
-	case map[string]interface{}:
-		return len(v) > 0
-	default:
-		return false
-	}
 }
 
 // cancelledRecoveryBlacklistWindow is how long the IP, subnet and device
@@ -468,12 +469,21 @@ func (s *RecoveryService) SubmitOldPasswordProof(ctx context.Context, requestID,
 // have at least one share submitted before its questions may be used, so a caller cannot bypass the
 // stronger method by simply not attempting it.
 //
-// The submitted answers are not compared against stored answers. Any non-empty answers map from an
-// account that has security questions configured satisfies this proof.
+// Every enrolled question must be answered, and every answer must match its stored Argon2id digest
+// after normalization. All-or-nothing rather than a threshold: the answers are low-entropy and
+// correlated — someone who knows a birthplace often knows a mother's maiden name — so accepting a
+// subset would cost an attacker far less than the fraction suggests. Answers are keyed by question
+// ID, and every question is looked up in the submission rather than iterating the submission, so
+// extra keys are ignored and a missing one fails.
+//
+// A failed attempt increments the account's recovery failure counter and can open a lockout window
+// under the tenant schedule, on the same terms as a failed old-password proof. Without that these
+// answers would be an unlimited guessing oracle, which for a fact like a birthplace is a short list.
 //
 // Errors: ErrInvalidRecoveryRequest for an unknown request; ErrHigherTierMethodsNotExhausted when
-// guardians exist and none has submitted; ErrInvalidProof when the account has no questions
-// configured or answers is empty; and a repository error when the user read fails.
+// guardians exist and none has submitted; ErrAccountLockedOut while a lockout window is open;
+// ErrInvalidProof when the account has no questions enrolled, when an answer is missing, or when one
+// does not match; and a repository error when the user read fails.
 func (s *RecoveryService) SubmitSecurityQuestionsProof(ctx context.Context, requestID string, answers map[string]string) error {
 	req, err := s.repo.GetRecoveryRequestByID(ctx, requestID)
 	if err != nil || req == nil {
@@ -491,15 +501,70 @@ func (s *RecoveryService) SubmitSecurityQuestionsProof(ctx context.Context, requ
 		return ErrHigherTierMethodsNotExhausted
 	}
 
-	if hasSecurityQuestions(u.Metadata) && len(answers) > 0 {
-		_ = client.RecoveryRequest.UpdateOne(req).
-			SetStatus(recoveryrequest.StatusProofVerified).
-			SetProofMethodUsed(recoveryrequest.ProofMethodUsedSecurityQuestions).
-			Exec(ctx)
-		return nil
+	// Checked before any hashing, so a locked account costs an attacker nothing to probe and yields
+	// no verification signal.
+	if u.RecoveryLockoutUntil != nil && u.RecoveryLockoutUntil.After(time.Now()) {
+		return ErrAccountLockedOut
 	}
 
-	return ErrInvalidProof
+	stored, err := decodeSecurityQuestions(u.Metadata)
+	if err != nil {
+		return err
+	}
+	if len(stored) == 0 {
+		return ErrInvalidProof
+	}
+
+	// Every answer is checked even once one has failed, rather than returning on the first mismatch.
+	// Returning early would make the response time report how many leading answers were right, which
+	// turns one submission into a per-question oracle and defeats the all-or-nothing rule.
+	allMatched := true
+	for _, q := range stored {
+		submitted, provided := answers[q.ID]
+		if !provided {
+			allMatched = false
+			// Verified against a hash that matches nothing, so a missing answer costs the same
+			// Argon2id computation as a wrong one and the two are not distinguishable by timing.
+			crypto.VerifyPasswordArgon2id("", crypto.DummyArgon2idHash)
+			continue
+		}
+		if !crypto.VerifyPasswordArgon2id(normalizeSecurityAnswer(submitted), q.AnswerHash) {
+			allMatched = false
+		}
+	}
+
+	if !allMatched {
+		var recPolicy policy.RecoveryPolicy
+		if s.policyRepo != nil {
+			recPolicy, _ = s.policyRepo.GetRecoveryPolicy(ctx, u.TenantID, string(u.Environment))
+		} else {
+			recPolicy = policy.DefaultRecoveryPolicy()
+		}
+
+		attempts := u.RecoveryFailedAttempts + 1
+		lockoutUntil := calculateLockoutTimeWithPolicy(attempts, recPolicy)
+
+		_ = client.User.UpdateOne(u).
+			SetRecoveryFailedAttempts(attempts).
+			SetNillableRecoveryLockoutUntil(lockoutUntil).
+			Exec(ctx)
+
+		return ErrInvalidProof
+	}
+
+	_ = client.RecoveryRequest.UpdateOne(req).
+		SetStatus(recoveryrequest.StatusProofVerified).
+		SetProofMethodUsed(recoveryrequest.ProofMethodUsedSecurityQuestions).
+		Exec(ctx)
+
+	// A successful proof clears the counter, so an owner who mistyped earlier is not left carrying
+	// escalated lockout steps into the next flow.
+	_ = client.User.UpdateOne(u).
+		SetRecoveryFailedAttempts(0).
+		SetNillableRecoveryLockoutUntil(nil).
+		Exec(ctx)
+
+	return nil
 }
 
 // calculateLockoutTimeWithPolicy maps a cumulative failed-attempt count onto the tenant lockout

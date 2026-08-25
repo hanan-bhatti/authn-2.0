@@ -176,7 +176,7 @@ func TestRecoveryInitiateIgnoresBodyTenant(t *testing.T) {
 	const victimEmail = "owner@victim-tenant.example"
 	ctx := env.bypassContext()
 	victimUser, err := env.authRepo.CreateUser(ctx, "usr_victim_recovery_target",
-		victimTenant, testEnvironment, victimEmail, "argon2id$placeholder$hash", "Victim Owner")
+		victimTenant, testEnvironment, victimEmail, "argon2id$placeholder$hash", "Victim Owner", "")
 	if err != nil {
 		t.Fatalf("seeding victim user: %v", err)
 	}

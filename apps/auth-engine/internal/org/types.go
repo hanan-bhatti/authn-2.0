@@ -65,6 +65,10 @@ var (
 var (
 	// ErrOrgNotFound reports that no organization matches within the tenant.
 	ErrOrgNotFound = errors.New("organization not found")
+	// ErrUserNotFound reports that no account in the tenant matches the caller.
+	// Reachable only from the invitation inbox, which reads the caller's own
+	// verified address before it can match anything to it.
+	ErrUserNotFound = errors.New("user account not found")
 	// ErrOrgSlugExists reports a slug collision inside the tenant's environment. The
 	// message names the environment because the slug is still claimable in the other
 	// one, and a caller told only "in this tenant" would stop looking.
@@ -107,6 +111,11 @@ var (
 	ErrForbidden = errors.New("forbidden: insufficient permissions for this operation")
 	// ErrNotAMember reports a caller with no membership in the organization.
 	ErrNotAMember = errors.New("forbidden: user is not a member of this organization")
+	// ErrLastOrgAdmin reports an operation that would leave the organization with
+	// no administrator. An organization in that state cannot be renamed, cannot
+	// invite anyone and cannot be deleted by its own members, so it is
+	// unrecoverable without tenant-level intervention.
+	ErrLastOrgAdmin = errors.New("this would leave the organization without an administrator: grant another member organization-admin rights first, or delete the organization instead")
 )
 
 // CreateOrgRequest is the payload to create an organization.
@@ -317,6 +326,14 @@ type OrgResponse struct {
 	LogoURL string `json:"logo_url,omitempty"`
 	// Metadata is the caller-defined attribute bag.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	// IsAdmin reports whether the caller holds organization-admin rights here.
+	//
+	// The same answer the mutating endpoints will give, so a client can hide a
+	// control instead of offering one that returns 403. It is per-caller, not a
+	// property of the organization: two members reading the same workspace get
+	// different values. A tenant-admin credential reads true everywhere, because
+	// it can in fact administer every workspace in the tenant.
+	IsAdmin bool `json:"is_admin"`
 	// CreatedAt is when the organization was created.
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -331,6 +348,16 @@ type OrgMemberResponse struct {
 	UserID string `json:"user_id"`
 	// RoleID is the role held in this organization.
 	RoleID string `json:"role_id"`
+	// RoleSlug is the role's stable identifier, "org_admin" for an administrator.
+	// Absent when the role could not be read.
+	RoleSlug string `json:"role_slug,omitempty"`
+	// RoleName is the role's display name, for showing beside the member. Absent
+	// when the role could not be read.
+	RoleName string `json:"role_name,omitempty"`
+	// IsAdmin reports whether this member's role carries organization-admin
+	// rights. Derived from the role's slug and permissions by the same predicate
+	// the authorization checks use, so a client may rely on it.
+	IsAdmin bool `json:"is_admin"`
 	// AssignedByUserID is whoever granted the membership, if recorded.
 	AssignedByUserID string `json:"assigned_by_user_id,omitempty"`
 	// CreatedAt is when the membership was created.
@@ -345,6 +372,13 @@ type OrgInvitationResponse struct {
 	ID string `json:"id"`
 	// OrganizationID is the organization being joined.
 	OrganizationID string `json:"organization_id"`
+	// OrganizationName is that organization's display name. Absent when the
+	// organization was not loaded alongside the invitation.
+	//
+	// It travels with the invitation because the recipient's inbox has no other way
+	// to name what they are being asked to join: they are not a member yet, so the
+	// endpoint that would resolve the ID answers 403 for them.
+	OrganizationName string `json:"organization_name,omitempty"`
 	// Email is the invited address.
 	Email string `json:"email"`
 	// RoleID is the role granted on acceptance.

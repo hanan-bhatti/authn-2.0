@@ -60,6 +60,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sandbox"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/session"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/settings"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/useradmin"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/webhook"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
@@ -456,6 +457,20 @@ func newTestEnv(t *testing.T, rateLimiter, resendLimiter *ratelimit.Limiter, opt
 	// the publishable-key middleware there would mount routes that act on an
 	// arbitrary user ID behind a credential that establishes no identity.
 	sessionHandler.RegisterRoutes(app, pkMiddleware, nil)
+
+	// Account self-service: the profile, the password, and the two emailed-change
+	// round trips. It gets the same resolver and second-factor verifier the server
+	// gives it — the resolver so emailed links point where a real one would, and the
+	// verifier because deleting a passwordless account falls back to it, and a nil
+	// slot there would let the session cookie alone destroy the account.
+	//
+	// The blocklist is nil, which IsBlocked reads as "nothing is revoked"; token
+	// revocation is covered by the middleware's own unit tests.
+	user.NewHandler(
+		user.NewService(authRepo, emailProvider, policyRepo, nil, cfg).
+			WithFrontendURLResolver(settingsResolver).
+			WithSecondFactorVerifier(authService),
+	).RegisterRoutes(app, middleware.RequireClientAuth(cfg.EncryptionKey, nil), pkMiddleware)
 
 	// The administrative user directory. The guard is the real one, since what the
 	// tests assert about these routes — that they reach only the caller's tenant,

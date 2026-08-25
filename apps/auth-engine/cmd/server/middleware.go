@@ -36,9 +36,23 @@ func proxyHeader(cfg *config.Config) string {
 	return ""
 }
 
+// Budget for the username availability probe.
+//
+// It is not configurable because it is not a security posture a deployment would
+// tune: the endpoint spends one index seek, creates nothing, costs nothing per call
+// and reveals only what the sign-up form is about to reveal anyway. The number that
+// matters is human typing speed. A person correcting a handle a character at a time
+// behind a 300ms debounce produces a few requests a second in bursts, so the shared
+// credential budget — five attempts per five minutes by default — would reject them
+// mid-word and make the field look broken.
+const (
+	usernameCheckMaxAttempts = 60
+	usernameCheckWindow      = time.Minute
+)
+
 // setupMiddleware attaches global middleware (recover, logger, CORS, degraded mode header)
 // to the Fiber app and constructs rate limiters.
-func setupMiddleware(app *fiber.App, cfg *config.Config, redisClient *redis.Client) (rateLimiter *ratelimit.Limiter, resendLimiter *ratelimit.Limiter) {
+func setupMiddleware(app *fiber.App, cfg *config.Config, redisClient *redis.Client) (rateLimiter *ratelimit.Limiter, resendLimiter *ratelimit.Limiter, usernameLimiter *ratelimit.Limiter) {
 	degradedTracker := middleware.NewDegradedModeTracker(redisClient, cfg.DegradedModeCheckInterval)
 
 	// 5. Global Middleware Stack
@@ -82,5 +96,20 @@ func setupMiddleware(app *fiber.App, cfg *config.Config, redisClient *redis.Clie
 		ViolationReset:     violationReset,
 	})
 
-	return rateLimiter, resendLimiter
+	// Guards the username availability probe. It rides on the global enable switch
+	// rather than a flag of its own, and deliberately fails open — the endpoint has
+	// nothing worth refusing a real user over when the limiter's store is
+	// unreachable, so a Redis outage must not stop people signing up.
+	usernameLimiter = ratelimit.NewLimiter(ratelimit.Options{
+		Redis:              redisClient,
+		Enabled:            cfg.RateLimitEnabled,
+		FailClosed:         false,
+		MaxAttempts:        usernameCheckMaxAttempts,
+		Window:             usernameCheckWindow,
+		IPBudgetMultiplier: cfg.RateLimitIPBudgetMultiplier,
+		BackoffSchedule:    cfg.RateLimitBackoffSchedule,
+		ViolationReset:     violationReset,
+	})
+
+	return rateLimiter, resendLimiter, usernameLimiter
 }

@@ -122,7 +122,11 @@ func (s *Service) CreateInvitation(ctx context.Context, tenantID, actorID, orgID
 		})
 	}
 
-	return s.toOrgInvitationResponse(createdInv, true), nil
+	// The organization is already in hand, so its name goes back with the
+	// invitation rather than being loaded again through the edge.
+	resp := s.toOrgInvitationResponse(createdInv, true)
+	resp.OrganizationName = o.Name
+	return resp, nil
 }
 
 // ListPendingInvitations returns an organization's outstanding invitations.
@@ -156,6 +160,7 @@ func (s *Service) ListPendingInvitations(ctx context.Context, tenantID, orgID st
 
 	invitations, err := client.OrgInvitation.Query().
 		Where(orginvitation.OrganizationID(orgID), orginvitation.StatusEQ(orginvitation.StatusPending)).
+		WithOrganization().
 		Limit(limit).
 		Offset(offset).
 		All(ctx)
@@ -406,14 +411,94 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 		})
 	}
 
-	return s.toOrgMemberResponse(member), nil
+	// The invitation names a role ID; the redeemer is told which role that is, so
+	// the client can say what they have just joined as.
+	return s.toOrgMemberResponse(member, s.loadRole(ctx, client, inv.RoleID)), nil
+}
+
+// ListInvitationsForUser returns the pending invitations addressed to a user's
+// verified email address, each with its redemption token.
+//
+// A verified address is required, and an unverified one yields an empty list
+// rather than an error. The address is the only thing linking a person to an
+// invitation, so an account that has merely typed an address must not read what
+// was sent to it — otherwise registering as someone else's address would hand over
+// their invitations. The account's own address is read server-side rather than
+// taken from the caller, so there is no address parameter to tamper with.
+//
+// Tokens are included, unlike in the per-organization listing. There the reader is
+// a colleague who can see invitations addressed to other people; here every row is
+// addressed to the caller's own verified address, so possession of the token adds
+// nothing they are not already entitled to — and withholding it would leave the
+// inbox unable to accept anything it displays.
+//
+// Expired invitations are filtered by timestamp as well as by status, because
+// nothing sweeps the status column on expiry: an invitation is marked expired only
+// when someone tries to redeem it. Returns ErrUserNotFound when no account matches.
+func (s *Service) ListInvitationsForUser(ctx context.Context, tenantID, userID string, limit, offset int) ([]*OrgInvitationResponse, error) {
+	if limit <= 0 {
+		limit = DefaultPaginationLimit
+	}
+	if limit > MaxPaginationLimit {
+		limit = MaxPaginationLimit
+	}
+
+	client := s.factory.GetClient(ctx, tenantID, "")
+
+	u, err := client.User.Query().
+		Where(user.TenantID(tenantID), user.ID(userID)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to query user for invitation inbox: %w", err)
+	}
+
+	if !u.EmailVerified || u.Email == "" {
+		return []*OrgInvitationResponse{}, nil
+	}
+
+	// Scoped to the caller's own environment as well as their address. An
+	// invitation to a workspace in the other environment cannot be redeemed by this
+	// account — AcceptInvitation refuses it — so showing it would offer an action
+	// that is guaranteed to fail.
+	invitations, err := client.OrgInvitation.Query().
+		Where(
+			orginvitation.EmailEQ(u.Email),
+			orginvitation.StatusEQ(orginvitation.StatusPending),
+			orginvitation.ExpiresAtGT(time.Now()),
+			orginvitation.HasOrganizationWith(
+				organization.TenantID(tenantID),
+				organization.EnvironmentEQ(organization.Environment(u.Environment)),
+			),
+		).
+		WithOrganization().
+		Order(ent.Desc(orginvitation.FieldCreatedAt)).
+		Limit(limit).
+		Offset(offset).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query invitations for user: %w", err)
+	}
+
+	responses := make([]*OrgInvitationResponse, len(invitations))
+	for i, inv := range invitations {
+		responses[i] = s.toOrgInvitationResponse(inv, true)
+	}
+
+	return responses, nil
 }
 
 // toOrgInvitationResponse converts an invitation entity to its API
 // representation, returning nil for a nil entity.
 //
-// includeToken must be true only for the caller who just created the invitation;
-// every other path leaves the redemption secret out.
+// includeToken must be true only for a caller entitled to redeem the invitation:
+// whoever just created it, or the addressee reading their own inbox. Every other
+// path leaves the redemption secret out.
+//
+// The organization name is filled in when the edge was loaded and omitted
+// otherwise, so a caller who did not ask for it pays nothing.
 func (s *Service) toOrgInvitationResponse(inv *ent.OrgInvitation, includeToken bool) *OrgInvitationResponse {
 	if inv == nil {
 		return nil
@@ -426,6 +511,9 @@ func (s *Service) toOrgInvitationResponse(inv *ent.OrgInvitation, includeToken b
 		Status:         string(inv.Status),
 		ExpiresAt:      inv.ExpiresAt,
 		CreatedAt:      inv.CreatedAt,
+	}
+	if inv.Edges.Organization != nil {
+		resp.OrganizationName = inv.Edges.Organization.Name
 	}
 	if inv.InvitedByUserID != nil {
 		resp.InvitedByUserID = *inv.InvitedByUserID

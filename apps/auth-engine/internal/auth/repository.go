@@ -42,6 +42,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sessionactivity"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 )
 
 // Repository is the auth domain's data access layer. It is stateless beyond its
@@ -187,23 +188,116 @@ func (r *Repository) FindUserByEmail(ctx context.Context, tenantID string, env s
 	return u, nil
 }
 
+// FindUserByUsernameCanonical resolves a canonical username to a user within one
+// tenant and environment.
+//
+// canonical is expected to have come from username.Canonical: the stored column
+// holds the canonical form precisely so that a lookup is one index seek on an
+// equality predicate, and passing a raw handle here would compare an unfolded
+// value against folded rows and miss.
+//
+// Returns nil, nil when no row matches, on the same terms as FindUserByEmail —
+// and with the same obligation on the sign-in path, where a caller must keep an
+// unknown handle indistinguishable from a wrong password.
+func (r *Repository) FindUserByUsernameCanonical(ctx context.Context, tenantID string, env string, canonical string) (*ent.User, error) {
+	if canonical == "" {
+		return nil, nil
+	}
+
+	client := r.factory.GetClient(ctx, tenantID, env)
+	u, err := client.User.Query().
+		Where(
+			user.TenantID(tenantID),
+			user.EnvironmentEQ(user.Environment(env)),
+			user.UsernameCanonicalEQ(canonical),
+		).
+		Only(ctx)
+
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed querying user by username: %w", err)
+	}
+	return u, nil
+}
+
+// UsernamesTaken returns the subset of candidates already held in this tenant and
+// environment.
+//
+// Every candidate is answered by one statement. Probing them one at a time would
+// be the same index work spread over as many round trips as there are candidates,
+// and the suggestion path asks about two dozen at once. The predicate is an
+// equality set over the indexed canonical column, so the database touches exactly
+// the keys named: cost is set by len(candidates), not by how many users exist.
+//
+// Soft-deleted rows are not excluded, because deletion clears the canonical column
+// outright. The check and the unique index therefore examine the same rows — a
+// check that skipped rows the index still indexes would report a handle free and
+// then fail the write claiming it.
+//
+// The result is a set so a caller filtering a candidate pool does not run a nested
+// scan over it. Returns an empty map for empty input.
+func (r *Repository) UsernamesTaken(ctx context.Context, tenantID string, env string, candidates []string) (map[string]struct{}, error) {
+	taken := make(map[string]struct{}, len(candidates))
+	if len(candidates) == 0 {
+		return taken, nil
+	}
+
+	client := r.factory.GetClient(ctx, tenantID, env)
+	rows, err := client.User.Query().
+		Where(
+			user.TenantID(tenantID),
+			user.EnvironmentEQ(user.Environment(env)),
+			user.UsernameCanonicalIn(candidates...),
+		).
+		Select(user.FieldUsernameCanonical).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed checking username availability: %w", err)
+	}
+
+	for _, row := range rows {
+		if row.UsernameCanonical != nil {
+			taken[*row.UsernameCanonical] = struct{}{}
+		}
+	}
+	return taken, nil
+}
+
 // CreateUser inserts a user row and returns it.
 //
-// passwordHash is expected to be an Argon2id encoded hash; name may be empty.
-// (tenantID, env, email) is unique, so a duplicate signup surfaces as a wrapped
-// ent constraint error — callers that race on registration should treat a
+// passwordHash is expected to be an Argon2id encoded hash; name and handle may be
+// empty. (tenantID, env, email) is unique, so a duplicate signup surfaces as a
+// wrapped ent constraint error — callers that race on registration should treat a
 // constraint error as "already registered" rather than a server fault.
-func (r *Repository) CreateUser(ctx context.Context, id string, tenantID string, env string, email string, passwordHash string, name string) (*ent.User, error) {
+//
+// handle is the username as the user typed it. Both username columns are written
+// here and nowhere else on this path, which is what keeps them from disagreeing: a
+// caller that set only the display form would leave a handle no lookup finds and
+// the unique index does not protect. An empty handle leaves both columns NULL
+// rather than storing a blank, so the empty string never occupies the index slot
+// that would reserve it for the whole scope. A handle that breaks the rules is
+// returned unwrapped, so a caller can classify it with errors.Is.
+func (r *Repository) CreateUser(ctx context.Context, id string, tenantID string, env string, email string, passwordHash string, name string, handle string) (*ent.User, error) {
 	client := r.factory.GetClient(ctx, tenantID, env)
-	u, err := client.User.Create().
+	builder := client.User.Create().
 		SetID(id).
 		SetTenantID(tenantID).
 		SetEnvironment(user.Environment(env)).
 		SetEmail(email).
 		SetNillablePasswordHash(&passwordHash).
-		SetNillableName(&name).
-		Save(ctx)
+		SetNillableName(&name)
 
+	if handle != "" {
+		canonical, err := username.Canonical(handle)
+		if err != nil {
+			return nil, err
+		}
+		builder.SetUsername(handle).SetUsernameCanonical(canonical)
+	}
+
+	u, err := builder.Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating user record: %w", err)
 	}

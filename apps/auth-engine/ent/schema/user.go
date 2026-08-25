@@ -50,7 +50,11 @@ func (User) Fields() []ent.Field {
 		field.String("username").
 			Optional().
 			Nillable().
-			Comment("Optional unique username (e.g. @alexsmith)"),
+			Comment("Optional unique username in the form the user typed it (e.g. AlexSmith). Display only — every lookup and the uniqueness guarantee use username_canonical"),
+		field.String("username_canonical").
+			Optional().
+			Nillable().
+			Comment("NFKC-normalised, lower-cased form of username. Carries the unique index and answers every username lookup, so a stored value is compared directly instead of through LOWER(), which no index can serve"),
 		field.String("password_hash").
 			Optional().
 			Sensitive().
@@ -161,7 +165,11 @@ func (User) Indexes() []ent.Index {
 		// second signup on it is refused by the database rather than by a check
 		// someone has to remember to write.
 		index.Fields("tenant_id", "environment", "email").Unique(),
-		index.Fields("tenant_id", "environment", "username"),
+		// Unique on the canonical form, which is what makes two concurrent claims on
+		// one handle resolve to a constraint violation rather than two rows. The
+		// column is NULL for a user who has set no username, and SQL treats NULLs as
+		// distinct, so any number of users may hold none.
+		index.Fields("tenant_id", "environment", "username_canonical").Unique(),
 		// Serves the admin listing, which pages users filtered by status and
 		// hides soft-deleted rows by default.
 		index.Fields("tenant_id", "environment", "status", "deleted_at"),

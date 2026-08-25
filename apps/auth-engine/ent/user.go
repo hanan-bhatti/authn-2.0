@@ -26,8 +26,10 @@ type User struct {
 	Environment user.Environment `json:"environment,omitempty"`
 	// User registered email address
 	Email string `json:"email,omitempty"`
-	// Optional unique username (e.g. @alexsmith)
+	// Optional unique username in the form the user typed it (e.g. AlexSmith). Display only — every lookup and the uniqueness guarantee use username_canonical
 	Username *string `json:"username,omitempty"`
+	// NFKC-normalised, lower-cased form of username. Carries the unique index and answers every username lookup, so a stored value is compared directly instead of through LOWER(), which no index can serve
+	UsernameCanonical *string `json:"username_canonical,omitempty"`
 	// Argon2id password hash (t=3, m=64MB, p=4). Omitted for pure social users
 	PasswordHash string `json:"-"`
 	// Flag indicating if email address has been verified
@@ -226,7 +228,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case user.FieldRecoveryFailedAttempts:
 			values[i] = new(sql.NullInt64)
-		case user.FieldID, user.FieldTenantID, user.FieldEnvironment, user.FieldEmail, user.FieldUsername, user.FieldPasswordHash, user.FieldEmailVerificationToken, user.FieldMagicLinkToken, user.FieldPhoneNumber, user.FieldName, user.FieldAvatarURL, user.FieldLocale, user.FieldStatus:
+		case user.FieldID, user.FieldTenantID, user.FieldEnvironment, user.FieldEmail, user.FieldUsername, user.FieldUsernameCanonical, user.FieldPasswordHash, user.FieldEmailVerificationToken, user.FieldMagicLinkToken, user.FieldPhoneNumber, user.FieldName, user.FieldAvatarURL, user.FieldLocale, user.FieldStatus:
 			values[i] = new(sql.NullString)
 		case user.FieldEmailVerificationExpiresAt, user.FieldMagicLinkExpiresAt, user.FieldDeletedAt, user.FieldLastSignInAt, user.FieldRecoveryLockoutUntil, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -275,6 +277,13 @@ func (u *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				u.Username = new(string)
 				*u.Username = value.String
+			}
+		case user.FieldUsernameCanonical:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field username_canonical", values[i])
+			} else if value.Valid {
+				u.UsernameCanonical = new(string)
+				*u.UsernameCanonical = value.String
 			}
 		case user.FieldPasswordHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -512,6 +521,11 @@ func (u *User) String() string {
 	builder.WriteString(", ")
 	if v := u.Username; v != nil {
 		builder.WriteString("username=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := u.UsernameCanonical; v != nil {
+		builder.WriteString("username_canonical=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

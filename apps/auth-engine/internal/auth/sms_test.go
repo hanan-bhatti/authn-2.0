@@ -59,7 +59,7 @@ func TestSMS_Enroll_Confirm_Validation(t *testing.T) {
 	ctx := testCtx()
 
 	// 1. Create test user
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "smstest@example.com", "UserPassword123!", "SMS User", "UserAgent", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "smstest@example.com", "UserPassword123!", "SMS User", "", "UserAgent", "127.0.0.1")
 	require.NoError(t, err)
 
 	// 2. Begin SMS Enrollment with invalid phone format -> fail
@@ -89,7 +89,7 @@ func TestSMS_AmbiguityCheck_MultipleMethods(t *testing.T) {
 	ctx := testCtx()
 
 	// 1. Create user
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "multimethod@example.com", "UserPassword123!", "Multi 2FA User", "UserAgent", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "multimethod@example.com", "UserPassword123!", "Multi 2FA User", "", "UserAgent", "127.0.0.1")
 	require.NoError(t, err)
 
 	// 2. Enroll & Confirm TOTP 2FA
@@ -128,7 +128,7 @@ func TestSMS_RateLimit_3RequestsPer10Mins(t *testing.T) {
 	defer cleanup()
 	ctx := testCtx()
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "smsratelimit@example.com", "UserPassword123!", "Rate Limit User", "UserAgent", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "smsratelimit@example.com", "UserPassword123!", "Rate Limit User", "", "UserAgent", "127.0.0.1")
 	require.NoError(t, err)
 
 	phone := "+12025550177"
@@ -154,7 +154,7 @@ func TestSMS_Disable_ReVerification_And_SessionRevocation(t *testing.T) {
 	defer cleanup()
 	ctx := testCtx()
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "smsdisable@example.com", "UserPassword123!", "Disable User", "UserAgent", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_00000000000000000000000000000001", "test", "smsdisable@example.com", "UserPassword123!", "Disable User", "", "UserAgent", "127.0.0.1")
 	require.NoError(t, err)
 
 	phone := "+12025550166"

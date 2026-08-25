@@ -17,7 +17,6 @@ import (
 
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/organization"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orginvitation"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/privacy"
 )
@@ -103,6 +102,12 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 	// The creator's membership is what later grants them admin rights over the
 	// organization they just made. A tenant-admin caller passes no actor, so
 	// there is nobody to enroll.
+	//
+	// A failure here is fatal and the organization is removed again. Without the
+	// membership nobody holds org_admin over it: it cannot be renamed, invited to
+	// or deleted through the organization surface, and no member-facing route can
+	// even read it. Keeping the row would leave an unreachable workspace holding
+	// its slug against the next attempt to create one.
 	if actorID != "" {
 		_, err = client.OrgMember.Create().
 			SetID(memID).
@@ -112,7 +117,8 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 			SetAssignedByUserID(actorID).
 			Save(ctx)
 		if err != nil {
-			fmt.Printf("[Org Service] Warning: failed to auto-assign creator membership: %v\n", err)
+			_ = client.Organization.DeleteOne(createdOrg).Exec(ctx)
+			return nil, fmt.Errorf("failed to enroll organization creator as administrator: %w", err)
 		}
 	}
 
@@ -130,7 +136,7 @@ func (s *Service) CreateOrganization(ctx context.Context, tenantID, actorID stri
 		})
 	}
 
-	return s.toOrgResponse(createdOrg), nil
+	return s.toOrgResponse(createdOrg, true), nil
 }
 
 // GetOrganization returns an organization within the tenant.
@@ -151,18 +157,26 @@ func (s *Service) GetOrganization(ctx context.Context, tenantID, orgID string, a
 		return nil, fmt.Errorf("failed to query organization: %w", err)
 	}
 
+	// A tenant-admin credential administers every workspace under the tenant, so
+	// it reads true without holding a membership at all.
+	callerIsAdmin := isAdmin
 	if !isAdmin {
-		_, err := s.authzCheckMember(ctx, client, actorID, orgID)
+		membership, err := s.authzCheckMember(ctx, client, actorID, orgID)
 		if err != nil {
 			return nil, err
 		}
+		callerIsAdmin = roleGrantsOrgAdmin(s.loadRole(ctx, client, membership.RoleID))
 	}
 
-	return s.toOrgResponse(o), nil
+	return s.toOrgResponse(o, callerIsAdmin), nil
 }
 
 // ListOrganizationsForUser returns the organizations userID belongs to within the
 // tenant. The membership itself is the authorization, so no further check applies.
+//
+// Each membership's role is loaded with its permissions in the same query, which
+// is what lets is_admin be answered per organization without a round trip per
+// row.
 func (s *Service) ListOrganizationsForUser(ctx context.Context, tenantID, userID string, limit, offset int) ([]*OrgResponse, error) {
 	if limit <= 0 {
 		limit = DefaultPaginationLimit
@@ -176,6 +190,7 @@ func (s *Service) ListOrganizationsForUser(ctx context.Context, tenantID, userID
 	memberships, err := client.OrgMember.Query().
 		Where(orgmember.UserID(userID)).
 		WithOrganization().
+		WithRole(func(q *ent.RoleQuery) { q.WithPermissions() }).
 		Limit(limit).
 		Offset(offset).
 		All(ctx)
@@ -188,7 +203,7 @@ func (s *Service) ListOrganizationsForUser(ctx context.Context, tenantID, userID
 		// Memberships are queried by user, not by tenant, so the organization's
 		// own tenant is re-checked before it is returned.
 		if m.Edges.Organization != nil && m.Edges.Organization.TenantID == tenantID {
-			responses = append(responses, s.toOrgResponse(m.Edges.Organization))
+			responses = append(responses, s.toOrgResponse(m.Edges.Organization, roleGrantsOrgAdmin(m.Edges.Role)))
 		}
 	}
 
@@ -218,7 +233,9 @@ func (s *Service) ListOrganizationsForTenant(ctx context.Context, tenantID strin
 
 	responses := make([]*OrgResponse, len(orgs))
 	for i, o := range orgs {
-		responses[i] = s.toOrgResponse(o)
+		// The only caller is the tenant-admin surface, which can administer every
+		// workspace under the tenant.
+		responses[i] = s.toOrgResponse(o, true)
 	}
 
 	return responses, nil
@@ -305,7 +322,9 @@ func (s *Service) UpdateOrganization(ctx context.Context, tenantID, actorID, org
 		})
 	}
 
-	return s.toOrgResponse(updatedOrg), nil
+	// Reached only by an org_admin or the tenant-admin tier, either of which can
+	// administer this workspace.
+	return s.toOrgResponse(updatedOrg, true), nil
 }
 
 // DeleteOrganization removes an organization together with its memberships and
@@ -333,9 +352,13 @@ func (s *Service) DeleteOrganization(ctx context.Context, tenantID, actorID, org
 	}
 
 	// Dependent rows go first so foreign keys never block the delete, and so no
-	// membership or pending invitation outlives the organization it points at.
-	_, _ = client.OrgMember.Delete().Where(orgmember.OrganizationID(orgID)).Exec(ctx)
-	_, _ = client.OrgInvitation.Delete().Where(orginvitation.OrganizationID(orgID)).Exec(ctx)
+	// membership, pending invitation or identity-provider connection outlives the
+	// organization it points at. Every one of those keys is declared with no delete
+	// action, so a table missed here does not leave an orphan — it makes the
+	// organization undeletable.
+	if err := deleteOrgDependents(ctx, client, orgID); err != nil {
+		return err
+	}
 	if err := client.Organization.DeleteOne(o).Exec(ctx); err != nil {
 		return fmt.Errorf("failed to delete organization: %w", err)
 	}

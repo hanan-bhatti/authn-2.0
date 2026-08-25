@@ -87,7 +87,8 @@ func (h *Handler) AddMember(c *fiber.Ctx) error {
 }
 
 // UpdateMemberRole changes a member's role. Answers 404 when the membership does
-// not exist, 403 without org_admin, and 400 for an invalid role.
+// not exist, 403 without org_admin, 409 when the change would demote the
+// organization's last administrator, and 400 for an invalid role.
 func (h *Handler) UpdateMemberRole(c *fiber.Ctx) error {
 	tenantID, errResp, ok := requireTenantID(c)
 	if !ok {
@@ -111,6 +112,9 @@ func (h *Handler) UpdateMemberRole(c *fiber.Ctx) error {
 		if resp, handled := mapAuthzErr(c, err); handled {
 			return resp
 		}
+		if resp, handled := mapOrgConflictErr(c, err); handled {
+			return resp
+		}
 		if errors.Is(err, ErrInvalidRole) {
 			return httperr.BadRequest(c, httperr.CodeValidationFailed, ErrInvalidRole.Error())
 		}
@@ -120,8 +124,10 @@ func (h *Handler) UpdateMemberRole(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
-// RemoveMember removes a user from an organization. Answers 404 when the
-// membership does not exist and 403 without org_admin.
+// RemoveMember removes a user from an organization, or removes the caller from it
+// when the two are the same person. Answers 404 when the membership does not
+// exist, 403 when removing somebody else without org_admin, and 409 when the
+// removal would leave the organization without an administrator.
 func (h *Handler) RemoveMember(c *fiber.Ctx) error {
 	tenantID, errResp, ok := requireTenantID(c)
 	if !ok {
@@ -140,11 +146,21 @@ func (h *Handler) RemoveMember(c *fiber.Ctx) error {
 		if resp, handled := mapAuthzErr(c, err); handled {
 			return resp
 		}
+		if resp, handled := mapOrgConflictErr(c, err); handled {
+			return resp
+		}
 		return httperr.SendInternal(c, "org.remove_member", err)
 	}
 
+	// The message distinguishes the two so a client can show the reader what
+	// happened without inferring it from the URL it just called.
+	message := "member removed successfully"
+	if actorID != "" && actorID == targetUserID {
+		message = "you have left the organization"
+	}
+
 	return c.JSON(fiber.Map{
-		"message": "member removed successfully",
+		"message": message,
 		"user_id": targetUserID,
 		"org_id":  orgID,
 	})
@@ -216,6 +232,41 @@ func (h *Handler) ListPendingInvitations(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"invitations": resps,
 		"total":       len(resps),
+	})
+}
+
+// ListMyInvitations returns the pending invitations addressed to the caller's own
+// verified email address, each with the token that redeems it.
+//
+// It takes no organization parameter and no address: the caller is whoever the
+// session says they are, and the address is read from their account. An account
+// whose address is unverified gets an empty list, not a 403 — nothing was denied,
+// there is simply nothing yet linking them to any invitation.
+func (h *Handler) ListMyInvitations(c *fiber.Ctx) error {
+	tenantID, errResp, ok := requireTenantID(c)
+	if !ok {
+		return errResp
+	}
+	actorID := getUserID(c)
+	if actorID == "" {
+		return httperr.Unauthorized(c, httperr.CodeUnauthorized,
+			"sign in to see the invitations sent to your email address")
+	}
+
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	invitations, err := h.service.ListInvitationsForUser(c.UserContext(), tenantID, actorID, limit, offset)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return httperr.NotFound(c, httperr.CodeNotFound, "user account not found")
+		}
+		return httperr.SendInternal(c, "org.list_my_invitations", err)
+	}
+
+	return c.JSON(fiber.Map{
+		"invitations": invitations,
+		"total":       len(invitations),
 	})
 }
 

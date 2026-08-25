@@ -22745,6 +22745,7 @@ type UserMutation struct {
 	environment                   *user.Environment
 	email                         *string
 	username                      *string
+	username_canonical            *string
 	password_hash                 *string
 	email_verified                *bool
 	email_verification_token      *string
@@ -23066,6 +23067,55 @@ func (m *UserMutation) UsernameCleared() bool {
 func (m *UserMutation) ResetUsername() {
 	m.username = nil
 	delete(m.clearedFields, user.FieldUsername)
+}
+
+// SetUsernameCanonical sets the "username_canonical" field.
+func (m *UserMutation) SetUsernameCanonical(s string) {
+	m.username_canonical = &s
+}
+
+// UsernameCanonical returns the value of the "username_canonical" field in the mutation.
+func (m *UserMutation) UsernameCanonical() (r string, exists bool) {
+	v := m.username_canonical
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsernameCanonical returns the old "username_canonical" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldUsernameCanonical(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsernameCanonical is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsernameCanonical requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsernameCanonical: %w", err)
+	}
+	return oldValue.UsernameCanonical, nil
+}
+
+// ClearUsernameCanonical clears the value of the "username_canonical" field.
+func (m *UserMutation) ClearUsernameCanonical() {
+	m.username_canonical = nil
+	m.clearedFields[user.FieldUsernameCanonical] = struct{}{}
+}
+
+// UsernameCanonicalCleared returns if the "username_canonical" field was cleared in this mutation.
+func (m *UserMutation) UsernameCanonicalCleared() bool {
+	_, ok := m.clearedFields[user.FieldUsernameCanonical]
+	return ok
+}
+
+// ResetUsernameCanonical resets all changes to the "username_canonical" field.
+func (m *UserMutation) ResetUsernameCanonical() {
+	m.username_canonical = nil
+	delete(m.clearedFields, user.FieldUsernameCanonical)
 }
 
 // SetPasswordHash sets the "password_hash" field.
@@ -24632,7 +24682,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.tenant != nil {
 		fields = append(fields, user.FieldTenantID)
 	}
@@ -24644,6 +24694,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.username != nil {
 		fields = append(fields, user.FieldUsername)
+	}
+	if m.username_canonical != nil {
+		fields = append(fields, user.FieldUsernameCanonical)
 	}
 	if m.password_hash != nil {
 		fields = append(fields, user.FieldPasswordHash)
@@ -24721,6 +24774,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Email()
 	case user.FieldUsername:
 		return m.Username()
+	case user.FieldUsernameCanonical:
+		return m.UsernameCanonical()
 	case user.FieldPasswordHash:
 		return m.PasswordHash()
 	case user.FieldEmailVerified:
@@ -24778,6 +24833,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldEmail(ctx)
 	case user.FieldUsername:
 		return m.OldUsername(ctx)
+	case user.FieldUsernameCanonical:
+		return m.OldUsernameCanonical(ctx)
 	case user.FieldPasswordHash:
 		return m.OldPasswordHash(ctx)
 	case user.FieldEmailVerified:
@@ -24854,6 +24911,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUsername(v)
+		return nil
+	case user.FieldUsernameCanonical:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsernameCanonical(v)
 		return nil
 	case user.FieldPasswordHash:
 		v, ok := value.(string)
@@ -25043,6 +25107,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldUsername) {
 		fields = append(fields, user.FieldUsername)
 	}
+	if m.FieldCleared(user.FieldUsernameCanonical) {
+		fields = append(fields, user.FieldUsernameCanonical)
+	}
 	if m.FieldCleared(user.FieldPasswordHash) {
 		fields = append(fields, user.FieldPasswordHash)
 	}
@@ -25098,6 +25165,9 @@ func (m *UserMutation) ClearField(name string) error {
 	switch name {
 	case user.FieldUsername:
 		m.ClearUsername()
+		return nil
+	case user.FieldUsernameCanonical:
+		m.ClearUsernameCanonical()
 		return nil
 	case user.FieldPasswordHash:
 		m.ClearPasswordHash()
@@ -25157,6 +25227,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldUsername:
 		m.ResetUsername()
+		return nil
+	case user.FieldUsernameCanonical:
+		m.ResetUsernameCanonical()
 		return nil
 	case user.FieldPasswordHash:
 		m.ResetPasswordHash()

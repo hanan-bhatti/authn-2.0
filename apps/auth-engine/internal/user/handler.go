@@ -20,7 +20,16 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 )
+
+// codeTOTPRequired marks a destructive operation that needs an authenticator code
+// because the account holds no password to re-enter.
+//
+// Declared here rather than in httperr because it is specific to this surface, the
+// same way internal/impersonation declares its own step-up code. A client branches
+// on it to swap the password prompt for a code prompt.
+const codeTOTPRequired httperr.Code = "totp_required"
 
 // Handler exposes the user self-service operations over HTTP.
 type Handler struct {
@@ -148,7 +157,9 @@ func (h *Handler) GetProfile(c *fiber.Ctx) error {
 }
 
 // UpdateProfile applies a partial update to the caller's profile and returns the
-// result. Answers 400 when a field fails validation.
+// result. Answers 409 when the requested handle is held by another account, 422
+// when it breaks a naming rule or names a reserved metadata key, and 400 when any
+// other field fails validation.
 func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
@@ -159,6 +170,18 @@ func (h *Handler) UpdateProfile(c *fiber.Ctx) error {
 
 	prof, err := h.svc.UpdateProfile(c.UserContext(), userID, req)
 	if err != nil {
+		switch {
+		case errors.Is(err, ErrUsernameTaken):
+			return httperr.Conflict(c, httperr.CodeAlreadyExists, ErrUsernameTaken.Error())
+		case errors.Is(err, ErrUsernameInvalid):
+			// The rule that was broken, not the fact that something was: a form told
+			// only "invalid" leaves the user to guess which of six rules they missed.
+			return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed, username.Explain(err))
+		case errors.Is(err, ErrReservedMetadataKey):
+			// The wrapped message names the key, so it is passed through rather than
+			// replaced with a fixed string the caller cannot act on.
+			return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed, err.Error())
+		}
 		return badRequestLogged(c, "user.update_profile", err, httperr.CodeValidationFailed,
 			"profile could not be updated: one or more fields are invalid")
 	}
@@ -366,8 +389,14 @@ func (h *Handler) UnlinkSocialAccount(c *fiber.Ctx) error {
 	})
 }
 
-// DeleteAccount permanently erases the caller's account. Answers 401 when the
-// confirming password is wrong.
+// DeleteAccount permanently erases the caller's account.
+//
+// Answers 401 when the confirming password is wrong, 401 with
+// `totp_required` when the account has no password and no code was supplied,
+// 401 when that code is wrong, and 409 when the account is the only administrator
+// of an organization other people still belong to — with those organizations
+// listed under `details.organizations`, so the client can name them and link to
+// each one instead of telling the reader to go and look.
 func (h *Handler) DeleteAccount(c *fiber.Ctx) error {
 	userID := getUserID(c)
 	tenantID, errResp, ok := requireTenantID(c)
@@ -379,10 +408,25 @@ func (h *Handler) DeleteAccount(c *fiber.Ctx) error {
 	var req DeleteAccountRequest
 	_ = c.BodyParser(&req)
 
-	err := h.svc.DeleteAccount(c.UserContext(), tenantID, env, userID, req.Password)
+	err := h.svc.DeleteAccount(c.UserContext(), tenantID, env, userID, req.Password, req.TOTPCode)
 	if err != nil {
 		if errors.Is(err, ErrIncorrectPassword) {
 			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, ErrIncorrectPassword.Error())
+		}
+		// Its own code, not CodeInvalidCredentials: nothing the caller sent was
+		// wrong, so a client branching on the code needs to tell "ask for a code"
+		// apart from "that was rejected".
+		if errors.Is(err, ErrTOTPRequired) {
+			return httperr.Unauthorized(c, codeTOTPRequired, ErrTOTPRequired.Error())
+		}
+		if errors.Is(err, ErrIncorrectTOTP) {
+			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, ErrIncorrectTOTP.Error())
+		}
+		var soleAdmin *SoleOrgAdminError
+		if errors.As(err, &soleAdmin) {
+			return httperr.ConflictWithDetails(c, httperr.CodeConflict, soleAdmin.Error(), map[string]interface{}{
+				"organizations": soleAdmin.Organizations,
+			})
 		}
 		return httperr.SendInternal(c, "user.delete_account", err)
 	}

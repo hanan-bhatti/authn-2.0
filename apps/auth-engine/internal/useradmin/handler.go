@@ -26,6 +26,7 @@ package useradmin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,8 @@ import (
 	entuser "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/user"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/validator"
 )
 
@@ -150,11 +153,15 @@ func newUserDTO(u *ent.User) UserDTO {
 		Environment:            string(u.Environment),
 		HasPassword:            u.PasswordHash != "",
 		SecurityReviewRequired: u.SecurityReviewRequired,
-		Metadata:               u.Metadata,
-		CreatedAt:              u.CreatedAt,
-		UpdatedAt:              u.UpdatedAt,
-		LastSignInAt:           u.LastSignInAt,
-		DeletedAt:              u.DeletedAt,
+		// The account's own attributes, with the engine's verification state and
+		// security-answer hashes left out. An operator reading a console has no use
+		// for either, and answer hashes are low-entropy enough that showing them is
+		// close to showing the answers.
+		Metadata:     user.PublicMetadata(u.Metadata),
+		CreatedAt:    u.CreatedAt,
+		UpdatedAt:    u.UpdatedAt,
+		LastSignInAt: u.LastSignInAt,
+		DeletedAt:    u.DeletedAt,
 	}
 	if u.Username != nil {
 		dto.Username = *u.Username
@@ -270,6 +277,16 @@ func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 
 	patch := ProfilePatch{Metadata: req.Metadata}
 
+	// Refused for an operator on the same footing as for the account holder. These
+	// keys are what make an email address count as verified, and an operator who can
+	// write the digest can mark an address confirmed that the user never confirmed —
+	// which is the one thing an audit trail of administrative email changes cannot
+	// tell apart from a real confirmation.
+	if reserved := user.FirstReservedMetadataKey(req.Metadata); reserved != "" {
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			fmt.Sprintf("metadata key %q is written by the engine as part of email verification and account recovery, so it cannot be set directly — choose another key", reserved))
+	}
+
 	// Each value is sanitised against the same bounds the self-serve profile
 	// endpoint applies. An administrative path that accepted what the user's own
 	// path rejects would be a way around the rule rather than an exception to it.
@@ -284,11 +301,13 @@ func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 	if req.Username != nil {
 		clean := strings.TrimSpace(*req.Username)
 		if clean != "" {
-			var verr error
-			clean, verr = validator.SanitizeString(clean, 3, 64)
-			if verr != nil {
+			// Validated against the handle rules rather than the generic string
+			// sanitiser, which accepts spaces, punctuation and mixed scripts. A
+			// handle is compared, mentioned and placed in a URL, so a value that is
+			// merely free of markup is not enough.
+			if _, verr := username.Canonical(clean); verr != nil {
 				return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
-					"username must be 3-64 characters and contain no markup or control characters")
+					username.Explain(verr))
 			}
 		}
 		patch.Username = &clean
@@ -759,6 +778,9 @@ func sendServiceError(c *fiber.Ctx, op string, err error) error {
 	case errors.Is(err, ErrUsernameTaken):
 		return httperr.Conflict(c, httperr.CodeAlreadyExists,
 			"username is already taken")
+	case errors.Is(err, ErrUsernameInvalid):
+		return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed,
+			username.Explain(err))
 	default:
 		return httperr.SendInternal(c, op, err)
 	}

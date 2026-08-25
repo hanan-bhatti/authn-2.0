@@ -554,27 +554,27 @@ func init() {
 	// user.EmailValidator is a validator for the "email" field. It is called by the builders before save.
 	user.EmailValidator = userDescEmail.Validators[0].(func(string) error)
 	// userDescEmailVerified is the schema descriptor for email_verified field.
-	userDescEmailVerified := userFields[6].Descriptor()
+	userDescEmailVerified := userFields[7].Descriptor()
 	// user.DefaultEmailVerified holds the default value on creation for the email_verified field.
 	user.DefaultEmailVerified = userDescEmailVerified.Default.(bool)
 	// userDescPhoneVerified is the schema descriptor for phone_verified field.
-	userDescPhoneVerified := userFields[12].Descriptor()
+	userDescPhoneVerified := userFields[13].Descriptor()
 	// user.DefaultPhoneVerified holds the default value on creation for the phone_verified field.
 	user.DefaultPhoneVerified = userDescPhoneVerified.Default.(bool)
 	// userDescRecoveryFailedAttempts is the schema descriptor for recovery_failed_attempts field.
-	userDescRecoveryFailedAttempts := userFields[20].Descriptor()
+	userDescRecoveryFailedAttempts := userFields[21].Descriptor()
 	// user.DefaultRecoveryFailedAttempts holds the default value on creation for the recovery_failed_attempts field.
 	user.DefaultRecoveryFailedAttempts = userDescRecoveryFailedAttempts.Default.(int)
 	// userDescSecurityReviewRequired is the schema descriptor for security_review_required field.
-	userDescSecurityReviewRequired := userFields[22].Descriptor()
+	userDescSecurityReviewRequired := userFields[23].Descriptor()
 	// user.DefaultSecurityReviewRequired holds the default value on creation for the security_review_required field.
 	user.DefaultSecurityReviewRequired = userDescSecurityReviewRequired.Default.(bool)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[23].Descriptor()
+	userDescCreatedAt := userFields[24].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[24].Descriptor()
+	userDescUpdatedAt := userFields[25].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

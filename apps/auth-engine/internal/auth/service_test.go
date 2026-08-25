@@ -66,7 +66,7 @@ func TestAuthService_SignUpAndLogin(t *testing.T) {
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	// 1. Test Signup
-	u, accessTok, refreshTok, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "testuser@example.com", "MyPassword123!", "Test User", "Mozilla/5.0", "127.0.0.1")
+	u, accessTok, refreshTok, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "testuser@example.com", "MyPassword123!", "Test User", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 	assert.NotEmpty(t, u.ID)
 	assert.Equal(t, "testuser@example.com", u.Email)
@@ -74,7 +74,7 @@ func TestAuthService_SignUpAndLogin(t *testing.T) {
 	assert.NotEmpty(t, refreshTok)
 
 	// 2. Test Duplicate Signup
-	_, _, _, err = svc.SignUpWithPassword(ctx, "tnt_test", "test", "testuser@example.com", "MyPassword123!", "Test User", "Mozilla/5.0", "127.0.0.1")
+	_, _, _, err = svc.SignUpWithPassword(ctx, "tnt_test", "test", "testuser@example.com", "MyPassword123!", "Test User", "", "Mozilla/5.0", "127.0.0.1")
 	assert.ErrorIs(t, err, auth.ErrUserAlreadyExists)
 
 	// 3. Test Valid Login

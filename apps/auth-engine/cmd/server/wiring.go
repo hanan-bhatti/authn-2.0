@@ -80,6 +80,7 @@ func wireFeatures(
 	factory *clientfactory.ClientFactory,
 	rateLimiter *ratelimit.Limiter,
 	resendLimiter *ratelimit.Limiter,
+	usernameLimiter *ratelimit.Limiter,
 	redisClient *redis.Client,
 ) *appWiring {
 	bl := tokenblocklist.New(redisClient)
@@ -171,7 +172,8 @@ func wireFeatures(
 		WithFrontendURLResolver(settingsResolver)
 	authHandler := auth.NewHandler(authService, policyRepo, rateLimiter, resendLimiter).
 		WithBlocklist(bl).
-		WithSessionPolicyResolver(settingsResolver)
+		WithSessionPolicyResolver(settingsResolver).
+		WithUsernameLimiter(usernameLimiter)
 
 	// adminMiddleware accepts EITHER sk_... secret key (backend servers / SDKs)
 	// OR a JWT with role=tenant_admin (Authn web console browser sessions).
@@ -220,8 +222,12 @@ func wireFeatures(
 	samlHandler := saml.NewHandler(samlService).
 		WithSessionPolicyResolver(settingsResolver)
 
+	// The authentication service supplies the TOTP check that account deletion
+	// falls back on when the account holds no password. Without it a passwordless
+	// account would be destroyed on the session cookie alone.
 	userService := user.NewService(authRepo, emailProvider, policyRepo, webhookDispatcher, cfg).
-		WithFrontendURLResolver(settingsResolver)
+		WithFrontendURLResolver(settingsResolver).
+		WithSecondFactorVerifier(authService)
 	userHandler := user.NewHandler(userService)
 	clientAuthMiddleware := middleware.RequireClientAuth(cfg.EncryptionKey, bl)
 

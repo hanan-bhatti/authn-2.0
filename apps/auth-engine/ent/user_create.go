@@ -72,6 +72,20 @@ func (uc *UserCreate) SetNillableUsername(s *string) *UserCreate {
 	return uc
 }
 
+// SetUsernameCanonical sets the "username_canonical" field.
+func (uc *UserCreate) SetUsernameCanonical(s string) *UserCreate {
+	uc.mutation.SetUsernameCanonical(s)
+	return uc
+}
+
+// SetNillableUsernameCanonical sets the "username_canonical" field if the given value is not nil.
+func (uc *UserCreate) SetNillableUsernameCanonical(s *string) *UserCreate {
+	if s != nil {
+		uc.SetUsernameCanonical(*s)
+	}
+	return uc
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (uc *UserCreate) SetPasswordHash(s string) *UserCreate {
 	uc.mutation.SetPasswordHash(s)
@@ -690,6 +704,10 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := uc.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
 		_node.Username = &value
+	}
+	if value, ok := uc.mutation.UsernameCanonical(); ok {
+		_spec.SetField(user.FieldUsernameCanonical, field.TypeString, value)
+		_node.UsernameCanonical = &value
 	}
 	if value, ok := uc.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)

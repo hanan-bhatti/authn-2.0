@@ -104,7 +104,7 @@ func TestEmailVerificationRejectsExpiredToken(t *testing.T) {
 
 	ctx := env.bypassContext()
 	user, err := env.authRepo.CreateUser(ctx, "usr_expired_token", testTenant, testEnvironment,
-		address, "unused_password_hash", "Expired Token User")
+		address, "unused_password_hash", "Expired Token User", "")
 	if err != nil {
 		t.Fatalf("creating the test user: %v", err)
 	}

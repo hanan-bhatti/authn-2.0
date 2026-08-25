@@ -80,6 +80,11 @@ func Username(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldUsername, v))
 }
 
+// UsernameCanonical applies equality check predicate on the "username_canonical" field. It's identical to UsernameCanonicalEQ.
+func UsernameCanonical(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUsernameCanonical, v))
+}
+
 // PasswordHash applies equality check predicate on the "password_hash" field. It's identical to PasswordHashEQ.
 func PasswordHash(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldPasswordHash, v))
@@ -393,6 +398,81 @@ func UsernameEqualFold(v string) predicate.User {
 // UsernameContainsFold applies the ContainsFold predicate on the "username" field.
 func UsernameContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldUsername, v))
+}
+
+// UsernameCanonicalEQ applies the EQ predicate on the "username_canonical" field.
+func UsernameCanonicalEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalNEQ applies the NEQ predicate on the "username_canonical" field.
+func UsernameCanonicalNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalIn applies the In predicate on the "username_canonical" field.
+func UsernameCanonicalIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldUsernameCanonical, vs...))
+}
+
+// UsernameCanonicalNotIn applies the NotIn predicate on the "username_canonical" field.
+func UsernameCanonicalNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldUsernameCanonical, vs...))
+}
+
+// UsernameCanonicalGT applies the GT predicate on the "username_canonical" field.
+func UsernameCanonicalGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalGTE applies the GTE predicate on the "username_canonical" field.
+func UsernameCanonicalGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalLT applies the LT predicate on the "username_canonical" field.
+func UsernameCanonicalLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalLTE applies the LTE predicate on the "username_canonical" field.
+func UsernameCanonicalLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalContains applies the Contains predicate on the "username_canonical" field.
+func UsernameCanonicalContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalHasPrefix applies the HasPrefix predicate on the "username_canonical" field.
+func UsernameCanonicalHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalHasSuffix applies the HasSuffix predicate on the "username_canonical" field.
+func UsernameCanonicalHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalIsNil applies the IsNil predicate on the "username_canonical" field.
+func UsernameCanonicalIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldUsernameCanonical))
+}
+
+// UsernameCanonicalNotNil applies the NotNil predicate on the "username_canonical" field.
+func UsernameCanonicalNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldUsernameCanonical))
+}
+
+// UsernameCanonicalEqualFold applies the EqualFold predicate on the "username_canonical" field.
+func UsernameCanonicalEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldUsernameCanonical, v))
+}
+
+// UsernameCanonicalContainsFold applies the ContainsFold predicate on the "username_canonical" field.
+func UsernameCanonicalContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldUsernameCanonical, v))
 }
 
 // PasswordHashEQ applies the EQ predicate on the "password_hash" field.

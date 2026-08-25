@@ -102,6 +102,26 @@ func (uu *UserUpdate) ClearUsername() *UserUpdate {
 	return uu
 }
 
+// SetUsernameCanonical sets the "username_canonical" field.
+func (uu *UserUpdate) SetUsernameCanonical(s string) *UserUpdate {
+	uu.mutation.SetUsernameCanonical(s)
+	return uu
+}
+
+// SetNillableUsernameCanonical sets the "username_canonical" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableUsernameCanonical(s *string) *UserUpdate {
+	if s != nil {
+		uu.SetUsernameCanonical(*s)
+	}
+	return uu
+}
+
+// ClearUsernameCanonical clears the value of the "username_canonical" field.
+func (uu *UserUpdate) ClearUsernameCanonical() *UserUpdate {
+	uu.mutation.ClearUsernameCanonical()
+	return uu
+}
+
 // SetPasswordHash sets the "password_hash" field.
 func (uu *UserUpdate) SetPasswordHash(s string) *UserUpdate {
 	uu.mutation.SetPasswordHash(s)
@@ -937,6 +957,12 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if uu.mutation.UsernameCleared() {
 		_spec.ClearField(user.FieldUsername, field.TypeString)
 	}
+	if value, ok := uu.mutation.UsernameCanonical(); ok {
+		_spec.SetField(user.FieldUsernameCanonical, field.TypeString, value)
+	}
+	if uu.mutation.UsernameCanonicalCleared() {
+		_spec.ClearField(user.FieldUsernameCanonical, field.TypeString)
+	}
 	if value, ok := uu.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)
 	}
@@ -1639,6 +1665,26 @@ func (uuo *UserUpdateOne) SetNillableUsername(s *string) *UserUpdateOne {
 // ClearUsername clears the value of the "username" field.
 func (uuo *UserUpdateOne) ClearUsername() *UserUpdateOne {
 	uuo.mutation.ClearUsername()
+	return uuo
+}
+
+// SetUsernameCanonical sets the "username_canonical" field.
+func (uuo *UserUpdateOne) SetUsernameCanonical(s string) *UserUpdateOne {
+	uuo.mutation.SetUsernameCanonical(s)
+	return uuo
+}
+
+// SetNillableUsernameCanonical sets the "username_canonical" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableUsernameCanonical(s *string) *UserUpdateOne {
+	if s != nil {
+		uuo.SetUsernameCanonical(*s)
+	}
+	return uuo
+}
+
+// ClearUsernameCanonical clears the value of the "username_canonical" field.
+func (uuo *UserUpdateOne) ClearUsernameCanonical() *UserUpdateOne {
+	uuo.mutation.ClearUsernameCanonical()
 	return uuo
 }
 
@@ -2506,6 +2552,12 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 	}
 	if uuo.mutation.UsernameCleared() {
 		_spec.ClearField(user.FieldUsername, field.TypeString)
+	}
+	if value, ok := uuo.mutation.UsernameCanonical(); ok {
+		_spec.SetField(user.FieldUsernameCanonical, field.TypeString, value)
+	}
+	if uuo.mutation.UsernameCanonicalCleared() {
+		_spec.ClearField(user.FieldUsernameCanonical, field.TypeString)
 	}
 	if value, ok := uuo.mutation.PasswordHash(); ok {
 		_spec.SetField(user.FieldPasswordHash, field.TypeString, value)

@@ -62,6 +62,7 @@ func (h *Handler) RegisterRoutes(app *fiber.App, clientAuthMw fiber.Handler, pkM
 	clientGroup.Post("/organizations/:orgId/invitations", h.CreateInvitation)
 	clientGroup.Get("/organizations/:orgId/invitations", h.ListPendingInvitations)
 	clientGroup.Delete("/organizations/:orgId/invitations/:invitationId", h.RevokeInvitation)
+	clientGroup.Get("/invitations", h.ListMyInvitations)
 	clientGroup.Post("/invitations/accept", h.AcceptInvitation)
 
 	tenantGroup := app.Group("/v1/tenant", adminMiddleware)
@@ -133,6 +134,22 @@ func mapAuthzErr(c *fiber.Ctx, err error) (error, bool) {
 		return httperr.Forbidden(c, httperr.CodeForbidden, ErrNotAMember.Error()), true
 	case errors.Is(err, ErrForbidden):
 		return httperr.Forbidden(c, httperr.CodeForbidden, ErrForbidden.Error()), true
+	}
+	return nil, false
+}
+
+// mapOrgConflictErr maps the sentinels that report a refusal grounded in the
+// organization's present state rather than in the request or the caller's rights.
+//
+// 409 rather than 403: the caller is permitted to make this call and the body is
+// well-formed. What stands in the way is a condition the caller can change — an
+// organization with exactly one administrator — and then retry, which is the
+// distinction 409 carries and 403 does not.
+//
+// Returns (response, true) when err matched.
+func mapOrgConflictErr(c *fiber.Ctx, err error) (error, bool) {
+	if errors.Is(err, ErrLastOrgAdmin) {
+		return httperr.Conflict(c, httperr.CodeConflict, ErrLastOrgAdmin.Error()), true
 	}
 	return nil, false
 }

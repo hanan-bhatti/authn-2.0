@@ -209,7 +209,7 @@ func TestAdminDirectoryReachesOnlyTheCallersTenant(t *testing.T) {
 	const foreignAddress = "target@victim-tenant.example"
 	foreign, err := env.authRepo.CreateUser(env.bypassContext(), "usr_admin_foreign_target",
 		victimTenant, testEnvironment, foreignAddress,
-		"argon2id$placeholder$hash", "Foreign User")
+		"argon2id$placeholder$hash", "Foreign User", "")
 	if err != nil {
 		t.Fatalf("seeding foreign user: %v", err)
 	}

@@ -65,7 +65,86 @@ const (
 	metaRecoveryEmailTokenHash = "recovery_email_token_hash"
 	// metaRecoveryEmailExpiresAt holds that token's expiry, in Unix seconds.
 	metaRecoveryEmailExpiresAt = "recovery_email_expires_at"
+
+	// metaSecurityQuestions holds the account's enrolled security questions and
+	// the hashes of their answers. It is written by the recovery surface in
+	// internal/auth, which cannot import this package, and is named here so the
+	// reserved set below covers it.
+	metaSecurityQuestions = "security_questions"
 )
+
+// reservedMetadataKeys are the entries the engine writes and reads as its own
+// security state, and which a caller may therefore neither set nor read.
+//
+// One bag serves two purposes that are indistinguishable in the database: the
+// caller's attributes, and the engine's pending-verification state. Nothing
+// separates them but this list. Unseparated, a caller writes a token digest and an
+// expiry of its own choosing into the bag and then presents the matching token,
+// verifying an address it never proved it holds and to which nothing was ever
+// sent. An address marked verified that way satisfies every check that reads
+// verification as proof of control, the invitation inbox among them.
+var reservedMetadataKeys = map[string]struct{}{
+	metaPendingNewEmail:        {},
+	metaPendingEmailTokenHash:  {},
+	metaPendingEmailExpiresAt:  {},
+	metaRecoveryEmail:          {},
+	metaRecoveryEmailVerified:  {},
+	metaRecoveryEmailTokenHash: {},
+	metaRecoveryEmailExpiresAt: {},
+	metaSecurityQuestions:      {},
+}
+
+// ReservedMetadataKey reports whether key names engine-owned security state rather
+// than a caller attribute.
+//
+// Exported for the administrative user surface, which merges into the same bag
+// through its own patch type. An administrative path accepting what the account
+// holder's own path refuses would be a way around the rule rather than an
+// exception to it: an operator has routes for changing a user's address, and
+// forging the digest that proves the user confirmed it is not one of them.
+func ReservedMetadataKey(key string) bool {
+	_, reserved := reservedMetadataKeys[key]
+	return reserved
+}
+
+// FirstReservedMetadataKey returns one reserved key present in meta, or "" when
+// there is none.
+//
+// Map iteration order is unspecified, so with several present the key named is any
+// one of them. That is enough: the caller has to stop sending all of them, and
+// naming one identifies the rule.
+func FirstReservedMetadataKey(meta map[string]interface{}) string {
+	for k := range meta {
+		if ReservedMetadataKey(k) {
+			return k
+		}
+	}
+	return ""
+}
+
+// PublicMetadata returns meta without its reserved entries, and nil when nothing
+// is left — the DTO field is omitempty, so an account carrying only engine state
+// reports no metadata rather than an empty object.
+//
+// It builds a copy. The map belongs to the loaded entity, and deleting from it in
+// place would drop the engine's own state from the row the next time that entity
+// is saved.
+func PublicMetadata(meta map[string]interface{}) map[string]interface{} {
+	if meta == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(meta))
+	for k, v := range meta {
+		if ReservedMetadataKey(k) {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 // Service implements the user self-service operations.
 type Service struct {
@@ -85,6 +164,9 @@ type Service struct {
 	// links. Nil gives every application the deployment default; see
 	// verificationBaseURL.
 	frontendURLs FrontendURLResolver
+	// secondFactor re-checks a TOTP code when an account holds no password and so
+	// cannot be re-authenticated by one. Nil leaves that check unavailable.
+	secondFactor SecondFactorVerifier
 }
 
 // FrontendURLResolver supplies the origin an application's emailed links point at.
@@ -128,6 +210,30 @@ func NewService(authRepo *auth.Repository, emailProvider email.EmailProvider, po
 // a settings cache.
 func (s *Service) WithFrontendURLResolver(r FrontendURLResolver) *Service {
 	s.frontendURLs = r
+	return s
+}
+
+// SecondFactorVerifier re-checks a user's second factor at the moment of a
+// destructive operation.
+//
+// Declared as an interface rather than calling auth.Service directly so this
+// package does not have to restate how a TOTP code is validated. The skew
+// tolerance, digit count and period live in one place, and a rule changed there
+// changes here too — two copies would drift, and the copy that drifted looser
+// would be the one guarding account deletion.
+//
+// *auth.Service satisfies it. Nil leaves the check off, which is why the callers
+// that depend on it say so explicitly rather than assuming it is wired.
+type SecondFactorVerifier interface {
+	// VerifyAdminTOTP returns nil when code is currently valid for userID, and an
+	// error when it is not or the account has no active TOTP method.
+	VerifyAdminTOTP(ctx context.Context, userID string, code string) error
+}
+
+// WithSecondFactorVerifier supplies the TOTP check used to re-authenticate an
+// account that has no password, and returns the service for chaining.
+func (s *Service) WithSecondFactorVerifier(v SecondFactorVerifier) *Service {
+	s.secondFactor = v
 	return s
 }
 

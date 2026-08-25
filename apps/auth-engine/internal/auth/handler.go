@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/authcookie"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/middleware"
@@ -38,7 +39,18 @@ type SignUpRequest struct {
 	Email       string `json:"email" example:"user@example.com"`
 	Password    string `json:"password" example:"SuperSecret123!"`
 	Name        string `json:"name" example:"Alex Smith"`
+	// Username is the optional public handle. Omitted or empty registers an account
+	// without one, which stays a valid account: it signs in by address, and a handle
+	// can be claimed later from the profile endpoint.
+	Username string `json:"username" example:"alexsmith"`
 }
+
+// maxIdentifierBytes bounds a sign-in identifier, at the RFC 5321 ceiling on an
+// email address — the longer of the two things the field may hold, since a handle
+// stops at username.MaxLength. It is a resource guard rather than a validation rule:
+// the value reaches a database query, and refusing an over-long one costs nothing a
+// real user would notice.
+const maxIdentifierBytes = 320
 
 // LoginRequest defines the HTTP payload for password login.
 type LoginRequest struct {
@@ -47,8 +59,38 @@ type LoginRequest struct {
 	// a caller cannot name a tenant or reach live data with a test key.
 	TenantID    string `json:"-"`
 	Environment string `json:"-"`
-	Email       string `json:"email" example:"user@example.com"`
-	Password    string `json:"password" example:"SuperSecret123!"`
+	// Identifier is the email address or username the account is named by. Email is
+	// accepted as an alias for it so a caller written against the address-only form
+	// keeps working; Identifier wins when both are sent.
+	Identifier string `json:"identifier" example:"alexsmith"`
+	Email      string `json:"email" example:"user@example.com"`
+	Password   string `json:"password" example:"SuperSecret123!"`
+}
+
+// LoginIdentifier returns the identifier the request names the account by,
+// preferring the explicit field over the alias.
+func (r LoginRequest) LoginIdentifier() string {
+	if strings.TrimSpace(r.Identifier) != "" {
+		return strings.TrimSpace(r.Identifier)
+	}
+	return strings.TrimSpace(r.Email)
+}
+
+// UsernameAvailabilityResponse answers whether one handle can be registered.
+//
+// Reason and Message are empty on an available handle, and Suggestions is omitted
+// there too: a client that received alternatives alongside "yes" would have to know
+// to ignore them.
+type UsernameAvailabilityResponse struct {
+	// Username echoes the handle that was checked, so a client rendering a
+	// late-arriving response can discard one that no longer matches the field.
+	Username  string `json:"username" example:"alexsmith"`
+	Available bool   `json:"available" example:"false"`
+	// Reason is invalid, reserved or taken. It is the field to branch on; Message is
+	// for display and its wording is not part of the contract.
+	Reason      string   `json:"reason,omitempty" example:"taken"`
+	Message     string   `json:"message,omitempty" example:"that username is already taken"`
+	Suggestions []string `json:"suggestions,omitempty" example:"alexsmith1,alex_smith,asmith"`
 }
 
 // AuthResponse defines the successful authentication or 2FA challenge response payload.
@@ -75,8 +117,39 @@ type UserDTO struct {
 	Email         string  `json:"email" example:"user@example.com"`
 	EmailVerified bool    `json:"email_verified" example:"false"`
 	Name          *string `json:"name,omitempty" example:"Alex Smith"`
-	Status        string  `json:"status" example:"active"`
-	CreatedAt     string  `json:"created_at" example:"2026-08-01T12:00:00Z"`
+	// Username is the public handle in the form the user typed it, omitted when they
+	// hold none. Lookups use the canonical form; this is the display value.
+	Username  string `json:"username,omitempty" example:"AlexSmith"`
+	Status    string `json:"status" example:"active"`
+	CreatedAt string `json:"created_at" example:"2026-08-01T12:00:00Z"`
+}
+
+// newUserDTO projects a user row onto the client-facing payload.
+//
+// Every authentication response is built through this, so one account cannot be
+// described differently by two endpoints. Assembling the struct at each call site is
+// how the magic-link response came to omit status and created_at that its
+// password-login sibling returned, and how a field added later gets missed on
+// whichever handler the author was not editing.
+//
+// Name is a pointer so an unset one is absent rather than an empty string, which is
+// the distinction its existing consumers read. Username needs no pointer: the empty
+// string is not a handle anyone can hold, so omitempty already means "none".
+func newUserDTO(u *ent.User) UserDTO {
+	var namePtr *string
+	if u.Name != "" {
+		namePtr = &u.Name
+	}
+
+	return UserDTO{
+		ID:            u.ID,
+		Email:         u.Email,
+		EmailVerified: u.EmailVerified,
+		Name:          namePtr,
+		Username:      Handle(u),
+		Status:        string(u.Status),
+		CreatedAt:     u.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
 }
 
 // Handler handles HTTP requests for authentication flows.
@@ -87,6 +160,10 @@ type Handler struct {
 	policyRepo      *policy.Repository
 	rateLimiter     *ratelimit.Limiter
 	resendLimiter   *ratelimit.Limiter
+	// usernameLimiter throttles the availability probe on a budget of its own. The
+	// shared limiter keys on the request path, so the probe would otherwise draw from
+	// a credential-sized budget while a user is still typing.
+	usernameLimiter *ratelimit.Limiter
 	// cookies builds every session cookie this handler writes. It is never nil:
 	// NewHandler installs one backed by default tenant policy, and
 	// WithSessionPolicyResolver replaces it with one that reads live policy.
@@ -116,6 +193,19 @@ func NewHandler(service *Service, policyRepo *policy.Repository, rateLimiter *ra
 // protects with RequireClientAuth. It returns the handler for chaining.
 func (h *Handler) WithBlocklist(bl *tokenblocklist.Blocklist) *Handler {
 	h.blocklist = bl
+	return h
+}
+
+// WithUsernameLimiter sets the limiter guarding the username availability probe,
+// and returns the handler for chaining.
+//
+// Left unset, the probe falls back to the shared credential limiter, which is the
+// safe default rather than the intended one: a budget written for password attempts
+// rejects a user still typing their handle. It is a separate method rather than a
+// constructor parameter so the handler stays constructible in tests that have no
+// limiter behind them.
+func (h *Handler) WithUsernameLimiter(l *ratelimit.Limiter) *Handler {
+	h.usernameLimiter = l
 	return h
 }
 
@@ -171,6 +261,21 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 		return append(append(append([]fiber.Handler{}, mws...), clientAuth), handler)
 	}
 
+	// throttled builds a public chain that swaps the shared credential limiter for a
+	// route-specific one. The publishable key middleware stays ahead of it, because
+	// the limiter reads the tenant it namespaces buckets by out of what that
+	// middleware resolved.
+	throttled := func(limiter *ratelimit.Limiter, handler fiber.Handler) []fiber.Handler {
+		if limiter == nil {
+			return public(handler)
+		}
+		chain := []fiber.Handler{}
+		if pkMiddleware != nil {
+			chain = append(chain, pkMiddleware)
+		}
+		return append(chain, limiter.Middleware(), handler)
+	}
+
 	// Registration, password sign-in and email verification.
 	//
 	// Every client authentication route lives under /v1/client/auth/. The prefix
@@ -181,6 +286,15 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	api.Post("/auth/login", public(h.Login)...)
 	api.Get("/auth/verify-email", public(h.VerifyEmail)...)
 	api.Post("/auth/resend-verification", public(h.ResendVerification)...)
+
+	// Username availability, on a budget of its own (see WithUsernameLimiter).
+	//
+	// GET rather than POST: it is a read, it is safe to repeat, and a sign-up form
+	// calls it on every keystroke behind a debounce. The handle travels in the query
+	// string, which is also why the response carries no more than the sign-up form
+	// would reveal a moment later — a caller can already learn a handle is taken by
+	// attempting to register it.
+	api.Get("/auth/username-available", throttled(h.usernameLimiter, h.CheckUsername)...)
 
 	// Passwordless magic link (FR-15). The emailed token is the credential.
 	//
@@ -205,6 +319,10 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	api.Post("/auth/2fa/sms/enroll", protected(h.EnrollSMS)...)
 	api.Post("/auth/2fa/sms/confirm", protected(h.ConfirmSMS)...)
 	api.Delete("/auth/2fa/sms/disable", protected(h.DisableSMS)...)
+	// Public for the same reason verification is: the login challenge's caller holds an mfa_token
+	// and no session. Without this the challenge could advertise `sms` among its methods and never
+	// satisfy it, since a code is only ever minted by a send.
+	api.Post("/auth/2fa/sms/challenge", public(h.SendSMSChallenge)...)
 
 	// Backup recovery codes (FR-4).
 	api.Post("/auth/2fa/recovery-codes/regenerate", protected(h.RegenerateRecoveryCodes)...)
@@ -224,6 +342,12 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	api.Post("/account/guardians/accept", public(h.AcceptGuardianInvite)...)
 	api.Get("/account/guardians", protected(h.ListGuardians)...)
 	api.Delete("/account/guardians/:id", protected(h.RevokeGuardian)...)
+
+	// Security questions (FR-5), the last-resort recovery factor. Enrolling one needs no second
+	// party, unlike a guardian invitation, so the write routes take a step-up of their own.
+	api.Get("/account/security-questions", protected(h.ListSecurityQuestions)...)
+	api.Put("/account/security-questions", protected(h.SetSecurityQuestions)...)
+	api.Delete("/account/security-questions", protected(h.DeleteSecurityQuestions)...)
 
 	// Account recovery (FR-5). Everything except the authenticated cancel is reachable without a
 	// session by design — a locked-out user has none.
@@ -345,6 +469,10 @@ func clientSafeError(err error) (httperr.Code, string, bool) {
 		return httperr.CodeServiceUnavailable, ErrFactorsUnavailable.Error(), true
 	case errors.Is(err, ErrTooManySMSRequests):
 		return httperr.CodeRateLimited, ErrTooManySMSRequests.Error(), true
+	case errors.Is(err, ErrSMSNotEnrolled):
+		return httperr.CodeNotFound, ErrSMSNotEnrolled.Error(), true
+	case errors.Is(err, ErrSMSDeliveryFailed):
+		return httperr.CodeServiceUnavailable, ErrSMSDeliveryFailed.Error(), true
 	case errors.Is(err, ErrAdmin2FAMandatory):
 		return httperr.CodeForbidden, ErrAdmin2FAMandatory.Error(), true
 	case errors.Is(err, ErrPasskeyCloneDetected):

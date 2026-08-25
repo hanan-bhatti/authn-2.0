@@ -51,6 +51,7 @@ import (
 	smsPkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/sms"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
@@ -61,11 +62,22 @@ import (
 // static message instead.
 var (
 	// ErrInvalidCredentials covers every failed password check. It is deliberately identical for
-	// an unknown address and a wrong password, so it cannot be used to enumerate accounts.
-	ErrInvalidCredentials = errors.New("invalid email or password")
+	// an identifier that resolves to nothing and a password that does not match, so it cannot be
+	// used to enumerate accounts. It names no field for the same reason: login accepts an address
+	// or a handle, and saying which of the two was not found would answer the question the single
+	// message exists to refuse.
+	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrUserAlreadyExists reports a signup for an address already registered in this tenant and
 	// environment.
 	ErrUserAlreadyExists = errors.New("user with this email already exists")
+	// ErrUsernameTaken reports a handle already held by another account in this tenant and
+	// environment. Distinct from ErrUserAlreadyExists so a signup form can mark the one field at
+	// fault instead of refusing the whole submission with a message about the address.
+	ErrUsernameTaken = errors.New("username is already taken")
+	// ErrUsernameInvalid reports a handle that breaks one of the rules in pkg/username. It is
+	// wrapped around the specific rule error, so a caller can name what to change with
+	// username.Explain rather than only reporting that something was wrong.
+	ErrUsernameInvalid = errors.New("username is not valid")
 	// ErrTenantNotFound reports a request naming a tenant that was never
 	// provisioned. Tenants are created deliberately, so this is a misconfigured
 	// client rather than a condition the engine should repair by creating one.
@@ -116,6 +128,14 @@ var (
 	// ErrTooManySMSRequests reports that the per-user SMS send budget for the current window is
 	// spent. It bounds the cost an attacker can impose by triggering paid messages.
 	ErrTooManySMSRequests = errors.New("too many OTP requests; please wait before requesting another code")
+	// ErrSMSNotEnrolled reports a code requested for an account holding no confirmed phone number.
+	// Reachable when SMS was disabled during the challenge window, since the challenge's factor set
+	// is fixed when the password is accepted.
+	ErrSMSNotEnrolled = errors.New("no confirmed phone number is on file for SMS verification")
+	// ErrSMSDeliveryFailed reports that the code could not be handed to the SMS provider. It is
+	// distinct from ErrTooManySMSRequests because nothing the caller did caused it and waiting will
+	// not help — another second factor will.
+	ErrSMSDeliveryFailed = errors.New("the verification code could not be sent by SMS; try another second factor")
 	// ErrAdmin2FAMandatory reports an attempt to remove the last second factor from an account
 	// holding an administrative role, which policy forbids.
 	ErrAdmin2FAMandatory = errors.New("2FA is mandatory for administrator accounts and cannot be disabled")
@@ -801,6 +821,10 @@ func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKe
 // JWT access token, and the raw refresh token. The refresh token is returned here and nowhere
 // else; only its SHA-256 digest is stored.
 //
+// handle is the optional public username, empty when the caller did not ask for one. It is
+// validated and probed for a collision before the account is created, so a taken handle does not
+// leave a registered account behind for the user to discover on their second attempt.
+//
 // The first account in a tenant atomically claims the tenant_admin role, so exactly one of any
 // number of concurrent signups wins it. A failed claim is not fatal — the account is created as a
 // regular user, since refusing to register someone because a role query failed is the worse
@@ -808,9 +832,10 @@ func (s *Service) ValidateApiKey(ctx context.Context, rawKey string) (*ent.ApiKe
 // still succeeds, leaving the account unverified.
 //
 // It returns ErrUserAlreadyExists when the address is already registered in this tenant and
-// environment, and a wrapped error when tenant setup, password hashing, entropy, account
-// creation, session creation, or token signing fails — in which case no account exists.
-func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env string, email string, password string, name string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
+// environment, ErrUsernameInvalid or ErrUsernameTaken for a handle that cannot be granted, and a
+// wrapped error when tenant setup, password hashing, entropy, account creation, session creation,
+// or token signing fails — in which case no account exists.
+func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env string, email string, password string, name string, handle string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
 	// The tenant is deliberately not created here. It is established by
 	// provisioning, before any credential for it exists; a signup that names an
 	// unknown tenant is a misconfigured client or a typo, and materialising a
@@ -829,6 +854,27 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 	if existing != nil {
 		return nil, "", "", ErrUserAlreadyExists
+	}
+
+	// The handle is settled before anything is written. Both checks are advisory —
+	// the unique index is what guarantees uniqueness — but running them here is what
+	// turns a lost race into the only failure mode, instead of every collision
+	// arriving as one.
+	if handle != "" {
+		canonical, cErr := username.Canonical(handle)
+		if cErr != nil {
+			// Both errors are wrapped: the sentinel so a handler can classify the
+			// failure, and the rule error so it can name which rule was broken without
+			// a second lookup table.
+			return nil, "", "", fmt.Errorf("%w: %w", ErrUsernameInvalid, cErr)
+		}
+		taken, tErr := s.repo.UsernamesTaken(ctx, tenantID, env, []string{canonical})
+		if tErr != nil {
+			return nil, "", "", tErr
+		}
+		if _, held := taken[canonical]; held {
+			return nil, "", "", ErrUsernameTaken
+		}
 	}
 
 	// Atomically claim the tenant_admin role for the first user in this tenant.
@@ -853,8 +899,19 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 	}
 
 	userID := idgen.New("usr")
-	u, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, passwordHash, name)
+	u, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, passwordHash, name, handle)
 	if err != nil {
+		// A constraint violation is the lost half of the race the checks above
+		// usually win. Which unique index rejected the row is not reported by the
+		// driver in a form worth parsing, so the handle is blamed only when one was
+		// supplied — the address was probed a few lines up and an account created
+		// between then and here is the same conflict either way.
+		if ent.IsConstraintError(err) {
+			if handle != "" {
+				return nil, "", "", ErrUsernameTaken
+			}
+			return nil, "", "", ErrUserAlreadyExists
+		}
 		return nil, "", "", err
 	}
 
@@ -893,15 +950,17 @@ func (s *Service) SignUpWithPassword(ctx context.Context, tenantID string, env s
 		"user_id":        u.ID,
 		"email":          u.Email,
 		"name":           u.Name,
+		"username":       Handle(u),
 		"via":            "password",
 		"email_verified": u.EmailVerified,
 	})
 	s.emit(tenantID, env, "user.signup", map[string]interface{}{
-		"user_id": u.ID,
-		"email":   u.Email,
-		"name":    u.Name,
-		"method":  "password",
-		"ip":      ipAddress,
+		"user_id":  u.ID,
+		"email":    u.Email,
+		"name":     u.Name,
+		"username": Handle(u),
+		"method":   "password",
+		"ip":       ipAddress,
 	})
 
 	// Send Email Verification (Non-blocking log on delivery error)
@@ -1016,7 +1075,7 @@ func (s *Service) SendMagicLink(ctx context.Context, tenantID string, env string
 	// Auto-provision user if not found (Option A)
 	if u == nil {
 		userID := idgen.New("usr")
-		createdUser, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, "", name)
+		createdUser, err := s.repo.CreateUser(ctx, userID, tenantID, env, email, "", name, "")
 		if err != nil {
 			return fmt.Errorf("failed auto-provisioning user for magic link: %w", err)
 		}
@@ -1166,8 +1225,153 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 	return u, accessToken, rawRefreshToken, nil
 }
 
+// Handle returns the user's public username, or the empty string when they hold
+// none. It exists so a *string column does not have to be dereferenced — or
+// serialised as a JSON null — at every call site that presents one.
+func Handle(u *ent.User) string {
+	if u == nil || u.Username == nil {
+		return ""
+	}
+	return *u.Username
+}
+
+// identifierType names the kind of identifier a sign-in attempt used, for the
+// telemetry payload. It is derived rather than reported by the caller so a
+// subscriber reading a run of failures cannot be told an address was a handle.
+func identifierType(identifier string) string {
+	if strings.Contains(identifier, "@") {
+		return "email"
+	}
+	return "username"
+}
+
+// resolveIdentifier finds the account a sign-in identifier names, reading it as an
+// email address when it contains an "@" and as a username otherwise.
+//
+// The "@" is a discriminator rather than a heuristic: the handle charset is ASCII
+// letters, digits and underscore, so no username can contain one and no address can
+// omit one. The two namespaces therefore cannot overlap, and one identifier field
+// cannot be made to mean two accounts.
+//
+// An identifier that resolves to nothing is reported as (nil, nil), whether it is
+// an unregistered address, an unclaimed handle, or a value too malformed to be
+// either. The caller must treat all three exactly as it treats a wrong password:
+// answering a malformed handle early would reintroduce through control flow the
+// enumeration oracle that constant-time verification exists to close. Skipping the
+// query for a malformed handle saves one index seek against a ~160ms Argon2id
+// verification, which is not a difference a caller can measure.
+func (s *Service) resolveIdentifier(ctx context.Context, tenantID string, env string, identifier string) (*ent.User, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, nil
+	}
+	if strings.Contains(identifier, "@") {
+		return s.repo.FindUserByEmail(ctx, tenantID, env, identifier)
+	}
+
+	canonical, err := username.Canonical(identifier)
+	if err != nil {
+		return nil, nil
+	}
+	return s.repo.FindUserByUsernameCanonical(ctx, tenantID, env, canonical)
+}
+
+// CheckUsername reports whether a handle can be registered in this tenant and
+// environment, and offers alternatives when it cannot.
+//
+// available is true only for a handle that is well-formed, not reserved, and held
+// by nobody. reason carries username.ReasonInvalid, ReasonReserved or ReasonTaken
+// for the three ways it can be refused, and message the sentence to show the person
+// who typed it.
+//
+// suggestions are drawn from a candidate pool and filtered against the same batched
+// availability query, so every one offered was free at the moment of the check.
+// They are computed for a taken handle and for a well-formed-but-reserved one, and
+// omitted for a malformed one: the fix there is to correct the input, and offering a
+// list of unrelated handles instead of naming the broken rule reads as the engine
+// having given up on what was typed. name is the display name to derive
+// alternatives from and may be empty.
+//
+// The verdict is advisory in both directions. The unique index is the guarantee, so
+// a handle reported available can still lose a race at write time, which is why the
+// signup path re-checks and maps a constraint violation to ErrUsernameTaken rather
+// than trusting this answer.
+func (s *Service) CheckUsername(ctx context.Context, tenantID string, env string, handle string, name string, wanted int) (available bool, reason string, message string, suggestions []string, err error) {
+	canonical, cErr := username.Canonical(handle)
+	if cErr != nil {
+		if !errors.Is(cErr, username.ErrReservedHandle) {
+			return false, username.Reason(cErr), username.Explain(cErr), nil, nil
+		}
+		alternatives, sErr := s.suggestUsernames(ctx, tenantID, env, handle, name, wanted)
+		if sErr != nil {
+			return false, "", "", nil, sErr
+		}
+		return false, username.ReasonReserved, username.Explain(cErr), alternatives, nil
+	}
+
+	taken, err := s.repo.UsernamesTaken(ctx, tenantID, env, []string{canonical})
+	if err != nil {
+		return false, "", "", nil, err
+	}
+	if _, held := taken[canonical]; !held {
+		return true, "", "", nil, nil
+	}
+
+	alternatives, err := s.suggestUsernames(ctx, tenantID, env, canonical, name, wanted)
+	if err != nil {
+		return false, "", "", nil, err
+	}
+	return false, username.ReasonTaken, "that username is already taken", alternatives, nil
+}
+
+// suggestUsernames returns up to wanted free handles derived from seed and name.
+//
+// The whole pool is answered by one statement rather than probed candidate by
+// candidate, which is what keeps the cost of a suggestion independent of how many
+// alternatives it took to find one. The pool is generated closest-first, so
+// filtering it and truncating preserves that order and the user is shown the
+// nearest free handles rather than an arbitrary subset.
+//
+// Returns nil when nothing survives, which is a real outcome for input carrying no
+// letters to build on. A caller renders that as no suggestions rather than as a
+// failure.
+func (s *Service) suggestUsernames(ctx context.Context, tenantID string, env string, seed string, name string, wanted int) ([]string, error) {
+	if wanted <= 0 {
+		wanted = username.DefaultSuggestions
+	}
+
+	pool := username.Candidates(seed, name, username.CandidatePoolSize)
+	if len(pool) == 0 {
+		return nil, nil
+	}
+
+	taken, err := s.repo.UsernamesTaken(ctx, tenantID, env, pool)
+	if err != nil {
+		return nil, err
+	}
+
+	free := make([]string, 0, wanted)
+	for _, candidate := range pool {
+		if _, held := taken[candidate]; held {
+			continue
+		}
+		free = append(free, candidate)
+		if len(free) == wanted {
+			break
+		}
+	}
+	if len(free) == 0 {
+		return nil, nil
+	}
+	return free, nil
+}
+
 // ValidatePasswordCredentials verifies a password and, when no second factor is enrolled, issues
 // a session — returning the user, an access token, and the raw refresh token.
+//
+// identifier is either an email address or a username; see resolveIdentifier for how the two are
+// told apart, and why an identifier matching no account is not distinguished from a wrong
+// password.
 //
 // When the account has any second factor enrolled it returns Err2FARequired together with the
 // user and an MFA challenge token in the access-token position, and an empty refresh token. That
@@ -1176,10 +1380,10 @@ func (s *Service) VerifyMagicLinkToken(ctx context.Context, rawToken string, use
 //
 // Argon2id verification runs against a dummy hash when the account is missing or has no password,
 // so the hit and miss paths cost the same and cannot be told apart by timing. It returns
-// ErrInvalidCredentials for an unknown address, a wrong password, and a lookup failure alike, and
-// a plain error naming the status for an account that is not active.
-func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID string, env string, email string, password string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
-	u, err := s.repo.FindUserByEmail(ctx, tenantID, env, email)
+// ErrInvalidCredentials for an unknown identifier, a wrong password, and a lookup failure alike,
+// and a plain error naming the status for an account that is not active.
+func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID string, env string, identifier string, password string, userAgent string, ipAddress string) (*ent.User, string, string, error) {
+	u, err := s.resolveIdentifier(ctx, tenantID, env, identifier)
 
 	// Execute constant-time password verification using DummyArgon2idHash if user is missing or has no password hash.
 	// Prevents side-channel timing attacks that allow user enumeration (~160ms CPU cost in both cases).
@@ -1191,23 +1395,25 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 	validPassword := crypto.VerifyPasswordArgon2id(password, passwordHash)
 
 	if err != nil || u == nil || !validPassword {
-		// The attempted address is always reported and the user ID only when one
-		// matched, because this branch covers an unknown address as well as a wrong
+		// The attempted identifier is always reported and the user ID only when one
+		// matched, because this branch covers an unknown identifier as well as a wrong
 		// password: a subscriber watching for credential stuffing has to be able to
-		// tell a spray across many addresses from repeated attempts on one account.
+		// tell a spray across many accounts from repeated attempts on one.
 		//
 		// The response stays deliberately indistinguishable between those two — see
 		// the constant-time verification above. Reporting the difference to the
 		// tenant's own subscriber gives away nothing the tenant may not know.
 		failure := map[string]interface{}{
-			"email":      email,
-			"method":     "password",
-			"reason":     "invalid_credentials",
-			"ip":         ipAddress,
-			"user_agent": userAgent,
+			"identifier":      identifier,
+			"identifier_type": identifierType(identifier),
+			"method":          "password",
+			"reason":          "invalid_credentials",
+			"ip":              ipAddress,
+			"user_agent":      userAgent,
 		}
 		if u != nil {
 			failure["user_id"] = u.ID
+			failure["email"] = u.Email
 		}
 		s.emit(tenantID, env, "user.login.failed", failure)
 
@@ -1222,13 +1428,15 @@ func (s *Service) ValidatePasswordCredentials(ctx context.Context, tenantID stri
 		// password was correct here, and a subscriber acting on a run of these is
 		// looking at a restriction being hit rather than at anyone guessing.
 		s.emit(tenantID, env, "user.login.failed", map[string]interface{}{
-			"user_id":    u.ID,
-			"email":      u.Email,
-			"method":     "password",
-			"reason":     "account_status",
-			"status":     string(u.Status),
-			"ip":         ipAddress,
-			"user_agent": userAgent,
+			"user_id":         u.ID,
+			"email":           u.Email,
+			"identifier":      identifier,
+			"identifier_type": identifierType(identifier),
+			"method":          "password",
+			"reason":          "account_status",
+			"status":          string(u.Status),
+			"ip":              ipAddress,
+			"user_agent":      userAgent,
 		})
 
 		if errors.Is(err, accountstatus.ErrDeleted) {
@@ -1830,12 +2038,64 @@ func (s *Service) checkSMSRateLimit(userID string) error {
 	return nil
 }
 
+// issueSMSOTP mints a six-digit code for userID, records it in memory against phoneNumber, and
+// hands it to the SMS provider.
+//
+// The code and the lifetime actually applied are returned so each caller can phrase its own reply,
+// and the delivery failure is returned separately from them so each caller can decide what a
+// failure means: enrollment falls back to email, where a login challenge must not.
+//
+// A failed send leaves the code stored. A provider that reports an error after the message left is
+// indistinguishable from one that never sent it, and discarding the code would refuse a handset
+// that did receive it.
+func (s *Service) issueSMSOTP(ctx context.Context, userID string, phoneNumber string) (string, time.Duration, error) {
+	otpBuf := make([]byte, 4)
+	_, _ = rand.Read(otpBuf)
+	otpNum := binary.BigEndian.Uint32(otpBuf) % 1000000
+	code := fmt.Sprintf("%06d", otpNum)
+
+	ttl := s.mfaChallengeTTL()
+	s.pendingSMSOTPs.Store(userID, SMSOTPState{
+		PhoneNumber: phoneNumber,
+		Code:        code,
+		ExpiresAt:   time.Now().Add(ttl),
+	})
+
+	if s.smsProvider == nil {
+		return code, ttl, fmt.Errorf("no SMS provider configured")
+	}
+
+	msg := fmt.Sprintf("Your Authn verification code is: %s", code)
+	return code, ttl, s.smsProvider.SendSMS(ctx, phoneNumber, msg)
+}
+
+// maskPhoneNumber renders an E.164 number as its country prefix, a run of bullets, and its last two
+// digits, so a reader is told which handset to check without the full number being printed.
+//
+// Callers hold an mfa_token rather than a session, so the response is readable by anyone who has
+// the password but not the phone — the point is to say "the number ending 99", not to disclose it.
+// Anything too short to redact meaningfully is replaced wholesale.
+func maskPhoneNumber(phoneNumber string) string {
+	digits := strings.TrimPrefix(phoneNumber, "+")
+	if len(digits) < 6 {
+		return "••••"
+	}
+
+	// Two leading digits is the shortest country code and the longest a mask can reveal without
+	// narrowing the number materially; three trailing bullets keep the length from leaking.
+	return fmt.Sprintf("+%s•••%s", digits[:2], digits[len(digits)-2:])
+}
+
 // BeginSMSEnrollment sends a six-digit code to phoneNumber and records a pending, disabled SMS
 // method for the user. The code lives for Config.MFAChallengeTTL and is held in memory only.
 //
 // A send failure falls back to emailing the code, so a misconfigured or failing SMS provider does
-// not strand enrollment. The number is stored encrypted and is promoted to the user record only
-// once ConfirmSMSEnrollment succeeds.
+// not strand enrollment. That fallback is safe here and not on the login challenge: enrollment runs
+// inside a session the account holder already has, where a challenge is answered by whoever holds
+// the password, and mailing them the second factor would leave one factor guarding the account.
+//
+// The number is stored encrypted and is promoted to the user record only once ConfirmSMSEnrollment
+// succeeds.
 //
 // It returns a plain error for a non-E.164 number or an unknown user, ErrTooManySMSRequests when
 // the send budget is spent, and a wrapped error when encryption, the pending-record write, or
@@ -1855,18 +2115,6 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 		return err
 	}
 
-	otpBuf := make([]byte, 4)
-	_, _ = rand.Read(otpBuf)
-	otpNum := binary.BigEndian.Uint32(otpBuf) % 1000000
-	code := fmt.Sprintf("%06d", otpNum)
-
-	ttl := s.mfaChallengeTTL()
-	s.pendingSMSOTPs.Store(userID, SMSOTPState{
-		PhoneNumber: phoneNumber,
-		Code:        code,
-		ExpiresAt:   time.Now().Add(ttl),
-	})
-
 	encryptedPhone, err := crypto.EncryptAES256GCM(phoneNumber, s.config.EncryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed encrypting phone number: %w", err)
@@ -1876,14 +2124,7 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 		return fmt.Errorf("failed creating pending SMS 2FA record: %w", err)
 	}
 
-	msg := fmt.Sprintf("Your Authn verification code is: %s", code)
-	var smsErr error
-	if s.smsProvider != nil {
-		smsErr = s.smsProvider.SendSMS(ctx, phoneNumber, msg)
-	} else {
-		smsErr = fmt.Errorf("no SMS provider configured")
-	}
-
+	code, ttl, smsErr := s.issueSMSOTP(ctx, userID, phoneNumber)
 	if smsErr != nil {
 		log.Printf("⚠️ SMS send notice for user %s (%s): %v. Falling back to Email OTP.", userID, phoneNumber, smsErr)
 		// The stated window is derived from the TTL actually applied above.
@@ -1896,6 +2137,89 @@ func (s *Service) BeginSMSEnrollment(ctx context.Context, userID string, phoneNu
 	}
 
 	return nil
+}
+
+// SMSEnrollmentTTLSeconds is how long an SMS code minted now will be accepted, for a handler that
+// has to state the window alongside the send.
+func (s *Service) SMSEnrollmentTTLSeconds() int {
+	return int(s.mfaChallengeTTL().Seconds())
+}
+
+// SendSMSChallenge delivers a fresh SMS code to the phone on file for the account behind mfaToken,
+// returning the masked destination and the seconds the code remains valid.
+//
+// This is the send half of SMS as a login factor. Verification loads the code from memory, and
+// until this route existed only BeginSMSEnrollment ever wrote one — which needs a session, where a
+// challenge caller has only the token. The login challenge advertised `sms` among its methods and
+// could never satisfy it.
+//
+// The gate is the challenge's own factor list rather than the account's current factors, matching
+// Verify2FACodeWithMethod: the set is fixed when the password is accepted, so a factor added during
+// the challenge window is not usable until the next sign-in.
+//
+// There is deliberately no email fallback. The caller has proven the password and nothing else, so
+// mailing the second factor to the account address would reduce two factors to one — the exact
+// substitution 2FA exists to prevent. A provider failure is reported as ErrSMSDeliveryFailed so the
+// client can offer another factor instead.
+//
+// It returns ErrInvalidToken for a token that does not verify or names an unknown user, an
+// accountstatus error for a restricted account, ErrFactorUnavailable when the challenge does not
+// include SMS, ErrSMSNotEnrolled when no confirmed number is on file, ErrTooManySMSRequests when
+// the send budget is spent, and ErrFactorsUnavailable when the stored number cannot be read.
+func (s *Service) SendSMSChallenge(ctx context.Context, mfaToken string) (string, int, error) {
+	claims, err := jwt.VerifyMFAChallengeToken(mfaToken, s.config.EncryptionKey)
+	if err != nil {
+		return "", 0, ErrInvalidToken
+	}
+
+	// Checked before the account is loaded: the answer does not depend on the user record, and a
+	// challenge that never offered SMS should not cost a database read.
+	if !slices.Contains(claims.Methods, "sms") {
+		return "", 0, ErrFactorUnavailable
+	}
+
+	u, err := s.repo.FindUserByID(ctx, claims.Sub)
+	if err != nil || u == nil {
+		return "", 0, ErrInvalidToken
+	}
+	if err := accountstatus.Allowed(u); err != nil {
+		// A restriction applied during the challenge window, since the password was accepted
+		// before the token was issued. Deletion is reported as a bad token, as elsewhere, so the
+		// address space cannot be probed.
+		if errors.Is(err, accountstatus.ErrDeleted) {
+			return "", 0, ErrInvalidToken
+		}
+		return "", 0, err
+	}
+
+	// The enabled-only query, not GetSMSMethodForUser: a pending number is one an attacker could
+	// have submitted, and sending a login code to it would hand them the second factor.
+	tfm, err := s.repo.GetActiveSMSMethodForUser(ctx, claims.Sub)
+	if err != nil {
+		return "", 0, ErrFactorsUnavailable
+	}
+	if tfm == nil || tfm.SecretEncrypted == "" {
+		return "", 0, ErrSMSNotEnrolled
+	}
+
+	phoneNumber, err := crypto.DecryptAES256GCM(tfm.SecretEncrypted, s.config.EncryptionKey)
+	if err != nil {
+		return "", 0, ErrFactorsUnavailable
+	}
+
+	// Charged after the destination is known to exist, so a rejected request does not consume
+	// budget the account holder will need for a real send.
+	if err := s.checkSMSRateLimit(claims.Sub); err != nil {
+		return "", 0, err
+	}
+
+	_, ttl, sendErr := s.issueSMSOTP(ctx, claims.Sub, phoneNumber)
+	if sendErr != nil {
+		log.Printf("[error] SMS challenge send failed for user %s: %v", claims.Sub, sendErr)
+		return "", 0, ErrSMSDeliveryFailed
+	}
+
+	return maskPhoneNumber(phoneNumber), int(ttl.Seconds()), nil
 }
 
 // ConfirmSMSEnrollment validates the pending code and, on success, activates the SMS method and

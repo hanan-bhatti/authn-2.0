@@ -57,6 +57,11 @@ type SMSDisableRequest struct {
 	Password string `json:"password" example:"SuperSecret123!"`
 }
 
+// SMSChallengeRequest payload for having a login challenge's SMS code sent.
+type SMSChallengeRequest struct {
+	MFAToken string `json:"mfa_token"`
+}
+
 // EnrollTOTP handles POST /v1/client/auth/2fa/totp/enroll.
 // Generates a new TOTP secret for the authenticated user and stores it in pending state (is_enabled = false).
 func (h *Handler) EnrollTOTP(c *fiber.Ctx) error {
@@ -125,11 +130,6 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 				httperr.CodeInvalidMFACode, "two-factor verification failed")
 		}
 
-		var namePtr *string
-		if u.Name != "" {
-			namePtr = &u.Name
-		}
-
 		refreshTokenBody := ""
 		if clientType == "native" || clientType == "mobile" {
 			refreshTokenBody = refreshToken
@@ -139,14 +139,7 @@ func (h *Handler) VerifyTOTP(c *fiber.Ctx) error {
 		}
 
 		return c.Status(fiber.StatusOK).JSON(AuthResponse{
-			User: UserDTO{
-				ID:            u.ID,
-				Email:         u.Email,
-				EmailVerified: u.EmailVerified,
-				Name:          namePtr,
-				Status:        string(u.Status),
-				CreatedAt:     u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			},
+			User:         newUserDTO(u),
 			AccessToken:  accessToken,
 			RefreshToken: refreshTokenBody,
 		})
@@ -261,7 +254,45 @@ func (h *Handler) EnrollSMS(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message":            "OTP verification code sent via SMS",
-		"expires_in_seconds": 300,
+		"expires_in_seconds": h.service.SMSEnrollmentTTLSeconds(),
+	})
+}
+
+// SendSMSChallenge handles POST /v1/client/auth/2fa/sms/challenge.
+//
+// Public, because the caller holds an mfa_token from a password sign-in and has no session yet —
+// the same reason /auth/2fa/verify is public. Authorization is the token itself, and the per-user
+// budget inside the service bounds the paid messages one account can trigger.
+func (h *Handler) SendSMSChallenge(c *fiber.Ctx) error {
+	var req SMSChallengeRequest
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.MFAToken) == "" {
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "mfa_token is required")
+	}
+
+	maskedPhone, expiresIn, err := h.service.SendSMSChallenge(c.UserContext(), strings.TrimSpace(req.MFAToken))
+	if err != nil {
+		// Ours, not the caller's: the password behind this challenge was already proven, so
+		// blaming the request would send the reader off to re-check a correct token.
+		if errors.Is(err, ErrSMSDeliveryFailed) || errors.Is(err, ErrFactorsUnavailable) {
+			return httperr.Send(c, fiber.StatusServiceUnavailable, httperr.CodeServiceUnavailable, err.Error())
+		}
+		if errors.Is(err, ErrTooManySMSRequests) {
+			return httperr.Send(c, fiber.StatusTooManyRequests, httperr.CodeRateLimited, ErrTooManySMSRequests.Error())
+		}
+		if errors.Is(err, ErrInvalidToken) {
+			return httperr.Unauthorized(c, httperr.CodeInvalidToken, ErrInvalidToken.Error())
+		}
+		if accountstatus.Refused(err) {
+			return httperr.Send(c, fiber.StatusForbidden, httperr.CodeAccountDisabled, accountstatus.PublicMessage(err))
+		}
+		return sendServiceError(c, "auth.sms.challenge", fiber.StatusBadRequest, err,
+			httperr.CodeValidationFailed, "unable to send an SMS verification code for this sign-in")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message":            "Verification code sent via SMS",
+		"phone_number":       maskedPhone,
+		"expires_in_seconds": expiresIn,
 	})
 }
 

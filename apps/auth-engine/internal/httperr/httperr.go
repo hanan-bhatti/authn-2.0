@@ -94,6 +94,15 @@ type Envelope struct {
 	Error string `json:"error"`
 	// Code is the stable machine-readable identifier. Part of the wire contract.
 	Code string `json:"code"`
+	// Details carries structured context for the refusal, and is absent from
+	// almost every response.
+	//
+	// It exists for the errors whose message names things a client needs to act on
+	// — the organizations blocking an account deletion, say. Parsing those names
+	// back out of the prose is the alternative, and the prose is explicitly not
+	// part of the contract. Whatever goes in here is subject to the same rule as
+	// the message: client-safe values only, never wrapped driver text.
+	Details map[string]interface{} `json:"details,omitempty"`
 }
 
 // Send writes a canonical error response with the given HTTP status.
@@ -103,6 +112,16 @@ type Envelope struct {
 // SendInternal for 5xx, or one of the 4xx helpers with a sanitized message.
 func Send(c *fiber.Ctx, status int, code Code, msg string) error {
 	return c.Status(status).JSON(Envelope{Error: msg, Code: string(code)})
+}
+
+// SendWithDetails writes a canonical error response carrying structured context
+// alongside the message.
+//
+// Every value in details reaches the caller verbatim, so it holds only what the
+// message itself could have said. It is the same envelope Send produces, with one
+// extra key, so a client that ignores details reads the response exactly as before.
+func SendWithDetails(c *fiber.Ctx, status int, code Code, msg string, details map[string]interface{}) error {
+	return c.Status(status).JSON(Envelope{Error: msg, Code: string(code), Details: details})
 }
 
 // SendInternal logs err server-side and returns a generic 500 to the caller.
@@ -158,6 +177,13 @@ func BadRequest(c *fiber.Ctx, code Code, msg string) error {
 // state, such as an email address already registered.
 func Conflict(c *fiber.Ctx, code Code, msg string) error {
 	return Send(c, fiber.StatusConflict, code, msg)
+}
+
+// ConflictWithDetails answers 409 with structured context naming what stands in
+// the way, for the refusals a client is expected to help resolve rather than
+// merely report.
+func ConflictWithDetails(c *fiber.Ctx, code Code, msg string, details map[string]interface{}) error {
+	return SendWithDetails(c, fiber.StatusConflict, code, msg, details)
 }
 
 // UnprocessableEntity answers 422: the request parsed correctly but a value

@@ -24,7 +24,57 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/ratelimit"
 	jwtpkg "github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/jwt"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/username"
 )
+
+// CheckUsername answers whether a handle can be registered, and offers alternatives
+// when it cannot (GET /v1/client/auth/username-available?username=...&name=...).
+//
+// A malformed handle is answered 200 with available=false rather than 422. This is a
+// question, not a submission: a sign-up form calls it while the user is still typing,
+// and every intermediate state of a handle being typed is malformed. Reporting those
+// as request errors would fill a console with failures describing normal use, and
+// force the client to read two response shapes for one question. A missing parameter
+// is still a 400, because that is a caller defect rather than a user's keystroke.
+//
+// name is optional and only feeds the suggestion generator, which uses it to offer
+// deliberate-looking alternatives — alex_smith rather than alexsmith4821.
+func (h *Handler) CheckUsername(c *fiber.Ctx) error {
+	tenantID, okTenant := middleware.RequireTenantID(c)
+	if !okTenant {
+		return nil
+	}
+	env := middleware.GetEnvironment(c)
+
+	handle := strings.TrimSpace(c.Query("username"))
+	if handle == "" {
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "username is required")
+	}
+	// Bounded before it is normalized, because NFKC can expand its input several
+	// times over and this route is reachable without a session.
+	if len(handle) > username.MaxInputBytes {
+		return c.Status(fiber.StatusOK).JSON(UsernameAvailabilityResponse{
+			Username:  handle,
+			Available: false,
+			Reason:    username.ReasonInvalid,
+			Message:   username.Explain(username.ErrTooLong),
+		})
+	}
+
+	available, reason, message, suggestions, err := h.service.CheckUsername(
+		c.UserContext(), tenantID, env, handle, strings.TrimSpace(c.Query("name")), 0)
+	if err != nil {
+		return httperr.SendInternal(c, "auth.username_available", err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(UsernameAvailabilityResponse{
+		Username:    handle,
+		Available:   available,
+		Reason:      reason,
+		Message:     message,
+		Suggestions: suggestions,
+	})
+}
 
 // SendMagicLink handles requests to send a passwordless magic login link.
 func (h *Handler) SendMagicLink(c *fiber.Ctx) error {
@@ -92,11 +142,6 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeMagicLinkExpired, "invalid or expired magic link token")
 	}
 
-	var namePtr *string
-	if u.Name != "" {
-		namePtr = &u.Name
-	}
-
 	refreshTokenBody := ""
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
@@ -106,12 +151,7 @@ func (h *Handler) VerifyMagicLink(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
-		User: UserDTO{
-			ID:            u.ID,
-			Email:         u.Email,
-			EmailVerified: u.EmailVerified,
-			Name:          namePtr,
-		},
+		User:         newUserDTO(u),
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenBody,
 	})
@@ -141,6 +181,18 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeValidationFailed, "name cannot exceed 255 characters")
 	}
 
+	// The handle is checked against the rules here so a malformed one is refused
+	// before a password is hashed, which is the expensive half of this request. The
+	// message names the rule that was broken rather than reporting the value invalid,
+	// because a form that says only "invalid" leaves the user guessing which of six
+	// rules they missed.
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username != "" {
+		if _, err := username.Canonical(req.Username); err != nil {
+			return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed, username.Explain(err))
+		}
+	}
+
 	ipAddress := c.IP()
 	userAgent := c.Get("User-Agent")
 	clientType, err := parseAndValidateClientType(c)
@@ -168,10 +220,28 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		}
 	}
 
-	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.UserContext(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, userAgent, ipAddress)
+	u, accessToken, refreshToken, err := h.service.SignUpWithPassword(c.UserContext(), req.TenantID, req.Environment, req.Email, req.Password, req.Name, req.Username, userAgent, ipAddress)
 	if err != nil {
 		if errors.Is(err, ErrUserAlreadyExists) {
 			return httperr.Conflict(c, httperr.CodeAlreadyExists, ErrUserAlreadyExists.Error())
+		}
+		// A taken handle is a conflict on one field rather than on the registration,
+		// and it carries fresh alternatives: the user has already filled the form, so
+		// the useful answer is what to put in that box, not that the box was wrong.
+		// Suggestions are best-effort — a failure to produce them still reports the
+		// conflict, since refusing the whole signup because a suggestion query failed
+		// would be the worse outcome.
+		if errors.Is(err, ErrUsernameTaken) {
+			details := fiber.Map{"field": "username"}
+			if suggestions, sErr := h.service.suggestUsernames(c.UserContext(), req.TenantID, req.Environment,
+				req.Username, req.Name, 0); sErr == nil && len(suggestions) > 0 {
+				details["suggestions"] = suggestions
+			}
+			return sendWithDetails(c, fiber.StatusConflict, httperr.CodeAlreadyExists,
+				ErrUsernameTaken.Error(), details)
+		}
+		if errors.Is(err, ErrUsernameInvalid) {
+			return httperr.UnprocessableEntity(c, httperr.CodeValidationFailed, username.Explain(err))
 		}
 		// An unknown tenant is a misconfigured client, not a server fault: the
 		// publishable key names the tenant, so reaching here means the key and
@@ -194,11 +264,6 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 		}
 	}
 
-	var namePtr *string
-	if u.Name != "" {
-		namePtr = &u.Name
-	}
-
 	refreshTokenBody := ""
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
@@ -209,14 +274,7 @@ func (h *Handler) SignUp(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
-		User: UserDTO{
-			ID:            u.ID,
-			Email:         u.Email,
-			EmailVerified: u.EmailVerified,
-			Name:          namePtr,
-			Status:        string(u.Status),
-			CreatedAt:     u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		},
+		User:          newUserDTO(u),
 		AccessToken:   accessToken,
 		RefreshToken:  refreshTokenBody,
 		PolicyWarning: policyWarning,
@@ -238,11 +296,25 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 
 	req.Environment = middleware.GetEnvironment(c)
 
-	if req.Email == "" || req.Password == "" {
-		return httperr.BadRequest(c, httperr.CodeMissingParameter, "email and password are required")
+	identifier := req.LoginIdentifier()
+	if identifier == "" || req.Password == "" {
+		return httperr.BadRequest(c, httperr.CodeMissingParameter,
+			"identifier and password are required")
 	}
-	if !isValidEmail(req.Email) {
-		return httperr.BadRequest(c, httperr.CodeValidationFailed, "invalid email address format")
+	// The identifier's shape is deliberately not validated beyond a length ceiling.
+	// It may be an address or a handle, and refusing one that is neither would answer
+	// a malformed value differently from a wrong one — telling a caller which shapes
+	// can exist, and sending a user who mistyped their handle a message about email
+	// format. Anything that resolves to no account is answered as bad credentials.
+	// The ceiling is the RFC 5321 maximum address length, and it is a resource guard:
+	// the value reaches a database query.
+	// The message names bytes because that is what len reports. Saying characters
+	// would state a figure the caller cannot reconcile with what they sent: a
+	// 200-character address written in an accented script exceeds 320 bytes, and
+	// telling its author they passed 320 characters describes input that is not theirs.
+	if len(identifier) > maxIdentifierBytes {
+		return httperr.BadRequest(c, httperr.CodeValidationFailed,
+			fmt.Sprintf("identifier cannot exceed %d bytes", maxIdentifierBytes))
 	}
 
 	ipAddress := c.IP()
@@ -252,27 +324,16 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		return httperr.BadRequest(c, httperr.CodeValidationFailed, msgInvalidClientType)
 	}
 
-	u, accessToken, refreshToken, err := h.service.ValidatePasswordCredentials(c.UserContext(), req.TenantID, req.Environment, req.Email, req.Password, userAgent, ipAddress)
+	u, accessToken, refreshToken, err := h.service.ValidatePasswordCredentials(c.UserContext(), req.TenantID, req.Environment, identifier, req.Password, userAgent, ipAddress)
 	if err != nil {
 		if errors.Is(err, Err2FARequired) {
-			var namePtr *string
-			if u != nil && u.Name != "" {
-				namePtr = &u.Name
-			}
 			// Single source of truth: extract allowed 2FA methods directly from signed MFA token claims
 			methods := []string{"totp"}
 			if mfaClaims, cErr := jwtpkg.VerifyMFAChallengeToken(accessToken, h.service.config.EncryptionKey); cErr == nil && len(mfaClaims.Methods) > 0 {
 				methods = mfaClaims.Methods
 			}
 			return c.Status(fiber.StatusOK).JSON(AuthResponse{
-				User: UserDTO{
-					ID:            u.ID,
-					Email:         u.Email,
-					EmailVerified: u.EmailVerified,
-					Name:          namePtr,
-					Status:        string(u.Status),
-					CreatedAt:     u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-				},
+				User:        newUserDTO(u),
 				MFARequired: true,
 				MFAToken:    accessToken,
 				Methods:     methods,
@@ -330,11 +391,6 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		}
 	}
 
-	var namePtr *string
-	if u.Name != "" {
-		namePtr = &u.Name
-	}
-
 	refreshTokenBody := ""
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
@@ -345,14 +401,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
-		User: UserDTO{
-			ID:            u.ID,
-			Email:         u.Email,
-			EmailVerified: u.EmailVerified,
-			Name:          namePtr,
-			Status:        string(u.Status),
-			CreatedAt:     u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		},
+		User:          newUserDTO(u),
 		AccessToken:   accessToken,
 		RefreshToken:  refreshTokenBody,
 		PolicyWarning: policyWarning,

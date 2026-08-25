@@ -65,7 +65,7 @@ func TestTOTP_Enrollment_PendingState(t *testing.T) {
 
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "totpuser@example.com", "Password123!", "TOTP User", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "totpuser@example.com", "Password123!", "TOTP User", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 
 	// 1. Enroll TOTP
@@ -101,7 +101,7 @@ func TestTOTP_FullLifecycle_And_SkewTolerance(t *testing.T) {
 
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "lifecycle@example.com", "MySecretPass123!", "Lifecycle User", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "lifecycle@example.com", "MySecretPass123!", "Lifecycle User", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 
 	// 1. Enroll
@@ -170,7 +170,7 @@ func TestTOTP_LoginIntegration_And_ChallengeFlow(t *testing.T) {
 	ctx := privacy.NewContext(testCtx(), "tnt_test", "", "test")
 
 	// 1. Create User & Activate TOTP
-	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "totplogin@example.com", "Password123!", "TOTP Login", "Mozilla/5.0", "127.0.0.1")
+	u, _, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "totplogin@example.com", "Password123!", "TOTP Login", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 
 	enrollRes, err := svc.EnrollTOTP(ctx, u.ID)
@@ -216,7 +216,7 @@ func TestTOTP_Disable_ReVerification_And_SessionRevocation(t *testing.T) {
 
 	// 1. Create user, activate TOTP, and issue extra active sessions
 	password := "HighSecurityPass123!"
-	u, accessTok, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "disable2fa@example.com", password, "Disable User", "Mozilla/5.0", "127.0.0.1")
+	u, accessTok, _, err := svc.SignUpWithPassword(ctx, "tnt_test", "test", "disable2fa@example.com", password, "Disable User", "", "Mozilla/5.0", "127.0.0.1")
 	require.NoError(t, err)
 	assert.NotEmpty(t, accessTok)
 

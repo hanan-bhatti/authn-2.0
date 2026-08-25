@@ -928,6 +928,7 @@ var (
 		{Name: "environment", Type: field.TypeEnum, Enums: []string{"test", "live"}, Default: "test"},
 		{Name: "email", Type: field.TypeString},
 		{Name: "username", Type: field.TypeString, Nullable: true},
+		{Name: "username_canonical", Type: field.TypeString, Nullable: true},
 		{Name: "password_hash", Type: field.TypeString, Nullable: true},
 		{Name: "email_verified", Type: field.TypeBool, Default: false},
 		{Name: "email_verification_token", Type: field.TypeString, Nullable: true},
@@ -958,7 +959,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "users_tenants_users",
-				Columns:    []*schema.Column{UsersColumns[24]},
+				Columns:    []*schema.Column{UsersColumns[25]},
 				RefColumns: []*schema.Column{TenantsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -967,17 +968,17 @@ var (
 			{
 				Name:    "user_tenant_id_environment_email",
 				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[24], UsersColumns[1], UsersColumns[2]},
+				Columns: []*schema.Column{UsersColumns[25], UsersColumns[1], UsersColumns[2]},
 			},
 			{
-				Name:    "user_tenant_id_environment_username",
-				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[24], UsersColumns[1], UsersColumns[3]},
+				Name:    "user_tenant_id_environment_username_canonical",
+				Unique:  true,
+				Columns: []*schema.Column{UsersColumns[25], UsersColumns[1], UsersColumns[4]},
 			},
 			{
 				Name:    "user_tenant_id_environment_status_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[24], UsersColumns[1], UsersColumns[15], UsersColumns[16]},
+				Columns: []*schema.Column{UsersColumns[25], UsersColumns[1], UsersColumns[16], UsersColumns[17]},
 			},
 		},
 	}

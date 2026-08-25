@@ -106,10 +106,10 @@ func main() {
 	}
 
 	// 5. Global Middleware & Rate Limiting Stack
-	rateLimiter, resendLimiter := setupMiddleware(app, cfg, redisClient)
+	rateLimiter, resendLimiter, usernameLimiter := setupMiddleware(app, cfg, redisClient)
 
 	// 6. Wire Repositories, Services, and Handlers
-	wiring := wireFeatures(cfg, factory, rateLimiter, resendLimiter, redisClient)
+	wiring := wireFeatures(cfg, factory, rateLimiter, resendLimiter, usernameLimiter, redisClient)
 	defer wiring.cleanup()
 
 	// 7. System & Feature Routes

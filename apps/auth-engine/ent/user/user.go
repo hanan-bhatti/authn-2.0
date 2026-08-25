@@ -23,6 +23,8 @@ const (
 	FieldEmail = "email"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
+	// FieldUsernameCanonical holds the string denoting the username_canonical field in the database.
+	FieldUsernameCanonical = "username_canonical"
 	// FieldPasswordHash holds the string denoting the password_hash field in the database.
 	FieldPasswordHash = "password_hash"
 	// FieldEmailVerified holds the string denoting the email_verified field in the database.
@@ -182,6 +184,7 @@ var Columns = []string{
 	FieldEnvironment,
 	FieldEmail,
 	FieldUsername,
+	FieldUsernameCanonical,
 	FieldPasswordHash,
 	FieldEmailVerified,
 	FieldEmailVerificationToken,
@@ -315,6 +318,11 @@ func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 // ByUsername orders the results by the username field.
 func ByUsername(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsername, opts...).ToFunc()
+}
+
+// ByUsernameCanonical orders the results by the username_canonical field.
+func ByUsernameCanonical(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsernameCanonical, opts...).ToFunc()
 }
 
 // ByPasswordHash orders the results by the password_hash field.

@@ -162,11 +162,6 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 			httperr.CodeValidationFailed, "unable to complete passkey login")
 	}
 
-	var namePtr *string
-	if u.Name != "" {
-		namePtr = &u.Name
-	}
-
 	refreshTokenBody := ""
 	if clientType == "native" || clientType == "mobile" {
 		refreshTokenBody = refreshToken
@@ -176,14 +171,7 @@ func (h *Handler) FinishWebAuthnLogin(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
-		User: UserDTO{
-			ID:            u.ID,
-			Email:         u.Email,
-			EmailVerified: u.EmailVerified,
-			Name:          namePtr,
-			Status:        string(u.Status),
-			CreatedAt:     u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		},
+		User:         newUserDTO(u),
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenBody,
 	})

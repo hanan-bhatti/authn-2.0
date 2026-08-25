@@ -49,6 +49,7 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 
 	members, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID)).
+		WithRole(func(q *ent.RoleQuery) { q.WithPermissions() }).
 		Limit(limit).
 		Offset(offset).
 		All(ctx)
@@ -58,7 +59,7 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 
 	responses := make([]*OrgMemberResponse, len(members))
 	for i, m := range members {
-		responses[i] = s.toOrgMemberResponse(m)
+		responses[i] = s.toOrgMemberResponse(m, m.Edges.Role)
 	}
 
 	return responses, nil
@@ -135,13 +136,17 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 		})
 	}
 
-	return s.toOrgMemberResponse(createdMem), nil
+	// Reloaded with its permissions, which ensureDefaultRole does not fetch and
+	// which is what decides whether the new member counts as an administrator.
+	return s.toOrgMemberResponse(createdMem, s.loadRole(ctx, client, targetRole.ID)), nil
 }
 
 // UpdateMemberRole changes a member's role within an organization.
 //
 // The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
-// bypasses that check. Returns ErrMemberNotFound or an authorization sentinel.
+// bypasses that check. A change that would demote the organization's last
+// administrator is refused. Returns ErrMemberNotFound, ErrLastOrgAdmin or an
+// authorization sentinel.
 func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID, userID string, req UpdateMemberRoleRequest, isAdmin bool, ip, userAgent string) (*OrgMemberResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -157,6 +162,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 
 	mem, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID), orgmember.UserID(userID)).
+		WithRole(func(q *ent.RoleQuery) { q.WithPermissions() }).
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -168,6 +174,22 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 	targetRole, err := s.ensureDefaultRole(ctx, client, tenantID, req.RoleID, "Updated Role")
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve role: %w", err)
+	}
+	// Reloaded with its permissions: ensureDefaultRole may have just created the
+	// role, and the guard below has to read the grants the member is moving to.
+	newRole := s.loadRole(ctx, client, targetRole.ID)
+
+	// A demotion strips an administrator just as a removal does. Judged on the role
+	// being granted rather than the one being taken away, so moving an admin
+	// between two admin-carrying roles is not treated as a demotion at all.
+	if roleGrantsOrgAdmin(mem.Edges.Role) && !roleGrantsOrgAdmin(newRole) {
+		remaining, err := countOrgAdmins(ctx, client, orgID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if remaining == 0 {
+			return nil, ErrLastOrgAdmin
+		}
 	}
 
 	updater := mem.Update().SetRoleID(targetRole.ID)
@@ -186,17 +208,33 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 		"role_id": targetRole.ID,
 	}, ip, userAgent)
 
-	return s.toOrgMemberResponse(updatedMem), nil
+	return s.toOrgMemberResponse(updatedMem, newRole), nil
 }
 
 // RemoveMember removes a user from an organization.
 //
-// The caller must hold org_admin; isAdmin marks the tenant-admin tier, which
-// bypasses that check. Returns ErrMemberNotFound or an authorization sentinel.
+// A member may always remove themselves: that is how someone leaves a workspace
+// they do not administer, and needing permission to stop being somewhere is not a
+// rule worth having. Removing anyone else requires org_admin, because that acts on
+// another person's membership. isAdmin marks the tenant-admin tier, which bypasses
+// the per-organization check either way.
+//
+// The removal is refused when it would take the organization's last administrator
+// with it, whether the caller is leaving or removing someone else. Returns
+// ErrMemberNotFound, ErrLastOrgAdmin or an authorization sentinel.
 func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, userID string, isAdmin bool, ip, userAgent string) error {
 	client := s.factory.GetClient(ctx, tenantID, "")
 
-	if !isAdmin {
+	leaving := actorID != "" && actorID == userID
+
+	switch {
+	case isAdmin:
+		// The tenant-admin tier operates across every organization.
+	case leaving:
+		if _, err := s.authzCheckMember(ctx, client, actorID, orgID); err != nil {
+			return err
+		}
+	default:
 		if _, err := s.authzRequireOrgAdmin(ctx, client, actorID, orgID); err != nil {
 			return err
 		}
@@ -204,6 +242,7 @@ func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, us
 
 	mem, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID), orgmember.UserID(userID)).
+		WithRole(func(q *ent.RoleQuery) { q.WithPermissions() }).
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -212,20 +251,36 @@ func (s *Service) RemoveMember(ctx context.Context, tenantID, actorID, orgID, us
 		return fmt.Errorf("failed to query member: %w", err)
 	}
 
+	// Only an administrator's departure can strip the last one, so a plain member
+	// leaving never pays for the count.
+	if roleGrantsOrgAdmin(mem.Edges.Role) {
+		remaining, err := countOrgAdmins(ctx, client, orgID, userID)
+		if err != nil {
+			return err
+		}
+		if remaining == 0 {
+			return ErrLastOrgAdmin
+		}
+	}
+
 	if err := client.OrgMember.DeleteOne(mem).Exec(ctx); err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
 	}
 
-	s.logAudit(ctx, tenantID, actorID, "org.member_removed", "user", userID, map[string]interface{}{
+	// One event type for both, with the distinction in the payload. A departure and
+	// an eviction are the same change to the organization, and a subscriber that
+	// cares about the difference can read "left" rather than having to handle a
+	// second event name.
+	details := map[string]interface{}{
 		"org_id":  orgID,
 		"user_id": userID,
-	}, ip, userAgent)
+		"left":    leaving,
+	}
+
+	s.logAudit(ctx, tenantID, actorID, "org.member_removed", "user", userID, details, ip, userAgent)
 
 	if s.dispatcher != nil {
-		s.dispatcher.Dispatch(tenantID, s.orgEnvironment(ctx, client, tenantID, orgID), "org.member_removed", map[string]interface{}{
-			"org_id":  orgID,
-			"user_id": userID,
-		})
+		s.dispatcher.Dispatch(tenantID, s.orgEnvironment(ctx, client, tenantID, orgID), "org.member_removed", details)
 	}
 
 	return nil
