@@ -45,10 +45,13 @@ export const Dialog: React.FC<DialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
-      {/* Backdrop Scrim */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop Scrim. `select-none` belongs here and not on the wrapper: a
+          dialog often carries the one string a reader needs to copy — an address
+          a confirmation was sent to, a recovery code — and an unselectable card
+          means the only way to get it out is to retype it. */}
       <div
-        className="fixed inset-0 bg-canvas/80 backdrop-blur-[25px] transition-opacity duration-150"
+        className="fixed inset-0 bg-canvas/80 backdrop-blur-[25px] transition-opacity duration-150 select-none"
         onClick={onClose}
       />
 
