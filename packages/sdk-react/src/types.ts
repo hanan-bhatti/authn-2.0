@@ -26,6 +26,8 @@ import type {
   RecoveryCodesStatusResult,
   RegenerateRecoveryCodesParams,
   RegenerateRecoveryCodesResult,
+  SendSMSChallengeParams,
+  SendSMSChallengeResult,
   RevokeWebAuthnCredentialParams,
   SignUpParams,
   VerifyMagicLinkParams,
@@ -94,6 +96,14 @@ export interface UseTOTPReturn {
   disableTOTP: (params: DisableTOTPParams) => Promise<VoidResult>;
   verifyTOTP: (params: VerifyTOTPParams) => Promise<VerifyTOTPResult>;
   enrollSMS: (params: EnrollSMSParams) => Promise<EnrollSMSResult>;
+  /**
+   * Sends the SMS code for a sign-in waiting on a second factor, given the `mfaToken` the
+   * login returned. Needed because a code exists only once it has been sent, and this caller
+   * has no session for `enrollSMS` to use.
+   */
+  sendSMSChallenge: (
+    params: SendSMSChallengeParams,
+  ) => Promise<SendSMSChallengeResult>;
   confirmSMS: (params: ConfirmSMSParams) => Promise<Confirm2FAResult>;
   disableSMS: (params: DisableSMSParams) => Promise<VoidResult>;
   regenerateRecoveryCodes: (

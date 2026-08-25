@@ -52,6 +52,7 @@ import type {
   CancelRecoveryResult,
   CancelRecoveryTokenParams,
   CancelRecoveryTokenResult,
+  CheckUsernameParams,
   ClaimAccountParams,
   ClaimAccountResult,
   Confirm2FAResult,
@@ -59,7 +60,9 @@ import type {
   ConfirmTOTPParams,
   CreateOrgParams,
   CreateOrgResult,
+  DeleteAccountParams,
   DeleteOrgResult,
+  DeleteSecurityQuestionsParams,
   DisableSMSParams,
   DisableTOTPParams,
   EnrollSMSParams,
@@ -76,6 +79,7 @@ import type {
   InviteOrgMemberParams,
   InviteOrgMemberResult,
   ListGuardiansResult,
+  ListInvitationsResult,
   ListOrgMembersResult,
   ListOrgsResult,
   ListWebAuthnCredentialsResult,
@@ -88,11 +92,17 @@ import type {
   RegenerateRecoveryCodesParams,
   RegenerateRecoveryCodesResult,
   ResendVerificationParams,
+  RemoveOrgMemberResult,
   RevokeGuardianResult,
   RevokeSessionsResult,
   RevokeWebAuthnCredentialParams,
   SessionListResult,
+  SecurityQuestion,
+  SecurityQuestionsResult,
+  SendSMSChallengeParams,
+  SendSMSChallengeResult,
   SessionResult,
+  SetSecurityQuestionsParams,
   SignUpParams,
   SocialAccountsResult,
   SubmitGuardianProofParams,
@@ -107,6 +117,8 @@ import type {
   UpdateOrgParams,
   UpdateOrgResult,
   UpdateProfileParams,
+  UsernameAvailabilityResult,
+  UsernameUnavailableReason,
   VerifyEmailParams,
   VerifyMagicLinkParams,
   VerifyTOTPParams,
@@ -115,16 +127,20 @@ import type {
   WebAuthnPasskey,
 } from "./types";
 import { AuthnError, AuthnErrorCode } from "./types";
+import { checkUsernameFormat } from "./core/username";
 import {
   assertValid,
   validateEmail,
   validateEnvironment,
+  validateLoginIdentifier,
   validatePassword,
   validatePhoneNumber,
   validatePublishableKey,
+  validateRecoveryCode,
   validateTenantId,
   validateToken,
   validateTOTPCode,
+  validateUsername,
   validateWebAuthnCredential,
 } from "./core/validation";
 import {
@@ -144,6 +160,7 @@ interface ServerAuthResponse {
     email: string;
     email_verified: boolean;
     name?: string;
+    username?: string;
     status: string;
     created_at: string;
   };
@@ -163,6 +180,15 @@ interface ServerAuthResponse {
   mfa_required?: boolean;
   mfa_token?: string;
   methods?: string[];
+}
+
+/** Mirrors auth.UsernameAvailabilityResponse in the Go backend. */
+interface ServerUsernameAvailabilityResponse {
+  username?: string;
+  available?: boolean;
+  reason?: string;
+  message?: string;
+  suggestions?: string[];
 }
 
 /** Mirrors appconfig.AppConfig in the Go backend. */
@@ -282,6 +308,12 @@ interface ServerEnrollSMSResponse {
   expires_in_seconds: number;
 }
 
+interface ServerSMSChallengeResponse {
+  message: string;
+  phone_number: string;
+  expires_in_seconds: number;
+}
+
 interface ServerRegenerateRecoveryCodesResponse {
   message: string;
   recovery_codes: string[];
@@ -316,6 +348,7 @@ interface ServerOrgResponse {
   slug: string;
   logo_url?: string;
   metadata?: Record<string, unknown>;
+  is_admin?: boolean;
   created_at: string;
 }
 
@@ -325,6 +358,9 @@ interface ServerOrgMemberResponse {
   organization_id: string;
   user_id: string;
   role_id: string;
+  role_slug?: string;
+  role_name?: string;
+  is_admin?: boolean;
   assigned_by_user_id?: string;
   created_at: string;
   updated_at: string;
@@ -334,6 +370,7 @@ interface ServerOrgMemberResponse {
 interface ServerOrgInvitationResponse {
   id: string;
   organization_id: string;
+  organization_name?: string;
   email: string;
   role_id: string;
   invited_by_user_id?: string;
@@ -368,15 +405,7 @@ function mapGuardian(raw: ServerGuardianResponse): AuthnGuardian {
 // Org response mappers (snake_case → camelCase)
 // ---------------------------------------------------------------------------
 
-function mapOrg(raw: {
-  id: string;
-  tenant_id: string;
-  name: string;
-  slug: string;
-  logo_url?: string;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-}): AuthnOrg {
+function mapOrg(raw: ServerOrgResponse): AuthnOrg {
   return {
     id: raw.id,
     tenantId: raw.tenant_id,
@@ -384,44 +413,33 @@ function mapOrg(raw: {
     slug: raw.slug,
     logoUrl: raw.logo_url,
     metadata: raw.metadata,
+    // Defaulted to false rather than left undefined: the field decides whether an
+    // administrative control is shown, and an absent value must fail closed.
+    isAdmin: raw.is_admin ?? false,
     createdAt: raw.created_at,
   };
 }
 
-function mapMember(raw: {
-  id: string;
-  organization_id: string;
-  user_id: string;
-  role_id: string;
-  assigned_by_user_id?: string;
-  created_at: string;
-  updated_at: string;
-}): AuthnOrgMember {
+function mapMember(raw: ServerOrgMemberResponse): AuthnOrgMember {
   return {
     id: raw.id,
     organizationId: raw.organization_id,
     userId: raw.user_id,
     roleId: raw.role_id,
+    roleSlug: raw.role_slug,
+    roleName: raw.role_name,
+    isAdmin: raw.is_admin ?? false,
     assignedByUserId: raw.assigned_by_user_id,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };
 }
 
-function mapInvitation(raw: {
-  id: string;
-  organization_id: string;
-  email: string;
-  role_id: string;
-  invited_by_user_id?: string;
-  invitation_token?: string;
-  status: string;
-  expires_at: string;
-  created_at: string;
-}): AuthnOrgInvitation {
+function mapInvitation(raw: ServerOrgInvitationResponse): AuthnOrgInvitation {
   return {
     id: raw.id,
     organizationId: raw.organization_id,
+    organizationName: raw.organization_name,
     email: raw.email,
     roleId: raw.role_id,
     invitedByUserId: raw.invited_by_user_id,
@@ -596,6 +614,7 @@ export class AuthnClient {
    *   email: "user@example.com",
    *   password: "SuperSecret123!",
    *   name: "Alex Smith",
+   *   username: "alexsmith",
    * });
    * ```
    */
@@ -605,6 +624,11 @@ export class AuthnClient {
     // Validate inputs before network call
     assertValid(validateEmail(params.email));
     assertValid(validatePassword(params.password));
+    // Only when one was given: an account without a handle is a valid account,
+    // so an absent username is not a validation failure.
+    if (params.username !== undefined && params.username !== "") {
+      assertValid(validateUsername(params.username));
+    }
     assertValid(validateTenantId(params.tenantId));
     assertValid(validateEnvironment(params.environment));
 
@@ -615,6 +639,7 @@ export class AuthnClient {
           email: params.email,
           password: params.password,
           name: params.name,
+          username: params.username,
           tenant_id: this.resolveTenantId(params.tenantId),
           environment: this.resolveEnvironment(params.environment),
         },
@@ -626,31 +651,101 @@ export class AuthnClient {
     }
   }
 
+  /**
+   * Ask whether a username can be registered, and what to use instead if not.
+   *
+   * Intended to be called while the field is being typed, behind a debounce of
+   * around 300ms. It creates nothing and reserves nothing: a handle reported free
+   * can be claimed by somebody else a moment later, and sign-up answers 409
+   * `already_exists` when that happens. Treat this as guidance, and the sign-up
+   * response as the verdict.
+   *
+   * Shape problems are answered here without a request, using the same rules and
+   * the same wording the engine uses. Everything else — taken, reserved, and the
+   * suggestions — needs the server.
+   *
+   * @returns `{ ok: true, availability }` including when the handle is unavailable;
+   * `ok: false` means the question could not be asked, not that the answer was no.
+   *
+   * @example
+   * ```ts
+   * const res = await authn.checkUsername({ username: "alex", name: "Alex Smith" });
+   * if (res.ok && !res.availability.available) {
+   *   showError(res.availability.message, res.availability.suggestions);
+   * }
+   * ```
+   */
+  async checkUsername(
+    params: CheckUsernameParams,
+  ): Promise<UsernameAvailabilityResult> {
+    this.guardDestroyed();
+
+    const format = checkUsernameFormat(params.username);
+    if (!format.valid) {
+      return {
+        ok: true,
+        availability: {
+          username: params.username,
+          available: false,
+          reason: "invalid",
+          message: format.message,
+        },
+      };
+    }
+
+    try {
+      const res = await this.http.get<ServerUsernameAvailabilityResponse>(
+        "/v1/client/auth/username-available",
+        { username: params.username, name: params.name ?? "" },
+      );
+
+      return {
+        ok: true,
+        availability: {
+          username: res.data.username ?? params.username,
+          available: res.data.available === true,
+          reason: res.data.reason as UsernameUnavailableReason | undefined,
+          message: res.data.message,
+          suggestions: res.data.suggestions,
+        },
+      };
+    } catch (err) {
+      return this.handleError(err, "checkUsername");
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Login
   // -----------------------------------------------------------------------
 
   /**
-   * Authenticate an existing user with email and password.
+   * Authenticate an existing user with an email address or a username.
    *
-   * @param params - Login parameters.
+   * @param params - Login parameters. Pass `identifier` for either kind of
+   * handle; `email` is accepted as an alias and used when `identifier` is absent.
    * @returns `{ ok: true, session }` on success, `{ ok: false, error }` on failure.
    *
    * @example
    * ```ts
    * const result = await authn.login({
-   *   email: "user@example.com",
+   *   identifier: "alexsmith",
    *   password: "SuperSecret123!",
    * });
    * if (!result.ok && result.error.code === AuthnErrorCode.INVALID_CREDENTIALS) {
-   *   showError("Wrong email or password");
+   *   showError("Wrong email, username or password");
    * }
    * ```
    */
   async login(params: LoginParams): Promise<AuthResult> {
     this.guardDestroyed();
 
-    assertValid(validateEmail(params.email));
+    const identifier = (params.identifier ?? params.email ?? "").trim();
+
+    // The identifier's shape is deliberately unchecked past a length ceiling. It
+    // may be an address or a handle, and refusing one that is neither would
+    // answer a mistyped handle with a message about email format — and would
+    // reveal, before any request, which shapes the engine can resolve.
+    assertValid(validateLoginIdentifier(identifier));
     assertValid(validatePassword(params.password));
     assertValid(validateTenantId(params.tenantId));
     assertValid(validateEnvironment(params.environment));
@@ -659,7 +754,7 @@ export class AuthnClient {
       const res = await this.http.post<ServerAuthResponse>(
         "/v1/client/auth/login",
         {
-          email: params.email,
+          identifier,
           password: params.password,
           tenant_id: this.resolveTenantId(params.tenantId),
           environment: this.resolveEnvironment(params.environment),
@@ -1094,6 +1189,10 @@ export class AuthnClient {
       // absent key as "leave unchanged" but an explicit null as invalid.
       const body: Record<string, unknown> = {};
       if (params.name !== undefined) body["name"] = params.name;
+      // Sent verbatim, including the empty string, which is how a handle is
+      // released. Trimming or dropping it here would make "clear my username"
+      // unexpressible through the SDK.
+      if (params.username !== undefined) body["username"] = params.username;
       if (params.avatarUrl !== undefined) body["avatar_url"] = params.avatarUrl;
       if (params.locale !== undefined) body["locale"] = params.locale;
       if (params.metadata !== undefined) body["metadata"] = params.metadata;
@@ -1334,18 +1433,50 @@ export class AuthnClient {
    * Irreversible. The local session is cleared on success and auth state
    * listeners fire with `null`.
    *
-   * Requires an authenticated session and the account password for
-   * confirmation; the server returns `401` if it is wrong.
+   * Takes a password, or an authenticator code for an account that has none —
+   * see {@link DeleteAccountParams}. A bare string is accepted as the password,
+   * so `deleteAccount(password)` keeps working.
+   *
+   * Refusals worth branching on:
+   * - `401` `invalid_credentials` — what was sent is wrong.
+   * - `401` `totp_required` — the account has no password; ask for a code.
+   * - `409` `conflict` — the account is the only administrator of organizations
+   *   other people still belong to. They are listed under
+   *   `error.details.organizations` as {@link BlockingOrganization} entries, so the
+   *   refusal can name each one.
+   *
+   * Requires an authenticated session.
    */
-  async deleteAccount(password: string): Promise<VoidResult> {
+  async deleteAccount(
+    params: DeleteAccountParams | string,
+  ): Promise<VoidResult> {
     this.guardDestroyed();
 
+    const confirmation: DeleteAccountParams =
+      typeof params === "string" ? { password: params } : params;
+
     try {
-      assertValid(validateToken(password, "password"));
+      // Exactly one of the two is required, and which one depends on the account
+      // rather than the caller — so neither is validated as mandatory here. Sending
+      // both empty reaches the engine, which answers with the factor it wants.
+      if (confirmation.password !== undefined) {
+        assertValid(validateToken(confirmation.password, "password"));
+      }
+      if (confirmation.totpCode !== undefined) {
+        assertValid(validateToken(confirmation.totpCode, "totpCode"));
+      }
+
+      const body: Record<string, unknown> = {};
+      if (confirmation.password !== undefined) {
+        body["password"] = confirmation.password;
+      }
+      if (confirmation.totpCode !== undefined) {
+        body["totp_code"] = confirmation.totpCode;
+      }
 
       const res = await this.http.del<ServerMessageResponse>(
         "/v1/client/user/account",
-        { password },
+        body,
       );
 
       // The account no longer exists — any retained session is meaningless.
@@ -1354,6 +1485,110 @@ export class AuthnClient {
       return { ok: true, message: res.data.message };
     } catch (err) {
       return this.handleError(err, "deleteAccount");
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Security Questions (last-resort recovery factor)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Read the account's enrolled security-question prompts.
+   *
+   * Answers `NOT_FOUND` when the account has none, which is a valid state rather
+   * than an error condition — the caller asked whether this factor is set up.
+   *
+   * Requires an authenticated session.
+   */
+  async getSecurityQuestions(): Promise<SecurityQuestionsResult> {
+    this.guardDestroyed();
+
+    try {
+      const res = await this.http.get<{
+        security_questions: SecurityQuestion[];
+        total: number;
+      }>("/v1/client/account/security-questions");
+      return {
+        ok: true,
+        questions: res.data.security_questions ?? [],
+        total: res.data.total ?? 0,
+      };
+    } catch (err) {
+      return this.handleError(err, "getSecurityQuestions");
+    }
+  }
+
+  /**
+   * Replace the account's security-question roster.
+   *
+   * The whole set is replaced, so a shorter list removes what is not in it.
+   * Between three and five questions, each with a distinct prompt and an answer
+   * of 3 to 100 characters.
+   *
+   * Needs a step-up — see {@link SetSecurityQuestionsParams}. The engine answers
+   * `401` `step_up_required` naming which credential it wants, and `422`
+   * `validation_failed` with a message naming the rule and the entry that broke
+   * it.
+   *
+   * Requires an authenticated session.
+   */
+  async setSecurityQuestions(
+    params: SetSecurityQuestionsParams,
+  ): Promise<SecurityQuestionsResult> {
+    this.guardDestroyed();
+
+    try {
+      const body: Record<string, unknown> = {
+        questions: (params.questions ?? []).map((q) => ({
+          question: q.question,
+          answer: q.answer,
+        })),
+      };
+      if (params.password !== undefined) body["password"] = params.password;
+      if (params.totpCode !== undefined) body["totp_code"] = params.totpCode;
+
+      const res = await this.http.put<{
+        security_questions: SecurityQuestion[];
+        total: number;
+        message?: string;
+      }>("/v1/client/account/security-questions", body);
+      return {
+        ok: true,
+        questions: res.data.security_questions ?? [],
+        total: res.data.total ?? 0,
+        message: res.data.message,
+      };
+    } catch (err) {
+      return this.handleError(err, "setSecurityQuestions");
+    }
+  }
+
+  /**
+   * Remove every security question from the account.
+   *
+   * Idempotent: succeeds whether or not anything was enrolled. Takes the same
+   * step-up as a write, since removing a recovery factor is as consequential as
+   * adding one.
+   *
+   * Requires an authenticated session.
+   */
+  async deleteSecurityQuestions(
+    params: DeleteSecurityQuestionsParams = {},
+  ): Promise<VoidResult> {
+    this.guardDestroyed();
+
+    try {
+      const body: Record<string, unknown> = {};
+      if (params.password !== undefined) body["password"] = params.password;
+      if (params.totpCode !== undefined) body["totp_code"] = params.totpCode;
+
+      const res = await this.http.del<ServerMessageResponse>(
+        "/v1/client/account/security-questions",
+        body,
+      );
+      return { ok: true, message: res.data.message };
+    } catch (err) {
+      return this.handleError(err, "deleteSecurityQuestions");
     }
   }
 
@@ -1468,6 +1703,7 @@ export class AuthnClient {
       email: data.email,
       emailVerified: data.email_verified,
       name: data.name,
+      username: data.username,
       status: (data.status as AuthnUser["status"]) ?? "active",
       createdAt: data.created_at,
     };
@@ -1686,7 +1922,14 @@ export class AuthnClient {
   async verifyTOTP(params: VerifyTOTPParams): Promise<VerifyTOTPResult> {
     this.guardDestroyed();
     try {
-      assertValid(validateTOTPCode(params?.code));
+      // A backup code is eight letters and digits, not six digits, so the shape it is checked
+      // against follows the named method. Without this the recovery codes the engine issues at
+      // enrollment are refused here and never reach the server.
+      assertValid(
+        params?.method === "backup_code"
+          ? validateRecoveryCode(params?.code)
+          : validateTOTPCode(params?.code),
+      );
       if (params.mfaToken) {
         const res = await this.http.post<ServerAuthResponse>("/v1/client/auth/2fa/totp/verify", {
           code: params.code,
@@ -1730,10 +1973,42 @@ export class AuthnClient {
   }
 
   /**
+   * Send an SMS code for a sign-in that is waiting on a second factor.
+   *
+   * Needed because a code only exists once it has been sent, and the login challenge holds an
+   * `mfaToken` rather than a session — so `enrollSMS` cannot serve it. Call this when the sign-in
+   * came back with `sms` among its `methods`, then pass the delivered code to
+   * {@link AuthnClient.verifyTOTP} with `method: "sms"`.
+   *
+   * There is no email fallback: a failed send answers 503 rather than mailing the code, since the
+   * caller has proven only the password and a second factor sent to the account address is not a
+   * second factor. Offer another method from the challenge instead.
+   *
+   * Target Route: POST /v1/client/auth/2fa/sms/challenge
+   */
+  async sendSMSChallenge(params: SendSMSChallengeParams): Promise<SendSMSChallengeResult> {
+    this.guardDestroyed();
+    try {
+      assertValid(validateToken(params?.mfaToken, "mfaToken"));
+      const res = await this.http.post<ServerSMSChallengeResponse>(
+        "/v1/client/auth/2fa/sms/challenge",
+        { mfa_token: params.mfaToken },
+      );
+      return {
+        ok: true,
+        phoneNumber: res.data.phone_number,
+        expiresInSeconds: res.data.expires_in_seconds,
+        message: res.data.message,
+      };
+    } catch (err) {
+      return this.handleError(err, "sendSMSChallenge");
+    }
+  }
+
+  /**
    * Confirm SMS 2FA enrollment with the received OTP code.
    * Target Route: POST /v1/client/auth/2fa/sms/confirm
-   */
-  async confirmSMS(params: ConfirmSMSParams): Promise<Confirm2FAResult> {
+   */  async confirmSMS(params: ConfirmSMSParams): Promise<Confirm2FAResult> {
     this.guardDestroyed();
     try {
       assertValid(validateTOTPCode(params?.code));
@@ -2211,6 +2486,10 @@ export class AuthnClient {
   /**
    * Updates a member's role within an organization. Requires org_admin role.
    * PATCH /v1/client/organizations/:orgId/members/:userId
+   *
+   * Answers `409` when the change would remove the organization's last
+   * administrator — demoting yourself while alone in that role leaves a workspace
+   * nobody can administer, so promote someone else first.
    */
   async updateOrgMemberRole(
     orgId: string,
@@ -2228,6 +2507,62 @@ export class AuthnClient {
       return { ok: true, member: mapMember(res.data) };
     } catch (err) {
       return this.handleError(err, "updateOrgMemberRole");
+    }
+  }
+
+  /**
+   * Removes a member from an organization, or leaves it.
+   *
+   * The two are the same call. Passing the caller's own user ID is how a plain
+   * member leaves: no administrative rights are needed to remove yourself, and the
+   * reply sets `left` so a UI knows the workspace it was showing is gone.
+   *
+   * Answers `409` when the removal would leave the organization without an
+   * administrator, and `403` when removing someone else without org_admin rights.
+   *
+   * DELETE /v1/client/organizations/:orgId/members/:userId
+   */
+  async removeOrgMember(
+    orgId: string,
+    userId: string,
+  ): Promise<RemoveOrgMemberResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      assertValid(validateToken(userId, "userId"));
+      const res = await this.http.del<{ message: string; left?: boolean }>(
+        `/v1/client/organizations/${orgId}/members/${userId}`,
+      );
+      return {
+        ok: true,
+        message: res.data.message,
+        left: res.data.left ?? false,
+      };
+    } catch (err) {
+      return this.handleError(err, "removeOrgMember");
+    }
+  }
+
+  /**
+   * Lists the organization invitations addressed to the signed-in account.
+   *
+   * Matched on the account's *verified* primary address, so an unverified account
+   * reads an empty list even when invitations exist for the address it claims.
+   *
+   * GET /v1/client/invitations
+   */
+  async listInvitations(): Promise<ListInvitationsResult> {
+    try {
+      const res = await this.http.get<{
+        invitations: ServerOrgInvitationResponse[];
+        total: number;
+      }>("/v1/client/invitations");
+      return {
+        ok: true,
+        invitations: (res.data.invitations ?? []).map(mapInvitation),
+        total: res.data.total ?? 0,
+      };
+    } catch (err) {
+      return this.handleError(err, "listInvitations");
     }
   }
 
@@ -2351,6 +2686,7 @@ export class AuthnClient {
         status: string;
         is_trusted_device_origin: boolean;
         available_methods: string[];
+        security_questions?: SecurityQuestion[];
       }>("/v1/client/auth/recovery/initiate", body);
       return {
         ok: true,
@@ -2358,6 +2694,7 @@ export class AuthnClient {
         status: res.data.status,
         isTrustedDeviceOrigin: res.data.is_trusted_device_origin,
         availableMethods: res.data.available_methods,
+        securityQuestions: res.data.security_questions,
       };
     } catch (err) {
       return this.handleError(err, "initiateRecovery");

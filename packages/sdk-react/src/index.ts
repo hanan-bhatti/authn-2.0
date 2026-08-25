@@ -15,6 +15,7 @@ export {
   useUser,
   useSignIn,
   useSignUp,
+  useUsernameAvailability,
   useSignOut,
   useMagicLink,
   useTOTP,
@@ -47,3 +48,8 @@ export type {
   UseAccountRecoveryReturn,
 } from "./types";
 export type { UseAppConfigReturn } from "./hooks/useAppConfig";
+export type {
+  UsernameStatus,
+  UseUsernameAvailabilityOptions,
+  UseUsernameAvailabilityReturn,
+} from "./hooks/useUsernameAvailability";

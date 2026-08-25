@@ -23,6 +23,10 @@ export type {
   VoidResult,
   SignUpParams,
   LoginParams,
+  CheckUsernameParams,
+  UsernameAvailability,
+  UsernameAvailabilityResult,
+  UsernameUnavailableReason,
   MagicLinkParams,
   VerifyMagicLinkParams,
   VerifyEmailParams,
@@ -61,6 +65,8 @@ export type {
   ProfileResult,
   RecoveryEmailResult,
   SocialAccountsResult,
+  DeleteAccountParams,
+  BlockingOrganization,
 } from "./types";
 
 // Domain 3 — 2FA & Multi-Factor Authentication
@@ -74,6 +80,8 @@ export type {
   VerifyTOTPResult,
   EnrollSMSParams,
   EnrollSMSResult,
+  SendSMSChallengeParams,
+  SendSMSChallengeResult,
   ConfirmSMSParams,
   DisableSMSParams,
   RegenerateRecoveryCodesParams,
@@ -97,6 +105,7 @@ export * from "./types/org";
 // Domain 5 — Guardian Roster & Account Recovery
 export * from "./types/guardians";
 export * from "./types/recovery";
+export * from "./types/securityquestions";
 
 // WebAuthn Helpers
 export {
@@ -107,6 +116,18 @@ export {
   prepareRequestOptions,
   formatRequestCredential,
 } from "./webauthn";
+
+// Username handle rules — shared with the engine, so a form can validate the
+// shape of a handle without a round trip and word the failure the same way.
+export {
+  checkUsernameFormat,
+  isValidUsernameFormat,
+  USERNAME_MIN_LENGTH,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MAX_INPUT_BYTES,
+  USERNAME_RULE_HINT,
+} from "./core/username";
+export type { UsernameFormat, UsernameProblem } from "./core/username";
 
 // Error system
 export { AuthnError, AuthnErrorCode, isAuthnError } from "./types";

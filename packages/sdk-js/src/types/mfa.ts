@@ -51,6 +51,24 @@ export type EnrollSMSResult =
   | { ok: true; message?: string; expiresInSeconds?: number }
   | { ok: false; error: AuthnError };
 
+export interface SendSMSChallengeParams {
+  /** The `mfaToken` the sign-in returned when it asked for a second factor. */
+  mfaToken: string;
+}
+
+export type SendSMSChallengeResult =
+  | {
+      ok: true;
+      /**
+       * The destination, redacted to its country prefix and last two digits — enough to say
+       * which handset to check without printing a number to a caller who has only the password.
+       */
+      phoneNumber?: string;
+      expiresInSeconds?: number;
+      message?: string;
+    }
+  | { ok: false; error: AuthnError };
+
 export interface ConfirmSMSParams {
   code: string;
 }

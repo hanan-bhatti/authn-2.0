@@ -11,6 +11,12 @@ export interface AuthnUser {
   email: string;
   emailVerified: boolean;
   name?: string;
+  /**
+   * The public handle, in the capitalisation it was registered with. Absent on an
+   * account that has not claimed one, which is a valid state rather than an
+   * incomplete profile.
+   */
+  username?: string;
   status: "active" | "suspended" | "banned";
   createdAt: string;
 }

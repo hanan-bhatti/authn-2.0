@@ -14,6 +14,8 @@ import type {
   RecoveryCodesStatusResult,
   RegenerateRecoveryCodesParams,
   RegenerateRecoveryCodesResult,
+  SendSMSChallengeParams,
+  SendSMSChallengeResult,
   VerifyTOTPParams,
   VerifyTOTPResult,
   VoidResult,
@@ -147,6 +149,27 @@ export function useTOTP(): UseTOTPReturn {
     [client],
   );
 
+  const sendSMSChallenge = useCallback(
+    async (params: SendSMSChallengeParams): Promise<SendSMSChallengeResult> => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const result = await client.sendSMSChallenge(params);
+        if (!result.ok && isMounted.current) {
+          setError(result.error);
+        }
+        return result;
+      } catch (err) {
+        const authnError = err as AuthnError;
+        if (isMounted.current) setError(authnError);
+        return { ok: false, error: authnError };
+      } finally {
+        if (isMounted.current) setIsLoading(false);
+      }
+    },
+    [client],
+  );
+
   const confirmSMS = useCallback(
     async (params: ConfirmSMSParams): Promise<Confirm2FAResult> => {
       setIsLoading(true);
@@ -239,6 +262,7 @@ export function useTOTP(): UseTOTPReturn {
     disableTOTP,
     verifyTOTP,
     enrollSMS,
+    sendSMSChallenge,
     confirmSMS,
     disableSMS,
     regenerateRecoveryCodes,

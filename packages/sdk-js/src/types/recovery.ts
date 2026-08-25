@@ -1,4 +1,5 @@
 import type { AuthnError } from "./errors";
+import type { SecurityQuestion } from "./securityquestions";
 
 export interface InitiateRecoveryParams {
   email: string;
@@ -13,6 +14,16 @@ export type InitiateRecoveryResult =
       status: string;
       isTrustedDeviceOrigin: boolean;
       availableMethods: string[];
+      /**
+       * The prompts to ask, present only when `availableMethods` includes
+       * `security_questions`.
+       *
+       * They travel with the offer because a locked-out caller has no session and
+       * so no other route to them: a method offered without its questions cannot be
+       * attempted. Their absence is not an account-existence signal — the decoy
+       * response for an address with no account never offers this method either.
+       */
+      securityQuestions?: SecurityQuestion[];
     }
   | { ok: false; error: AuthnError };
 

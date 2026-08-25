@@ -5,6 +5,7 @@ export { useAppConfig } from "./useAppConfig";
 export { useUser } from "./useUser";
 export { useSignIn } from "./useSignIn";
 export { useSignUp } from "./useSignUp";
+export { useUsernameAvailability } from "./useUsernameAvailability";
 export { useSignOut } from "./useSignOut";
 export { useMagicLink } from "./useMagicLink";
 export { useTOTP } from "./useTOTP";

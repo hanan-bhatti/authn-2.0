@@ -5,6 +5,7 @@
  */
 
 import { AuthnError } from "../types";
+import { checkUsernameFormat } from "./username";
 
 export interface ValidationResult {
   valid: boolean;
@@ -36,6 +37,57 @@ export function validateEmail(value: unknown): ValidationResult {
   }
   if (!EMAIL_RE.test(value)) {
     return fail("email", "Email format is invalid. Expected: user@example.com");
+  }
+  return ok;
+}
+
+export function validateUsername(value: unknown): ValidationResult {
+  if (typeof value !== "string" && value !== undefined && value !== null) {
+    return fail("username", "Username must be a string.");
+  }
+  const format = checkUsernameFormat(value);
+  if (!format.valid) {
+    return fail("username", format.message!);
+  }
+  return ok;
+}
+
+/**
+ * The RFC 5321 maximum address length, which is also the engine's ceiling on the
+ * login identifier. Counted in UTF-8 bytes, because that is what the engine
+ * counts: a value that passes here and fails there would produce a 400 the caller
+ * cannot explain.
+ */
+const MAX_IDENTIFIER_BYTES = 320;
+
+/**
+ * Check the identifier a login names an account by.
+ *
+ * Presence and a length ceiling, and nothing else. The value may be an address or
+ * a handle, and refusing one that is neither would answer a malformed value
+ * differently from a wrong one — sending a user who mistyped their handle a
+ * message about email format, and telling anyone probing which shapes can exist.
+ * The engine answers anything that resolves to no account as bad credentials, and
+ * this call must not undo that by refusing it earlier.
+ */
+export function validateLoginIdentifier(value: unknown): ValidationResult {
+  if (value === undefined || value === null || value === "") {
+    return fail("identifier", "Email or username is required.");
+  }
+  if (typeof value !== "string") {
+    return fail("identifier", "Email or username must be a string.");
+  }
+  if (value.trim() === "") {
+    return fail("identifier", "Email or username is required.");
+  }
+  if (new TextEncoder().encode(value.trim()).length > MAX_IDENTIFIER_BYTES) {
+    // Bytes, not characters, because that is the unit measured. A 200-character
+    // address in an accented script passes 320 characters and fails 320 bytes, and
+    // naming the wrong unit describes input the sender never typed.
+    return fail(
+      "identifier",
+      `Email or username cannot exceed ${MAX_IDENTIFIER_BYTES} bytes.`,
+    );
   }
   return ok;
 }
@@ -163,6 +215,35 @@ export function validateTOTPCode(value: unknown): ValidationResult {
   }
   if (!TOTP_CODE_RE.test(value)) {
     return fail("code", "Verification code must be exactly 6 digits.");
+  }
+  return ok;
+}
+
+/** Eight alphanumerics once the grouping dash is stripped, matching what the engine hashes. */
+const RECOVERY_CODE_RE = /^[A-Z0-9]{8}$/;
+
+/**
+ * A backup recovery code, in either the printed `XXXX-XXXX` form or without the dash.
+ *
+ * Separate from validateTOTPCode because a recovery code is not six digits, and the shared
+ * validator refused every one of them before it could be sent — which made the codes the engine
+ * hands out at enrollment unusable from this SDK.
+ */
+export function validateRecoveryCode(value: unknown): ValidationResult {
+  if (value === undefined || value === null || value === "") {
+    return fail("code", "Recovery code is required.");
+  }
+  if (typeof value !== "string") {
+    return fail("code", "Recovery code must be a string.");
+  }
+  // Normalised the way the engine normalises before hashing, so a reader who types the dash, omits
+  // it, or uses lower case is not refused for a difference the server would not have seen.
+  const normalized = value.trim().replace(/-/g, "").toUpperCase();
+  if (!RECOVERY_CODE_RE.test(normalized)) {
+    return fail(
+      "code",
+      "Recovery code must be 8 letters and digits, like ABCD-1234.",
+    );
   }
   return ok;
 }

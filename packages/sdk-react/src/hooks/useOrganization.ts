@@ -10,9 +10,12 @@ import type {
   CreateOrgResult,
   DeleteOrgResult,
   GetOrgResult,
+  AuthnOrgInvitation,
   InviteOrgMemberParams,
   InviteOrgMemberResult,
+  ListInvitationsResult,
   ListOrgsResult,
+  RemoveOrgMemberResult,
   UpdateOrgParams,
   UpdateOrgResult,
 } from "@authn/js";
@@ -21,6 +24,8 @@ import { useAuthContext } from "../context";
 export interface UseOrganizationReturn {
   org: AuthnOrg | null;
   organizations: AuthnOrg[];
+  /** Invitations addressed to the signed-in account, filled by `listInvitations`. */
+  invitations: AuthnOrgInvitation[];
   isLoading: boolean;
   error: AuthnError | null;
   createOrg: (params: CreateOrgParams) => Promise<CreateOrgResult>;
@@ -35,6 +40,15 @@ export interface UseOrganizationReturn {
   acceptInvitation: (
     params: AcceptOrgInvitationParams,
   ) => Promise<AcceptOrgInvitationResult>;
+  listInvitations: () => Promise<ListInvitationsResult>;
+  /**
+   * Removes a member, or leaves when `userId` is the caller's own.
+   *
+   * A successful leave drops the organization from `organizations` here, since the
+   * caller can no longer read it and a stale row would render controls that answer
+   * 403.
+   */
+  removeMember: (orgId: string, userId: string) => Promise<RemoveOrgMemberResult>;
   reset: () => void;
 }
 
@@ -47,6 +61,7 @@ export function useOrganization(initialOrgId?: string): UseOrganizationReturn {
   const { client } = useAuthContext();
   const [org, setOrg] = useState<AuthnOrg | null>(null);
   const [organizations, setOrganizations] = useState<AuthnOrg[]>([]);
+  const [invitations, setInvitations] = useState<AuthnOrgInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<AuthnError | null>(null);
 
@@ -209,6 +224,46 @@ export function useOrganization(initialOrgId?: string): UseOrganizationReturn {
     [client],
   );
 
+  const listInvitations = useCallback(async (): Promise<ListInvitationsResult> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await client.listInvitations();
+      if (isMounted.current) {
+        if (result.ok) {
+          setInvitations(result.invitations);
+        } else {
+          setError(result.error);
+        }
+      }
+      return result;
+    } finally {
+      if (isMounted.current) setIsLoading(false);
+    }
+  }, [client]);
+
+  const removeMember = useCallback(
+    async (orgId: string, userId: string): Promise<RemoveOrgMemberResult> => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const result = await client.removeOrgMember(orgId, userId);
+        if (isMounted.current) {
+          if (!result.ok) {
+            setError(result.error);
+          } else if (result.left) {
+            if (org?.id === orgId) setOrg(null);
+            setOrganizations((prev) => prev.filter((o) => o.id !== orgId));
+          }
+        }
+        return result;
+      } finally {
+        if (isMounted.current) setIsLoading(false);
+      }
+    },
+    [client, org?.id],
+  );
+
   useEffect(() => {
     if (initialOrgId) {
       getOrg(initialOrgId);
@@ -218,6 +273,7 @@ export function useOrganization(initialOrgId?: string): UseOrganizationReturn {
   return {
     org,
     organizations,
+    invitations,
     isLoading,
     error,
     createOrg,
@@ -227,6 +283,8 @@ export function useOrganization(initialOrgId?: string): UseOrganizationReturn {
     deleteOrg,
     inviteMember,
     acceptInvitation,
+    listInvitations,
+    removeMember,
     reset,
   };
 }
