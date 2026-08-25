@@ -305,6 +305,14 @@ func (h *Handler) RegisterRoutes(app *fiber.App, pkMiddleware fiber.Handler) {
 	api.Post("/auth/magic-link", public(h.SendMagicLink)...)
 	api.Post("/auth/magic-link/verify", public(h.VerifyMagicLink)...)
 
+	// Which second factors the account has enrolled (FR-4).
+	//
+	// Session-authenticated and read-only. It answers the same question activeFactors answers for
+	// the login challenge, which is why it lives here and not beside the profile: a settings page
+	// and a sign-in must agree on what the account can be challenged with, and two computations of
+	// that would eventually disagree.
+	api.Get("/auth/2fa/methods", protected(h.GetTwoFactorMethods)...)
+
 	// TOTP second factor (FR-4). Verification is public because it also serves the login
 	// challenge, where the caller holds an mfa_token rather than a session.
 	api.Post("/auth/2fa/totp/enroll", protected(h.EnrollTOTP)...)

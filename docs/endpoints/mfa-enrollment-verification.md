@@ -1,6 +1,6 @@
 # MFA Enrollment & Verification Suite (`/v1/client/auth/2fa/*`)
 
-> **Last Verified**: `2026-08-21` — 100% verified via live `curl` pentest suite against running server using `pyotp` for RFC 6238 TOTP validation. The TOTP teardown was re-checked end to end: disabling the last primary factor discards the account's recovery codes, `2fa.disabled` reports `remaining_factors: 0`, and the status endpoint then answers `has_recovery_codes: false`.
+> **Last Verified**: `2026-08-25` — 100% verified via live `curl` pentest suite against running server using `pyotp` for RFC 6238 TOTP validation. The TOTP teardown was re-checked end to end: disabling the last primary factor discards the account's recovery codes, `2fa.disabled` reports `remaining_factors: 0`, and the status endpoint then answers `has_recovery_codes: false`. `GET /v1/client/auth/2fa/methods` was verified across the full lifecycle — bare account, TOTP confirmed, SMS confirmed, TOTP used at a sign-in, SMS removed, last factor torn down — and its `methods` list matched the challenge's byte for byte at every step.
 
 ## Overview
 The MFA Enrollment & Verification suite manages multi-factor authentication enrollment, TOTP setup, SMS OTP dispatch, WebAuthn passkey registration/revocation, single-use recovery code status tracking, and password step-up confirmation guards.
@@ -120,3 +120,34 @@ The MFA Enrollment & Verification suite manages multi-factor authentication enro
 
 ### 9. Revoke WebAuthn Passkey (`DELETE /v1/client/auth/2fa/webauthn/credentials/:id`)
 * **Security Guard (IDOR Protection)**: Attempts to delete non-existent or foreign credentials return `400 Bad Request` (`passkey not found or does not belong to user`).
+
+### 10. Read Enrolled Second Factors (`GET /v1/client/auth/2fa/methods`)
+* **Headers**: `X-Authn-Publishable-Key: pk_test_...`, `Authorization: Bearer <accessToken>`
+* **Purpose**: The read a security settings screen renders from. Every other factor could already be read — passkeys have a listing (§8), recovery codes have a status (§3) — while an authenticator app had nothing, so a client had no way to answer "is TOTP enrolled".
+* **Response (`200 OK`)** — no factors enrolled:
+```json
+{
+  "methods": [],
+  "totp": { "enabled": false },
+  "sms": { "enabled": false }
+}
+```
+* **Response (`200 OK`)** — TOTP and SMS both enrolled, TOTP used at a sign-in:
+```json
+{
+  "methods": ["totp", "sms", "backup_code"],
+  "totp": {
+    "enabled": true,
+    "created_at": "2026-08-25T03:46:46Z",
+    "last_used_at": "2026-08-25T03:54:17Z"
+  },
+  "sms": {
+    "enabled": true,
+    "created_at": "2026-08-25T03:47:16Z",
+    "phone_number": "+447700900471"
+  }
+}
+```
+* **`methods` Contract**: The same list, from the same computation, that `POST /v1/client/auth/login` returns on a challenge — most recently used first, `backup_code` last. A settings screen can therefore state what the next sign-in will ask for rather than inferring it. `passkey` and `backup_code` appear in the list with no detail object of their own, because §8 and §3 carry that detail.
+* **Field Notes**: `methods` is always an array, `[]` rather than `null`, when the account has no second factor. `created_at` and `last_used_at` are omitted rather than sent empty, and `last_used_at` is absent on a factor that has never satisfied a verification.
+* **Phone Number Disclosure**: `sms.phone_number` is returned in full, unlike the masked form in the SMS challenge response. That one answers a caller holding an `mfa_token`, who has proven only the password; this route requires a session, and `GET /v1/client/user/profile` already returns the same number in full to the same caller. An SMS secret that fails to decrypt omits the number rather than failing the read — the factor is still enrolled and still answerable.

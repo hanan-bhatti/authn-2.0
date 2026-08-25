@@ -3595,6 +3595,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/client/auth/2fa/methods:
+    get:
+      summary: Read Enrolled Second Factors
+      description: 'Reports which second factors the authenticated account has enrolled: the list a
+        sign-in challenge would offer, plus the authenticator app''s and text-message factor''s own
+        state. `methods` is the same list, from the same computation, that `POST /v1/client/auth/login`
+        returns on a challenge, so a settings screen can state what the next sign-in will ask for
+        rather than inferring it. `passkey` and `backup_code` appear in `methods` without a detail
+        object; `GET /v1/client/auth/2fa/webauthn/credentials` and
+        `GET /v1/client/auth/2fa/recovery-codes/status` carry that detail.'
+      operationId: getTwoFactorMethods
+      tags:
+      - Multi-Factor Authentication
+      security:
+      - PublishableKey: []
+        BearerAuth: []
+      responses:
+        '200':
+          description: Enrolled second factors retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFactorMethodsResponse'
+        '401':
+          description: Unauthorized session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/client/auth/2fa/webauthn/register/begin:
     post:
       summary: Begin WebAuthn Passkey Registration
@@ -9214,6 +9249,65 @@ components:
         has_recovery_codes:
           type: boolean
           example: true
+    TwoFactorMethodState:
+      type: object
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the factor is confirmed and usable. Always present, so a client reads
+            one field rather than distinguishing an absent object from a disabled one.
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: When enrollment began. Omitted when the factor is not enrolled.
+          example: '2026-08-25T03:46:46Z'
+        last_used_at:
+          type: string
+          format: date-time
+          description: When the factor last satisfied a verification. Omitted if it never has.
+          example: '2026-08-25T03:54:17Z'
+    SMSMethodState:
+      allOf:
+      - $ref: '#/components/schemas/TwoFactorMethodState'
+      - type: object
+        properties:
+          phone_number:
+            type: string
+            description: The confirmed E.164 number, in full. Unredacted, unlike the masked form in
+              the SMS challenge response — that one answers a caller holding an mfa_token who has
+              proven only the password, while this route requires a session and
+              `GET /v1/client/user/profile` already returns the same number to the same caller.
+              Omitted when the stored secret cannot be decrypted.
+            example: '+447700900471'
+    TwoFactorMethodsResponse:
+      type: object
+      required:
+      - methods
+      - totp
+      - sms
+      properties:
+        methods:
+          type: array
+          description: What a sign-in challenge would offer, most recently used first and
+            `backup_code` last. An empty array, never null, when the account has no second factor.
+          items:
+            type: string
+            enum:
+            - totp
+            - sms
+            - passkey
+            - backup_code
+          example:
+          - totp
+          - sms
+          - backup_code
+        totp:
+          $ref: '#/components/schemas/TwoFactorMethodState'
+        sms:
+          $ref: '#/components/schemas/SMSMethodState'
     BeginWebAuthnRegistrationResponse:
       type: object
       required:

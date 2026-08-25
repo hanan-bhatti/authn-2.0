@@ -241,6 +241,44 @@ type RecoveryCodesStatusResult struct {
 	HasRecoveryCodes bool `json:"has_recovery_codes"`
 }
 
+// TwoFactorMethodDTO describes one enrolled second factor.
+type TwoFactorMethodDTO struct {
+	// Enabled reports whether the factor is confirmed and usable. Always present, so a client
+	// reads one field rather than distinguishing an absent object from a disabled one.
+	Enabled bool `json:"enabled"`
+	// CreatedAt is when enrollment began, RFC 3339 in UTC. Empty when the factor is not enrolled.
+	CreatedAt string `json:"created_at,omitempty"`
+	// LastUsedAt is when the factor last satisfied a verification, absent if it never has.
+	LastUsedAt *string `json:"last_used_at,omitempty"`
+}
+
+// SMSMethodDTO is a TwoFactorMethodDTO carrying the number codes are delivered to.
+type SMSMethodDTO struct {
+	TwoFactorMethodDTO
+	// PhoneNumber is the confirmed E.164 number, in full.
+	//
+	// Unredacted, unlike the challenge response's: that one answers a caller holding an mfa_token,
+	// who has proven the password and nothing else, so it says "the number ending 71" rather than
+	// disclosing it. This route is session-authenticated and GET /v1/client/user/profile already
+	// returns the same number in full to the same caller, so masking here would withhold nothing
+	// while making the one question a reader has of the row — is this still a number I own — the
+	// one thing it cannot answer.
+	PhoneNumber string `json:"phone_number,omitempty"`
+}
+
+// TwoFactorMethodsResult reports which second factors an account has enrolled.
+type TwoFactorMethodsResult struct {
+	// Methods is what a sign-in challenge would offer, most recently used first and backup_code
+	// last, empty when the account has no second factor. It is the same list the challenge itself
+	// carries, so a client can state what the next sign-in will actually ask for rather than
+	// inferring it from the fields below.
+	Methods []string `json:"methods"`
+	// TOTP is the authenticator-app factor.
+	TOTP TwoFactorMethodDTO `json:"totp"`
+	// SMS is the text-message factor.
+	SMS SMSMethodDTO `json:"sms"`
+}
+
 // PasskeyDTO contains public details of a registered WebAuthn passkey.
 type PasskeyDTO struct {
 	// ID is the internal two-factor method row ID, used to address the passkey for deletion.
@@ -2584,6 +2622,72 @@ func (s *Service) GetRecoveryCodesStatus(ctx context.Context, userID string) (*R
 		TotalCount:       recoveryCodeSetSize,
 		HasRecoveryCodes: remaining > 0,
 	}, nil
+}
+
+// GetTwoFactorMethods reports which second factors userID has enrolled, for a client rendering an
+// account's security settings.
+//
+// Every other factor could already be read: passkeys have a listing, recovery codes have a status,
+// and a confirmed SMS number is promoted onto the user record. An authenticator app had nothing —
+// no route answered "is TOTP enrolled" — so a settings page could only guess, and a page that
+// guesses about a second factor is worse than one that omits it.
+//
+// The method list is activeFactors', unchanged, so what this reports and what the next sign-in
+// challenge offers cannot drift apart. The per-factor objects add the timestamps and the number
+// that a challenge has no reason to carry.
+//
+// An SMS number that cannot be decrypted is omitted rather than failing the read: the factor is
+// still enrolled and still answerable, and the rest of the page has no dependency on the string.
+func (s *Service) GetTwoFactorMethods(ctx context.Context, userID string) (*TwoFactorMethodsResult, error) {
+	methods, err := s.activeFactors(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &TwoFactorMethodsResult{Methods: methods}
+	if result.Methods == nil {
+		// A JSON null would make every client test for it before iterating.
+		result.Methods = []string{}
+	}
+
+	activeTOTP, err := s.repo.GetActiveTOTPMethodForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if activeTOTP != nil {
+		result.TOTP = describeTwoFactorMethod(activeTOTP)
+	}
+
+	activeSMS, err := s.repo.GetActiveSMSMethodForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if activeSMS != nil {
+		result.SMS.TwoFactorMethodDTO = describeTwoFactorMethod(activeSMS)
+		if activeSMS.SecretEncrypted != "" {
+			if phoneNumber, err := crypto.DecryptAES256GCM(activeSMS.SecretEncrypted, s.config.EncryptionKey); err == nil {
+				result.SMS.PhoneNumber = phoneNumber
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// describeTwoFactorMethod renders an enrolled factor's row as its public shape.
+//
+// Callers pass only rows that came back from an is_enabled query, which is why Enabled is set
+// unconditionally: the absence of a row is what a disabled factor looks like.
+func describeTwoFactorMethod(tfm *ent.TwoFactorMethod) TwoFactorMethodDTO {
+	dto := TwoFactorMethodDTO{
+		Enabled:   true,
+		CreatedAt: tfm.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+	}
+	if tfm.LastUsedAt != nil {
+		lastUsed := tfm.LastUsedAt.UTC().Format("2006-01-02T15:04:05Z")
+		dto.LastUsedAt = &lastUsed
+	}
+	return dto
 }
 
 // convertTwoFactorMethodToWebAuthnCredential adapts a stored passkey row into the credential

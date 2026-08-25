@@ -1328,6 +1328,22 @@
 			"name": "04 2FA — TOTP Authenticator",
 			"item": [
 				{
+					"name": "List Enrolled Second Factors",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-Authn-Publishable-Key", "value": "{{publishableKey}}" },
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/client/auth/2fa/methods",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "client", "auth", "2fa", "methods"]
+						},
+						"description": "What this account has enrolled, across every factor type. The methods list is the same one a login challenge returns — most recently used first, backup_code last — so a settings screen can state what the next sign-in will ask for instead of guessing. totp and sms carry their own detail object; passkeys are listed in folder 07 and recovery codes in folder 05. Returns methods as an empty array, never null, on an account with no second factor."
+					}
+				},
+				{
 					"name": "Enroll TOTP",
 					"request": {
 						"method": "POST",

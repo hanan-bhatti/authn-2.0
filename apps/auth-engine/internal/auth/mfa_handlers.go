@@ -225,6 +225,22 @@ func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 	})
 }
 
+// GetTwoFactorMethods handles GET /v1/client/auth/2fa/methods.
+//
+// Reports the account's enrolled second factors: the list a sign-in challenge would offer, plus the
+// authenticator app's and text-message factor's own state. Every other factor was already readable
+// — passkeys have a listing, recovery codes have a status — and this closes TOTP, which had none.
+func (h *Handler) GetTwoFactorMethods(c *fiber.Ctx) error {
+	userID := getUserID(c)
+
+	res, err := h.service.GetTwoFactorMethods(c.UserContext(), userID)
+	if err != nil {
+		return httperr.SendInternal(c, "auth.2fa.methods", err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(res)
+}
+
 // GetRecoveryCodesStatus handles GET /v1/client/auth/2fa/recovery-codes/status.
 // Returns remaining unused count of recovery codes for the authenticated user without exposing code values.
 func (h *Handler) GetRecoveryCodesStatus(c *fiber.Ctx) error {
