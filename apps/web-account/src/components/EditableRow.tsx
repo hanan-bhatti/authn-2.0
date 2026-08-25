@@ -50,6 +50,12 @@ export interface EditableRowProps {
   /** The "i" beside the label, for rules a reader wants before they start typing. */
   helpTopic?: HelpTopicId;
   icon?: IconComponent;
+  /**
+   * Shown at the leading edge in place of the icon plaque, for a row whose value
+   * is better seen than read — an avatar being the case that needs it, where the
+   * URL in the field is not what the reader is trying to check.
+   */
+  leading?: ReactNode;
   accent?: Accent;
   inputType?: "text" | "email" | "tel" | "url";
   placeholder?: string;
@@ -76,6 +82,12 @@ export interface EditableRowProps {
   isReadOnly?: boolean;
   /** Why editing is unavailable, shown in place of the button. */
   readOnlyReason?: string;
+  /**
+   * A control beside Edit — a Remove, a Resend. Dropped while the row is open,
+   * along with Edit itself: the only two answers to a form are save and cancel,
+   * and a third button there is a way to lose what has been typed.
+   */
+  extraAction?: ReactNode;
 }
 
 export function EditableRow({
@@ -85,6 +97,7 @@ export function EditableRow({
   hint,
   helpTopic,
   icon: Glyph,
+  leading,
   accent,
   inputType = "text",
   placeholder,
@@ -96,6 +109,7 @@ export function EditableRow({
   renderAssist,
   isReadOnly = false,
   readOnlyReason,
+  extraAction,
 }: EditableRowProps): ReactNode {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
@@ -183,7 +197,9 @@ export function EditableRow({
   return (
     <div className="flex flex-wrap items-center justify-between gap-md p-lg not-first:border-t not-first:border-hairline">
       <div className="flex min-w-0 flex-1 basis-[20rem] items-center gap-md">
-        {Glyph ? (
+        {leading ? (
+          <span className="mt-xxs shrink-0 self-start">{leading}</span>
+        ) : Glyph ? (
           <span className="mt-xxs flex size-9 shrink-0 items-center justify-center self-start rounded-md border border-hairline bg-surface-elevated">
             <Glyph
               variant="line"
@@ -281,6 +297,7 @@ export function EditableRow({
           ) : null
         ) : (
           <div className="flex shrink-0 items-center gap-sm">
+            {extraAction}
             <Button
               ref={editButtonRef}
               size="sm"

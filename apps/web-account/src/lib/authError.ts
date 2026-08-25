@@ -378,3 +378,58 @@ export function presentSecondFactorError(
       };
   }
 }
+
+/**
+ * The sentence to show when a saved change was refused.
+ *
+ * Written for a control that already says what it was changing — a row that sends
+ * one field, a dialog with one purpose — so the message carries the reason and
+ * lets the surrounding page carry the subject. That is what makes a per-row save
+ * worth having: the engine answers a bad name, a bad locale and a bad avatar URL
+ * with the same "one or more fields are invalid", and the only thing that knows
+ * which field it sent is the row that sent it.
+ *
+ * @param subject What was being changed, lower case and singular: "username",
+ * "display name". Used where the engine's own prose is too generic to repeat.
+ */
+export function presentSaveError(error: AuthnError, subject: string): string {
+  switch (error.code) {
+    // The engine names the rule that was broken — a handle's shape, a reserved
+    // metadata key — so its own sentence is more use than anything written here.
+    case AuthnErrorCode.VALIDATION_ERROR:
+      return error.message;
+
+    // `already_exists` is what a taken handle arrives as, the engine having one
+    // conflict code for every kind of collision.
+    case AuthnErrorCode.EMAIL_ALREADY_EXISTS:
+    case AuthnErrorCode.CONFLICT:
+      return error.message;
+
+    case AuthnErrorCode.INVALID_PARAMS:
+      return error.message;
+
+    case AuthnErrorCode.RATE_LIMITED:
+      return retryHint(error.details) ?? "Too many changes too quickly. Wait a moment.";
+
+    // The access token expired between opening the row and saving it. Said plainly
+    // because the fix is a page reload, and a reader told only "could not save"
+    // will retype the value instead.
+    case AuthnErrorCode.UNAUTHORIZED:
+    case AuthnErrorCode.SESSION_EXPIRED:
+    case AuthnErrorCode.REFRESH_FAILED:
+      return "Your session ended. Reload the page and sign in again.";
+
+    case AuthnErrorCode.FORBIDDEN:
+      return `You are not allowed to change your ${subject}.`;
+
+    case AuthnErrorCode.NETWORK_ERROR:
+    case AuthnErrorCode.TIMEOUT:
+      return "Could not reach the server. Check your connection and try again.";
+
+    case AuthnErrorCode.SERVER_ERROR:
+      return "The server could not save that. Nothing has changed — try again in a moment.";
+
+    default:
+      return `Could not save your ${subject}.`;
+  }
+}
