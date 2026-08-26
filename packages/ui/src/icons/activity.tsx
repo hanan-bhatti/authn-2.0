@@ -70,6 +70,38 @@ export const SmartphoneIcon = createIcon("SmartphoneIcon", (variant) => {
   return SMARTPHONE_ART;
 });
 
+const TABLET_ART = (
+  <>
+    <rect x="3.75" y="2.75" width="16.5" height="18.5" rx="2.75" />
+    <circle cx="12" cy="17.65" r="1.05" fill="currentColor" stroke="none" />
+  </>
+);
+
+/**
+ * A tablet session.
+ *
+ * The engine reports three form factors and this is the third. Without it a
+ * tablet is drawn as a phone, and a reader auditing their devices sees a phone
+ * they do not own.
+ *
+ * Told apart from the phone by proportion — 16.5 units wide against 11.5 — and by
+ * a home dot at the bottom. Proportion alone is legible with the phone beside it
+ * and ambiguous without, and a session list shows whichever devices the account
+ * happens to have.
+ */
+export const TabletIcon = createIcon("TabletIcon", (variant) => {
+  if (variant === "filled") {
+    return (
+      <path
+        fillRule="evenodd"
+        d="M6.5 2.75A2.75 2.75 0 0 0 3.75 5.5v13a2.75 2.75 0 0 0 2.75 2.75h11a2.75 2.75 0 0 0 2.75-2.75v-13A2.75 2.75 0 0 0 17.5 2.75h-11Zm5.5 13.85a1.05 1.05 0 1 0 0 2.1 1.05 1.05 0 0 0 0-2.1Z"
+      />
+    );
+  }
+  if (variant === "color") return washed("orange", TABLET_ART);
+  return TABLET_ART;
+});
+
 const CLOCK_ART = (
   <>
     <circle cx="12" cy="12" r="9.25" />
