@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { CheckIcon } from "@authn/ui";
 import { AuthShell } from "@/components/AuthShell";
 import { SignInForm } from "./SignInForm";
 import { env } from "@/lib/env";
@@ -20,6 +21,11 @@ import { firstParam, safeNextPath } from "@/lib/searchParams";
  * in a client component would make this page's static render illegal without a
  * Suspense boundary around the form, and the boundary would buy nothing: the
  * value is known before the form mounts.
+ *
+ * `deleted` arrives the same way, and for a reason particular to what it says: the
+ * page that sends it here no longer has an account to speak for. Confirming a
+ * deletion on the page being left would put the message on a route the guard is
+ * about to replace, so the confirmation is handed to the destination instead.
  */
 
 export const metadata: Metadata = {
@@ -34,6 +40,7 @@ export default async function SignInPage({
 }): Promise<ReactNode> {
   const params = await searchParams;
   const destination = safeNextPath(firstParam(params["next"]));
+  const wasDeleted = firstParam(params["deleted"]) === "1";
 
   return (
     <AuthShell
@@ -49,6 +56,20 @@ export default async function SignInPage({
         </>
       }
     >
+      {wasDeleted ? (
+        <div className="mb-lg flex items-start gap-sm rounded-md border border-accent-green/40 bg-accent-green/[0.06] p-md">
+          <CheckIcon variant="line" size={16} className="mt-px shrink-0 text-accent-green" />
+          <div className="flex flex-col gap-xxs">
+            <p className="text-body-sm text-ink">Your account has been deleted.</p>
+            <p className="text-caption text-charcoal">
+              Every device it was signed in on has been signed out. Nothing is kept on our
+              side, and the email address and username are free to use again — signing up
+              with them starts a new, empty account rather than restoring this one.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <SignInForm destination={destination} />
     </AuthShell>
   );
