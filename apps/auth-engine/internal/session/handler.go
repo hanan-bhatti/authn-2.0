@@ -349,9 +349,10 @@ func (h *Handler) RefreshTokens(c *fiber.Ctx) error {
 		return httperr.SendInternal(c, "session.refresh", err)
 	}
 
-	// A grace-window replay leaves RefreshToken empty on purpose: the rotated
-	// secret is not handed out twice, and the cookie the browser already holds is
-	// still the live one, so it must be left alone.
+	// Every successful rotation carries a token, including a grace-window replay,
+	// which rotates again rather than answering with nothing. The emptiness check
+	// stays as a guard: writing an empty cookie would clear the one credential the
+	// browser has, turning a refresh into a sign-out.
 	if fromCookie && res.RefreshToken != "" {
 		h.cookies.SetRefreshToken(c, tenantID, environment, res.RefreshToken,
 			h.cookies.RefreshTokenTTL(c.UserContext(), tenantID, environment))

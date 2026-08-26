@@ -387,7 +387,7 @@ func mergeMetadata(current, patch map[string]interface{}) map[string]interface{}
 // equality set over the indexed canonical column, so the database touches exactly
 // the keys named and the cost is set by len(candidates) rather than by the size of
 // the table.
-//// Soft-deleted rows are not filtered out, because SoftDelete clears the canonical
+// // Soft-deleted rows are not filtered out, because SoftDelete clears the canonical
 // column outright. The check and the unique index therefore examine the same set
 // of rows, which is the property that matters: a check that skipped rows the index
 // still indexes would report a handle free and then fail the write claiming it.

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/predicate"
@@ -197,7 +198,17 @@ func (r *Repository) RevokeSession(ctx context.Context, sessionID string) error 
 }
 
 // RevokeAllUserSessions revokes every non-revoked session for userID, optionally
-// sparing exceptSessionID, and returns the number of rows changed.
+// sparing exceptSessionID, and returns how many devices it signed out.
+//
+// Grace rows are revoked and not counted. One is created per refresh, so counting
+// them would answer "sign out my other devices" with a number larger than the list
+// the reader was looking at — and the number is what tells them the action did what
+// they asked. They are still revoked, because a superseded token left alive would
+// otherwise be presented, find its successor gone, and be reported as theft.
+//
+// The grace statement runs first: revoking the successor is what stops a grace
+// token being exchanged, so a failure after it leaves the account no less protected
+// than before.
 func (r *Repository) RevokeAllUserSessions(ctx context.Context, userID string, exceptSessionID string) (int, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	pred := session.UserID(userID)
@@ -205,23 +216,46 @@ func (r *Repository) RevokeAllUserSessions(ctx context.Context, userID string, e
 		pred = session.And(pred, session.IDNEQ(exceptSessionID))
 	}
 
+	if _, err := client.Session.Update().
+		Where(pred, session.StatusEQ(session.StatusRotatedGrace)).
+		SetStatus(session.StatusRevoked).
+		Save(ctx); err != nil {
+		return 0, err
+	}
+
 	return client.Session.Update().
-		Where(pred, session.StatusNEQ(session.StatusRevoked)).
+		Where(pred, session.StatusEQ(session.StatusActive)).
 		SetStatus(session.StatusRevoked).
 		Save(ctx)
 }
 
-// GetUserActiveSessions returns the user's unrevoked, unexpired sessions, most
+// GetUserActiveSessions returns the user's active, unexpired sessions, most
 // recently active first.
+//
+// Only `active` rows, which is what makes this a list of devices. A
+// rotated_grace row is not a device: it is the token a refresh already replaced,
+// kept for ten seconds so that a replay of it is recognised as reuse rather than
+// as an unknown credential. Admitting those would show the reader one extra copy
+// of every device per refresh — and the copies are indistinguishable from the
+// real row, since a rotation carries the user agent and address forward.
+//
+// last_active_at is nullable, and Postgres sorts nulls first on a descending
+// order, so a row without one would otherwise be presented as the most recent
+// session on the account. Nulls are pushed last and creation time breaks the
+// tie, which keeps the order total: two sessions established in the same
+// refresh cycle share a last_active_at to the second.
 func (r *Repository) GetUserActiveSessions(ctx context.Context, userID string) ([]*ent.Session, error) {
 	client := r.factory.GetClient(ctx, "", "")
 	return client.Session.Query().
 		Where(
 			session.UserID(userID),
-			session.StatusNEQ(session.StatusRevoked),
+			session.StatusEQ(session.StatusActive),
 			session.ExpiresAtGT(time.Now()),
 		).
-		Order(ent.Desc(session.FieldLastActiveAt)).
+		Order(
+			session.ByLastActiveAt(sql.OrderDesc(), sql.OrderNullsLast()),
+			session.ByCreatedAt(sql.OrderDesc()),
+		).
 		All(ctx)
 }
 

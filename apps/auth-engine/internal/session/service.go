@@ -192,6 +192,10 @@ type SessionResponse struct {
 	LastActiveAt string `json:"last_active_at,omitempty"`
 	// CreatedAt is the RFC 3339 creation timestamp.
 	CreatedAt string `json:"created_at"`
+	// ExpiresAt is the RFC 3339 timestamp after which the session can no longer
+	// refresh and drops off this list on its own. A refresh replaces the row and
+	// so extends it, which is why an idle device is the one that expires.
+	ExpiresAt string `json:"expires_at"`
 	// IsCurrent marks the session the request itself was made with.
 	IsCurrent bool `json:"is_current"`
 }
@@ -200,8 +204,10 @@ type SessionResponse struct {
 type SessionTokenPairResponse struct {
 	// AccessToken is the newly issued bearer JWT.
 	AccessToken string `json:"access_token"`
-	// RefreshToken is the new opaque refresh token. It is empty on a grace-window
-	// replay, which must not hand out a second copy of the rotated secret.
+	// RefreshToken is the new opaque refresh token. It is spent by the exchange,
+	// so every successful refresh — including a grace-window replay, which is
+	// rotated again to hand the caller a replacement for one it can no longer
+	// use — returns a fresh one.
 	RefreshToken string `json:"refresh_token"`
 	// TokenType is always "Bearer".
 	TokenType string `json:"token_type"`
@@ -216,10 +222,11 @@ type SessionTokenPairResponse struct {
 // A token presented after its session was already rotated out is treated as
 // reuse — the sign of a stolen token — and triggers the tenant's TokenReusePolicy
 // before the request is refused. The one exception is the grace window: for
-// cfg.SessionGracePeriod after a rotation the superseded token still answers with
-// a fresh access token, so requests already in flight when the rotation landed do
-// not fail. That reply omits the refresh token, since the new secret was already
-// returned to whichever request performed the rotation.
+// cfg.SessionGracePeriod after a rotation the superseded token still answers, so
+// requests already in flight when the rotation landed do not fail. That reply
+// rotates the chain again and carries its own refresh token, because a caller
+// presenting a superseded token is a caller who never received the one that
+// replaced it.
 //
 // A session ended deliberately rather than rotated is not reuse, and is reported
 // as ErrSessionRevoked without invoking the reuse policy.
@@ -297,8 +304,25 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 			return nil, ErrSessionCompromised
 		}
 
-		// Inside the grace window: mint an access token against the session that
-		// superseded this one and withhold the refresh token.
+		// Inside the grace window: the token presented is the predecessor of a
+		// rotation that has already happened — a retry, a duplicate request in
+		// flight when the rotation landed, or a caller whose copy of the rotation
+		// response never arrived.
+		//
+		// The chain is rotated again and the caller is given the new token, rather
+		// than being handed an access token and left to keep the refresh token it
+		// already has. It demonstrably does not have it: a caller presenting the
+		// predecessor is a caller whose copy of the previous response never landed —
+		// a navigation cancelled the request, the tab closed, the connection dropped
+		// — and the rotation that request triggered is already committed. Answering
+		// with no refresh token leaves that caller holding a secret which stops being
+		// replayable the moment the grace window shuts, and whose next ordinary use
+		// is then read as theft and revokes every session on the account. Losing one
+		// response would cost the owner every device they are signed in on.
+		//
+		// Single use survives either way: the token presented here is spent, and the
+		// one returned is new. The cost is one extra session row per replay, which
+		// the sweeper collects along with the rest of the chain.
 		if sess.SupersededBySessionID != nil {
 			supersededSess, err := s.repo.GetSessionByID(ctx, *sess.SupersededBySessionID)
 			if err == nil && supersededSess.Status == session.StatusActive {
@@ -310,17 +334,22 @@ func (s *Service) RotateRefreshToken(ctx context.Context, tenantID, environment,
 					return nil, err
 				}
 
-				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), supersededSess.ID, s.cfg.EncryptionKey, s.accessTokenTTL(ctx, tenantID, environment))
+				newSess, newRawToken, err := s.repo.RotateSession(ctx, tenantID, environment, supersededSess.ID, "", s.cfg.SessionGracePeriod, s.refreshTokenTTL(ctx, tenantID, environment))
+				if err != nil {
+					return nil, fmt.Errorf("failed to rotate session: %w", err)
+				}
+
+				accessToken, err := jwtpkg.IssueAccessTokenWithSession(userObj.ID, tenantID, environment, userObj.Email, userObj.Name, s.resolveRoleClaim(ctx, userObj.ID), newSess.ID, s.cfg.EncryptionKey, s.accessTokenTTL(ctx, tenantID, environment))
 				if err != nil {
 					return nil, fmt.Errorf("failed to issue access token: %w", err)
 				}
 
 				return &SessionTokenPairResponse{
 					AccessToken:  accessToken,
-					RefreshToken: "",
+					RefreshToken: newRawToken,
 					TokenType:    "Bearer",
 					ExpiresIn:    s.accessTokenExpiresIn(ctx, tenantID, environment),
-					SessionID:    supersededSess.ID,
+					SessionID:    newSess.ID,
 				}, nil
 			}
 		}
@@ -388,6 +417,7 @@ func (s *Service) ListUserSessions(ctx context.Context, userID, currentSessionID
 			Location:     sess.Location,
 			LastActiveAt: lastActive,
 			CreatedAt:    sess.CreatedAt.Format(time.RFC3339),
+			ExpiresAt:    sess.ExpiresAt.Format(time.RFC3339),
 			IsCurrent:    sess.ID == currentSessionID,
 		})
 	}
