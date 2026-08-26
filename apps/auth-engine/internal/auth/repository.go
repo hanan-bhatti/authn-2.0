@@ -364,6 +364,12 @@ func (r *Repository) FindApiKeyByHash(ctx context.Context, keyHash string) (*ent
 // An error means no session exists and the caller must not issue tokens for it.
 func (r *Repository) CreateSession(ctx context.Context, id string, userID string, tokenHash string, userAgent string, ipAddress string, expiresAt time.Time) (*ent.Session, error) {
 	client := r.factory.GetClient(ctx, "", "")
+
+	// last_active_at starts at the sign-in itself. A refresh advances it by
+	// replacing the row, so the value always answers "when did this device last
+	// present a credential"; left null at creation it would answer nothing until
+	// the first refresh, and the session list sorts on it.
+	now := time.Now()
 	s, err := client.Session.Create().
 		SetID(id).
 		SetUserID(userID).
@@ -371,6 +377,7 @@ func (r *Repository) CreateSession(ctx context.Context, id string, userID string
 		SetStatus(session.StatusActive).
 		SetNillableUserAgent(&userAgent).
 		SetNillableIPAddress(&ipAddress).
+		SetLastActiveAt(now).
 		SetExpiresAt(expiresAt).
 		Save(ctx)
 
@@ -392,16 +399,34 @@ func (r *Repository) CreateSession(ctx context.Context, id string, userID string
 // alike, so a token mid-rotation cannot survive the revocation.
 //
 // Used for password change, credential compromise, and account lockout. It returns
-// how many sessions it ended, which is what an announcement of the revocation
-// reports; zero is a legitimate answer for an account with nothing live. An error
-// means revocation may not have taken effect and the caller must not report the
-// account as secured.
+// how many sessions it ended, counting the active ones only: a grace row is the
+// token a refresh has already replaced, not a place the account is signed in, and
+// counting it would report one extra sign-out per recent refresh to whoever is
+// told about the revocation. Zero is a legitimate answer for an account with
+// nothing live. An error means revocation may not have taken effect and the
+// caller must not report the account as secured.
+//
+// Grace rows go first. Revoking the successor is what stops a grace token being
+// exchanged, so if the second statement fails the account is no less protected
+// than before; the reverse order would leave a superseded token able to hand back
+// the tokens of a session that was supposed to be gone.
 func (r *Repository) RevokeAllSessionsForUser(ctx context.Context, userID string) (int, error) {
 	client := r.factory.GetClient(ctx, "", "")
+
+	if _, err := client.Session.Update().
+		Where(
+			session.UserID(userID),
+			session.StatusEQ(session.StatusRotatedGrace),
+		).
+		SetStatus(session.StatusRevoked).
+		Save(ctx); err != nil {
+		return 0, fmt.Errorf("failed revoking superseded user sessions: %w", err)
+	}
+
 	revoked, err := client.Session.Update().
 		Where(
 			session.UserID(userID),
-			session.StatusNEQ(session.StatusRevoked),
+			session.StatusEQ(session.StatusActive),
 		).
 		SetStatus(session.StatusRevoked).
 		Save(ctx)
@@ -1466,24 +1491,6 @@ func (r *Repository) DeleteRecoveryContact(ctx context.Context, contactID string
 	err := client.RecoveryContact.DeleteOneID(contactID).Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed deleting recovery contact %s: %w", contactID, err)
-	}
-	return nil
-}
-
-// UpdateRecoveryContactShare rebinds a guardian to a new share position and hash
-// after the recovery secret has been re-split.
-//
-// Every surviving guardian must be updated from the same split, since shares from
-// different splits do not combine: a partial update leaves the quorum unable to
-// reconstruct the secret. Errors if contactID does not exist.
-func (r *Repository) UpdateRecoveryContactShare(ctx context.Context, contactID string, shareIndex int, shareHash string) error {
-	client := r.factory.GetClient(ctx, "", "")
-	_, err := client.RecoveryContact.UpdateOneID(contactID).
-		SetShareIndex(shareIndex).
-		SetShareHash(shareHash).
-		Save(ctx)
-	if err != nil {
-		return fmt.Errorf("failed updating guardian share index and hash: %w", err)
 	}
 	return nil
 }

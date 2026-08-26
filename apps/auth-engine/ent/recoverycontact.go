@@ -25,9 +25,9 @@ type RecoveryContact struct {
 	GuardianEmail string `json:"guardian_email,omitempty"`
 	// Name or label of trusted recovery contact
 	GuardianName string `json:"guardian_name,omitempty"`
-	// Index of Shamir share (1 to 5) assigned to this guardian
+	// Enrollment slot (1 to 5) held by this guardian; unique per account and not renumbered when a guardian is revoked
 	ShareIndex int `json:"share_index,omitempty"`
-	// SHA-256 hash of guardian's Shamir share for verification
+	// SHA-256 hash of this guardian's independent recovery share, for verification
 	ShareHash string `json:"-"`
 	// Status of guardian enrollment
 	Status recoverycontact.Status `json:"status,omitempty"`

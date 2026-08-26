@@ -495,6 +495,14 @@ func clientSafeError(err error) (httperr.Code, string, bool) {
 		return httperr.CodeNotFound, ErrGuardianNotFound.Error(), true
 	case errors.Is(err, ErrInvalidInviteToken):
 		return httperr.CodeInvalidToken, ErrInvalidInviteToken.Error(), true
+	case errors.Is(err, ErrGuardianInviteNotPending):
+		return httperr.CodeAlreadyExists, ErrGuardianInviteNotPending.Error(), true
+	case errors.Is(err, ErrGuardianInviteExpired):
+		return httperr.CodeInvalidToken, ErrGuardianInviteExpired.Error(), true
+	case errors.Is(err, ErrInvalidGuardianShare):
+		return httperr.CodeValidationFailed, ErrInvalidGuardianShare.Error(), true
+	case errors.Is(err, ErrShareAlreadySubmitted):
+		return httperr.CodeAlreadyExists, ErrShareAlreadySubmitted.Error(), true
 
 	// Account recovery (FR-5).
 	case errors.Is(err, ErrNoRecoveryMethodsAvailable):
@@ -513,6 +521,73 @@ func clientSafeError(err error) (httperr.Code, string, bool) {
 		return httperr.CodeInvalidCredentials, ErrInvalidProof.Error(), true
 	}
 	return "", "", false
+}
+
+// codeStepUpRequired marks a change that needs a credential the caller did not send.
+//
+// Its own code, distinct from invalid_credentials, so a client can put up a prompt for
+// the factor the account actually holds rather than reporting a rejection for something
+// the person was never asked to provide.
+const codeStepUpRequired httperr.Code = "step_up_required"
+
+// stepUpCredential re-proves the caller's identity before a change a live session
+// alone should not be enough to make.
+//
+// The factor is fixed by the account, not chosen by the request: one holding a password
+// is checked on the password, and only one holding none falls through to its
+// authenticator code. Letting the request choose would mean an account with both could
+// be changed on whichever of the two an attacker happened to have.
+//
+// An account holding neither has nothing left to prove with, and the session stands.
+// That is deliberate: a social-only or passkey-only account would otherwise be locked
+// out of the very recovery settings it most needs, and there is no assertion ceremony
+// on these routes to fall back to.
+//
+// action names the change in the second person — "change your security questions" — and
+// is read into every message, so the person is told which credential is wanted and what
+// it is wanted for.
+//
+// It writes its own response and returns false when the caller has not proven enough;
+// callers must return that response unchanged.
+func (h *Handler) stepUpCredential(c *fiber.Ctx, userID, password, totpCode, action string) bool {
+	u, err := h.service.repo.FindUserByID(c.UserContext(), userID)
+	if err != nil || u == nil {
+		_ = httperr.NotFound(c, httperr.CodeNotFound, "user account not found")
+		return false
+	}
+
+	if u.PasswordHash != "" {
+		if strings.TrimSpace(password) == "" {
+			_ = httperr.Unauthorized(c, codeStepUpRequired,
+				"enter your current password to "+action)
+			return false
+		}
+		if err := h.service.VerifyAdminPassword(c.UserContext(), userID, password); err != nil {
+			_ = httperr.Unauthorized(c, httperr.CodeInvalidCredentials,
+				"that password is not correct: enter your current password to "+action)
+			return false
+		}
+		return true
+	}
+
+	// Asked of the store rather than inferred from the request, so a caller cannot skip
+	// the check by omitting the code.
+	method, err := h.service.repo.GetActiveTOTPMethodForUser(c.UserContext(), userID)
+	if err != nil || method == nil {
+		return true
+	}
+
+	if strings.TrimSpace(totpCode) == "" {
+		_ = httperr.Unauthorized(c, codeStepUpRequired,
+			"enter the 6-digit code from your authenticator app to "+action+": this account has no password to re-enter")
+		return false
+	}
+	if err := h.service.VerifyAdminTOTP(c.UserContext(), userID, strings.TrimSpace(totpCode)); err != nil {
+		_ = httperr.Unauthorized(c, httperr.CodeInvalidCredentials,
+			"that authenticator code is not valid right now: check the current code and try again")
+		return false
+	}
+	return true
 }
 
 // sendServiceError writes the canonical envelope for a service-layer error

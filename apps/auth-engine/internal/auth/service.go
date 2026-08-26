@@ -527,6 +527,17 @@ func (s *Service) frontendBaseURL(ctx context.Context) string {
 	return config.DefaultFrontendBaseURL
 }
 
+// FrontendBaseURL exposes the resolved origin for callers outside this file that
+// have to build a link for a person to open — the guardian invitation being the
+// one that is handed to the account holder rather than mailed.
+//
+// It exists so those callers cannot reach for the request's own host instead. A
+// link built from c.Hostname() points at the engine, which serves no pages, so
+// whoever follows it arrives at a 404 on the API.
+func (s *Service) FrontendBaseURL(ctx context.Context) string {
+	return s.frontendBaseURL(ctx)
+}
+
 // emit queues a webhook event, doing nothing when no dispatcher is attached.
 //
 // The guard lives here rather than at each call site because emission is a
@@ -1599,36 +1610,17 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		tenantID := string(u.TenantID)
 		env := string(u.Environment)
 
-		// Generate new 32-byte opaque refresh token
-		tokenBytes := make([]byte, 32)
-		if _, err := rand.Read(tokenBytes); err != nil {
-			return nil, "", "", fmt.Errorf("failed generating rotated refresh token: %w", err)
-		}
-		newRawRefreshToken := hex.EncodeToString(tokenBytes)
-		newHash := sha256.Sum256([]byte(newRawRefreshToken))
-		newTokenHash := hex.EncodeToString(newHash[:])
-
-		newSessionID := idgen.New("ses")
-		expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, tenantID, env))
-
-		// Create new active session
-		_, err = s.repo.CreateSession(ctx, newSessionID, u.ID, newTokenHash, userAgent, ipAddress, expiresAt)
+		accessToken, newRawRefreshToken, err := s.rotateSessionChain(ctx, u, tenantID, env, sess.ID, userAgent, ipAddress)
 		if err != nil {
-			return nil, "", "", fmt.Errorf("failed creating rotated session: %w", err)
-		}
-
-		// Transition old session to 'rotated_grace' with 10-second grace window
-		_ = s.repo.MarkSessionRotatedWithGrace(ctx, sess.ID, newSessionID, s.sessionGracePeriod())
-
-		accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey, s.accessTokenTTL(ctx, tenantID, env))
-		if err != nil {
-			return nil, "", "", fmt.Errorf("failed issuing access token: %w", err)
+			return nil, "", "", err
 		}
 
 		return u, accessToken, newRawRefreshToken, nil
 	}
 
-	// 2. Check if token is in 10-second grace window ('rotated_grace')
+	// 2. Presented token is the predecessor of a rotation still inside its grace
+	// window: a retry, a duplicate in-flight request, or a client whose copy of the
+	// rotation response never arrived.
 	if sess.Status == session.StatusRotatedGrace {
 		if sess.GraceExpiresAt != nil && time.Now().Before(*sess.GraceExpiresAt) {
 			// A restricted account is refused here rather than left to fall through
@@ -1640,18 +1632,31 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 				}
 			}
 
-			// Token reused within 10s grace period (e.g. concurrent in-flight requests)
-			// Return a fresh access token for the superseded session
+			// The chain is rotated again and the caller is given the new token, rather
+			// than being handed an access token and told to keep the refresh token it
+			// already has.
+			//
+			// It demonstrably does not have it. A client presenting the predecessor is
+			// a client whose copy of the previous response never landed — the request
+			// was cancelled by a navigation, the tab closed, the connection dropped —
+			// and the rotation it triggered is already committed here. Answering with
+			// no refresh token leaves that client holding a secret which stops being
+			// replayable when the grace window shuts, and whose next ordinary use is
+			// then read as theft and revokes every session on the account. Losing one
+			// response would cost the reader every device they are signed in on.
+			//
+			// Rotating again keeps single use intact: the token presented here is spent
+			// and the one returned is new. The cost is one extra session row per replay,
+			// which the sweeper collects with the rest of the chain.
 			if sess.SupersededBySessionID != nil && *sess.SupersededBySessionID != "" {
 				supersededSess, err := s.repo.FindSessionByID(ctx, *sess.SupersededBySessionID)
 				if err == nil && supersededSess != nil && supersededSess.Status == session.StatusActive {
 					u, err := s.repo.FindUserByID(ctx, supersededSess.UserID)
 					if err == nil && accountstatus.Allowed(u) == nil {
-						tenantID := string(u.TenantID)
-						env := string(u.Environment)
-						accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, env, u.Email, u.Name, s.ResolveRoleClaim(ctx, u.ID), supersededSess.ID, s.config.EncryptionKey, s.accessTokenTTL(ctx, tenantID, env))
-						if err == nil {
-							return u, accessToken, "", nil
+						accessToken, newRawRefreshToken, rotateErr := s.rotateSessionChain(
+							ctx, u, string(u.TenantID), string(u.Environment), supersededSess.ID, userAgent, ipAddress)
+						if rotateErr == nil {
+							return u, accessToken, newRawRefreshToken, nil
 						}
 					}
 				}
@@ -1674,6 +1679,48 @@ func (s *Service) RotateRefreshTokenSession(ctx context.Context, rawRefreshToken
 		s.emitSessionsRevoked(ctx, sess.UserID, "revoked_session_reuse", revoked)
 	}
 	return nil, "", "", fmt.Errorf("invalid_grant: session has been revoked")
+}
+
+// rotateSessionChain retires oldSessionID into its grace window, establishes a
+// successor carrying the same device, and returns an access token for the
+// successor along with its raw refresh token.
+//
+// The successor is written before the predecessor is retired, so a failure part
+// way through leaves the caller's current token working rather than retiring it
+// with nothing to replace it. Retiring the predecessor is best-effort for the same
+// reason the sign-in paths treat activity writes that way: the caller's tokens have
+// already been issued by the time it runs, and failing the refresh here would end a
+// session that is now valid over a bookkeeping write. The predecessor keeps its own
+// expiry, so a missed retirement cannot extend anything.
+//
+// The raw token is returned and never stored — only its hash is — which is why this
+// value is the sole copy and why a caller that loses it cannot be handed it again.
+func (s *Service) rotateSessionChain(ctx context.Context, u *ent.User, tenantID, environment, oldSessionID, userAgent, ipAddress string) (string, string, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", "", fmt.Errorf("failed generating rotated refresh token: %w", err)
+	}
+	newRawRefreshToken := hex.EncodeToString(tokenBytes)
+	newHash := sha256.Sum256([]byte(newRawRefreshToken))
+	newTokenHash := hex.EncodeToString(newHash[:])
+
+	newSessionID := idgen.New("ses")
+	expiresAt := time.Now().Add(s.refreshTokenTTL(ctx, tenantID, environment))
+
+	if _, err := s.repo.CreateSession(ctx, newSessionID, u.ID, newTokenHash, userAgent, ipAddress, expiresAt); err != nil {
+		return "", "", fmt.Errorf("failed creating rotated session: %w", err)
+	}
+
+	_ = s.repo.MarkSessionRotatedWithGrace(ctx, oldSessionID, newSessionID, s.sessionGracePeriod())
+
+	accessToken, err := jwt.IssueAccessTokenWithSession(u.ID, tenantID, environment, u.Email, u.Name,
+		s.ResolveRoleClaim(ctx, u.ID), newSessionID, s.config.EncryptionKey,
+		s.accessTokenTTL(ctx, tenantID, environment))
+	if err != nil {
+		return "", "", fmt.Errorf("failed issuing access token: %w", err)
+	}
+
+	return accessToken, newRawRefreshToken, nil
 }
 
 // EnrollTOTP mints a TOTP secret for a user and returns it with its provisioning URI.
@@ -2581,22 +2628,21 @@ func (s *Service) VerifyRecoveryCode(ctx context.Context, userID string, rawCode
 	return nil
 }
 
-// RegenerateRecoveryCodes re-checks the user's password and replaces their backup codes,
-// returning the new set in plaintext. Every previous code stops working.
+// RegenerateRecoveryCodes replaces the user's backup codes, returning the new set in
+// plaintext. Every previous code stops working.
 //
-// The password step-up matters because these codes bypass the second factor: without it, anyone
-// holding a live session could mint themselves a permanent way past MFA. It returns a plain error
-// when the user is missing, ErrInvalidCredentials when the password does not match, and
-// GenerateRecoveryCodes' error otherwise.
-func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID string, password string) ([]string, error) {
+// The step-up that guards this lives in the handler, because which credential the account
+// can be checked on is an HTTP-shaped decision: it changes which field the client must
+// collect and which refusal code comes back. It matters either way — these codes bypass
+// the second factor, so without a step-up anyone holding a live session could mint
+// themselves a permanent way past MFA.
+//
+// It returns a plain error when the user is missing and GenerateRecoveryCodes' error
+// otherwise.
+func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
 	u, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil || u == nil {
 		return nil, fmt.Errorf("user not found")
-	}
-
-	// Password re-verification using Argon2id
-	if u.PasswordHash == "" || !crypto.VerifyPasswordArgon2id(password, u.PasswordHash) {
-		return nil, ErrInvalidCredentials
 	}
 
 	codes, err := s.GenerateRecoveryCodes(ctx, userID)

@@ -12,10 +12,7 @@
 package auth_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -23,82 +20,107 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/auth"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/policy"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/crypto"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/idgen"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSubmitGuardianProof_ShareAccumulation(t *testing.T) {
-	svc, _, repo, tenantID := setupTestRecoveryService(t)
+// setupGuardianProofUser enrols three guardians on a fresh account, accepts every invitation with
+// the share its own link carried, initiates a recovery, and returns the request ID alongside the
+// guardians' shares in enrollment order.
+func setupGuardianProofUser(t *testing.T, svc *auth.RecoveryService, repo *auth.Repository, tenantID, email string) (string, []string) {
+	t.Helper()
+	ctx := testCtx()
 	policyRepo := policy.NewRepository(repo.GetClientFactory())
 	gdnSvc := auth.NewGuardianService(repo, policyRepo)
-	ctx := testCtx()
 
 	client := repo.GetClientFactory().GetClient(ctx, tenantID, "test")
-
 	userID := idgen.New("usr")
 	_, err := client.User.Create().
 		SetID(userID).
 		SetTenantID(tenantID).
-		SetEmail("gdnproof@example.com").
+		SetEmail(email).
 		SetPasswordHash("hashed_pass").
 		Save(ctx)
 	require.NoError(t, err)
 
-	// Invite 3 guardians (threshold k = 2)
-	inputs := []auth.InviteGuardianInput{
+	// Three guardians, so the threshold is 2 and a single approval is provably not enough.
+	resGdn, err := gdnSvc.InviteGuardians(ctx, userID, []auth.InviteGuardianInput{
 		{Email: "g1@example.com", Name: "G1"},
 		{Email: "g2@example.com", Name: "G2"},
 		{Email: "g3@example.com", Name: "G3"},
-	}
-	resGdn, err := gdnSvc.InviteGuardians(ctx, userID, inputs, "http://localhost:8080")
+	}, "http://localhost:8080")
 	require.NoError(t, err)
-	require.Len(t, resGdn.Guardians, 3)
+	require.Len(t, resGdn.Invites, 3)
 
-	// Accept all 3 invites
-	for i, gdn := range resGdn.Guardians {
-		token := parseInviteToken(resGdn.InviteURLs[i])
-		err = gdnSvc.AcceptGuardianInvite(ctx, gdn.ID, token)
-		require.NoError(t, err)
+	shares := make([]string, 0, len(resGdn.Invites))
+	for _, invite := range resGdn.Invites {
+		token, share := parseInviteLink(t, invite.URL)
+		require.NoError(t, gdnSvc.AcceptGuardianInvite(ctx, invite.ContactID, token, share))
+		shares = append(shares, share)
 	}
 
-	// Initiate recovery
 	resInit, err := svc.InitiateRecovery(ctx, auth.InitiateRecoveryInput{
 		TenantID:    tenantID,
 		Environment: "test",
-		Email:       "gdnproof@example.com",
+		Email:       email,
 		IPAddress:   "198.51.100.1",
 	})
 	require.NoError(t, err)
 
-	// Get active contacts to find share hashes
-	contacts, err := repo.GetActiveRecoveryContactsByUser(ctx, userID)
-	require.NoError(t, err)
+	return resInit.RecoveryRequestID, shares
+}
 
-	// Construct dummy share payload matching first contact's share hash
-	share1Bytes := []byte(fmt.Sprintf("dummy_share_data_%s", contacts[0].ID))
-	share1Hex := hex.EncodeToString(share1Bytes)
+func TestSubmitGuardianProof_ShareAccumulation(t *testing.T) {
+	svc, _, repo, tenantID := setupTestRecoveryService(t)
+	ctx := testCtx()
 
-	// Update contact's share_hash in DB to match
-	_ = repo.UpdateRecoveryContactShare(ctx, contacts[0].ID, contacts[0].ShareIndex, hex.EncodeToString(sha256Sum(share1Bytes)))
+	requestID, shares := setupGuardianProofUser(t, svc, repo, tenantID, "gdnproof@example.com")
 
 	// Submit share 1 (1 of 2 threshold)
-	reached, err := svc.SubmitGuardianShareProof(ctx, resInit.RecoveryRequestID, share1Hex)
+	reached, err := svc.SubmitGuardianShareProof(ctx, requestID, shares[0])
 	require.NoError(t, err)
 	assert.False(t, reached, "1 of 2 threshold MUST NOT mark verified")
 
 	// Submit share 2 (2 of 2 threshold)
-	share2Bytes := []byte(fmt.Sprintf("dummy_share_data_%s", contacts[1].ID))
-	share2Hex := hex.EncodeToString(share2Bytes)
-	_ = repo.UpdateRecoveryContactShare(ctx, contacts[1].ID, contacts[1].ShareIndex, hex.EncodeToString(sha256Sum(share2Bytes)))
-
-	reached2, err := svc.SubmitGuardianShareProof(ctx, resInit.RecoveryRequestID, share2Hex)
+	reached2, err := svc.SubmitGuardianShareProof(ctx, requestID, shares[1])
 	require.NoError(t, err)
 	assert.True(t, reached2, "2 of 2 threshold MUST mark proof_verified")
 
-	req, err := repo.GetRecoveryRequestByID(ctx, resInit.RecoveryRequestID)
+	req, err := repo.GetRecoveryRequestByID(ctx, requestID)
 	require.NoError(t, err)
 	assert.Equal(t, recoveryrequest.StatusProofVerified, req.Status)
+	assert.Len(t, req.SubmittedShareIndexes, 2, "each approving guardian is recorded once")
+	assert.Equal(t, 2, req.SubmittedSharesCount)
+}
+
+// The threshold counts guardians, not submissions. Replaying one guardian's share must not carry a
+// 2-of-3 request over the line, or a single guardian — or anyone who stole one share — recovers the
+// account alone.
+func TestSubmitGuardianProof_RejectsReplayOfTheSameShare(t *testing.T) {
+	svc, _, repo, tenantID := setupTestRecoveryService(t)
+	ctx := testCtx()
+
+	requestID, shares := setupGuardianProofUser(t, svc, repo, tenantID, "gdnreplay@example.com")
+
+	reached, err := svc.SubmitGuardianShareProof(ctx, requestID, shares[0])
+	require.NoError(t, err)
+	require.False(t, reached)
+
+	reached2, err := svc.SubmitGuardianShareProof(ctx, requestID, shares[0])
+	assert.ErrorIs(t, err, auth.ErrShareAlreadySubmitted)
+	assert.False(t, reached2)
+
+	req, err := repo.GetRecoveryRequestByID(ctx, requestID)
+	require.NoError(t, err)
+	assert.Equal(t, recoveryrequest.StatusInitiated, req.Status, "a replay must not verify the request")
+	assert.Equal(t, 1, req.SubmittedSharesCount, "a replay must not raise the count")
+
+	// A second, different guardian still completes it.
+	reached3, err := svc.SubmitGuardianShareProof(ctx, requestID, shares[2])
+	require.NoError(t, err)
+	assert.True(t, reached3)
 }
 
 func TestSubmitOldPasswordProof_LockoutSchedule(t *testing.T) {
@@ -180,8 +202,8 @@ func TestSubmitSecurityQuestionsProof_EnforcesHigherTierExhaustion(t *testing.T)
 	inputs := []auth.InviteGuardianInput{{Email: "guardian@example.com", Name: "Guardian"}}
 	resGdn, err := gdnSvc.InviteGuardians(ctx, userID, inputs, "http://localhost:8080")
 	require.NoError(t, err)
-	token := parseInviteToken(resGdn.InviteURLs[0])
-	_ = gdnSvc.AcceptGuardianInvite(ctx, resGdn.Guardians[0].ID, token)
+	token, share := parseInviteLink(t, resGdn.Invites[0].URL)
+	require.NoError(t, gdnSvc.AcceptGuardianInvite(ctx, resGdn.Invites[0].ContactID, token, share))
 
 	resInit, err := svc.InitiateRecovery(ctx, auth.InitiateRecoveryInput{
 		TenantID:    tenantID,
@@ -342,15 +364,22 @@ func TestSubmitSecurityQuestionsProof_EmptyAnswerMapIsRefused(t *testing.T) {
 	assert.NotEqual(t, recoveryrequest.StatusProofVerified, req.Status)
 }
 
-func parseInviteToken(u string) string {
-	parts := strings.Split(u, "#token=")
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return ""
-}
+// parseInviteLink splits an invitation URL's fragment into the guardian's two secrets.
+//
+// Reading them out of the link rather than reaching into the database is deliberate: the link is the
+// only copy of the share that exists, so a test that plants its own hash would pass even if the
+// engine never handed the guardian anything.
+func parseInviteLink(t *testing.T, u string) (token, share string) {
+	t.Helper()
+	_, fragment, found := strings.Cut(u, "#")
+	require.True(t, found, "invitation link must carry a fragment: %s", u)
 
-func sha256Sum(b []byte) []byte {
-	sum := sha256.Sum256(b)
-	return sum[:]
+	values, err := url.ParseQuery(fragment)
+	require.NoError(t, err)
+
+	token = values.Get("token")
+	share = values.Get("share")
+	require.NotEmpty(t, token, "invitation link must carry a token")
+	require.NotEmpty(t, share, "invitation link must carry a share")
+	return token, share
 }

@@ -305,19 +305,30 @@ var (
 	// ErrInvalidProof reports that the submitted proof did not verify. It is uniform across the
 	// proof methods and reveals nothing about which part of the submission was wrong.
 	ErrInvalidProof = errors.New("invalid recovery proof submitted")
+
+	// ErrShareAlreadySubmitted reports a second submission from a guardian who has already been
+	// counted on this request. It is distinct from ErrInvalidProof because the share is valid;
+	// saying so lets a client show "we already have Ada's approval" rather than implying the
+	// share was wrong and sending the guardian off to look for a better copy of it.
+	ErrShareAlreadySubmitted = errors.New("this guardian has already approved this recovery request")
 )
 
-// SubmitGuardianShareProof records one guardian's Shamir share against an initiated request and
-// reports whether this submission completed the guardian consensus. sharePayloadHex is the
-// hex-encoded raw share; it is matched by SHA-256 digest against the stored per-guardian hashes, so
-// the server never holds a share itself. Reaching the threshold moves the request to
-// PROOF_VERIFIED.
+// SubmitGuardianShareProof records one guardian's share against an initiated request and reports
+// whether this submission completed the guardian consensus. sharePayloadHex is the hex-encoded raw
+// share; it is matched by SHA-256 digest against the stored per-guardian hashes, so the server never
+// holds a share itself. Reaching the threshold moves the request to PROOF_VERIFIED.
+//
+// Consensus counts distinct guardians, not submissions. The matched guardian's enrollment slot is
+// recorded on the request and a slot already present is refused, so one guardian cannot reach a
+// 2-of-3 threshold by posting the same share twice — which is the whole difference between "two
+// people agreed" and "one person clicked twice".
 //
 // A false return with a nil error means the share was accepted and the request is still short of the
 // threshold. Errors: ErrInvalidRecoveryRequest for an unknown request; a plain error when the
 // request has already left the initiated state; ErrInvalidProof when the payload is not hex, is
-// shorter than a share can be, or matches no active guardian; and ErrInvalidGuardianCount when the
-// active guardian count has drifted outside the 1..5 range the threshold rule covers.
+// shorter than a share can be, or matches no active guardian; ErrShareAlreadySubmitted when that
+// guardian is already counted; and ErrInvalidGuardianCount when the active guardian count has
+// drifted outside the 1..5 range the threshold rule covers.
 func (s *RecoveryService) SubmitGuardianShareProof(ctx context.Context, requestID, sharePayloadHex string) (bool, error) {
 	req, err := s.repo.GetRecoveryRequestByID(ctx, requestID)
 	if err != nil || req == nil {
@@ -354,29 +365,40 @@ func (s *RecoveryService) SubmitGuardianShareProof(ctx context.Context, requestI
 		return false, ErrInvalidProof
 	}
 
-	// The counter tracks accepted submissions, not distinct guardians.
-	newCount := req.SubmittedSharesCount + 1
+	for _, idx := range req.SubmittedShareIndexes {
+		if idx == matchedContact.ShareIndex {
+			return false, ErrShareAlreadySubmitted
+		}
+	}
+
+	// Copied rather than appended in place: req belongs to the caller's read, and growing its
+	// slice would leave a half-applied roster behind if the write below fails.
+	indexes := make([]int, 0, len(req.SubmittedShareIndexes)+1)
+	indexes = append(indexes, req.SubmittedShareIndexes...)
+	indexes = append(indexes, matchedContact.ShareIndex)
+
 	// The threshold follows the guardian roster as it stands now, so revoking a guardian mid-flow
 	// re-derives k from the smaller set.
 	k, err := CalculateThreshold(len(contacts))
 	if err != nil {
 		return false, err
 	}
+	reached := len(indexes) >= k
 
 	client := s.repo.factory.GetClient(ctx, "", "")
-	_ = client.RecoveryRequest.UpdateOne(req).
-		SetSubmittedSharesCount(newCount).
-		Exec(ctx)
-
-	if newCount >= k {
-		_ = client.RecoveryRequest.UpdateOne(req).
+	upd := client.RecoveryRequest.UpdateOne(req).
+		SetSubmittedSharesCount(len(indexes)).
+		SetSubmittedShareIndexes(indexes)
+	if reached {
+		upd = upd.
 			SetStatus(recoveryrequest.StatusProofVerified).
-			SetProofMethodUsed(recoveryrequest.ProofMethodUsedGuardianConsensus).
-			Exec(ctx)
-		return true, nil
+			SetProofMethodUsed(recoveryrequest.ProofMethodUsedGuardianConsensus)
+	}
+	if err := upd.Exec(ctx); err != nil {
+		return false, fmt.Errorf("failed recording guardian share: %w", err)
 	}
 
-	return false, nil
+	return reached, nil
 }
 
 // SubmitOldPasswordProof verifies rawPassword against the account's current Argon2id hash and every

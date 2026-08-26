@@ -4,10 +4,10 @@
  * Tier: Database Persistence Layer / Ent ORM Schema
  *
  * Description: Ent ORM schema definition for RecoveryContact entity. Stores pre-enrolled trusted
- *              guardians for Shamir's Secret Sharing account recovery.
+ *              guardians for M-of-N consensus account recovery.
  *
  * Security Notice:
- *   - Raw Shamir shares MUST NEVER be stored. Only SHA-256 hashes of shares are persisted for verification.
+ *   - Raw guardian shares MUST NEVER be stored. Only SHA-256 hashes of shares are persisted for verification.
  *
  * License: GNU AGPLv3 — Copyright (C) Authn Platform Authors
  */
@@ -46,11 +46,11 @@ func (RecoveryContact) Fields() []ent.Field {
 			NotEmpty().
 			Comment("Name or label of trusted recovery contact"),
 		field.Int("share_index").
-			Comment("Index of Shamir share (1 to 5) assigned to this guardian"),
+			Comment("Enrollment slot (1 to 5) held by this guardian; unique per account and not renumbered when a guardian is revoked"),
 		field.String("share_hash").
 			NotEmpty().
 			Sensitive().
-			Comment("SHA-256 hash of guardian's Shamir share for verification"),
+			Comment("SHA-256 hash of this guardian's independent recovery share, for verification"),
 		field.Enum("status").
 			Values("pending_invite", "active", "revoked").
 			Default("pending_invite").

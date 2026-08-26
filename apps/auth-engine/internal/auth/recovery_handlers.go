@@ -95,7 +95,13 @@ func (h *Handler) SubmitGuardianProof(c *fiber.Ctx) error {
 
 	thresholdReached, err := h.recoveryService.SubmitGuardianShareProof(c.UserContext(), req.RecoveryRequestID, req.SharePayload)
 	if err != nil {
-		return sendServiceError(c, "auth.recovery.proof_guardian", fiber.StatusBadRequest, err,
+		// A repeat from a guardian already counted is a conflict, not a bad credential: the share
+		// was right, it just cannot be spent twice.
+		status := fiber.StatusBadRequest
+		if errors.Is(err, ErrShareAlreadySubmitted) {
+			status = fiber.StatusConflict
+		}
+		return sendServiceError(c, "auth.recovery.proof_guardian", status, err,
 			httperr.CodeInvalidCredentials, ErrInvalidProof.Error())
 	}
 

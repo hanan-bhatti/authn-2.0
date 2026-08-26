@@ -11,7 +11,7 @@
 package auth
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/httperr"
@@ -29,7 +29,11 @@ func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
 			"Invalid payload: must provide 1 to 5 guardian email and name objects")
 	}
 
-	baseURL := fmt.Sprintf("%s://%s", c.Protocol(), c.Hostname())
+	// The application's own origin, resolved the same way an emailed link's is. The
+	// guardian opens this in a browser, so it has to address the frontend: the
+	// engine serves no pages, and a link to its host is a 404 for the one person
+	// whose click the whole enrolment depends on.
+	baseURL := h.service.FrontendBaseURL(c.UserContext())
 	res, err := h.guardianService.InviteGuardians(c.UserContext(), userID, req.Guardians, baseURL)
 	if err != nil {
 		return sendServiceError(c, "auth.guardians.invite", fiber.StatusBadRequest, err,
@@ -40,17 +44,28 @@ func (h *Handler) InviteGuardians(c *fiber.Ctx) error {
 }
 
 // AcceptGuardianInvite handles POST /v1/client/account/guardians/accept.
+//
+// Public, and necessarily so: the caller is the guardian, a third party who has no session on the
+// account they are agreeing to help recover. The invitation token is the authentication.
 func (h *Handler) AcceptGuardianInvite(c *fiber.Ctx) error {
 	var req struct {
 		ContactID string `json:"contact_id"`
 		Token     string `json:"token"`
+		Share     string `json:"share"`
 	}
-	if err := c.BodyParser(&req); err != nil || req.ContactID == "" || req.Token == "" {
-		return httperr.BadRequest(c, httperr.CodeMissingParameter, "contact_id and token are required")
+	if err := c.BodyParser(&req); err != nil || req.ContactID == "" || req.Token == "" || req.Share == "" {
+		return httperr.BadRequest(c, httperr.CodeMissingParameter, "contact_id, token and share are required")
 	}
 
-	if err := h.guardianService.AcceptGuardianInvite(c.UserContext(), req.ContactID, req.Token); err != nil {
-		return sendServiceError(c, "auth.guardians.accept", fiber.StatusBadRequest, err,
+	if err := h.guardianService.AcceptGuardianInvite(c.UserContext(), req.ContactID, req.Token, req.Share); err != nil {
+		// A guardian who is already active is a conflict rather than a bad credential: the
+		// link was genuine, it has simply been spent. The usual caller is that guardian
+		// reopening their own link, and a 400 would have their client report a broken link.
+		status := fiber.StatusBadRequest
+		if errors.Is(err, ErrGuardianInviteNotPending) {
+			status = fiber.StatusConflict
+		}
+		return sendServiceError(c, "auth.guardians.accept", status, err,
 			httperr.CodeInvalidToken, "invalid or expired guardian invitation")
 	}
 
@@ -88,6 +103,6 @@ func (h *Handler) RevokeGuardian(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "Guardian revoked successfully. Remaining guardians re-keyed with new Shamir shares.",
+		"message": "Guardian revoked successfully. The remaining guardians keep the shares they already hold.",
 	})
 }
