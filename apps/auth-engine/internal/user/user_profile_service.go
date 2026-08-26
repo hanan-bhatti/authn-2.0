@@ -51,6 +51,7 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (*UserProfileRe
 		TenantID:      u.TenantID,
 		Email:         u.Email,
 		EmailVerified: u.EmailVerified,
+		HasPassword:   u.PasswordHash != "",
 		Name:          u.Name,
 		PhoneNumber:   u.PhoneNumber,
 		PhoneVerified: u.PhoneVerified,

@@ -39,7 +39,11 @@ type TOTPDisableRequest struct {
 
 // RecoveryCodesRegenerateRequest payload for regenerating backup recovery codes.
 type RecoveryCodesRegenerateRequest struct {
-	Password string `json:"password" example:"SuperSecret123!"`
+	// Password and TOTPCode carry the step-up. Only the one the account can be checked
+	// on is read: an account holding a password is checked on it, and only one holding
+	// none falls through to its authenticator code.
+	Password string `json:"password,omitempty" example:"SuperSecret123!"`
+	TOTPCode string `json:"totp_code,omitempty" example:"123456"`
 }
 
 // SMSEnrollRequest payload for initiating SMS 2FA.
@@ -201,20 +205,26 @@ func (h *Handler) DisableTOTP(c *fiber.Ctx) error {
 }
 
 // RegenerateRecoveryCodes handles POST /v1/client/auth/2fa/recovery-codes/regenerate.
-// Requires Argon2id password step-up, invalidates all old recovery codes, and issues 16 fresh codes.
+// It takes a step-up, invalidates every old recovery code, and issues 16 fresh ones.
+//
+// The step-up is the account's, not the request's: a password when the account holds one,
+// the authenticator code when it holds none. Demanding a password unconditionally would
+// lock a passkey-only or social-only account out of replacing the codes it is most likely
+// to need, since those are the accounts with the fewest other ways back in.
 func (h *Handler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 	userID := getUserID(c)
 
 	var req RecoveryCodesRegenerateRequest
-	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Password) == "" {
-		return httperr.BadRequest(c, httperr.CodeMissingParameter, "password is required for recovery codes regeneration step-up")
+	// The step-up below reports what is missing, so an unparseable body is not a
+	// separate failure with a different message for the same situation.
+	_ = c.BodyParser(&req)
+
+	if !h.stepUpCredential(c, userID, req.Password, req.TOTPCode, "replace your recovery codes") {
+		return nil
 	}
 
-	codes, err := h.service.RegenerateRecoveryCodes(c.UserContext(), userID, req.Password)
+	codes, err := h.service.RegenerateRecoveryCodes(c.UserContext(), userID)
 	if err != nil {
-		if errors.Is(err, ErrInvalidCredentials) {
-			return httperr.Unauthorized(c, httperr.CodeInvalidCredentials, "invalid password confirmation")
-		}
 		return sendServiceError(c, "auth.recovery_codes.regenerate", fiber.StatusBadRequest, err,
 			httperr.CodeValidationFailed, "unable to regenerate recovery codes")
 	}

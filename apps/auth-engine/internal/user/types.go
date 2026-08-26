@@ -101,6 +101,15 @@ type UserProfileResponse struct {
 	Email string `json:"email"`
 	// EmailVerified reports whether the primary address has been confirmed.
 	EmailVerified bool `json:"email_verified"`
+	// HasPassword reports whether the account holds a password at all. An account
+	// created through a social provider or a magic link holds none.
+	//
+	// It is here because the step-up on a sensitive write is not the caller's
+	// choice: an account with a password is checked on the password, and only one
+	// without falls through to its authenticator code. Without this field a client
+	// has to guess which credential to collect, and guessing wrong costs the person
+	// a refused request and a second prompt for something they never set.
+	HasPassword bool `json:"has_password"`
 	// Username is the handle, in the form the owner typed it. Omitted when the
 	// account has none: a handle is optional at signup, and an empty string here
 	// would be indistinguishable from one that had been claimed and cleared.
