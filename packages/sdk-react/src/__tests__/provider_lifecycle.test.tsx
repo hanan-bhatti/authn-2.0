@@ -40,6 +40,18 @@ function noSessionFetch(): ReturnType<typeof vi.fn> {
 }
 
 /**
+ * callsTo counts the requests a mock received for one path.
+ *
+ * Needed because more than one request stream shares a mock: the provider's
+ * session probe runs on mount whatever else a case does, and after teardown the
+ * two streams are supposed to behave differently.
+ */
+function callsTo(fetchMock: ReturnType<typeof vi.fn>, path: string): number {
+  return fetchMock.mock.calls.filter(([url]) => String(url).includes(path))
+    .length;
+}
+
+/**
  * Consumer surfaces the context so assertions can read it, and records the
  * client instance for checks that outlive the render.
  */
@@ -126,10 +138,18 @@ describe("<AuthnProvider> lifecycle", () => {
   });
 
   // A probe is in flight when a fast navigation unmounts the provider. Its
-  // completion must not reach the unmounted tree, and its retry chain must not
-  // outlive the client: a network failure is retried three times with backoff, so
-  // an abandoned probe otherwise keeps issuing requests for seconds.
-  it("cancels an in-flight session probe when the provider unmounts", async () => {
+  // completion must not reach the unmounted tree — and, because the probe is a
+  // refresh-token rotation, it must not be cancelled either.
+  //
+  // The probe posts to the token endpoint, which spends the presented refresh
+  // token and returns its replacement in a Set-Cookie. A network failure there is
+  // ambiguous: the request may have arrived and had its reply lost, in which case
+  // the browser is now holding a token the engine has already retired and only a
+  // retry can recover a working one. So the chain deliberately outlives the
+  // client, unlike an ordinary request's. Its backoff — 1s, then 2s, then 4s — is
+  // bounded by the engine's ten-second rotation grace window, which is what makes
+  // a late retry a recovery rather than a replay.
+  it("lets an in-flight session probe retry after the provider unmounts", async () => {
     const fetchMock = vi.fn(async () => {
       throw new TypeError("Failed to fetch");
     });
@@ -147,12 +167,52 @@ describe("<AuthnProvider> lifecycle", () => {
     expect(client.isDestroyed()).toBe(true);
 
     // The first retry is a second out. Waiting past it is the only way to tell a
-    // cancelled chain from one that simply had not got round to retrying.
+    // chain that continued from one that simply had not got round to retrying.
     await new Promise((resolve) => setTimeout(resolve, 1300));
     expect(
       fetchMock,
-      "the retry chain outlived the client it belonged to",
-    ).toHaveBeenCalledTimes(1);
+      "the rotation's retry chain must survive teardown",
+    ).toHaveBeenCalledTimes(2);
+
+    expect(
+      rejections,
+      "a probe retrying past teardown must not reject unhandled",
+    ).toEqual([]);
+  }, 10_000);
+
+  // The exemption is the rotation's alone. Every other request an abandoned
+  // provider left in flight has to stop, retry chain included: a network failure
+  // is retried three times with backoff, so an abandoned read otherwise keeps
+  // issuing requests for seconds on behalf of a tree that is gone.
+  it("cancels an in-flight read when the provider unmounts", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    render(
+      <AuthnProvider publishableKey={publishableKey} fetch={fetchMock}>
+        <Consumer />
+      </AuthnProvider>,
+    );
+
+    await waitFor(() => expect(observed).not.toBeNull());
+    const client = observed!;
+
+    const read = client.getProfile();
+    // Counted by path. The provider's own session probe is failing and retrying on
+    // the same mock, and its chain is the one that is meant to continue, so a bare
+    // call count cannot tell the two streams apart.
+    await waitFor(() => expect(callsTo(fetchMock, "/profile")).toBeGreaterThan(0));
+    const beforeTeardown = callsTo(fetchMock, "/profile");
+
+    client.destroy();
+    await expect(read).resolves.toMatchObject({ ok: false });
+
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    expect(
+      callsTo(fetchMock, "/profile"),
+      "the read's retry chain outlived the client it belonged to",
+    ).toBe(beforeTeardown);
   }, 10_000);
 
   // An externally supplied client belongs to the caller, who may be holding it

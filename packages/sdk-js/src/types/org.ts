@@ -51,9 +51,22 @@ export interface AuthnOrgMember {
    * one describes the row.
    */
   isAdmin?: boolean;
-  role?: string;
+  /**
+   * The member's display name, address, handle and picture, as far as they have
+   * set them.
+   *
+   * They travel with the membership because no client route resolves a user ID:
+   * `GET /v1/client/user/profile` answers for the reader only. Without them a
+   * roster is a list of opaque identifiers, and the reader cannot pick out their
+   * own row in it.
+   *
+   * Every member of an organization may read its roster, so these are visible to
+   * all of them rather than to administrators alone.
+   */
   email?: string;
   name?: string;
+  username?: string;
+  avatarUrl?: string;
   assignedByUserId?: string;
   createdAt: string;
   updatedAt: string;
@@ -163,4 +176,24 @@ export type RemoveOrgMemberResult =
 
 export type ListInvitationsResult =
   | { ok: true; invitations: AuthnOrgInvitation[]; total: number }
+  | { ok: false; error: AuthnError };
+
+/**
+ * ListOrgInvitationsResult is the outstanding invitations *into* one organization.
+ *
+ * The mirror image of {@link ListInvitationsResult}, which is the invitations
+ * addressed *to* the reader. This one is readable only by an administrator of the
+ * organization, and every entry carries somebody's email address — so it belongs
+ * beside the control that can withdraw them rather than on general display.
+ *
+ * `invitationToken` is absent on every entry. Only the caller who created an
+ * invitation ever sees its token, so an administrator cannot recover a link a
+ * recipient has lost; withdraw it and send another.
+ */
+export type ListOrgInvitationsResult =
+  | { ok: true; invitations: AuthnOrgInvitation[]; total: number }
+  | { ok: false; error: AuthnError };
+
+export type RevokeOrgInvitationResult =
+  | { ok: true; invitationId: string; message: string }
   | { ok: false; error: AuthnError };

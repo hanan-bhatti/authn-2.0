@@ -191,14 +191,70 @@ describe("AuthnClient teardown", () => {
       fetch: fetchMock as unknown as typeof globalThis.fetch,
     });
 
+    const inFlight = client.getProfile();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    client.destroy();
+
+    // The SDK's methods convert every failure into a result rather than throwing,
+    // so the cancellation surfaces here as a reported error.
+    const result = await inFlight;
+    expect(result.ok).toBe(false);
+  });
+
+  it("lets a refresh already in flight finish", async () => {
+    // The one request teardown must not cut short. The engine spends the presented
+    // refresh token and returns its replacement as a Set-Cookie on this reply, so a
+    // cancelled rotation leaves the browser holding a token the engine has retired
+    // — and the next ordinary use of a retired token is reuse, which revokes every
+    // session on the account. React's development double-mount reaches this exact
+    // path: mount, destroy, remount.
+    let release: ((response: Response) => void) | undefined;
+    let aborted = false;
+    const fetchMock = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          release = resolve;
+          init?.signal?.addEventListener("abort", () => {
+            aborted = true;
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    );
+
+    const client = new AuthnClient({
+      publishableKey,
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
     const inFlight = client.refreshSession();
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     client.destroy();
 
-    // refreshSession converts every failure into a result rather than throwing,
-    // so the cancellation surfaces here as a reported error.
+    expect(aborted).toBe(false);
+
+    release!(
+      new Response(
+        JSON.stringify({
+          user: {
+            id: "usr_123",
+            email: "test@example.com",
+            email_verified: true,
+            status: "active",
+            created_at: "2026-08-01T00:00:00Z",
+          },
+          access_token: "jwt_rotated",
+          expires_at: Math.floor(Date.now() / 1000) + 900,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
     const result = await inFlight;
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
+    // The rotation landed, so the cookie is current. The session is not adopted:
+    // the client is destroyed, and adopting it would schedule the next refresh on
+    // a client whose caller is gone.
+    expect(client.getSession()).toBeNull();
   });
 });
 

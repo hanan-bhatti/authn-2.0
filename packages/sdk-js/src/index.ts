@@ -139,6 +139,10 @@ export type { UsernameFormat, UsernameProblem } from "./core/username";
 // Error system
 export { AuthnError, AuthnErrorCode, isAuthnError } from "./types";
 
+// Refusal payload readers — for the one response whose `details` the SDK cannot
+// translate up front, because its keys depend on the error code.
+export { readBlockingOrganizations } from "./types/user";
+
 // Admin types
 export * from "./types/admin";
 

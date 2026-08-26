@@ -77,8 +77,21 @@ export interface DisableSMSParams {
   password?: string;
 }
 
+/**
+ * RegenerateRecoveryCodesParams carries the step-up for a fresh set of codes.
+ *
+ * One of the two is required, and which one is not the caller's choice: an account
+ * holding a password is checked on the password, and only one holding none falls
+ * through to its authenticator code. Read `hasPassword` on the profile to know which
+ * to collect. The engine answers 401 `step_up_required` naming the one it wants.
+ *
+ * A passwordless account is the reason `password` is optional here. It is the account
+ * with the fewest other ways back in, so refusing it a new set of codes on the grounds
+ * that it has no password to re-enter would strand exactly the person who needs them.
+ */
 export interface RegenerateRecoveryCodesParams {
   password?: string;
+  totpCode?: string;
 }
 
 export type RegenerateRecoveryCodesResult =

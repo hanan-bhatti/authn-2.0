@@ -44,6 +44,17 @@ export enum AuthnErrorCode {
    */
   INVALID_MFA_CODE = "INVALID_MFA_CODE",
   EMAIL_VERIFICATION_REQUIRED = "EMAIL_VERIFICATION_REQUIRED",
+  /**
+   * The session is valid but this change needs the credential re-entered. Which
+   * credential is not the caller's choice: an account holding a password is checked
+   * on it, and only one without falls through to an authenticator code.
+   *
+   * Distinct from UNAUTHORIZED, which both of these arrive as over the wire, because
+   * the remedy is the opposite one. UNAUTHORIZED means sign in again; this means the
+   * sign-in is fine and the dialog needs a field. A page that conflates them tells
+   * someone whose session is working perfectly to start over.
+   */
+  STEP_UP_REQUIRED = "STEP_UP_REQUIRED",
   MAGIC_LINK_EXPIRED = "MAGIC_LINK_EXPIRED",
   SESSION_EXPIRED = "SESSION_EXPIRED",
   REFRESH_FAILED = "REFRESH_FAILED",
@@ -81,6 +92,11 @@ const ENGINE_ERROR_CODES: Readonly<Record<string, AuthnErrorCode>> = {
   session_expired: AuthnErrorCode.SESSION_EXPIRED,
   invalid_token: AuthnErrorCode.UNAUTHORIZED,
   email_verification_required: AuthnErrorCode.EMAIL_VERIFICATION_REQUIRED,
+  // Both name a credential the request has to carry and did not. `totp_required` is
+  // the account-deletion route's spelling of the same refusal; the engine picks the
+  // factor either way, so a client has one case to handle rather than two.
+  step_up_required: AuthnErrorCode.STEP_UP_REQUIRED,
+  totp_required: AuthnErrorCode.STEP_UP_REQUIRED,
   magic_link_expired: AuthnErrorCode.MAGIC_LINK_EXPIRED,
   // A challenge is issued as a 200 carrying `mfaRequired`, so this arrives only
   // when a request that needed a completed challenge was made without one.

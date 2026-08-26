@@ -14,6 +14,16 @@ export interface AuthnProfile extends AuthnUser {
   phone?: string;
   phoneNumber?: string;
   phoneVerified?: boolean;
+  /**
+   * Whether the account holds a password at all. False for one created through a
+   * social provider, a passkey or a magic link.
+   *
+   * Read it before collecting a step-up credential. The engine does not let the
+   * request choose: an account with a password is checked on the password, and only
+   * one without falls through to `totpCode`. Prompting for the wrong one costs a
+   * refused request and a second dialog asking for something the person never set.
+   */
+  hasPassword?: boolean;
   tenantId?: string;
   recoveryEmail?: string;
   recoveryEmailVerified?: boolean;
@@ -83,6 +93,8 @@ export interface DeleteAccountParams {
  *
  * Returned under `error.details.organizations` on the 409, so the refusal can name
  * each workspace and link to it rather than telling the reader to go and look.
+ * Read them with {@link readBlockingOrganizations} rather than off `details`, which
+ * carries the engine's wire spelling.
  */
 export interface BlockingOrganization {
   id: string;
@@ -93,7 +105,45 @@ export interface BlockingOrganization {
    * blocking entry: a workspace where the caller is alone is deleted alongside the
    * account, there being nobody left to strand.
    */
-  other_members: number;
+  otherMembers: number;
+}
+
+/**
+ * Reads the blocking workspaces out of a refused {@link AuthnClient.deleteAccount}.
+ *
+ * Lives here rather than in every application because `error.details` is the one
+ * part of a response the SDK passes through untranslated — it is
+ * `Record<string, unknown>` by design, since its keys differ per error code. That
+ * makes this the only payload where the engine's wire spelling would otherwise
+ * reach a caller, and every caller would write the same defensive parse.
+ *
+ * Null for anything that is not this refusal, including a 409 whose details are
+ * missing or malformed. A caller that gets null still has `error.message`, which
+ * says the account was not deleted; what it loses is the ability to name the
+ * workspaces, and inventing them from a half-read payload would be worse.
+ */
+export function readBlockingOrganizations(
+  error: AuthnError | null | undefined,
+): BlockingOrganization[] | null {
+  const raw = error?.details?.["organizations"];
+  if (!Array.isArray(raw)) return null;
+
+  const parsed = raw.flatMap((item): BlockingOrganization[] => {
+    if (typeof item !== "object" || item === null) return [];
+    const record = item as Record<string, unknown>;
+
+    const id = record["id"];
+    const name = record["name"];
+    const slug = record["slug"];
+    if (typeof id !== "string" || typeof name !== "string" || typeof slug !== "string") {
+      return [];
+    }
+
+    const others = record["other_members"];
+    return [{ id, name, slug, otherMembers: typeof others === "number" ? others : 0 }];
+  });
+
+  return parsed.length > 0 ? parsed : null;
 }
 
 export type RecoveryEmailResult =

@@ -72,6 +72,7 @@ import type {
   FinishPasskeyLoginResult,
   FinishPasskeyRegistrationParams,
   GetOrgResult,
+  GuardianInviteLink,
   InitiateRecoveryParams,
   InitiateRecoveryResult,
   InviteGuardiansParams,
@@ -80,6 +81,7 @@ import type {
   InviteOrgMemberResult,
   ListGuardiansResult,
   ListInvitationsResult,
+  ListOrgInvitationsResult,
   ListOrgMembersResult,
   ListOrgsResult,
   ListWebAuthnCredentialsResult,
@@ -96,6 +98,7 @@ import type {
   ResendVerificationParams,
   RemoveOrgMemberResult,
   RevokeGuardianResult,
+  RevokeOrgInvitationResult,
   RevokeSessionsResult,
   RevokeWebAuthnCredentialParams,
   SessionListResult,
@@ -265,6 +268,7 @@ interface ServerSessionResponse {
   location: string;
   last_active_at?: string;
   created_at: string;
+  expires_at?: string;
   is_current: boolean;
 }
 
@@ -274,6 +278,7 @@ interface ServerProfileResponse {
   tenant_id: string;
   email: string;
   email_verified: boolean;
+  has_password: boolean;
   /** Absent on an account that has claimed no handle, which is a valid state. */
   username?: string;
   name?: string;
@@ -390,6 +395,10 @@ interface ServerOrgMemberResponse {
   id: string;
   organization_id: string;
   user_id: string;
+  name?: string;
+  email?: string;
+  username?: string;
+  avatar_url?: string;
   role_id: string;
   role_slug?: string;
   role_name?: string;
@@ -434,6 +443,24 @@ function mapGuardian(raw: ServerGuardianResponse): AuthnGuardian {
   };
 }
 
+interface ServerGuardianInviteResponse {
+  contact_id: string;
+  guardian_email: string;
+  guardian_name: string;
+  url: string;
+}
+
+function mapGuardianInvite(
+  raw: ServerGuardianInviteResponse,
+): GuardianInviteLink {
+  return {
+    contactId: raw.contact_id,
+    guardianEmail: raw.guardian_email,
+    guardianName: raw.guardian_name,
+    url: raw.url,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Org response mappers (snake_case → camelCase)
 // ---------------------------------------------------------------------------
@@ -458,6 +485,10 @@ function mapMember(raw: ServerOrgMemberResponse): AuthnOrgMember {
     id: raw.id,
     organizationId: raw.organization_id,
     userId: raw.user_id,
+    name: raw.name,
+    email: raw.email,
+    username: raw.username,
+    avatarUrl: raw.avatar_url,
     roleId: raw.role_id,
     roleSlug: raw.role_slug,
     roleName: raw.role_name,
@@ -1474,9 +1505,8 @@ export class AuthnClient {
    * - `401` `invalid_credentials` — what was sent is wrong.
    * - `401` `totp_required` — the account has no password; ask for a code.
    * - `409` `conflict` — the account is the only administrator of organizations
-   *   other people still belong to. They are listed under
-   *   `error.details.organizations` as {@link BlockingOrganization} entries, so the
-   *   refusal can name each one.
+   *   other people still belong to. Read them with
+   *   {@link readBlockingOrganizations}, so the refusal can name each one.
    *
    * Requires an authenticated session.
    */
@@ -1635,6 +1665,11 @@ export class AuthnClient {
    * Cancels the refresh timer, clears all listeners, aborts anything in flight,
    * and refuses further API calls. Use this in SPA cleanup (e.g. React
    * `useEffect` cleanup). Safe to call more than once.
+   *
+   * A refresh already in flight is the one exception: it is allowed to finish,
+   * because its reply carries the rotated refresh cookie and cancelling it would
+   * strand the browser on a token the engine has already spent. Its result is
+   * discarded — nothing here waits for it.
    */
   destroy(): void {
     this.destroyed = true;
@@ -1753,20 +1788,27 @@ export class AuthnClient {
   }
 
   private mapDeviceSession(data: ServerSessionResponse): AuthnDeviceSession {
-    return {
+    const session: AuthnDeviceSession = {
       id: data.id,
       device: {
         browser: data.device?.browser ?? "Unknown",
         os: data.device?.os ?? "Unknown",
         device: data.device?.device ?? "Unknown",
+        deviceType: data.device?.device ?? "Unknown",
         label: data.device?.label ?? "Unknown Device",
       },
       ipAddress: data.ip_address ?? "",
       location: data.location ?? "",
-      lastActiveAt: data.last_active_at,
       createdAt: data.created_at,
       isCurrent: data.is_current === true,
     };
+    // Both are omitted rather than sent empty when the server has no value, so
+    // they are only set when present: assigning `undefined` would put the key on
+    // the object and make `"lastActiveAt" in session` true for a session that
+    // has none.
+    if (data.last_active_at) session.lastActiveAt = data.last_active_at;
+    if (data.expires_at) session.expiresAt = data.expires_at;
+    return session;
   }
 
   private mapProfile(data: ServerProfileResponse): AuthnProfile {
@@ -1775,6 +1817,7 @@ export class AuthnClient {
       tenantId: data.tenant_id,
       email: data.email,
       emailVerified: data.email_verified === true,
+      hasPassword: data.has_password === true,
       status: (data.status as "active" | "suspended" | "banned") ?? "active",
       name: data.name,
       username: data.username,
@@ -1881,18 +1924,55 @@ export class AuthnClient {
     }
   }
 
+  /**
+   * Rotates the refresh cookie and adopts the session it returns.
+   *
+   * The request is marked as surviving teardown. It is the one call in the SDK
+   * whose response is the only copy of something: the engine spends the presented
+   * refresh token and mints its replacement, and the replacement reaches the
+   * browser as a `Set-Cookie` on this reply. Aborting the request does not
+   * un-send it, so a cancelled rotation is a rotation the engine has committed
+   * and the browser never learned about — leaving a cookie the engine has
+   * retired. Its next ordinary use is reuse of a spent token, which is theft as
+   * far as the engine can tell, and the answer to theft is to revoke every
+   * session on the account. One cancelled request, every device signed out.
+   */
   private async executeRefresh(): Promise<SessionResult> {
     try {
-      const res = await this.http.post<ServerAuthResponse>("/v1/oauth/token", {
-        grant_type: "refresh_token",
-      });
+      const res = await this.http.post<ServerAuthResponse>(
+        "/v1/oauth/token",
+        { grant_type: "refresh_token" },
+        undefined,
+        { survivesTeardown: true },
+      );
 
       const session = this.mapSession(res.data);
+
+      // Destroyed while the rotation was in flight. The cookie has rotated, which
+      // is what mattered; the session is not adopted, because adopting it would
+      // schedule the next refresh on a client whose caller is gone, and that timer
+      // would fire into `guardDestroyed`.
+      if (this.destroyed) {
+        this.logger.debug("Token refreshed after teardown — cookie rotated, session discarded");
+        return { ok: true, session };
+      }
+
       this.setSession(session);
       this.logger.debug("Token refreshed silently");
 
       return { ok: true, session };
     } catch (err) {
+      if (this.destroyed) {
+        return {
+          ok: false,
+          error: new AuthnError({
+            message: "Session refresh did not complete before the client was destroyed.",
+            code: AuthnErrorCode.REFRESH_FAILED,
+            cause: err,
+          }),
+        };
+      }
+
       this.logger.warn("Silent token refresh failed — session cleared");
       this.setSession(null);
 
@@ -2116,18 +2196,33 @@ export class AuthnClient {
   }
 
   /**
-   * Regenerate backup recovery codes with password step-up confirmation.
+   * Regenerate backup recovery codes, replacing any existing set.
+   *
+   * Takes a step-up: the account's password, or a current authenticator code when it
+   * holds no password. See {@link RegenerateRecoveryCodesParams} — the engine picks
+   * which, so send the one matching the profile's `hasPassword`.
+   *
    * Target Route: POST /v1/client/auth/2fa/recovery-codes/regenerate
    */
   async regenerateRecoveryCodes(
-    params: RegenerateRecoveryCodesParams,
+    params: RegenerateRecoveryCodesParams = {},
   ): Promise<RegenerateRecoveryCodesResult> {
     this.guardDestroyed();
     try {
-      assertValid(validatePassword(params?.password));
+      // Validated only when sent. Asserting a password unconditionally would refuse a
+      // passwordless account here, before the request that would have succeeded on its
+      // authenticator code was ever made.
+      if (params.password !== undefined) {
+        assertValid(validatePassword(params.password));
+      }
+
+      const body: Record<string, unknown> = {};
+      if (params.password !== undefined) body["password"] = params.password;
+      if (params.totpCode !== undefined) body["totp_code"] = params.totpCode;
+
       const res = await this.http.post<ServerRegenerateRecoveryCodesResponse>(
         "/v1/client/auth/2fa/recovery-codes/regenerate",
-        { password: params.password },
+        body,
       );
       return {
         ok: true,
@@ -2703,6 +2798,66 @@ export class AuthnClient {
     }
   }
 
+  /**
+   * Lists the invitations still outstanding for one organization.
+   *
+   * Requires org_admin rights: the entries are other people's email addresses.
+   * None of them carries `invitationToken` — only the caller who created an
+   * invitation is ever shown its token — so a lost link is replaced by revoking
+   * the invitation and sending a new one, not by re-reading this list.
+   *
+   * GET /v1/client/organizations/:orgId/invitations
+   */
+  async listOrgInvitations(orgId: string): Promise<ListOrgInvitationsResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      const res = await this.http.get<{
+        invitations: ServerOrgInvitationResponse[];
+        total: number;
+      }>(`/v1/client/organizations/${orgId}/invitations`);
+      return {
+        ok: true,
+        invitations: (res.data.invitations ?? []).map(mapInvitation),
+        total: res.data.total ?? 0,
+      };
+    } catch (err) {
+      return this.handleError(err, "listOrgInvitations");
+    }
+  }
+
+  /**
+   * Withdraws an invitation that has not been accepted yet.
+   *
+   * Requires org_admin rights. Takes effect at once — the link in the recipient's
+   * email stops working — so there is nothing to undo it with beyond inviting them
+   * again.
+   *
+   * Answers `409` when the invitation is not in a revocable state, which is what an
+   * already-accepted or already-expired one gives.
+   *
+   * DELETE /v1/client/organizations/:orgId/invitations/:invitationId
+   */
+  async revokeOrgInvitation(
+    orgId: string,
+    invitationId: string,
+  ): Promise<RevokeOrgInvitationResult> {
+    try {
+      assertValid(validateToken(orgId, "orgId"));
+      assertValid(validateToken(invitationId, "invitationId"));
+      const res = await this.http.del<{
+        message: string;
+        invitation_id?: string;
+      }>(`/v1/client/organizations/${orgId}/invitations/${invitationId}`);
+      return {
+        ok: true,
+        invitationId: res.data.invitation_id ?? invitationId,
+        message: res.data.message,
+      };
+    } catch (err) {
+      return this.handleError(err, "revokeOrgInvitation");
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Guardian Roster Management
   // -------------------------------------------------------------------------
@@ -2710,6 +2865,13 @@ export class AuthnClient {
   /**
    * Invites 1 to 5 trusted social recovery guardians for the calling user.
    * POST /v1/client/account/guardians/invite
+   *
+   * Guardians already on the roster are left alone: their shares stay valid and their slots are
+   * not renumbered, so this can be called repeatedly to grow the roster.
+   *
+   * The returned `invites` are the only copy of each guardian's share that will ever exist. Show
+   * them, let the account holder deliver them, and treat losing the response as losing those
+   * guardians.
    */
   async inviteGuardians(
     params: InviteGuardiansParams,
@@ -2728,7 +2890,7 @@ export class AuthnClient {
         enrolled_count: number;
         threshold_k: number;
         guardians: ServerGuardianResponse[];
-        invite_urls?: string[];
+        invites?: ServerGuardianInviteResponse[];
       }>("/v1/client/account/guardians/invite", {
         guardians: params.guardians,
       });
@@ -2737,7 +2899,7 @@ export class AuthnClient {
         enrolledCount: res.data.enrolled_count,
         thresholdK: res.data.threshold_k,
         guardians: res.data.guardians.map(mapGuardian),
-        inviteUrls: res.data.invite_urls,
+        invites: (res.data.invites ?? []).map(mapGuardianInvite),
       };
     } catch (err) {
       return this.handleError(err, "inviteGuardians");
@@ -2747,6 +2909,9 @@ export class AuthnClient {
   /**
    * Redeems a guardian invitation token.
    * POST /v1/client/account/guardians/accept
+   *
+   * Public: the caller is the guardian, a third party with no session on the account they are
+   * agreeing to help recover. The invitation token is the authentication.
    */
   async acceptGuardianInvite(
     params: AcceptGuardianInviteParams,
@@ -2754,11 +2919,13 @@ export class AuthnClient {
     try {
       assertValid(validateToken(params.contactId, "contactId"));
       assertValid(validateToken(params.token, "token"));
+      assertValid(validateToken(params.share, "share"));
       const res = await this.http.post<{ message: string }>(
         "/v1/client/account/guardians/accept",
         {
           contact_id: params.contactId,
           token: params.token,
+          share: params.share,
         },
       );
       return { ok: true, message: res.data.message };

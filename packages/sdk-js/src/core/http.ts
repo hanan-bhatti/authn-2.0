@@ -44,6 +44,24 @@ export interface HttpResponse<T> {
   requestId?: string;
 }
 
+/** Per-request overrides to the client-wide behaviour. */
+export interface RequestOptions {
+  /**
+   * Exempts the request from {@link HttpClientConfig.lifetimeSignal}, so
+   * destroying the client stops the caller waiting but does not cancel the
+   * request.
+   *
+   * For a request whose response is the only copy of something. Refresh-token
+   * rotation is the case that matters: the server spends the presented token and
+   * mints its replacement, and the replacement exists only in that response. An
+   * abort does not un-send the request — it stops the client reading the reply —
+   * so cancelling one leaves the caller holding a token the server has already
+   * retired. Letting it finish costs an unread response; cancelling it costs the
+   * session.
+   */
+  survivesTeardown?: boolean;
+}
+
 export class HttpClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -75,8 +93,9 @@ export class HttpClient {
     path: string,
     body?: Record<string, unknown>,
     extraHeaders?: Record<string, string>,
+    opts?: RequestOptions,
   ): Promise<HttpResponse<T>> {
-    return this.request<T>("POST", path, body, 0, false, extraHeaders);
+    return this.request<T>("POST", path, body, 0, false, extraHeaders, opts);
   }
 
   async get<T>(
@@ -123,11 +142,19 @@ export class HttpClient {
     attempt = 0,
     isRetryAfterRefresh = false,
     extraHeaders?: Record<string, string>,
+    opts?: RequestOptions,
   ): Promise<HttpResponse<T>> {
     const url = `${this.baseUrl}${path}`;
+    const survivesTeardown = opts?.survivesTeardown === true;
 
     // A destroyed client is not a slow client: refuse before spending a socket.
-    if (this.lifetimeSignal?.aborted) {
+    //
+    // Teardown-surviving requests are exempt at every stage, including this one,
+    // because a retry re-enters here: attempt 1 may already have spent the token,
+    // which makes attempt 2 the only thing that can recover a replacement.
+    // Whether a fresh rotation may start on a destroyed client is decided by the
+    // caller, which refuses one before it gets this far.
+    if (this.lifetimeSignal?.aborted && !survivesTeardown) {
       throw AuthnError.cancelled(path);
     }
 
@@ -145,7 +172,11 @@ export class HttpClient {
       // short. Linking rather than passing the lifetime signal straight to
       // fetch keeps the timeout working: a signal can only be handed over
       // whole, so one of the two would otherwise have to be dropped.
-      if (this.lifetimeSignal) {
+      //
+      // A teardown-surviving request links only the timeout. It still needs one
+      // — an unbounded request holds whatever lock the caller took to make it —
+      // but teardown no longer reaches it.
+      if (this.lifetimeSignal && !survivesTeardown) {
         onLifetimeAbort = () => controller!.abort();
         this.lifetimeSignal.addEventListener("abort", onLifetimeAbort, {
           once: true,
@@ -214,7 +245,10 @@ export class HttpClient {
         // signal can say which happened. Reporting a cancellation as a timeout
         // would be a lie the caller acts on: a timeout is retryable, so a
         // destroyed client's abandoned request would be tried again.
-        throw this.lifetimeSignal?.aborted
+        //
+        // A teardown-surviving request never linked the lifetime signal, so its
+        // only abort source is the timeout however that signal stands.
+        throw this.lifetimeSignal?.aborted && !survivesTeardown
           ? AuthnError.cancelled(path)
           : AuthnError.timeout(path, this.timeout);
       }
@@ -227,8 +261,10 @@ export class HttpClient {
         });
         // Cancellation is enforced on re-entry rather than here: a retry is a
         // fresh request() call, and its first act is to refuse if the client has
-        // been destroyed meanwhile.
-        await sleep(delay, this.lifetimeSignal);
+        // been destroyed meanwhile. A teardown-surviving request waits out its
+        // full backoff instead, since abandoning it is the outcome it exists to
+        // avoid.
+        await sleep(delay, survivesTeardown ? undefined : this.lifetimeSignal);
         return this.request<T>(
           method,
           path,
@@ -236,6 +272,7 @@ export class HttpClient {
           attempt + 1,
           isRetryAfterRefresh,
           extraHeaders,
+          opts,
         );
       }
 
@@ -280,7 +317,7 @@ export class HttpClient {
         this.logger.info(
           `Token refresh succeeded — retrying original request ${method} ${path}`,
         );
-        return this.request<T>(method, path, body, 0, true, extraHeaders);
+        return this.request<T>(method, path, body, 0, true, extraHeaders, opts);
       }
 
       this.logger.error(
@@ -307,7 +344,7 @@ export class HttpClient {
         `${response.status} on ${method} ${path}, retrying in ${delay}ms…`,
         { attempt, retryAfter, requestId },
       );
-      await sleep(delay, this.lifetimeSignal);
+      await sleep(delay, survivesTeardown ? undefined : this.lifetimeSignal);
       return this.request<T>(
         method,
         path,
@@ -315,6 +352,7 @@ export class HttpClient {
         attempt + 1,
         isRetryAfterRefresh,
         extraHeaders,
+        opts,
       );
     }
 
