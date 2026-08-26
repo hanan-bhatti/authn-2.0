@@ -84,21 +84,28 @@ export const helpTopics = {
     summary:
       "A second address we can reach you at if you lose access to your main one.",
     detail:
-      "It is used for recovery only: no sign-in link is ever sent there, and it cannot be used to sign in on its own.",
+      "Confirm it now, while you still can: a link goes to the address and only a confirmed one is any use later. No sign-in link is ever sent there and it cannot be used to sign in on its own.",
     path: "/endpoints/client-account-recovery",
   },
   guardians: {
     summary:
-      "People you trust to confirm it is you. Recovery needs several of them to agree.",
+      "People you trust to confirm it is you. Recovery needs more than half of them to agree — two of three, three of five.",
     detail:
-      "No single guardian can act alone, which is the point — it means trusting someone with this is not trusting them with your account.",
+      "Invitations are not emailed for you: you get a link for each guardian and send it to them yourself, and a guardian who has not opened their link does not count yet. Removing a guardian re-issues everyone else's share, so the others do not need to do anything but the old shares stop working. One guardian on their own is a majority of one — add a second before you rely on this.",
+    path: "/endpoints/client-account-recovery",
+  },
+  securityQuestions: {
+    summary:
+      "3 to 5 questions only you can answer, used as a last resort when nothing else is left.",
+    detail:
+      "Answers are stored the way a password is — hashed, never readable — and compared ignoring capitals and extra spaces, so the same answer typed months later on another keyboard still matches. Saving replaces the whole set at once, which is what stops someone with your unlocked screen from quietly adding a question they already know the answer to.",
     path: "/endpoints/client-account-recovery",
   },
   sessions: {
     summary:
       "Every browser and app currently signed in to this account. Revoking one signs it out at once.",
     detail:
-      "Location is approximate — it comes from the IP address, so a VPN or a mobile network can place a session in the wrong city.",
+      "Last used is when a device last renewed its sign-in rather than its last click, so an open tab can show a time from earlier today. Where a place is shown it is approximate — it comes from the IP address, so a VPN or a mobile network can put a session in the wrong city.",
     path: "/endpoints/client-sessions",
   },
   socialAccounts: {
@@ -112,12 +119,14 @@ export const helpTopics = {
     summary:
       "Shared workspaces you belong to. Your role in each one decides what you can do there.",
     detail:
-      "Your account exists independently of any workspace, so losing access to one does not affect it. Removing a member — including yourself — needs organization-admin rights.",
+      "Your account exists independently of any workspace, so losing access to one does not affect it. You can leave a workspace whatever your role, but removing somebody else needs organization-admin rights.",
     path: "/endpoints/client-organizations",
   },
   invitations: {
     summary:
       "An invitation arrives by email and stays valid for 7 days unless whoever sent it chose a different window.",
+    detail:
+      "Accepting one needs the code from that email. It is shown only to whoever sent the invitation, so a list of invitations addressed to you cannot accept them on your behalf.",
     path: "/endpoints/client-organizations",
   },
   deleteAccount: {

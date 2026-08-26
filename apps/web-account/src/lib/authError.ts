@@ -45,6 +45,42 @@ function retryHint(details: Record<string, unknown> | undefined): string | undef
 }
 
 /**
+ * An engine message, read as a sentence.
+ *
+ * Every one of them begins lower case and ends without a stop, because Go's
+ * convention is that an error string is a clause meant to be wrapped by its
+ * caller. Passing one straight to the screen puts a fragment where a sentence
+ * belongs — "this would leave the organization without an administrator" — and it
+ * reads as a stray line of log output rather than an answer.
+ *
+ * Only the first letter and the final stop are touched. The wording is the
+ * engine's, and it is the engine that knows which rule was broken: it can name the
+ * reserved metadata key or the member who would be left administering nothing,
+ * where anything written here could only guess.
+ *
+ * The first character is left alone when it is not a lower-case letter, so a
+ * message opening on a quoted value or a handle keeps it verbatim.
+ */
+function sentence(message: string): string {
+  const text = message.trim();
+  if (text === "") return text;
+
+  const head = text.charAt(0);
+  const opened = head === head.toUpperCase() ? text : head.toUpperCase() + text.slice(1);
+
+  return /[.!?]$/.test(opened) ? opened : `${opened}.`;
+}
+
+/**
+ * asSentence is {@link sentence} for the components that show an engine message
+ * without going through one of the presenters above — a card that failed to load,
+ * a dialog repeating the reason a step-up was refused.
+ */
+export function asSentence(message: string | undefined): string | undefined {
+  return message === undefined ? undefined : sentence(message);
+}
+
+/**
  * Decides where a sign-up refusal belongs.
  *
  * The engine's own prose is deliberately not read. It documents `code` as the
@@ -63,7 +99,7 @@ export function presentSignUpError(error: AuthnError): Presented {
   if (typeof declaredField === "string" && isFieldName(declaredField)) {
     return {
       field: declaredField,
-      message: error.message,
+      message: sentence(error.message),
       suggestions: asStringArray(details?.["suggestions"]),
     };
   }
@@ -162,7 +198,7 @@ export function presentSignInError(error: AuthnError): PresentedSignIn {
 
   const declaredField = details?.["field"];
   if (typeof declaredField === "string" && isFieldName(declaredField)) {
-    return { field: declaredField, message: error.message };
+    return { field: declaredField, message: sentence(error.message) };
   }
 
   switch (error.code) {
@@ -334,7 +370,7 @@ export function presentSecondFactorError(
       return {
         toast: {
           title: "This device cannot use your passkey",
-          description: typeof error.message === "string" ? error.message : undefined,
+          description: typeof error.message === "string" ? sentence(error.message) : undefined,
         },
       };
 
@@ -397,16 +433,16 @@ export function presentSaveError(error: AuthnError, subject: string): string {
     // The engine names the rule that was broken — a handle's shape, a reserved
     // metadata key — so its own sentence is more use than anything written here.
     case AuthnErrorCode.VALIDATION_ERROR:
-      return error.message;
+      return sentence(error.message);
 
     // `already_exists` is what a taken handle arrives as, the engine having one
     // conflict code for every kind of collision.
     case AuthnErrorCode.EMAIL_ALREADY_EXISTS:
     case AuthnErrorCode.CONFLICT:
-      return error.message;
+      return sentence(error.message);
 
     case AuthnErrorCode.INVALID_PARAMS:
-      return error.message;
+      return sentence(error.message);
 
     case AuthnErrorCode.RATE_LIMITED:
       return retryHint(error.details) ?? "Too many changes too quickly. Wait a moment.";

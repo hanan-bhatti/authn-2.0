@@ -5,7 +5,7 @@ import { AlertIcon, Button, CopyButton } from "@authn/ui";
 
 /**
  * Authn Platform — Recovery codes, shown once
- * File: apps/web-account/src/app/account/security/RecoveryCodesPanel.tsx
+ * File: apps/web-account/src/components/RecoveryCodesPanel.tsx
  *
  * The codes are hashed on the way in, so this is the only moment in the account's
  * life they exist as text. Two things follow from that, and both are the reason

@@ -5,7 +5,7 @@ import { Button, Dialog, FormField, Input, InputOTP } from "@authn/ui";
 import { useAuth } from "@authn/react";
 import { AuthnErrorCode } from "@authn/js";
 import { presentSaveError } from "@/lib/authError";
-import { RecoveryCodesPanel } from "./RecoveryCodesPanel";
+import { RecoveryCodesPanel } from "@/components/RecoveryCodesPanel";
 
 /**
  * Authn Platform — Text-message enrollment

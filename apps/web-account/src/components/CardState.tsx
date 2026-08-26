@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AlertIcon, Button, Skeleton } from "@authn/ui";
+import { asSentence } from "@/lib/authError";
 
 /**
  * Authn Platform — Card loading and failure states
@@ -69,7 +70,12 @@ export function RowSkeleton({ rows = 3, hasIcon = false, label }: RowSkeletonPro
 export interface LoadErrorProps {
   /** The noun for what failed, lower case: "your profile", "your sessions". */
   label: string;
-  /** The engine's reason, when it gave one worth repeating. */
+  /**
+   * The engine's reason, when it gave one worth repeating.
+   *
+   * Read as a sentence on the way in, since the engine's own strings are clauses:
+   * lower case, no full stop. See `asSentence`.
+   */
   message?: string;
   onRetry: () => void;
   isRetrying?: boolean;
@@ -94,7 +100,8 @@ export function LoadError({ label, message, onRetry, isRetrying = false }: LoadE
               page of cards and needs to know it is this one that is missing. */}
           <span className="text-body-md text-ink">Could not load {label}</span>
           <span className="text-caption text-ash">
-            {message ?? "This is usually temporary. Nothing on your account has changed."}
+            {asSentence(message) ??
+              "This is usually temporary. Nothing on your account has changed."}
           </span>
         </div>
       </div>

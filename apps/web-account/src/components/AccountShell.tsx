@@ -13,7 +13,8 @@ import {
   useToast,
 } from "@authn/ui";
 import type { AuthnUser } from "@authn/js";
-import { useAuth, useOrganization, useSignOut } from "@authn/react";
+import { useAuth, useSignOut } from "@authn/react";
+import { useOrganizations } from "@/components/OrganizationsProvider";
 import { accountNav, activeNavId } from "@/lib/accountNav";
 
 /**
@@ -37,8 +38,17 @@ export function AccountShell({ children }: AccountShellProps): ReactNode {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
 
-  const { user, isAuthenticated, isLoading } = useAuth();
-  const { organizations, listOrgs } = useOrganization();
+  const { user, isLoading } = useAuth();
+
+  /**
+   * The same list the organizations page draws its cards from, fetched once by the
+   * provider around this component rather than here.
+   *
+   * The tree is visible from all seven pages, so it cannot wait for a visit to the
+   * one page that would otherwise own the request; and it has to be the *same* list,
+   * or creating a workspace fills in a card with no row beside it.
+   */
+  const { organizations } = useOrganizations();
 
   /**
    * Closed on every navigation. Without this the drawer stays open over the page
@@ -52,22 +62,6 @@ export function AccountShell({ children }: AccountShellProps): ReactNode {
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
-
-  /**
-   * The workspace rows are fetched here rather than on the organizations page,
-   * because the tree is visible from all seven pages and a branch that fills in
-   * only after you visit one of them is a branch that looks empty everywhere else.
-   *
-   * Once per mount of the account section, not once per page: Next keeps this
-   * layout mounted across navigations inside `/account`, so moving between pages
-   * does not re-ask. Gated on the session for the reason `useResource` is — a
-   * request fired before the provider's refresh call settles goes out
-   * unauthenticated and comes back 401.
-   */
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    void listOrgs();
-  }, [isAuthenticated, listOrgs]);
 
   const sections = useMemo(() => accountNav(organizations), [organizations]);
 

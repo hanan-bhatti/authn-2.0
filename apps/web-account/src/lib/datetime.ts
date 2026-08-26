@@ -93,3 +93,47 @@ export function formatRelative(value: string | null | undefined, fallback = "Unk
   if (seconds < DAY) return relative.format(-Math.floor(seconds / HOUR), "hour");
   return relative.format(-Math.floor(seconds / DAY), "day");
 }
+
+/**
+ * The same recency, phrased so it can follow a verb: "3 hours ago", "just now",
+ * "on 2 March 2026".
+ *
+ * {@link formatRelative} hands over to a bare calendar date past 30 days, and
+ * "Signed in 2 March 2026" is a sentence with a word missing. The preposition is
+ * added here rather than at the call site so the threshold that decides whether it
+ * is needed keeps one definition.
+ */
+export function formatSince(value: string | null | undefined, fallback = "Unknown"): string {
+  const date = parse(value);
+  if (!date) return fallback;
+
+  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+  const relative = formatRelative(value, fallback);
+  return seconds > DAY * 30 ? `on ${relative}` : relative;
+}
+
+/**
+ * How long is left, in words: "in 6 days", "in 4 hours", "in a minute", "expired".
+ *
+ * The counterpart to {@link formatRelative}, which only looks backwards — a future
+ * timestamp handed to it reads as "just now", because a negative age is under a
+ * minute. Deadlines need the other direction: an invitation and a recovery request
+ * both expire, and how long the reader has is the only thing they can act on.
+ *
+ * Anything already past is "expired" rather than a negative interval. The exact
+ * moment it lapsed is of no use — what matters is that it can no longer be used.
+ */
+export function formatUntil(value: string | null | undefined, fallback = "Unknown"): string {
+  const date = parse(value);
+  if (!date) return fallback;
+
+  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+  if (seconds <= 0) return "expired";
+
+  const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+  if (seconds < MINUTE) return relative.format(1, "minute");
+  if (seconds < HOUR) return relative.format(Math.floor(seconds / MINUTE), "minute");
+  if (seconds < DAY) return relative.format(Math.floor(seconds / HOUR), "hour");
+  return relative.format(Math.floor(seconds / DAY), "day");
+}

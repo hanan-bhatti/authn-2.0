@@ -6,7 +6,7 @@ import { useAuth } from "@authn/react";
 import { AuthnErrorCode } from "@authn/js";
 import { QrCode } from "@/components/QrCode";
 import { presentSaveError } from "@/lib/authError";
-import { RecoveryCodesPanel } from "./RecoveryCodesPanel";
+import { RecoveryCodesPanel } from "@/components/RecoveryCodesPanel";
 
 /**
  * Authn Platform — Authenticator app enrollment

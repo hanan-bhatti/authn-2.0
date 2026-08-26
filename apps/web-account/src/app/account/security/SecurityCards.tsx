@@ -28,9 +28,9 @@ import { useResource, type ResourceResult } from "@/lib/useResource";
 import { PasskeyAddDialog } from "./PasskeyAddDialog";
 import { PasskeyRemoveDialog, type PasskeyRemoveTarget } from "./PasskeyRemoveDialog";
 import { PasswordChangeDialog } from "./PasswordChangeDialog";
-import { RecoveryCodesPanel } from "./RecoveryCodesPanel";
+import { RecoveryCodesPanel } from "@/components/RecoveryCodesPanel";
 import { SmsEnrollDialog } from "./SmsEnrollDialog";
-import { StepUpDialog } from "./StepUpDialog";
+import { StepUpDialog } from "@/components/StepUpDialog";
 import { TotpEnrollDialog } from "./TotpEnrollDialog";
 
 /**

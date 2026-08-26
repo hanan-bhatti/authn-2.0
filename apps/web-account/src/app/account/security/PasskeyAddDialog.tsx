@@ -5,7 +5,7 @@ import { Button, Dialog, FormField, Input } from "@authn/ui";
 import { useAuth } from "@authn/react";
 import { isPasskeySupported } from "@authn/js";
 import { presentSaveError } from "@/lib/authError";
-import { RecoveryCodesPanel } from "./RecoveryCodesPanel";
+import { RecoveryCodesPanel } from "@/components/RecoveryCodesPanel";
 
 /**
  * Authn Platform — Passkey registration
@@ -72,7 +72,11 @@ export function PasskeyAddDialog({ isOpen, onClose, onAdded }: PasskeyAddDialogP
     setIsWorking(false);
 
     if (!result.ok) {
-      setMessage(result.error.message ?? presentSaveError(result.error, "passkey"));
+      /* The presenter and not the raw message, even though a ceremony failure is
+         one of the few the engine words usefully: it reads that message itself for
+         the codes where it is worth repeating, and answers the rest — a dropped
+         connection, an expired token — with advice the engine has no way to give. */
+      setMessage(presentSaveError(result.error, "passkey"));
       return;
     }
 
