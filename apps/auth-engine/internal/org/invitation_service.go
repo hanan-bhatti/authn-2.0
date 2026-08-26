@@ -413,7 +413,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, tenantID, userID string,
 
 	// The invitation names a role ID; the redeemer is told which role that is, so
 	// the client can say what they have just joined as.
-	return s.toOrgMemberResponse(member, s.loadRole(ctx, client, inv.RoleID)), nil
+	return s.toOrgMemberResponse(member, s.loadRole(ctx, client, inv.RoleID), s.loadUser(ctx, client, userID)), nil
 }
 
 // ListInvitationsForUser returns the pending invitations addressed to a user's

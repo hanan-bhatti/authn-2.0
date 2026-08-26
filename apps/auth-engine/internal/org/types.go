@@ -346,6 +346,16 @@ type OrgMemberResponse struct {
 	OrganizationID string `json:"organization_id"`
 	// UserID is the member.
 	UserID string `json:"user_id"`
+	// Name is the member's display name, absent when they have not set one.
+	Name string `json:"name,omitempty"`
+	// Email is the member's address. Every member of an organization may read its
+	// roster, so this is visible to all of them — which is what a shared workspace
+	// requires: a roster nobody can be named on cannot be administered.
+	Email string `json:"email,omitempty"`
+	// Username is the member's handle, absent when they have not claimed one.
+	Username string `json:"username,omitempty"`
+	// AvatarURL is the member's picture, absent when they have not set one.
+	AvatarURL string `json:"avatar_url,omitempty"`
 	// RoleID is the role held in this organization.
 	RoleID string `json:"role_id"`
 	// RoleSlug is the role's stable identifier, "org_admin" for an administrator.

@@ -29,6 +29,7 @@ import (
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/orgmember"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/role"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/samlconnection"
+	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/ent/user"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/internal/config"
 	"github.com/hanan-bhatti/authn-2.0/apps/auth-engine/pkg/clientfactory"
 )
@@ -143,6 +144,23 @@ func (s *Service) authzCheckMember(ctx context.Context, client *ent.Client, acto
 // OrgAdminRoleSlug is the role slug that carries organization-admin rights. It is
 // the slug CreateOrganization grants the creator.
 const OrgAdminRoleSlug = "org_admin"
+
+// OrgMemberRoleSlug is the role slug for a seat with no administrative rights. It
+// carries no permissions of its own; membership is what it confers.
+const OrgMemberRoleSlug = "org_member"
+
+// canonicalRoleNames are the display names for the role slugs this package's own
+// callers pass, so a role created on demand is named the same way whichever
+// operation happened to create it first.
+//
+// Without this, the name depended on the entry point: an organization whose first
+// ordinary member arrived by invitation would hold a role called "Invited Role",
+// and one whose first member was added directly would hold "Member Role" — two
+// names for one thing, both shown to the reader beside that member.
+var canonicalRoleNames = map[string]string{
+	OrgAdminRoleSlug:  "Organization Admin",
+	OrgMemberRoleSlug: "Organization Member",
+}
 
 // roleGrantsOrgAdmin reports whether a role carries organization-admin rights.
 //
@@ -368,6 +386,11 @@ func Slugify(input string) string {
 //
 // The argument is accepted as either a slug or a role ID, because callers pass
 // whichever the API client supplied. Returns the resolved or created role.
+//
+// roleName is only a fallback for a slug this package does not recognise. The
+// caller's label describes the operation — "Invited Role" — where the name is read
+// as a description of the member holding it, so a recognised slug takes its
+// canonical name and anything else is titled from the slug the client chose.
 func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, tenantID, roleSlug, roleName string) (*ent.Role, error) {
 	r, err := client.Role.Query().
 		Where(role.TenantID(tenantID), role.Slug(roleSlug)).
@@ -383,14 +406,44 @@ func (s *Service) ensureDefaultRole(ctx context.Context, client *ent.Client, ten
 		return r, nil
 	}
 
+	displayName := roleDisplayName(roleSlug, roleName)
+
 	roleID := idgen.New("role")
 	return client.Role.Create().
 		SetID(roleID).
 		SetTenantID(tenantID).
-		SetName(roleName).
+		SetName(displayName).
 		SetSlug(roleSlug).
-		SetDescription(fmt.Sprintf("Default %s role", roleName)).
+		SetDescription(fmt.Sprintf("Default %s role", displayName)).
 		Save(ctx)
+}
+
+// roleDisplayName is the name to give a role being created on demand.
+//
+// A slug this package owns gets its canonical name. Anything else is titled from
+// the slug — "billing-admin" becomes "Billing Admin" — which is a better answer
+// than the caller's generic label for the same reason: the name is displayed
+// beside the member, so it should say what the role is rather than how it arrived.
+//
+// A slug that titles to nothing, which an ID passed for a role that no longer
+// exists would, falls back to the caller's label rather than an empty name.
+func roleDisplayName(roleSlug, fallback string) string {
+	if canonical, ok := canonicalRoleNames[roleSlug]; ok {
+		return canonical
+	}
+
+	words := strings.FieldsFunc(roleSlug, func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+	titled := make([]string, 0, len(words))
+	for _, word := range words {
+		runes := []rune(word)
+		titled = append(titled, strings.ToUpper(string(runes[0]))+string(runes[1:]))
+	}
+	if len(titled) == 0 {
+		return fallback
+	}
+	return strings.Join(titled, " ")
 }
 
 // orgEnvironment is the environment an organization's events belong to.
@@ -450,7 +503,12 @@ func (s *Service) toOrgResponse(o *ent.Organization, callerIsAdmin bool) *OrgRes
 // administrator from a member. IsAdmin comes from the same predicate the
 // authorization checks use, which is what makes it safe for a client to hide a
 // control on.
-func (s *Service) toOrgMemberResponse(m *ent.OrgMember, r *ent.Role) *OrgMemberResponse {
+//
+// u is the member's account, or nil when it was not loaded. Their name and
+// address travel with the membership for the same reason the role's do: no client
+// route resolves a user ID, so a roster carrying only IDs is a list a reader
+// cannot recognise anybody in — including themselves.
+func (s *Service) toOrgMemberResponse(m *ent.OrgMember, r *ent.Role, u *ent.User) *OrgMemberResponse {
 	if m == nil {
 		return nil
 	}
@@ -466,6 +524,14 @@ func (s *Service) toOrgMemberResponse(m *ent.OrgMember, r *ent.Role) *OrgMemberR
 		resp.RoleSlug = r.Slug
 		resp.RoleName = r.Name
 		resp.IsAdmin = roleGrantsOrgAdmin(r)
+	}
+	if u != nil {
+		resp.Name = u.Name
+		resp.Email = u.Email
+		resp.AvatarURL = u.AvatarURL
+		if u.Username != nil {
+			resp.Username = *u.Username
+		}
 	}
 	if m.AssignedByUserID != nil {
 		resp.AssignedByUserID = *m.AssignedByUserID
@@ -490,6 +556,23 @@ func (s *Service) loadRole(ctx context.Context, client *ent.Client, roleID strin
 		return nil
 	}
 	return r
+}
+
+// loadUser fetches the account behind a membership, returning nil when it cannot
+// be read.
+//
+// Nil for the same reason loadRole returns nil: the name and address decorate a
+// membership that has already been written, and a client that gets a response
+// without them still has the user ID it needs to act on. Failing the whole
+// operation would turn a missing display name into a refused request.
+func (s *Service) loadUser(ctx context.Context, client *ent.Client, userID string) *ent.User {
+	u, err := client.User.Query().
+		Where(user.ID(userID)).
+		Only(ctx)
+	if err != nil {
+		return nil
+	}
+	return u
 }
 
 // logAudit records an organization event on the tenant's audit trail.

@@ -50,6 +50,7 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 	members, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID)).
 		WithRole(func(q *ent.RoleQuery) { q.WithPermissions() }).
+		WithUser().
 		Limit(limit).
 		Offset(offset).
 		All(ctx)
@@ -59,7 +60,7 @@ func (s *Service) ListOrgMembers(ctx context.Context, tenantID, orgID string, ac
 
 	responses := make([]*OrgMemberResponse, len(members))
 	for i, m := range members {
-		responses[i] = s.toOrgMemberResponse(m, m.Edges.Role)
+		responses[i] = s.toOrgMemberResponse(m, m.Edges.Role, m.Edges.User)
 	}
 
 	return responses, nil
@@ -138,7 +139,7 @@ func (s *Service) AddMember(ctx context.Context, tenantID, actorID, orgID string
 
 	// Reloaded with its permissions, which ensureDefaultRole does not fetch and
 	// which is what decides whether the new member counts as an administrator.
-	return s.toOrgMemberResponse(createdMem, s.loadRole(ctx, client, targetRole.ID)), nil
+	return s.toOrgMemberResponse(createdMem, s.loadRole(ctx, client, targetRole.ID), s.loadUser(ctx, client, req.UserID)), nil
 }
 
 // UpdateMemberRole changes a member's role within an organization.
@@ -163,6 +164,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 	mem, err := client.OrgMember.Query().
 		Where(orgmember.OrganizationID(orgID), orgmember.UserID(userID)).
 		WithRole(func(q *ent.RoleQuery) { q.WithPermissions() }).
+		WithUser().
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -208,7 +210,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, tenantID, actorID, orgID
 		"role_id": targetRole.ID,
 	}, ip, userAgent)
 
-	return s.toOrgMemberResponse(updatedMem, newRole), nil
+	return s.toOrgMemberResponse(updatedMem, newRole, mem.Edges.User), nil
 }
 
 // RemoveMember removes a user from an organization.
