@@ -24,7 +24,7 @@ import (
 
 // newClaimTestEnv returns an in-memory client plus a privacy-bypass context,
 // with the tenant every role and user row hangs off already seeded.
-func newClaimTestEnv(t *testing.T, dsn string) (*ent.Client, context.Context) {
+func newClaimTestEnv(t testing.TB, dsn string) (*ent.Client, context.Context) {
 	t.Helper()
 	client := enttest.Open(t, dialect.SQLite,
 		"file:"+dsn+"?mode=memory&cache=shared&_fk=1")

@@ -70,13 +70,25 @@ func EnsureSystemRoles(ctx context.Context, client *ent.Client, tenantID string)
 		return nil, fmt.Errorf("cannot install system roles without a tenant")
 	}
 
+	slugs := make([]string, len(SystemRoles))
+	for i, def := range SystemRoles {
+		slugs[i] = def.Slug
+	}
+
+	existingRoles, err := client.Role.Query().
+		Where(role.TenantID(tenantID), role.SlugIn(slugs...)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("querying system roles for tenant %s: %w", tenantID, err)
+	}
+
 	roles := make(map[string]*ent.Role, len(SystemRoles))
+	for _, r := range existingRoles {
+		roles[r.Slug] = r
+	}
+
 	for _, def := range SystemRoles {
-		existing, err := client.Role.Query().
-			Where(role.TenantID(tenantID), role.Slug(def.Slug)).
-			Only(ctx)
-		if err == nil {
-			roles[def.Slug] = existing
+		if _, ok := roles[def.Slug]; ok {
 			continue
 		}
 
